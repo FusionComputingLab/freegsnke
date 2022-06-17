@@ -130,6 +130,13 @@ class evolve_plasma_NK:
                       max_rel_change=.005, 
                       rtol=1e-7,
                       verbose=False):
+        """Evolve the equilibrium one time step.
+        
+        Returns
+        -------
+        flag : int
+            1 if the plasma is impinging on the wall, 0 otherwise.
+        """
         #flag to alert when hitting wall
         flag = 0
         

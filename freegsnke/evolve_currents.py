@@ -5,6 +5,7 @@ from . import MASTU_coils
 from .MASTU_coils import coils_dict
 from .MASTU_coils import coil_self_ind
 
+
 class evolve_currents:
     #simple Euler implicit time stepper for the linearized circuit equation
     #would need time-derivatives from emulators to better approximate non linear evolution
@@ -13,15 +14,13 @@ class evolve_currents:
     def __init__(self):
         
         self.n_coils = len(MASTU_coils.coil_self_ind)
-        #self.dt_step = dt_step
         
         #RESISTENCE
         #use actual values of coil resistances!!!!!
         #value right now is GUESSED so that time evolution is approximately such that
         #1% change in the currents is obtained in 1e-4s
-        coils_resistence = (1e2)*np.ones(self.n_coils)
         R_matrix = np.zeros((self.n_coils+1, self.n_coils+1))
-        R_matrix[:-1,:-1] = np.diag(coils_resistence)
+        R_matrix[:-1,:-1] = np.diag(MASTU_coils.coils_resistences)
         self.R_matrix = R_matrix
         
         #INDUCTANCE
@@ -31,8 +30,9 @@ class evolve_currents:
         
         
     def initialize_time_t(self, eq, results):
-        #adjust quantities for time t
-        #results = qfe.quants_out(eq, profiles)
+        #adjust quantities in R and L matrix based on
+        #results = qfe.quants_out(eq, profiles) for time t
+        #gets currents from eq.tokamak and plasma current from qfe
         
         self.Ip_tot = results['tot_Ip_Rp'][0]
 
@@ -41,24 +41,16 @@ class evolve_currents:
         #use actual values of resistivity!!!!!
         #value right now is GUESSED so that time evolution is approximately such that
         #1% change in the currents is obtained in 1e-4s
-        self.R_matrix[-1,-1] = results['tot_Ip_Rp'][1]*(1e-5)
-        #calculate dpci_dw from emulator, for now at random
-        dpci_dw = 0#0.2*np.random.randn(self.n_coils)
-        self.R_matrix[-1,:-1] = dpci_dw
+        self.R_matrix[-1,-1] = results['tot_Ip_Rp'][1]*MASTU_coils.plasma_resistivity
+        
 
         #adjust L matrix for use, with quantities relevant to eq at time t:
         L_matrix = np.zeros((self.n_coils+1,self.n_coils+1))
-        #add entry for plasma self inductance from emulator, 
-        #for now is flux/current
-        L_matrix[-1,-1] = results['plasma_self_flux']/self.Ip_tot
-        #add inductances of plasma on the coils from emulator,
-        #for now is flux/current
-        L_matrix[:-1,-1] = results['plasma_flux_on_coils']/self.Ip_tot
-        #add inductance of coils on plasma
+         #add inductance of coils on plasma
         L_matrix[-1,:-1] = results['plasma_coil_ind']
-        #add ncoil x ncoil term to coil-self-inductances from emulator
-        #for now at 0
-        L_matrix[:-1,:-1] += 0#(10**-2)*np.random.randn(self.n_coils,self.n_coils)*coil_self_ind
+        #inductances of plasma on the coils 
+        #includes plasma self inductance
+        L_matrix[:,-1] = results['plasma_ind_on_coils']
         #add coil self inductances
         L_matrix += self.L0_matrix
         self.L_matrix = L_matrix
@@ -69,38 +61,38 @@ class evolve_currents:
         for i,labeli in enumerate(coils_dict.keys()):
             currents_vec[i] = eq_currents[labeli]
         currents_vec[-1] = self.Ip_tot
-        currents_vec[0] = 1000
         self.currents_vec = currents_vec
+
+        #prepare quantities for non-linear step
+        #self.RI = np.matmul(self.R_matrix, self.currents_vec)
+        # self.LI = np.matmul(self.L0_matrix, self.currents_vec)
+        #self.totPhi = results['non_linear_fluxes']
         
-        #adjust input voltages by adding dw term DW from emulators,
-        #for now put at 0
-        self.Udw_term = 0
         
-        
-    def stepper(self, U_active, dt_step):
-        #U_active only has n_coils, plasma not included
-        #at the moment no walls/conductive material other than active coils
+    def stepper(self, U_active, dt_step, dR=0):
+        #U_active only provides active voltages,
+        #can be any length as long as len(U_active)<=self.n_coils
+        #self.n_coils is the number of all active and passive coils now
+        #even though at the moment no walls/conductive material other than active coils
         all_Us = np.zeros(self.n_coils+1)
-        all_Us[:self.n_coils] = U_active
-        all_Us += self.Udw_term
+        all_Us[:len(U_active)] = U_active
+        self.all_Us = all_Us.copy()
         
+        #implicit Euler
         #I_t+1 = (R+L/dt)^-1(U+L/dt I)
-        Ldt = self.L_matrix/dt_step
-        self.invM = inv(self.R_matrix+Ldt)
-        self.LdtI = np.matmul(Ldt,self.currents_vec)
+        #dL is used to add dL/dt terms
+        Ldt = (self.L_matrix)/dt_step
+        self.invM = inv(self.R_matrix + dR + Ldt)
+        self.LdtI = np.matmul(Ldt, self.currents_vec)
         all_Us += self.LdtI
         
-        self.new_currents = np.matmul(self.invM, all_Us)
+        new_currents = np.matmul(self.invM, all_Us)
+        return new_currents
         
         
-    def new_currents_out(self, eq, results, U_active, dt_step):
-        
+    def new_currents_out(self, eq, results, U_active, dt_step, dR=0):
+        #sets R, L and currents
         self.initialize_time_t(eq, results)
-        self.stepper(U_active, dt_step)
-        
-        return(self.new_currents)
-        
-        
-        
-        
-        
+        #does the linear solve
+        new_currents = self.stepper(U_active, dt_step, dR)
+        return new_currents

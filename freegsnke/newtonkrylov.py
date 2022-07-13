@@ -132,8 +132,9 @@ class NewtonKrylov:
             G[:,n_it] = rin
             n_it += 1
             #orthonormalize the vector in Psi space
-            for j in range(n_it):
-                rin -= np.dot(Q[:,j].T, rin) * Q[:,j]
+            # for j in range(n_it):
+            #     rin -= np.dot(Q[:,j].T, rin) * Q[:,j]
+            rin -= np.sum(np.sum(Q[:,:n_it]*rin[:,np.newaxis], axis=0, keepdims=True)*Q[:,:n_it], axis=1)
             nr0 = np.linalg.norm(rin)
             #store in Psi basis vectors
             Q[:,n_it] = rin/nr0
@@ -141,6 +142,10 @@ class NewtonKrylov:
         #make both basis available
         self.Q = Q[:,:n_it]
         self.G = G[:,:n_it]
+
+
+
+    
             
     def dpsi(self, res0, clip=10):
         #solve the least sq problem in coeffs: min||G.coeffs+res0||^2
@@ -162,7 +167,7 @@ class NewtonKrylov:
                     profiles,
                     rel_convergence=1e-6, 
                     n_k=8, #this is a good compromise between convergence and speed
-                    conv_crit=1e-2, 
+                    conv_crit=1e-1, 
                     grad_eps=.01,
                     clip=10, #maximum absolute value of coefficients in psi space
                     verbose=False,
@@ -180,6 +185,9 @@ class NewtonKrylov:
         rel_change = np.amax(np.abs(res0))
         rel_change /= (np.amax(trial_plasma_psi)-np.amin(trial_plasma_psi))
         rel_c_history.append(rel_change)
+        if rel_change>.03:
+            print('Warning: initial relative change is too high at', rel_change)
+            print('NK will likely fail')
         if verbose:
             print('rel_change_0', rel_change)
             
@@ -197,6 +205,7 @@ class NewtonKrylov:
             rel_c_history.append(rel_change)
             if verbose:
                 print(rel_change, 'coeffs=', self.coeffs)
+            
             it += 1
         
         #update eq with new solution
@@ -205,6 +214,7 @@ class NewtonKrylov:
         #if max_iter was hit, then message:
         if not it<max_iter:
             print('failed to converge with less than {} iterations'.format(max_iter))
+            print(f'last relative change = {rel_change}')
             
         if conv_history:
             return np.array(rel_c_history)

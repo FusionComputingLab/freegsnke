@@ -1,5 +1,7 @@
 import numpy as np
 
+
+
 d1_upper_r = [
     0.35275,
     0.36745015,
@@ -1215,7 +1217,6 @@ pc_z = [
 ]
 
 
-
 coils_dict = {}
 
 coils_dict['Solenoid'] = {}
@@ -1269,6 +1270,11 @@ coils_dict['P5']['polarity'] = np.array([1]*len(coils_dict['P5']['coords'][0]))
 coils_dict['P6'] = {}
 coils_dict['P6']['coords'] = np.array([p6_upper_r+p6_upper_r, p6_upper_z+p6_lower_z])
 coils_dict['P6']['polarity'] = np.array([1]*len(p6_upper_r)+[-1]*len(p6_upper_r))
+
+
+
+plasma_resistivity = 1e-6
+coils_resistences = (1e2)*np.array([1]+[1]*(len(coils_dict.keys())-1))
 
 
 nloops_per_coil = np.zeros(len(coils_dict.keys()))

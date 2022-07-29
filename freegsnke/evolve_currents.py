@@ -2,8 +2,9 @@ import numpy as np
 from numpy.linalg import inv
 
 from . import MASTU_coils
-from .MASTU_coils import coils_dict
-from .MASTU_coils import coil_self_ind
+# from .MASTU_coils import coils_dict
+# from .MASTU_coils import coil_self_ind
+# from .MASTU_coils import coil_resist
 
 
 class evolve_currents:
@@ -17,15 +18,14 @@ class evolve_currents:
         
         #RESISTENCE
         #use actual values of coil resistances!!!!!
-        #value right now is GUESSED so that time evolution is approximately such that
-        #1% change in the currents is obtained in 1e-4s
+        #value right now is approximated using metal resistivity and section area of coils
         R_matrix = np.zeros((self.n_coils+1, self.n_coils+1))
-        R_matrix[:-1,:-1] = np.diag(MASTU_coils.coils_resistences)
+        R_matrix[:-1,:-1] = np.diag(MASTU_coils.coil_resist)
         self.R_matrix = R_matrix
         
         #INDUCTANCE
         L0_matrix = np.zeros((self.n_coils+1, self.n_coils+1))
-        L0_matrix[:-1,:-1] = coil_self_ind
+        L0_matrix[:-1,:-1] = MASTU_coils.coil_self_ind
         self.L0_matrix = L0_matrix
         
         
@@ -41,7 +41,7 @@ class evolve_currents:
         #use actual values of resistivity!!!!!
         #value right now is GUESSED so that time evolution is approximately such that
         #1% change in the currents is obtained in 1e-4s
-        self.R_matrix[-1,-1] = results['tot_Ip_Rp'][1]*MASTU_coils.plasma_resistivity
+        self.R_matrix[-1,-1] = results['tot_Ip_Rp'][1]*MASTU_coils.eta_plasma
         
 
         #adjust L matrix for use, with quantities relevant to eq at time t:
@@ -58,7 +58,7 @@ class evolve_currents:
         #prepare currents
         eq_currents = eq.tokamak.getCurrents()
         currents_vec = np.zeros(self.n_coils+1)
-        for i,labeli in enumerate(coils_dict.keys()):
+        for i,labeli in enumerate(MASTU_coils.coils_dict.keys()):
             currents_vec[i] = eq_currents[labeli]
         currents_vec[-1] = self.Ip_tot
         self.currents_vec = currents_vec

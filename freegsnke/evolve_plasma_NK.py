@@ -5,7 +5,6 @@ import freegs
 
 from . import MASTU_coils
 from .MASTU_coils import coils_dict
-from .MASTU_coils import coil_self_ind
 
 import copy
 
@@ -108,7 +107,9 @@ class evolve_plasma_NK:
 
         # threshold to calculate rel_change in the currents to set value of dt_step
         # it may be useful to use different values for different coils and for passive/active structures later on
-        self.threshold = 1000
+        self.threshold = np.array([1000]*MASTU_coils.N_active
+                                  +[10000]*(len(self.currents_vec)-MASTU_coils.N_active-1)
+                                  +[1000])
 
         self.void_matrix = np.zeros((self.evol_currents.n_coils+1, self.evol_currents.n_coils+1))
 
@@ -173,7 +174,7 @@ class evolve_plasma_NK:
         
         rel_change_curr = np.ones(5)
         dt_step = .001
-        while np.sum(abs(rel_change_curr[:])>max_rel_change):
+        while np.sum(abs(rel_change_curr)>max_rel_change):
             dt_step /= 1.5
             new_currents = self.evol_currents.new_currents_out(self.eq1, 
                                                                self.results, 
@@ -181,7 +182,9 @@ class evolve_plasma_NK:
                                                                dt_step,
                                                                dR)
             rel_change_curr = abs(new_currents-self.currents_vec)/self.vals_for_rel_change
+        print('find_dt_evolve dt = ', dt_step)
 
+        #print('rel_change_currents = ', abs(rel_change_curr))
         self.new_currents = new_currents
         self.dt_step = dt_step
        
@@ -240,6 +243,8 @@ class evolve_plasma_NK:
         self.NK.solve(self.eq2, self.profiles2, rel_convergence=rtol_NK, verbose=verbose_NK)
         #calculate new fluxes and inductances
         self.results1 = self.qfe.quants_out(self.eq2, self.profiles2)
+        self.Lplus1 = self.results1['plasma_ind_on_coils']
+        
         
         dLpc = self.results1['plasma_ind_on_coils'] - self.results['plasma_ind_on_coils']
         dLpc /= self.dt_step
@@ -253,10 +258,8 @@ class evolve_plasma_NK:
 
         return dR
 
-
-   
-    
-   
+    def dR_Lplasma(self, Lplus, Lnow):
+        return (Lplus-Lnow)/self.dt_step
 
     #root problem for the circuit equation for NK
     def Fcircuit(self,  U_active, 
@@ -268,21 +271,22 @@ class evolve_plasma_NK:
         return new_currents-trial_currents
 
 
-    def dI(self, res0, clip=3):
+    def dI(self, res0, G, Q, clip=5):
     #solve the least sq problem in coeffs: min||G.coeffs+res0||^2
-        self.coeffs = np.matmul(np.matmul(np.linalg.inv(np.matmul(self.G.T, self.G)),
-                                     self.G.T), -res0)
+        self.coeffs = np.matmul(np.matmul(np.linalg.inv(np.matmul(G.T, G)),
+                                          G.T), -res0)
+        self.eplained_res = np.sum(G*self.coeffs[np.newaxis,:], axis=1)
         self.coeffs = np.clip(self.coeffs, -clip, clip)
         #get the associated step in I space
-        di = np.sum(self.Q*self.coeffs[np.newaxis,:], axis=1)
-        return di
+        self.di_Arnoldi = np.sum(Q*self.coeffs[np.newaxis,:], axis=1)
+        
 
 
     def Arnoldi_iter(self,      U_active, #active potential
                                 trial_currents, #expansion point of the root problem function
                                 vec_direction, #first direction for I basis
                                 Fresidual=None, #residual of trial currents
-                                n_k=3, #max number of basis vectors
+                                n_k=6, #max number of basis vectors
                                 conv_crit=.1, #add basis vector 
                                               #if orthogonal residual is larger than
                                 grad_eps=.0001, #relative magnitude of infinitesimal step, with respect to self.vals_for_rel_change 
@@ -308,49 +312,90 @@ class evolve_plasma_NK:
         arnoldi_control = 1
         #use at least 1 orthogonal terms, but not more than n_k
         while ((n_it<1)+(arnoldi_control>0))*(n_it<n_k)>0:
-            grad_coeff = min(max(grad_eps*min(self.vals_for_rel_change/abs(vec_direction)), .15), 1)
+            # grad_coeff = min(max(grad_eps*min(self.vals_for_rel_change/abs(vec_direction)), .2), 3)
+            grad_coeff = grad_eps*np.linalg.norm(self.trial_currents)/np.linalg.norm(vec_direction)
+            print('grad_coeff = ', grad_coeff)
 
-            Q[:,n_it] = vec_direction*grad_coeff
-            Qn[:, n_it] = Q[:,n_it]/np.linalg.norm(Q[:,n_it])
+            candidate_di = vec_direction*grad_coeff
+            ri = self.Fcircuit(U_active, trial_currents + candidate_di)
+            candidate_usable = ri - Fresidual
+
+            if ((np.linalg.norm(candidate_usable)/nFresidual)<1.5)+((np.linalg.norm(candidate_usable)/nFresidual)>10):
+                candidate_di *= 2*(nFresidual/np.linalg.norm(candidate_usable))
+                ri = self.Fcircuit(U_active, trial_currents + candidate_di)
+                candidate_usable = ri - Fresidual
+
+
+            counter_ = 0
+            while ((np.linalg.norm(candidate_usable)/nFresidual)<1.5)*(counter_<2):
+                print('multiplying!')
+                counter_ += 1
+                candidate_di *= 2
+                ri = self.Fcircuit(U_active, trial_currents + candidate_di)
+                candidate_usable = ri - Fresidual
+            counter_ = 0
+            while ((np.linalg.norm(candidate_usable)/nFresidual)>10)*(counter_<2):
+                print('dividing!')
+                counter_ += 1
+                candidate_di /= 2
+                ri = self.Fcircuit(U_active, trial_currents + candidate_di)
+                candidate_usable = ri - Fresidual
+
+        
+            Q[:,n_it] = candidate_di.copy()
+            #print('dcurrent = ', Q[:,n_it])
+
+            Qn[:,n_it] = Q[:,n_it]/np.linalg.norm(Q[:,n_it])
             
             
-            ri = self.Fcircuit(U_active, trial_currents + Q[:,n_it])
-            vec_direction = (ri - Fresidual)
-            if verbose_currents:
-                print('trial dI = ',Q[:,n_it])
-                print('associated residual to use = ', vec_direction)
+            
+            vec_direction = candidate_usable.copy()
+            print('usable/residual = ', vec_direction/Fresidual)
+            # if verbose_currents:
+            #     print('trial dI = ',Q[:,n_it])
+            #     print('associated residual to use = ', vec_direction)
             G[:,n_it] = vec_direction.copy()
             n_it += 1
 
             #orthogonalize residual 
             vec_direction -= np.sum(np.sum(Qn[:,:n_it]*vec_direction[:,np.newaxis], axis=0, keepdims=True)*Qn[:,:n_it], axis=1)
+            
+            
             #check if more terms are needed
-            arnoldi_control = (np.linalg.norm(vec_direction)/nFresidual > conv_crit)
+            #arnoldi_control = (np.linalg.norm(vec_direction)/nFresidual > conv_crit)
+            self.G = G[:,:n_it]
+            self.Q = Q[:,:n_it]
+            self.dI(Fresidual, G=self.G, Q=self.Q, clip=1)
+            print('relative_unexplained_residual = ', np.linalg.norm(self.eplained_res+Fresidual)/nFresidual)
+            arnoldi_control = (np.linalg.norm(self.eplained_res+Fresidual)/nFresidual > conv_crit)
 
-        #make both basis available
+
+
+        # make both basis available
         self.G = G[:,:n_it]
         self.Q = Q[:,:n_it]
+        return n_it
 
 
-    def do_step(self,   U_active, #active potential
-                        this_is_first_step, #flag to speed up computations if this is not the first step 
-                                            #if it is first time step, then next input MUST be provided
-                        eq, #eq for ICs, with all properties set up at time t=0, 
+    def do_step(self,   U_active, # active potential
+                        this_is_first_step, # flag to speed up computations if this is not the first step 
+                                            # if it is first time step, then next input MUST be provided
+                        eq, # eq for ICs, with all properties set up at time t=0, 
                             # ie with eq.tokamak.currents = I(t) and eq.plasmaCurrent = I_p(t) 
                             # it is assumed that eq has already gone through a GS solver
                             # i.e. that NK.solve(eq, profiles) has been already run  
                             # this is necessary to set the corrent eq.plasmaCurrent
-                        max_rel_change=.005, #aim for a dt such that the maximum relative change in the currents is max_rel_change
+                        curr_max_rel_change=.005, #aim for a dt such that the maximum relative change in the currents is max_rel_change
                         rtol_NK=1e-7, #for convergence of the NK solver of GS
                         verbose_NK=False,
 
                         rtol_currents=5e-5, #for convergence of the circuit equation
                         verbose_currents=False,
                         max_iter=10, #if more iterative steps are required, dt is reduced
-                        n_k=3, #maximum number of terms in Arnoldi expansion
-                        conv_crit=1e-1, #add more Arnoldi terms if residual is still larger than
+                        n_k=10, #maximum number of terms in Arnoldi expansion
+                        conv_crit=5e-1, #add more Arnoldi terms if residual is still larger than
                         grad_eps=.00003): #relative magnitude of infinitesimal step, with respect to self.vals_for_rel_change 
-                                        #adjust in line to 0.1*max_rel_change
+                                          #adjust in line to 0.1*max_rel_change
                         
         """advances both plasma and currents according to complete linearized eq.
         Uses an NK iterative scheme to find consistent values of I(t+dt) and L(t+dt)
@@ -361,7 +406,8 @@ class evolve_plasma_NK:
             #prepare currents
             self.set_currents_eq1(eq)
             #calculate inductances in do_LIdot
-            results = None
+            results = self.qfe.quants_out(self.eq1, self.profiles1)
+            self.Lplus = results['plasma_ind_on_coils']
             self.dR = 0
         else:
             #use inductances calculated in previous time step
@@ -372,44 +418,67 @@ class evolve_plasma_NK:
 
         not_done_flag = 1
         while not_done_flag:
+            
             self.do_LIdot(U_active, 
                           self.currents_vec, 
-                          max_rel_change,
+                          curr_max_rel_change,
                           results,
                           self.dR)
-
-            res_history = []        
-            
             self.eq2.plasma_psi = self.eq1.plasma_psi.copy()
             Fresidual = self.Fcircuit(U_active, self.trial_currents, rtol_NK, verbose_NK)
-            if verbose_currents:
-                print('currents step from LdI/dt only = ', self.trial_currents-self.currents_vec)
-                print('initial residual = ', Fresidual)
-            rel_change = abs(Fresidual)/self.vals_for_rel_change            
+            rel_change = abs(Fresidual)/self.vals_for_rel_change
+            max_rel_change = max(rel_change)
+            while max_rel_change > .001:
+                curr_max_rel_change /= 2
+                self.do_LIdot(U_active, 
+                          self.currents_vec, 
+                          curr_max_rel_change,
+                          results,
+                          self.dR)
+                self.eq2.plasma_psi = self.eq1.plasma_psi.copy()
+                Fresidual = self.Fcircuit(U_active, self.trial_currents, rtol_NK, verbose_NK)
+                rel_change = abs(Fresidual)/self.vals_for_rel_change
+                max_rel_change = max(rel_change)
+            print('final timestep = ', self.dt_step)
+
+            res_history = []          
             res_history.append(rel_change)
+
+            if verbose_currents:
+                #print('currents step from LdI/dt only = ', self.trial_currents-self.currents_vec)
+                #print('initial residual = ', Fresidual)
+                print('initial rel_change = ', max(rel_change))
+                print('initial relative residual on inductances', max(abs(self.Lplus1-self.Lplus)/self.Lplus))
                 
             it=0
             while it<max_iter and not_done_flag:
                 if max(rel_change)<rtol_currents: 
                     not_done_flag=0
+                    if verbose_currents:
+                        print('Arnoldi iterations = ', it)
                 else:
-                    self.Arnoldi_iter(U_active,
+                    used_n = self.Arnoldi_iter(U_active,
                                         self.trial_currents, 
                                         Fresidual, #starting direction in I space
                                         Fresidual, #F(trial_currents) already calculated
                                         n_k, conv_crit, grad_eps, verbose_currents)
-                    di = self.dI(Fresidual, clip=5)
-                    self.trial_currents += di
+                    #self.dI(Fresidual, clip=2)
+                    self.trial_currents += self.di_Arnoldi
+                    self.Lplus = self.Lplus1.copy()
                     Fresidual = self.Fcircuit(U_active, self.trial_currents)
                     rel_change = abs(Fresidual)/self.vals_for_rel_change
+                    if max(rel_change)>max_rel_change:
+                        print('degrading!')
                     
+                    else: max_rel_change = max(rel_change)
                     
                     res_history.append(rel_change)
                     if verbose_currents:
-                        print('resulting current step = ', di, ' coeffs=', self.coeffs)
-                        print('new residual = ', Fresidual)
-                        print('new rel_change = ', rel_change)
+                        print(' coeffs= ', self.coeffs, '; terms used= ', used_n)
+                        #print('new residual = ', Fresidual)
+                        print('new rel_change = ', max_rel_change, np.argmax(rel_change))
                         print('dt_step = ', self.dt_step)
+                        print('relative residual on inductances', max(abs(self.Lplus1-self.Lplus)/self.Lplus))
                     
                     it += 1
             
@@ -420,6 +489,10 @@ class evolve_plasma_NK:
                 print('Restarting with smaller timestep')
                 max_rel_change /= 2
                 grad_eps /= 2
+                this_is_first_step = 1
+                not_done_flag = 0
+
+
         
         self.currents_vec = self.trial_currents.copy()
         self.eq1.plasma_psi = self.eq2.plasma_psi.copy()

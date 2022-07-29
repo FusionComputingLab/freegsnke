@@ -48,6 +48,8 @@ class quants_for_emulation:
         self.dR_dZ = dR_dZ
         self.red_R = red_R
 
+        self.void_matrix = np.zeros((len(coils_dict.keys())+1, len(coils_dict.keys())+1))
+
 
         
     def jtor_and_mask(self, eq, profiles):
@@ -68,7 +70,7 @@ class quants_for_emulation:
         
         self.tot_current = self.dR_dZ*np.sum(jtor)
         
-        #to be devided by the conductivity \sigma
+        #to be multiplied by the resistivity eta_plasma
         plasma_resistance = np.sum(self.red_R*self.red_jtor)
         plasma_resistance *= 2*np.pi*self.dR_dZ/self.tot_current
         self.plasma_resistance = plasma_resistance
@@ -91,15 +93,12 @@ class quants_for_emulation:
         #tot_flux_on_plasma = np.sum(self.psi*self.plasma_mask)
         #tot_flux_on_plasma *= 2*np.pi*self.dR_dZ
 
-        
-        #inductance of plasma current on coils, 
-        #the quantity of interest is the derivative wrp to: tot plasma current 
-        #                                                   plasma parameters
-        #                                                   coil currents
+        #inductance of plasma current on coils, if using Total voltages
         coil_plasma_ind = self.red_jtor[np.newaxis,:,:]*self.coil_plasma_greens
         coil_plasma_ind = np.sum(coil_plasma_ind, axis=(1,2))
-        coil_plasma_ind /= self.tot_current
-        self.coil_plasma_ind = coil_plasma_ind/MASTU_coils.nloops_per_coil
+        self.coil_plasma_ind = coil_plasma_ind/self.tot_current
+        #if using voltage per loop use below:
+        #self.coil_plasma_ind = self.coil_plasma_ind/MASTU_coils.nloops_per_coil
         
         #inductance of coils on plasma                                               
         plasma_coil_ind = self.red_plasma_mask[np.newaxis,:,:]*self.coil_plasma_greens
@@ -135,6 +134,11 @@ class quants_for_emulation:
         #plasma centroid and width in Z of section inside separatrix
         #in grid units
         results['separatrix'] = [self.plasma_zloc, self.plasma_mask]
+
+        Lplasma = self.void_matrix.copy()
+        Lplasma[:,-1] += results['plasma_ind_on_coils']
+        Lplasma[-1,:-1] += self.plasma_coil_ind
+        results['Lplasma'] = Lplasma
         
         return results
 

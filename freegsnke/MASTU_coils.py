@@ -1,6 +1,11 @@
 import numpy as np
+import pickle
+from freegs.gradshafranov import Greens
 
 
+eta_copper = 1.55e-8 #resistivity in Ohm*m, for active coils 
+eta_steel = 5.5e-7 #in Ohm*m, for passive structures
+eta_plasma = 1e-6
 
 d1_upper_r = [
     0.35275,
@@ -1216,6 +1221,15 @@ pc_z = [
     7.69516051e-01,
 ]
 
+import os
+this_dir , this_filename = os.path.split(__file__)
+passive_path=os.path.join(this_dir,'pass_coils.pk')
+with open(passive_path,'rb') as handle:
+    pass_coil_dict = pickle.load(handle)
+
+#section of active coil loops
+dRc = 0.0128
+dZc = 0.0128
 
 coils_dict = {}
 
@@ -1223,9 +1237,9 @@ coils_dict['Solenoid'] = {}
 coils_dict['Solenoid']['coords'] = np.array([[0.19475]*324,np.linspace(-1.581,1.581,324)])
 coils_dict['Solenoid']['polarity'] = np.array([1]*len(coils_dict['Solenoid']['coords'][0]))
 
-coils_dict['Pc'] = {}
-coils_dict['Pc']['coords'] = np.array([pc_r, pc_z])
-coils_dict['Pc']['polarity'] = np.array([1]*len(coils_dict['Pc']['coords'][0]))
+# coils_dict['Pc'] = {}
+# coils_dict['Pc']['coords'] = np.array([pc_r, pc_z])
+# coils_dict['Pc']['polarity'] = np.array([1]*len(coils_dict['Pc']['coords'][0]))
 
 coils_dict['Px'] = {}
 coils_dict['Px']['coords'] = np.array([px_upper_r+px_upper_r, px_upper_z+px_lower_z])
@@ -1271,16 +1285,22 @@ coils_dict['P6'] = {}
 coils_dict['P6']['coords'] = np.array([p6_upper_r+p6_upper_r, p6_upper_z+p6_lower_z])
 coils_dict['P6']['polarity'] = np.array([1]*len(p6_upper_r)+[-1]*len(p6_upper_r))
 
+#get number of active coils
+N_active=len(coils_dict.keys())
+#insert resistance-related info:
+for key in coils_dict.keys():
+    coils_dict[key]['resistivity'] = eta_copper/(dRc*dZc)
 
+for tkey in pass_coil_dict.keys():
+    tentry = pass_coil_dict[tkey]
+    coils_dict[tkey] = {}
+    coils_dict[tkey]['coords'] = np.array([ [tentry['R']], [tentry['Z']] ])
+    coils_dict[tkey]['polarity'] = np.array([1])
+    coils_dict[tkey]['resistivity'] = eta_steel/(tentry['dr']*tentry['dz'])
 
-plasma_resistivity = 1e-6
-coils_resistences = (1e2)*np.array([1]+[1]*(len(coils_dict.keys())-1))
-
-
+#calculate coil-coil inductances and coil resistances
 nloops_per_coil = np.zeros(len(coils_dict.keys()))
-
-from freegs.gradshafranov import Greens
-
+coil_resist = np.zeros(len(coils_dict.keys()))
 coil_self_ind = np.zeros((len(coils_dict.keys()), len(coils_dict.keys())))
 for i,labeli in enumerate(coils_dict.keys()):
     nloops_per_coil[i] = len(coils_dict[labeli]['coords'][0])    
@@ -1294,7 +1314,173 @@ for i,labeli in enumerate(coils_dict.keys()):
         greenm *= coils_dict[labelj]['polarity'][:,np.newaxis]
         greenm *= coils_dict[labeli]['polarity'][np.newaxis,:]
         coil_self_ind[i,j] = np.sum(greenm)
-        
-coil_self_ind /= nloops_per_coil[:,np.newaxis]
+    #resistance = resistivity/area * number of loops * mean_radius * 2pi
+    coil_resist[i] = coils_dict[labeli]['resistivity']*np.mean(coils_dict[labeli]['coords'][0])
 coil_self_ind *= 2*np.pi
-  
+
+#if voltages in terms of 'per loop':
+# coil_self_ind /= nloops_per_coil[:,np.newaxis]
+# coil_resist *= 2*np.pi
+
+#if voltages in terms of total applied voltage:
+#check also calculation of inductances in qfe!!
+coil_resist *= 2*np.pi*nloops_per_coil
+
+
+from freegs.machine import Machine, Circuit, Wall, Solenoid
+from freegs.coil import Coil
+from freegs.multi_coil import MultiCoil
+#define MASTU machine including passive structures
+#note that PC has been eliminated entirely (vanilla FreeGS includes it)
+def MASTU_wpass():
+    """MAST-Upgrade, using MultiCoil to represent coils with different locations
+    for each strand.
+    """
+    coils = [
+        ("Solenoid", Solenoid(0.19475, -1.581, 1.581, 324, control=False)),
+        #("Pc", MultiCoil(pc_r, pc_z)),
+        (
+            "Px",
+            Circuit(
+                [
+                    ("PxU", MultiCoil(px_upper_r, px_upper_z), 1.0),
+                    ("PxL", MultiCoil(px_upper_r, px_lower_z), 1.0),
+                ]
+            ),
+        ),
+        (
+            "D1",
+            Circuit(
+                [
+                    ("D1U", MultiCoil(d1_upper_r, d1_upper_z), 1.0),
+                    ("D1L", MultiCoil(d1_upper_r, d1_lower_z), 1.0),
+                ]
+            ),
+        ),
+        (
+            "D2",
+            Circuit(
+                [
+                    ("D2U", MultiCoil(d2_upper_r, d2_upper_z), 1.0),
+                    ("D2L", MultiCoil(d2_upper_r, d2_lower_z), 1.0),
+                ]
+            ),
+        ),
+        (
+            "D3",
+            Circuit(
+                [
+                    ("D3U", MultiCoil(d3_upper_r, d3_upper_z), 1.0),
+                    ("D3L", MultiCoil(d3_upper_r, d3_lower_z), 1.0),
+                ]
+            ),
+        ),
+        (
+            "Dp",
+            Circuit(
+                [
+                    ("DPU", MultiCoil(dp_upper_r, dp_upper_z), 1.0),
+                    ("DPL", MultiCoil(dp_upper_r, dp_lower_z), 1.0),
+                ]
+            ),
+        ),
+        (
+            "D5",
+            Circuit(
+                [
+                    ("D5U", MultiCoil(d5_upper_r, d5_upper_z), 1.0),
+                    ("D5L", MultiCoil(d5_upper_r, d5_lower_z), 1.0),
+                ]
+            ),
+        ),
+        (
+            "D6",
+            Circuit(
+                [
+                    ("D6U", MultiCoil(d6_upper_r, d6_upper_z), 1.0),
+                    ("D6L", MultiCoil(d6_upper_r, d6_lower_z), 1.0),
+                ]
+            ),
+        ),
+        (
+            "D7",
+            Circuit(
+                [
+                    ("D7U", MultiCoil(d7_upper_r, d7_upper_z), 1.0),
+                    ("D7L", MultiCoil(d7_upper_r, d7_lower_z), 1.0),
+                ]
+            ),
+        ),
+        (
+            "P4",
+            Circuit(
+                [
+                    ("P4U", MultiCoil(p4_upper_r, p4_upper_z), 1.0),
+                    ("P4L", MultiCoil(p4_upper_r, p4_lower_z), 1.0),
+                ]
+            ),
+        ),
+        (
+            "P5",
+            Circuit(
+                [
+                    ("P5U", MultiCoil(p5_upper_r, p5_upper_z), 1.0),
+                    ("P5L", MultiCoil(p5_upper_r, p5_lower_z), 1.0),
+                ]
+            ),
+        ),
+        (
+            "P6",
+            Circuit(
+                [
+                    ("P6U", MultiCoil(p6_upper_r, p6_upper_z), 1.0),
+                    ("P6L", MultiCoil(p6_upper_r, p6_lower_z), -1.0),
+                ]
+            ),
+        ),
+    ]
+    #
+    # here we must add the passive-structure coils
+    # e.g. ( "pas_1", Coil(R, Z) ) 
+    for tkey in pass_coil_dict.keys():
+        tentry=pass_coil_dict[tkey]
+        coils.append((tkey, Coil(R=tentry['R'], Z=tentry['Z'], 
+                                 area=tentry['dr']*tentry['dz'], 
+                                 control=False)))
+#
+#
+    rwall = [1.56442 , 1.73298 , 1.34848 , 1.0882  , 0.902253, 0.903669,
+       0.533866, 0.538011, 0.332797, 0.332797, 0.334796, 0.303115,
+       0.305114, 0.269136, 0.271135, 0.260841, 0.260841, 0.271135,
+       0.269136, 0.305114, 0.303115, 0.334796, 0.332797, 0.332797,
+       0.538598, 0.534469, 0.90563 , 0.904219, 1.0882  , 1.34848 ,
+       1.73018 , 1.56442 , 1.37999 , 1.37989 , 1.19622 , 1.19632 ,
+       1.05537 , 1.05528 , 0.947502, 0.905686, 0.899143, 0.883388,
+       0.867681, 0.851322, 0.833482, 0.826063, 0.822678, 0.821023,
+       0.820691, 0.822887, 0.827573, 0.839195, 0.855244, 0.877567,
+       0.899473, 1.18568 , 1.279   , 1.296   , 1.521   , 1.521   ,
+       1.8     , 1.8     , 1.521   , 1.521   , 1.296   , 1.279   ,
+       1.18568 , 0.899473, 0.877567, 0.855244, 0.839195, 0.827573,
+       0.822887, 0.820691, 0.821023, 0.822678, 0.826063, 0.833482,
+       0.851322, 0.867681, 0.883388, 0.899143, 0.905686, 0.947502,
+       1.05528 , 1.05537 , 1.19632 , 1.19622 , 1.37989 , 1.37999 ,
+       1.56442 ]
+
+    zwall = [ 1.56424 ,  1.67902 ,  2.06041 ,  2.05946 ,  1.87565 ,  1.87424 ,
+        1.50286 ,  1.49874 ,  1.29709 ,  1.094   ,  1.094   ,  0.8475  ,
+        0.8475  ,  0.565   ,  0.565   ,  0.495258, -0.507258, -0.577   ,
+       -0.577   , -0.8595  , -0.8595  , -1.106   , -1.106   , -1.30909 ,
+       -1.5099  , -1.51403 , -1.88406 , -1.88547 , -2.06614 , -2.06519 ,
+       -1.68099 , -1.56884 , -1.57688 , -1.57673 , -1.58475 , -1.5849  ,
+       -1.59105 , -1.59091 , -1.59561 , -1.59556 , -1.59478 , -1.59026 ,
+       -1.58087 , -1.56767 , -1.54624 , -1.52875 , -1.51517 , -1.49624 ,
+       -1.47724 , -1.44582 , -1.41923 , -1.38728 , -1.35284 , -1.3221  ,
+       -1.30018 , -1.0138  , -0.8423  , -0.8202  , -0.8202  , -0.25    ,
+       -0.25    ,  0.25    ,  0.25    ,  0.8156  ,  0.8156  ,  0.8377  ,
+        1.0092  ,  1.29558 ,  1.3175  ,  1.34824 ,  1.38268 ,  1.41463 ,
+        1.44122 ,  1.47264 ,  1.49164 ,  1.51057 ,  1.52415 ,  1.54164 ,
+        1.56307 ,  1.57627 ,  1.58566 ,  1.59018 ,  1.59096 ,  1.59101 ,
+        1.58631 ,  1.58645 ,  1.5803  ,  1.58015 ,  1.57213 ,  1.57228 ,
+        1.56424 ]
+    
+    return Machine(coils, Wall(rwall, zwall))

@@ -96,27 +96,77 @@ class NewtonKrylov:
         return plasma_psi - self.solver(self.psi_boundary, self.rhs)
     
     
+    # def Arnoldi_iteration(self, plasma_psi, #trial plasma_psi
+    #                             vec_direction, #first vector for psi basis, both are in 2Dformat
+    #                             Fresidual=None, #residual of trial plasma_psi: F(plasma_psi)
+    #                             n_k=10, #max number of basis vectors
+    #                             conv_crit=1e-2, #add basis vector 
+    #                                             #if orthogonal component is larger than
+    #                             grad_eps=.1 #infinitesimal step
+    #                      ):
+        
+    #     #basis in Psi space
+    #     Q = np.zeros((self.nx*self.ny, n_k+1))
+    #     #basis in grandient space
+    #     G = np.zeros((self.nx*self.ny, n_k+1))
+        
+    #     #orthonormalize starting vec
+    #     nr0 = np.linalg.norm(vec_direction)
+    #     Q[:,0] = vec_direction.reshape(-1)/nr0
+        
+        
+    #     if Fresidual is None:
+    #         Fresidual = self._F(plasma_psi)
+        
+        
+    #     n_it = 0
+    #     #control on whether to add a new basis vector
+    #     arnoldi_control = 1
+    #     #use at least 3 orthogonal terms, but not more than n_k
+    #     while ((n_it<3)+(arnoldi_control>0))*(n_it<n_k)>0:
+    #         ri = self._F(plasma_psi + Q[:,n_it].reshape(self.nx,self.ny)*grad_eps) 
+    #         ri -= Fresidual
+    #         ri /= grad_eps
+    #         rin = ri.reshape(-1)
+    #         #store the gradient
+    #         G[:,n_it] = rin
+    #         n_it += 1
+    #         #orthonormalize the vector in Psi space
+    #         # for j in range(n_it):
+    #         #     rin -= np.dot(Q[:,j].T, rin) * Q[:,j]
+    #         rin -= np.sum(np.sum(Q[:,:n_it]*rin[:,np.newaxis], axis=0, keepdims=True)*Q[:,:n_it], axis=1)
+    #         nr0 = np.linalg.norm(rin)
+    #         #store in Psi basis vectors
+    #         Q[:,n_it] = rin/nr0
+    #         arnoldi_control = (nr0>conv_crit)
+    #     #make both basis available
+    #     self.Q = Q[:,:n_it]
+    #     self.G = G[:,:n_it]
+
+
     def Arnoldi_iteration(self, plasma_psi, #trial plasma_psi
-                                starting_vec, #first vector for psi basis, both are in 2Dformat
-                                Fplasma_psi=None, #residual of trial plasma_psi: F(plasma_psi)
+                                vec_direction, #first vector for psi basis, both are in 2Dformat
+                                Fresidual=None, #residual of trial plasma_psi: F(plasma_psi)
                                 n_k=10, #max number of basis vectors
-                                conv_crit=1e-2, #add basis vector 
+                                conv_crit=.1, #add basis vector 
                                                 #if orthogonal component is larger than
-                                grad_eps=.1 #infinitesimal step
+                                grad_eps=.001 #infinitesimal step
                          ):
         
+        nplasma_psi = np.linalg.norm(plasma_psi)
+
         #basis in Psi space
         Q = np.zeros((self.nx*self.ny, n_k+1))
+        #orthonormal basis in Psi space
+        Qn = np.zeros((self.nx*self.ny, n_k+1))
         #basis in grandient space
         G = np.zeros((self.nx*self.ny, n_k+1))
         
-        #orthonormalize starting vec
-        nr0 = np.linalg.norm(starting_vec)
-        Q[:,0] = starting_vec.reshape(-1)/nr0
         
         
-        if Fplasma_psi is None:
-            Fplasma_psi = self._F(plasma_psi)
+        if Fresidual is None:
+            Fresidual = self._F(plasma_psi)
+        nFresidual = np.linalg.norm(Fresidual)
         
         
         n_it = 0
@@ -124,38 +174,62 @@ class NewtonKrylov:
         arnoldi_control = 1
         #use at least 3 orthogonal terms, but not more than n_k
         while ((n_it<3)+(arnoldi_control>0))*(n_it<n_k)>0:
-            ri = self._F(plasma_psi + Q[:,n_it].reshape(self.nx,self.ny)*grad_eps) 
-            ri -= Fplasma_psi
-            ri /= grad_eps
-            rin = ri.reshape(-1)
-            #store the gradient
-            G[:,n_it] = rin
-            n_it += 1
-            #orthonormalize the vector in Psi space
-            # for j in range(n_it):
-            #     rin -= np.dot(Q[:,j].T, rin) * Q[:,j]
-            rin -= np.sum(np.sum(Q[:,:n_it]*rin[:,np.newaxis], axis=0, keepdims=True)*Q[:,:n_it], axis=1)
-            nr0 = np.linalg.norm(rin)
-            #store in Psi basis vectors
-            Q[:,n_it] = rin/nr0
-            arnoldi_control = (nr0>conv_crit)
-        #make both basis available
-        self.Q = Q[:,:n_it]
-        self.G = G[:,:n_it]
+            grad_coeff = grad_eps*nplasma_psi/np.linalg.norm(vec_direction)*nFresidual*1000
+
+            candidate_dpsi = vec_direction*grad_coeff
+            ri = self._F(plasma_psi + candidate_dpsi)
+            candidate_usable = ri - Fresidual
+
+            # if ((np.linalg.norm(candidate_usable)/nFresidual)<2)+((np.linalg.norm(candidate_usable)/nFresidual)>10):
+            #     print('using di factor = ', 2*(nFresidual/np.linalg.norm(candidate_usable)))
+            #     candidate_dpsi *= 2*(nFresidual/np.linalg.norm(candidate_usable))
+            #     ri = self._F(plasma_psi + candidate_dpsi)
+            #     candidate_usable = ri - Fresidual
 
 
+            Q[:,n_it] = candidate_dpsi.reshape(-1)
+            #print('dcurrent = ', Q[:,n_it])
 
-    
+            Qn[:,n_it] = Q[:,n_it]/np.linalg.norm(Q[:,n_it])
             
-    def dpsi(self, res0, clip=10):
+            
+            vec_direction = candidate_usable.copy()
+            lvec_direction = vec_direction.reshape(-1)
+            #print('usable/residual = ', np.linalg.norm(vec_direction)/nFresidual)
+            # if verbose_currents:
+            #     print('trial dI = ',Q[:,n_it])
+            #     print('associated residual to use = ', vec_direction)
+            G[:,n_it] = lvec_direction
+            n_it += 1
+
+            #orthogonalize residual 
+            lvec_direction -= np.sum(np.sum(Qn[:,:n_it]*lvec_direction[:,np.newaxis], axis=0, keepdims=True)*Qn[:,:n_it], axis=1)
+            
+            #check if more terms are needed
+            #arnoldi_control = (np.linalg.norm(vec_direction)/nFresidual > conv_crit)
+            self.G = G[:,:n_it]
+            self.Q = Q[:,:n_it]
+            self.dpsi(Fresidual, G=self.G, Q=self.Q, clip=3)
+            rel_unexpl_res = np.linalg.norm(self.eplained_res.reshape(self.nx,self.ny)+Fresidual)/nFresidual
+            #print('relative_unexplained_residual = ', rel_unexpl_res)
+            arnoldi_control = (rel_unexpl_res > conv_crit)
+
+        # #make both basis available
+        # self.Q = Q[:,:n_it]
+        # self.G = G[:,:n_it]
+
+
+    def dpsi(self, res0, G, Q, clip=10):
         #solve the least sq problem in coeffs: min||G.coeffs+res0||^2
-        self.coeffs = np.matmul(np.matmul(np.linalg.inv(np.matmul(self.G.T, self.G)),
-                                     self.G.T), -res0.reshape(-1))
+        self.coeffs = np.matmul(np.matmul(np.linalg.inv(np.matmul(G.T, G)),
+                                     G.T), -res0.reshape(-1))
+        self.eplained_res = np.sum(G*self.coeffs[np.newaxis,:], axis=1)                             
         self.coeffs = np.clip(self.coeffs, -clip, clip)
         #get the associated step in psi space
-        dpsi = np.sum(self.Q*self.coeffs[np.newaxis,:], axis=1).reshape(self.nx,self.ny)
+        self.valdpsi = np.sum(Q*self.coeffs[np.newaxis,:], axis=1).reshape(self.nx,self.ny)
         #dpsi *= self.boundary_mask
-        return dpsi
+        return self.valdpsi
+
     
     #this is the solver itself
     #solves the forward GS problem: given 
@@ -167,10 +241,10 @@ class NewtonKrylov:
                     profiles,
                     rel_convergence=1e-6, 
                     n_k=8, #this is a good compromise between convergence and speed
-                    conv_crit=1e-1, 
-                    grad_eps=.01,
+                    conv_crit=.1, 
+                    grad_eps=.001,
                     clip=10, #maximum absolute value of coefficients in psi space
-                    verbose=False,
+                    verbose=True,
                     max_iter=30, #after these it just stops
                     conv_history=False #returns relative convergence
                     ):
@@ -197,7 +271,7 @@ class NewtonKrylov:
                                    res0, #starting vector in psi space is the residual itself
                                    res0, #F(trial_plasma_psi) already calculated
                                    n_k, conv_crit, grad_eps)
-            dpsi = self.dpsi(res0, clip)
+            dpsi = self.dpsi(res0, self.G, self.Q, clip)
             trial_plasma_psi += dpsi
             res0 = self._F(trial_plasma_psi)
             rel_change = np.amax(np.abs(res0))

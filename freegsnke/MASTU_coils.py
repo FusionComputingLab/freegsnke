@@ -1223,7 +1223,7 @@ pc_z = [
 
 import os
 this_dir , this_filename = os.path.split(__file__)
-passive_path=os.path.join(this_dir,'pass_coils.pk')
+passive_path=os.path.join(this_dir,'pass_coils_n.pk')
 with open(passive_path,'rb') as handle:
     pass_coil_dict = pickle.load(handle)
 

@@ -28,6 +28,9 @@ class evolve_currents:
         L0_matrix[:-1,:-1] = MASTU_coils.coil_self_ind
         self.L0_matrix = L0_matrix
         
+        #dummy voltage vector
+        self.all_Us = np.zeros(self.n_coils+1)
+        
         
     def initialize_time_t(self, eq, results):
         #adjust quantities in R and L matrix based on
@@ -69,14 +72,36 @@ class evolve_currents:
         #self.totPhi = results['non_linear_fluxes']
         
         
+        
     def stepper(self, U_active, dt_step, dR=0):
         #U_active only provides active voltages,
         #can be any length as long as len(U_active)<=self.n_coils
         #self.n_coils is the number of all active and passive coils now
         #even though at the moment no walls/conductive material other than active coils
         all_Us = np.zeros(self.n_coils+1)
-        all_Us[:len(U_active)] = U_active
-        self.all_Us = all_Us.copy()
+        all_Us[:MASTU_coils.N_active] = U_active
+        #self.all_Us = all_Us.copy()
+        
+        #implicit Euler
+        #I_t+1 = (R+L/dt)^-1(U+L/dt I)
+        #dL is used to add dL/dt terms
+        Ldt = (self.L_matrix)/dt_step
+        self.invM = inv(self.R_matrix + dR + Ldt)
+        self.LdtI = np.matmul(Ldt, self.currents_vec)
+        all_Us += self.LdtI
+        
+        new_currents = np.matmul(self.invM, all_Us)
+        return new_currents
+
+    
+    def stepper_adapt(self, U_active, dt_step, dR=0):
+        #U_active only provides active voltages,
+        #can be any length as long as len(U_active)<=self.n_coils
+        #self.n_coils is the number of all active and passive coils now
+        #even though at the moment no walls/conductive material other than active coils
+        all_Us = np.zeros(self.n_coils+1)
+        all_Us[:MASTU_coils.N_active] = U_active
+        #self.all_Us = all_Us.copy()
         
         #implicit Euler
         #I_t+1 = (R+L/dt)^-1(U+L/dt I)

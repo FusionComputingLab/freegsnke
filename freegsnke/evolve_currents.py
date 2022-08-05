@@ -29,7 +29,7 @@ class evolve_currents:
         self.L0_matrix = L0_matrix
         
         #dummy voltage vector
-        self.all_Us = np.zeros(self.n_coils+1)
+        self.empty_U = np.zeros(self.n_coils+1)
         
         
     def initialize_time_t(self, eq, results):
@@ -78,7 +78,7 @@ class evolve_currents:
         #can be any length as long as len(U_active)<=self.n_coils
         #self.n_coils is the number of all active and passive coils now
         #even though at the moment no walls/conductive material other than active coils
-        all_Us = np.zeros(self.n_coils+1)
+        all_Us = self.empty_U.copy()
         all_Us[:MASTU_coils.N_active] = U_active
         #self.all_Us = all_Us.copy()
         
@@ -94,24 +94,32 @@ class evolve_currents:
         return new_currents
 
     
-    def stepper_adapt(self, U_active, dt_step, dR=0):
+    def stepper_adapt(self, U_active, tot_dt, dR, max_dt_step=.0002):
+        #divides dt_step in smaller steps based on relative change to the currents
         #U_active only provides active voltages,
         #can be any length as long as len(U_active)<=self.n_coils
         #self.n_coils is the number of all active and passive coils now
         #even though at the moment no walls/conductive material other than active coils
-        all_Us = np.zeros(self.n_coils+1)
+        all_Us = self.empty_U.copy()
         all_Us[:MASTU_coils.N_active] = U_active
         #self.all_Us = all_Us.copy()
-        
+
+        n_step = max(1,round(tot_dt/max_dt_step))
+        dt_step = tot_dt/n_step
+
         #implicit Euler
         #I_t+1 = (R+L/dt)^-1(U+L/dt I)
         #dL is used to add dL/dt terms
         Ldt = (self.L_matrix)/dt_step
         self.invM = inv(self.R_matrix + dR + Ldt)
-        self.LdtI = np.matmul(Ldt, self.currents_vec)
-        all_Us += self.LdtI
+        currents_now = self.currents_vec.copy()
+
+        for i in range(n_step):
+            self.LdtI = np.matmul(Ldt, currents_now)
+            now_Us = all_Us + self.LdtI
+            currents_now = np.matmul(self.invM, now_Us)
         
-        new_currents = np.matmul(self.invM, all_Us)
+        new_currents = currents_now.copy()
         return new_currents
         
         

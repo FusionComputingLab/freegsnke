@@ -244,9 +244,9 @@ class NewtonKrylov:
                     conv_crit=.1, 
                     grad_eps=.001,
                     clip=10, #maximum absolute value of coefficients in psi space
-                    verbose=True,
-                    max_iter=30, #after these it just stops
-                    conv_history=False #returns relative convergence
+                    #verbose=True,
+                    max_iter=30 #after these it just stops
+                    #,conv_history=False #returns relative convergence
                     ):
         
         rel_c_history = []
@@ -262,8 +262,8 @@ class NewtonKrylov:
         if rel_change>.03:
             print('Warning: initial relative change is too high at', rel_change)
             print('NK will likely fail')
-        if verbose:
-            print('rel_change_0', rel_change)
+        # if verbose:
+        #     print('rel_change_0', rel_change)
             
         it=0
         while rel_change>rel_convergence and it<max_iter:
@@ -277,8 +277,8 @@ class NewtonKrylov:
             rel_change = np.amax(np.abs(res0))
             rel_change /= (np.amax(trial_plasma_psi)-np.amin(trial_plasma_psi))
             rel_c_history.append(rel_change)
-            if verbose:
-                print(rel_change, 'coeffs=', self.coeffs)
+            # if verbose:
+            #     print(rel_change, 'coeffs=', self.coeffs)
             
             it += 1
         
@@ -290,5 +290,5 @@ class NewtonKrylov:
             print('failed to converge with less than {} iterations'.format(max_iter))
             print(f'last relative change = {rel_change}')
             
-        if conv_history:
-            return np.array(rel_c_history)
+        # if conv_history:
+        #     return np.array(rel_c_history)

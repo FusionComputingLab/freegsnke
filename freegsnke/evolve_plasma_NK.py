@@ -13,6 +13,7 @@ from . import evolve_currents
 
 #from picardfast import fast_solve
 from .newtonkrylov import NewtonKrylov
+from .jtor_update import ConstrainPaxisIp
 
 class evolve_plasma_NK:
     #interfaces the circuit equation with freeGS and executes dt evolution
@@ -39,7 +40,7 @@ class evolve_plasma_NK:
                             Zmin=eq.Z[0,0], Zmax=eq.Z[-1,-1],    # Height range
                             nx=np.shape(eq.R)[0], ny=np.shape(eq.R)[1], # Number of grid points
                             psi = eq.plasma_psi)  
-        self.profiles1 = freegs.jtor.ConstrainPaxisIp(self.paxis, # Plasma pressure on axis [Pascals]
+        self.profiles1 = ConstrainPaxisIp(self.paxis, # Plasma pressure on axis [Pascals]
                                             eq.plasmaCurrent(), # Plasma current [Amps]
                                             self.fvac, # vacuum f = R*Bt
                                             alpha_m = self.alpha_m,
@@ -53,7 +54,7 @@ class evolve_plasma_NK:
                             Zmin=eq.Z[0,0], Zmax=eq.Z[-1,-1],    # Height range
                             nx=np.shape(eq.R)[0], ny=np.shape(eq.R)[1], # Number of grid points
                             psi = eq.plasma_psi)  
-        self.profiles2 = freegs.jtor.ConstrainPaxisIp(self.paxis, # Plasma pressure on axis [Pascals]
+        self.profiles2 = ConstrainPaxisIp(self.paxis, # Plasma pressure on axis [Pascals]
                                             eq.plasmaCurrent(), # Plasma current [Amps]
                                             self.fvac, # vacuum f = R*Bt
                                             alpha_m = self.alpha_m,
@@ -143,7 +144,7 @@ class evolve_plasma_NK:
             currents_vec[i] = eq_currents[labeli]
         currents_vec[-1] = eq.plasmaCurrent()
         self.currents_vec = currents_vec
-        self.profiles1 = freegs.jtor.ConstrainPaxisIp(self.paxis, # Plasma pressure on axis [Pascals]
+        self.profiles1 = ConstrainPaxisIp(self.paxis, # Plasma pressure on axis [Pascals]
                                             eq.plasmaCurrent(), # Plasma current [Amps]
                                             self.fvac, # vacuum f = R*Bt
                                             alpha_m = self.alpha_m,
@@ -155,7 +156,7 @@ class evolve_plasma_NK:
         
     def assign_currents_1(self, currents_vec):
         #uses currents_vec to assign currents to both plasma and tokamak in eq/profiles
-        self.profiles1 = freegs.jtor.ConstrainPaxisIp(self.paxis, # Plasma pressure on axis [Pascals]
+        self.profiles1 = ConstrainPaxisIp(self.paxis, # Plasma pressure on axis [Pascals]
                                                     currents_vec[-1], # Plasma current [Amps]
                                                     self.fvac, # vacuum f = R*Bt
                                                     alpha_m = self.alpha_m,
@@ -164,7 +165,7 @@ class evolve_plasma_NK:
             self.eq1.tokamak[labeli].current = currents_vec[i]
     def assign_currents_2(self, currents_vec):
         #uses currents_vec to assign currents to both plasma and tokamak in eq/profiles
-        self.profiles2 = freegs.jtor.ConstrainPaxisIp(self.paxis, # Plasma pressure on axis [Pascals]
+        self.profiles2 = ConstrainPaxisIp(self.paxis, # Plasma pressure on axis [Pascals]
                                                     currents_vec[-1], # Plasma current [Amps]
                                                     self.fvac, # vacuum f = R*Bt
                                                     alpha_m = self.alpha_m,
@@ -504,7 +505,7 @@ class evolve_plasma_NK:
             #print('di_factor', di_factor)
 
             if ((di_factor<.3)*(abs(candidate_di[-1])<150))+(di_factor>6):
-                print('using factor = ', 1/di_factor)
+                #print('using factor = ', 1/di_factor)
                 candidate_di *= min(1/di_factor, 200/abs(candidate_di[-1]))
                 ri = self.Fcircuit(trial_currents + candidate_di)
                 candidate_usable = ri - Fresidual
@@ -714,7 +715,7 @@ class evolve_plasma_NK:
                         #verbose_NK=False,
 
                         rtol_currents=3e-4, #for convergence of the circuit equation
-                        verbose_currents=False,
+                        #verbose_currents=False,
                         max_iter=10, #if more iterative steps are required, dt is reduced
                         n_k=10, #maximum number of terms in Arnoldi expansion
                         conv_crit=.15, #add more Arnoldi terms if residual is still larger than
@@ -769,7 +770,7 @@ class evolve_plasma_NK:
                 rel_change = abs(Fresidual)
                 max_rel_change = max(rel_change)
 
-            print(max_rel_change, self.dt_step, self.evol_currents.n_step, np.argmax(rel_change))
+            #print(max_rel_change, self.dt_step, self.evol_currents.n_step, np.argmax(rel_change))
             # if verbose_currents:
             #     print('final timestep = ', self.dt_step)
             #     #print('currents step from LdI/dt only = ', self.trial_currents-self.currents_vec)

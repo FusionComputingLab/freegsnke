@@ -3,6 +3,7 @@ import numpy as np
 
 from . import MASTU_coils
 from .MASTU_coils import coils_dict
+from freegsnke.faster_shape import calculate_width
 
 class quants_for_emulation:
     #needs coil_dict from MASTU_coils.py
@@ -104,7 +105,15 @@ class quants_for_emulation:
         plasma_coil_ind = self.red_plasma_mask[np.newaxis,:,:]*self.coil_plasma_greens
         plasma_coil_ind = np.sum(plasma_coil_ind, axis=(1,2))
         self.plasma_coil_ind = plasma_coil_ind
-        
+
+
+    def shapes(self, eq, profiles):
+        width = calculate_width(eq, profiles) #simple width at z=0:
+        opoint = np.array(profiles.opt[0])[np.newaxis]
+        Rvals = eq.R*self.plasma_mask
+        Zvals = eq.Z*self.plasma_mask
+        geometricElongation = (np.max(Zvals)-np.min(Zvals))/(np.max(Rvals)-np.min(Rvals))
+        return width, opoint, geometricElongation
 
         
     def quants_out(self, eq, profiles):
@@ -128,17 +137,12 @@ class quants_for_emulation:
         #inductance of coils on plasma
         results['plasma_coil_ind'] = self.plasma_coil_ind
 
-        #for non-linear evolution step
-        #results['non_linear_fluxes'] = np.concatenate((self.coil_plasma_flux, [self.tot_flux_on_plasma]), axis=0)
-        
         #plasma centroid and width in Z of section inside separatrix
         #in grid units
         results['separatrix'] = [self.plasma_zloc, self.plasma_mask]
 
-        # Lplasma = self.void_matrix.copy()
-        # Lplasma[:,-1] += results['plasma_ind_on_coils']
-        # Lplasma[-1,:-1] += self.plasma_coil_ind
-        # results['Lplasma'] = Lplasma
+        #some simple plasma shape quantifiers
+        results['shapes'] = self.shapes(eq, profiles)
         
         return results
 

@@ -27,17 +27,22 @@ class evolve_currents:
         L0_matrix = np.zeros((self.n_coils+1, self.n_coils+1))
         L0_matrix[:-1,:-1] = MASTU_coils.coil_self_ind
         self.L0_matrix = L0_matrix
+        self.empty_L = np.zeros((self.n_coils+1,self.n_coils+1))
         
         #dummy voltage vector
         self.empty_U = np.zeros(self.n_coils+1)
+
+        #adaptive steps
+        self.n_step = 1
+        self.dt_step = .0002
         
         
-    def initialize_time_t(self, eq, results):
+    def initialize_time_t(self, results):
         #adjust quantities in R and L matrix based on
         #results = qfe.quants_out(eq, profiles) for time t
         #gets currents from eq.tokamak and plasma current from qfe
         
-        self.Ip_tot = results['tot_Ip_Rp'][0]
+        #self.Ip_tot = results['tot_Ip_Rp'][0]
 
         #adjust R matrix for use, with quantities relevant to eq at time t:
         #add entry for plasma resistance, i.e. divide by plasma conductivity 
@@ -48,7 +53,7 @@ class evolve_currents:
         
 
         #adjust L matrix for use, with quantities relevant to eq at time t:
-        L_matrix = np.zeros((self.n_coils+1,self.n_coils+1))
+        L_matrix = self.empty_L.copy()
          #add inductance of coils on plasma
         L_matrix[-1,:-1] = results['plasma_coil_ind']
         #inductances of plasma on the coils 
@@ -58,19 +63,14 @@ class evolve_currents:
         L_matrix += self.L0_matrix
         self.L_matrix = L_matrix
         
-        #prepare currents
-        eq_currents = eq.tokamak.getCurrents()
-        currents_vec = np.zeros(self.n_coils+1)
-        for i,labeli in enumerate(MASTU_coils.coils_dict.keys()):
-            currents_vec[i] = eq_currents[labeli]
-        currents_vec[-1] = self.Ip_tot
-        self.currents_vec = currents_vec
+        # #prepare currents
+        # eq_currents = eq.tokamak.getCurrents()
+        # currents_vec = np.zeros(self.n_coils+1)
+        # for i,labeli in enumerate(MASTU_coils.coils_dict.keys()):
+        #     currents_vec[i] = eq_currents[labeli]
+        # currents_vec[-1] = self.Ip_tot
+        # self.currents_vec = currents_vec
 
-        #prepare quantities for non-linear step
-        #self.RI = np.matmul(self.R_matrix, self.currents_vec)
-        # self.LI = np.matmul(self.L0_matrix, self.currents_vec)
-        #self.totPhi = results['non_linear_fluxes']
-        
         
         
     def stepper(self, U_active, dt_step, dR=0):
@@ -94,30 +94,44 @@ class evolve_currents:
         return new_currents
 
     
-    def stepper_adapt(self, U_active, tot_dt, dR, max_dt_step=.0002):
+
+    def determine_stepsize(self, tot_dt, max_dt_step=.0001):
+        self.n_step = max(1,round(tot_dt/max_dt_step))
+        self.dt_step = tot_dt/self.n_step
+    
+    def stepper_adapt_first(self, currents_now, U_active, dR):
         #divides dt_step in smaller steps based on relative change to the currents
         #U_active only provides active voltages,
         #can be any length as long as len(U_active)<=self.n_coils
         #self.n_coils is the number of all active and passive coils now
         #even though at the moment no walls/conductive material other than active coils
-        all_Us = self.empty_U.copy()
-        all_Us[:MASTU_coils.N_active] = U_active
+        self.all_Us = self.empty_U.copy()
+        self.all_Us[:MASTU_coils.N_active] = U_active
         #self.all_Us = all_Us.copy()
-
-        n_step = max(1,round(tot_dt/max_dt_step))
-        dt_step = tot_dt/n_step
 
         #implicit Euler
         #I_t+1 = (R+L/dt)^-1(U+L/dt I)
         #dL is used to add dL/dt terms
-        Ldt = (self.L_matrix)/dt_step
-        self.invM = inv(self.R_matrix + dR + Ldt)
-        currents_now = self.currents_vec.copy()
+        Ldt = (self.L_matrix)/self.dt_step
+        invM = inv(self.R_matrix + dR + Ldt)
+        for i in range(self.n_step):
+            LdtI = np.matmul(Ldt, currents_now)
+            now_Us = self.all_Us + LdtI
+            currents_now = np.matmul(invM, now_Us)
+        
+        new_currents = currents_now.copy()
+        return new_currents
 
-        for i in range(n_step):
-            self.LdtI = np.matmul(Ldt, currents_now)
-            now_Us = all_Us + self.LdtI
-            currents_now = np.matmul(self.invM, now_Us)
+
+    def stepper_adapt_repeat(self, currents_now, dR):
+        """same as above, but active voltage already in place"""
+        
+        Ldt = (self.L_matrix)/self.dt_step
+        invM = inv(self.R_matrix + dR + Ldt)
+        for i in range(self.n_step):
+            LdtI = np.matmul(Ldt, currents_now)
+            now_Us = self.all_Us + LdtI
+            currents_now = np.matmul(invM, now_Us)
         
         new_currents = currents_now.copy()
         return new_currents

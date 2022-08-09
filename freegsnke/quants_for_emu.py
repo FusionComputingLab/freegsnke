@@ -135,12 +135,14 @@ class quants_for_emulation:
         #in grid units
         results['separatrix'] = [self.plasma_zloc, self.plasma_mask]
 
-        Lplasma = self.void_matrix.copy()
-        Lplasma[:,-1] += results['plasma_ind_on_coils']
-        Lplasma[-1,:-1] += self.plasma_coil_ind
-        results['Lplasma'] = Lplasma
+        # Lplasma = self.void_matrix.copy()
+        # Lplasma[:,-1] += results['plasma_ind_on_coils']
+        # Lplasma[-1,:-1] += self.plasma_coil_ind
+        # results['Lplasma'] = Lplasma
         
         return results
+
+    
 
 
 

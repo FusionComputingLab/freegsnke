@@ -1,9 +1,12 @@
+import profile
 from freegs.gradshafranov import Greens
 import numpy as np
 
 from . import MASTU_coils
 from .MASTU_coils import coils_dict
 from freegsnke.faster_shape import calculate_width
+from freegsnke.faster_shape import geometricElongation
+
 
 class quants_for_emulation:
     #needs coil_dict from MASTU_coils.py
@@ -110,10 +113,11 @@ class quants_for_emulation:
     def shapes(self, eq, profiles):
         width = calculate_width(eq, profiles) #simple width at z=0:
         opoint = np.array(profiles.opt[0])[np.newaxis]
-        Rvals = eq.R*self.plasma_mask
-        Zvals = eq.Z*self.plasma_mask
-        geometricElongation = (np.max(Zvals)-np.min(Zvals))/(np.max(Rvals)-np.min(Rvals))
-        return width, opoint, geometricElongation
+        # Rvals = eq.R*self.plasma_mask
+        # Zvals = eq.Z*self.plasma_mask
+        # geometricElongation = (np.max(Zvals)-np.min(Zvals))/(np.max(Rvals)-np.min(Rvals))
+        gE = geometricElongation(eq, profiles, npoints=20)
+        return width, opoint, gE
 
         
     def quants_out(self, eq, profiles):

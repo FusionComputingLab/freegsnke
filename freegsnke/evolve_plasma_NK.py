@@ -753,17 +753,17 @@ class evolve_plasma_NK:
             Fresidual = self.Fcircuit(self.trial_currents, rtol_NK)#, verbose_NK)
             rel_change = abs(Fresidual)
             max_rel_change = max(rel_change)
-            if max_rel_change<.3*max_rel_residual:
+            if max_rel_change<.6*max_rel_residual:
                 #print('increasing timestep')
-                self.dt_step *= min(3,(.5*max_rel_residual/max_rel_change))
+                self.dt_step *= min(3,(.8*max_rel_residual/max_rel_change))
                 self.evol_currents.determine_stepsize(self.dt_step, max_dt_step)
                 self.trial_currents = self.evol_currents.stepper_adapt_repeat(self.currents_vec, self.dR)
                 Fresidual = self.Fcircuit(self.trial_currents, rtol_NK)#, verbose_NK)
                 rel_change = abs(Fresidual)
                 max_rel_change = max(rel_change)
-            while (max_rel_change > max_rel_residual)*(self.dt_step > 1e-5):
+            while (max_rel_change > max_rel_residual)*(self.dt_step > 5e-5):
                 #print('reducing timestep:', max_rel_change, self.dt_step, self.evol_currents.n_step, np.argmax(rel_change))
-                self.dt_step *= (.75*max_rel_residual/max_rel_change)
+                self.dt_step *= (.8*max_rel_residual/max_rel_change)
                 self.evol_currents.determine_stepsize(self.dt_step, max_dt_step)
                 self.trial_currents = self.evol_currents.stepper_adapt_first(self.currents_vec, U_active, self.dR)
                 Fresidual = self.Fcircuit(self.trial_currents, rtol_NK)#, verbose_NK)

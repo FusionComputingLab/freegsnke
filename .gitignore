@@ -6,3 +6,4 @@
 .ipynb_checkpoints
 __pycache__
 .DS_Store
+examples/example_NK_evolution_*

@@ -23,3 +23,7 @@ Building from source is currently the only supported installation method.
 
 ## Usage
 See the Jupyter notebook in the `example/` directory. This requires the notebook package, which is not listed as a requirement of this package.
+
+## Release notes
+### 0.2: 26 August 2022
+Included a simple model of the wall (resistance values to be tailored). Re-incorporated the Ldot terms in the circuit equation, missing in previous version. These are solved for with a Newton method (over all currents, active and passive). Timestepping necessary for convergence on Ldot is decoupled from the timestepping necessary to integrate the circuit equations (passive structures may require shorter timescales).

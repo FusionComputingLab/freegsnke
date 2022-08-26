@@ -5,10 +5,10 @@ with open("README.md", "r") as f:
 
 setuptools.setup(
     name="freegsnke",
-    version="0.0.1",
-    description="An extension of FreeGS with a Newton-Krylov Grad-Shafranov solver and evolutive capabilities.",
+    version="0.3.0",
+    description="An extension of FreeGSFast with a Newton-Krylov Grad-Shafranov solver and evolutive capabilities.",
     long_description=long_description,
-    url="https://github.com/farscape-project/freegs-nk-e",
+    url="https://github.com/farscape-project/freegsnke",
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: GNU Lesser General Public License v3 or later (LGPLv3+)",

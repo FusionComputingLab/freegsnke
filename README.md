@@ -18,7 +18,7 @@ Building from source is currently the only supported installation method and req
 4. Clone [FreeGSFast](https://github.com/farscape-project/freegsfast) into a directory that is *not* within the FreeGSNKE repository and `cd` into it.
 5. Install FreeGSFast locally with `pip install -e .`.
 > **Note**
-> The FreeGSFast dependencies have already been installed in step 1 so do not need to be installed again.
+> The FreeGSFast dependencies have already been installed in step 2 so do not need to be installed again.
 6. `cd` back to the `freegsnke` repository directory and install this package by running `pip install .` from the respository home directory. If you plan on doing development, it is better to install with symlinks: `pip install -e .`.
 
 ## Usage

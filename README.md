@@ -25,7 +25,18 @@ Building from source is currently the only supported installation method and req
 See the Jupyter notebook in the `example/` directory. This requires the notebook package, which is not listed as a requirement of this package.
 
 ## Release notes
+
+### 0.4: Unreleased
+
+### 0.4-alpha: 25 October 2022
+- This version is a pre-release.
+- The second-order inductive term has been removed from the circuit equation, which constitutes a regression on 0.3.
+- The option of a fixed time step has been introduced and set as the default.
+
 ### 0.3: 26 August 2022
-Now using conda for most dependency management. Removed dependency on freegs, replaced with freegsfast.
+- Now using conda for most dependency management.
+- Removed dependency on freegs, replaced with freegsfast.
+
 ### 0.2: 26 August 2022
-Included a simple model of the wall (resistance values to be tailored). Re-incorporated the Ldot terms in the circuit equation, missing in previous version. These are solved for with a Newton method (over all currents, active and passive). Timestepping necessary for convergence on Ldot is decoupled from the timestepping necessary to integrate the circuit equations (passive structures may require shorter timescales).
+- Included a simple model of the wall (resistance values to be tailored).
+- Re-incorporated the Ldot terms in the circuit equation, missing in previous version. These are solved for with a Newton method (over all currents, active and passive). Timestepping necessary for convergence on Ldot is decoupled from the timestepping necessary to integrate the circuit equations (passive structures may require shorter timescales).

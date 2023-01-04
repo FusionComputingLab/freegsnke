@@ -44,6 +44,7 @@ from numpy import clip, zeros, reshape, sqrt, pi
 import numpy as np
 
 from scipy.special import beta as spbeta
+from scipy.special import betainc as spbinc
 
 
 class Profile(object):
@@ -205,24 +206,29 @@ class ConstrainBetapIp(Profile):
 
         # Need integral of jtorshape to calculate pressure
         # Note factor to convert from normalised psi integral
-        def pshape(psinorm):
-            shapeintegral, _ = quad(
-                lambda x: (1.0 - x ** self.alpha_m) ** self.alpha_n, psinorm, 1.0
-            )
-            shapeintegral *= psi_bndry - psi_axis
-            return shapeintegral
+        # def pshape(psinorm):
+        #     shapeintegral, _ = quad(
+        #         lambda x: (1.0 - x ** self.alpha_m) ** self.alpha_n, psinorm, 1.0
+        #     )
+        #     shapeintegral *= psi_bndry - psi_axis
+        #     return shapeintegral
 
         # Pressure is
         #
         # p(psinorm) = - (L*Beta0/Raxis) * pshape(psinorm)
         #
 
+        shapeintegral0 = spbeta(1./self.alpha_m , 1.0+self.alpha_n)/self.alpha_m
+
         nx, ny = psi_norm.shape
         pfunc = zeros((nx, ny))
-        for i in range(1, nx - 1):
-            for j in range(1, ny - 1):
-                if (psi_norm[i, j] >= 0.0) and (psi_norm[i, j] < 1.0):
-                    pfunc[i, j] = pshape(psi_norm[i, j])
+        # for i in range(1, nx - 1):
+        #     for j in range(1, ny - 1):
+        #         if (psi_norm[i, j] >= 0.0) and (psi_norm[i, j] < 1.0):
+        #             pfunc[i, j] = pshape(psi_norm[i, j])
+        
+        pfunc=shapeintegral0*(psi_bndry - psi_axis)*(1.0-spbinc(1./self.alpha_m , 1.0+self.alpha_n, np.clip(psi_norm,0.0001,0.9999)**(1/self.alpha_m)))
+
         if mask is not None:
             pfunc *= mask
 
@@ -230,13 +236,13 @@ class ConstrainBetapIp(Profile):
         # betap = (8pi/mu0) * int(p)dRdZ / Ip^2
         #       = - (8pi/mu0) * (L*Beta0/Raxis) * intp / Ip^2
 
-        intp = romb(romb(pfunc)) * dR * dZ
+        intp = np.sum(pfunc)*dR*dZ  # romb(romb(pfunc)) * dR * dZ
 
         LBeta0 = -self.betap * (mu0 / (8.0 * pi)) * self.Raxis * self.Ip ** 2 / intp
 
         # Integrate current components
-        IR = romb(romb(jtorshape * R / self.Raxis)) * dR * dZ
-        I_R = romb(romb(jtorshape * self.Raxis / R)) * dR * dZ
+        IR = np.sum(jtorshape * R /self.Raxis)*dR*dZ # romb(romb(jtorshape * R / self.Raxis)) * dR * dZ
+        I_R = np.sum(jtorshape * self.Raxis / R)*dR*dZ # romb(romb(jtorshape * self.Raxis / R)) * dR * dZ
 
         # Toroidal plasma current Ip is
         #
@@ -289,7 +295,7 @@ class ConstrainPaxisIp(Profile):
 
     """
 
-    def __init__(self, paxis, Ip, fvac, alpha_m=1.0, alpha_n=2.0, Raxis=1.0):
+    def __init__(self, paxis, Ip, fvac, alpha_m=2.0, alpha_n=1.0, Raxis=1.0):
         """
         paxis - Pressure at magnetic axis [Pa]
         Ip    - Plasma current [Amps]

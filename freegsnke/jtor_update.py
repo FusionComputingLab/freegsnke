@@ -139,7 +139,7 @@ class ConstrainBetapIp(Profile):
 
     """
 
-    def __init__(self, betap, Ip, fvac, alpha_m=1.0, alpha_n=2.0, Raxis=1.0):
+    def __init__(self, betap, Ip, fvac, alpha_m=2.0, alpha_n=1.0, Raxis=1.0):
         """
         betap - Poloidal beta
         Ip    - Plasma current [Amps]

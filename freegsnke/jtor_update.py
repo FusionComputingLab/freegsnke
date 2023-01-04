@@ -43,6 +43,8 @@ from freegs.gradshafranov import mu0
 from numpy import clip, zeros, reshape, sqrt, pi
 import numpy as np
 
+from scipy.special import beta as spbeta
+
 
 class Profile(object):
     """
@@ -354,10 +356,11 @@ class ConstrainPaxisIp(Profile):
 
         # Need integral of jtorshape to calculate paxis
         # Note factor to convert from normalised psi integral
-        shapeintegral, _ = quad(
-            lambda x: (1.0 - x ** self.alpha_m) ** self.alpha_n, 0.0, 1.0
-        )
-        shapeintegral *= psi_bndry - psi_axis
+        # shapeintegral, _ = quad(
+        #     lambda x: (1.0 - x ** self.alpha_m) ** self.alpha_n, 0.0, 1.0
+        # )
+        shapeintegral = spbeta(1./self.alpha_m , 1.0+self.alpha_n)/self.alpha_m
+        shapeintegral *= (psi_bndry - psi_axis)
 
         # Pressure on axis is
         #
@@ -365,8 +368,8 @@ class ConstrainPaxisIp(Profile):
         #
 
         # Integrate current components
-        IR = romb(romb(jtorshape * R / self.Raxis)) * dR * dZ
-        I_R = romb(romb(jtorshape * self.Raxis / R)) * dR * dZ
+        IR = np.sum(jtorshape * R /self.Raxis)*dR*dZ #romb(romb(jtorshape * R / self.Raxis)) * dR * dZ
+        I_R = np.sum(jtorshape * self.Raxis / R)*dR*dZ #romb(romb(jtorshape * self.Raxis / R)) * dR * dZ
 
         # Toroidal plasma current Ip is
         #

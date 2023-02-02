@@ -1228,14 +1228,17 @@ with open(passive_path,'rb') as handle:
     pass_coil_dict = pickle.load(handle)
 
 #section of active coil loops
-dRc = 0.0128
-dZc = 0.0128
+dRc = 0.0127
+dZc = 0.0127
 
 coils_dict = {}
 
 coils_dict['Solenoid'] = {}
 coils_dict['Solenoid']['coords'] = np.array([[0.19475]*324,np.linspace(-1.581,1.581,324)])
 coils_dict['Solenoid']['polarity'] = np.array([1]*len(coils_dict['Solenoid']['coords'][0]))
+coils_dict['Solenoid']['dR']=0.012
+coils_dict['Solenoid']['dZ']=0.018
+
 
 # coils_dict['Pc'] = {}
 # coils_dict['Pc']['coords'] = np.array([pc_r, pc_z])
@@ -1244,52 +1247,74 @@ coils_dict['Solenoid']['polarity'] = np.array([1]*len(coils_dict['Solenoid']['co
 coils_dict['Px'] = {}
 coils_dict['Px']['coords'] = np.array([px_upper_r+px_upper_r, px_upper_z+px_lower_z])
 coils_dict['Px']['polarity'] = np.array([1]*len(coils_dict['Px']['coords'][0]))
+coils_dict['Px']['dR']=0.011
+coils_dict['Px']['dZ']=0.018
 
 coils_dict['D1'] = {}
 coils_dict['D1']['coords'] = np.array([d1_upper_r+d1_upper_r, d1_upper_z+d1_lower_z])
 coils_dict['D1']['polarity'] = np.array([1]*len(coils_dict['D1']['coords'][0]))
+coils_dict['D1']['dR']=0.0127
+coils_dict['D1']['dZ']=0.0127
 
 coils_dict['D2'] = {}
 coils_dict['D2']['coords'] = np.array([d2_upper_r+d2_upper_r, d2_upper_z+d2_lower_z])
 coils_dict['D2']['polarity'] = np.array([1]*len(coils_dict['D2']['coords'][0]))
+coils_dict['D2']['dR']=0.0127
+coils_dict['D2']['dZ']=0.0127
 
 coils_dict['D3'] = {}
 coils_dict['D3']['coords'] = np.array([d3_upper_r+d3_upper_r, d3_upper_z+d3_lower_z])
 coils_dict['D3']['polarity'] = np.array([1]*len(coils_dict['D3']['coords'][0]))
+coils_dict['D3']['dR']=0.0127
+coils_dict['D3']['dZ']=0.0127
 
 coils_dict['Dp'] = {}
 coils_dict['Dp']['coords'] = np.array([dp_upper_r+dp_upper_r, dp_upper_z+dp_lower_z])
 coils_dict['Dp']['polarity'] = np.array([1]*len(coils_dict['Dp']['coords'][0]))
+coils_dict['Dp']['dR']=0.0127
+coils_dict['Dp']['dZ']=0.0127
 
 coils_dict['D5'] = {}
 coils_dict['D5']['coords'] = np.array([d5_upper_r+d5_upper_r, d5_upper_z+d5_lower_z])
 coils_dict['D5']['polarity'] = np.array([1]*len(coils_dict['D5']['coords'][0]))
+coils_dict['D5']['dR']=0.0127
+coils_dict['D5']['dZ']=0.0127
 
 coils_dict['D6'] = {}
 coils_dict['D6']['coords'] = np.array([d6_upper_r+d6_upper_r, d6_upper_z+d6_lower_z])
 coils_dict['D6']['polarity'] = np.array([1]*len(coils_dict['D6']['coords'][0]))
+coils_dict['D6']['dR']=0.0127
+coils_dict['D6']['dZ']=0.0127
 
 coils_dict['D7'] = {}
 coils_dict['D7']['coords'] = np.array([d7_upper_r+d7_upper_r, d7_upper_z+d7_lower_z])
 coils_dict['D7']['polarity'] = np.array([1]*len(coils_dict['D7']['coords'][0]))
+coils_dict['D7']['dR']=0.0127
+coils_dict['D7']['dZ']=0.0127
 
 coils_dict['P4'] = {}
 coils_dict['P4']['coords'] = np.array([p4_upper_r+p4_upper_r, p4_upper_z+p4_lower_z])
 coils_dict['P4']['polarity'] = np.array([1]*len(coils_dict['P4']['coords'][0]))
+coils_dict['P4']['dR']=0.024
+coils_dict['P4']['dZ']=0.037
 
 coils_dict['P5'] = {}
 coils_dict['P5']['coords'] = np.array([p5_upper_r+p5_upper_r, p5_upper_z+p5_lower_z])
 coils_dict['P5']['polarity'] = np.array([1]*len(coils_dict['P5']['coords'][0]))
+coils_dict['P5']['dR']=0.024
+coils_dict['P5']['dZ']=0.037
 
 coils_dict['P6'] = {}
 coils_dict['P6']['coords'] = np.array([p6_upper_r+p6_upper_r, p6_upper_z+p6_lower_z])
 coils_dict['P6']['polarity'] = np.array([1]*len(p6_upper_r)+[-1]*len(p6_upper_r))
+coils_dict['P6']['dR']=0.02836
+coils_dict['P6']['dZ']=0.02836
 
 #get number of active coils
 N_active=len(coils_dict.keys())
 #insert resistance-related info:
 for key in coils_dict.keys():
-    coils_dict[key]['resistivity'] = eta_copper/(dRc*dZc)
+    coils_dict[key]['resistivity'] = eta_copper/(coils_dict[key]['dR']*coils_dict[key]['dZ']) #(dRc*dZc)
 
 for tkey in pass_coil_dict.keys():
     tentry = pass_coil_dict[tkey]

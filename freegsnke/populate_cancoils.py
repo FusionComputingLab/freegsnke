@@ -37,13 +37,15 @@ def splitcoil(coil, dRsplit=100.0 , dZsplit=100.0):
     return tcoil
 
 can_names=['D1','D2','D3','D5','Dp','D5','D6','D7','P4','P5']
-coilcans={}
-for name in can_names:
-    tcancoils=cancoils(this_dir+'/MASTU_pass/'+name+'Can.csv')
-    # print(name)
-    # print(tcancoils)
-    for (i,coil) in enumerate(tcancoils):
-        coilcans['can_'+name+'upper_'+str(i)]= {'R':coil['R']/1000.0,'Z':coil['Z']/1000.0,'dR':coil['dR']/1000.0,'dZ':coil['dZ']/1000.0}
-        coilcans['can_'+name+'lower_'+str(i)]= {'R':coil['R']/1000.0,'Z':-coil['Z']/1000.0,'dR':coil['dR']/1000.0,'dZ':coil['dZ']/1000.0}
-# print(coilcans)
-# print(len(coilcans))
+def pop_coilcans(can_names=can_names):
+    coilcans={}
+    for name in can_names:
+        tcancoils=cancoils(this_dir+'/MASTU_pass/'+name+'Can.csv')
+        # print(name)
+        # print(tcancoils)
+        for (i,coil) in enumerate(tcancoils):
+            coilcans['can_'+name+'upper_'+str(i)]= {'R':coil['R']/1000.0,'Z':coil['Z']/1000.0,'dR':coil['dR']/1000.0,'dZ':coil['dZ']/1000.0}
+            coilcans['can_'+name+'lower_'+str(i)]= {'R':coil['R']/1000.0,'Z':-coil['Z']/1000.0,'dR':coil['dR']/1000.0,'dZ':coil['dZ']/1000.0}
+    # print(coilcans)
+    # print(len(coilcans))
+    return coilcans

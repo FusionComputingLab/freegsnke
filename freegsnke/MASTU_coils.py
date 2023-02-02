@@ -1227,6 +1227,10 @@ passive_path=os.path.join(this_dir,'pass_coils_n.pk')
 with open(passive_path,'rb') as handle:
     pass_coil_dict = pickle.load(handle)
 
+import populate_cancoils
+coilcans_dict=populate_cancoils.pop_coilcans() # dict with key:value entries like  'can_P5lower_7': {'R': 1.7435, 'Z': -0.31025, 'dR': 0.003, 'dZ': 0.0935}
+
+
 #section of active coil loops
 dRc = 0.0127
 dZc = 0.0127
@@ -1322,6 +1326,13 @@ for tkey in pass_coil_dict.keys():
     coils_dict[tkey]['coords'] = np.array([ [tentry['R']], [tentry['Z']] ])
     coils_dict[tkey]['polarity'] = np.array([1])
     coils_dict[tkey]['resistivity'] = eta_steel/(tentry['dr']*tentry['dz'])
+
+for tkey in coilcans_dict.keys():
+    tentry=coilcans_dict[tkey]
+    coils_dict[tkey] = {}
+    coils_dict[tkey]['coords'] = np.array([ [tentry['R']], [tentry['Z']] ])
+    coils_dict[tkey]['polarity'] = np.array([1])
+    coils_dict[tkey]['resistivity'] = eta_steel/(tentry['dR']*tentry['dZ'])
 
 #calculate coil-coil inductances and coil resistances
 nloops_per_coil = np.zeros(len(coils_dict.keys()))

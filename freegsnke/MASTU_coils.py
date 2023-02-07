@@ -1228,12 +1228,19 @@ with open(passive_path,'rb') as handle:
     pass_coil_dict = pickle.load(handle)
 
 import populate_cancoils
-coilcans_dict=populate_cancoils.pop_coilcans() # dict with key:value entries like  'can_P5lower_7': {'R': 1.7435, 'Z': -0.31025, 'dR': 0.003, 'dZ': 0.0935}
+coilcans_dict=populate_cancoils.pop_coilcans()
+# dict with key:value entries like  'can_P5lower_7': {'R': 1.7435, 'Z': -0.31025, 'dR': 0.003, 'dZ': 0.0935}
+# is using coilcans, these are all filaments, so use eta_material*2*pi*tc['R']/(tc['dR']*tc['dZ']) for the filament resistance
+multicoilcans_dict=populate_cancoils.pop_multicoilcans()
+# dict with key:values like 'can_P5lower': {'R':[list_of_Rs],'Z':[list_of_Zs],'series':sum(2*pi*R/(dR*dZ))}
+# if using multicoilcans, multiply 'series' by eta_material to get the resistance
 
+multican=True
 
 #section of active coil loops
 dRc = 0.0127
 dZc = 0.0127
+# these dRc and dZc are not really used below, each piece of metal has its own geometry data, but still
 
 coils_dict = {}
 
@@ -1327,12 +1334,20 @@ for tkey in pass_coil_dict.keys():
     coils_dict[tkey]['polarity'] = np.array([1])
     coils_dict[tkey]['resistivity'] = eta_steel/(tentry['dr']*tentry['dz'])
 
-for tkey in coilcans_dict.keys():
-    tentry=coilcans_dict[tkey]
-    coils_dict[tkey] = {}
-    coils_dict[tkey]['coords'] = np.array([ [tentry['R']], [tentry['Z']] ])
-    coils_dict[tkey]['polarity'] = np.array([1])
-    coils_dict[tkey]['resistivity'] = eta_steel/(tentry['dR']*tentry['dZ'])
+if multican:
+    for tkey in multicoilcans_dict.keys():
+        tentry=coilcans_dict[tkey]
+        coils_dict[tkey] = {}
+        coils_dict[tkey]['coords'] = np.array([ tentry['Rs'] , tentry['Zs'] ])
+        coils_dict[tkey]['polarity'] = np.array([1]*len(coils_dict[tkey]['coords'][0]))
+        coils_dict[tkey]['resistivity'] = eta_steel*coils_dict[tkey]['series']/np.mean(coils_dict[tkey]['coords'][0])
+        # the last division is there because we are already multiplying by <R> in coil_resist below 
+else:
+    for tkey in coilcans_dict.keys():
+        coils_dict[tkey] = {}
+        coils_dict[tkey]['coords'] = np.array([ [tentry['R']], [tentry['Z']] ])
+        coils_dict[tkey]['polarity'] = np.array([1])
+        coils_dict[tkey]['resistivity'] = eta_steel/(tentry['dR']*tentry['dZ'])
 
 #calculate coil-coil inductances and coil resistances
 nloops_per_coil = np.zeros(len(coils_dict.keys()))

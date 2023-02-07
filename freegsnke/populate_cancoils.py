@@ -3,7 +3,7 @@ import numpy as np
 import os
 this_dir , this_filename = os.path.split(__file__)
 
-def cancoils(name):
+def cancoils(name,dRsplit=100.0 , dZsplit=100.0):
     t_can_slabs=[]
     t_can_tab=np.genfromtxt(name,delimiter=',',names=True)#skip_header=1)
     for line in t_can_tab:
@@ -11,7 +11,7 @@ def cancoils(name):
     # now start splitting the coils and replacing them in the list
     t_can_coils=[]
     for slab in t_can_slabs:
-        t_can_coils=t_can_coils+splitcoil(slab)
+        t_can_coils=t_can_coils+splitcoil(slab,dRsplit,dZsplit)
     return t_can_coils
 
 def splitcoil(coil, dRsplit=100.0 , dZsplit=100.0):
@@ -37,15 +37,37 @@ def splitcoil(coil, dRsplit=100.0 , dZsplit=100.0):
     return tcoil
 
 can_names=['D1','D2','D3','D5','Dp','D5','D6','D7','P4','P5']
-def pop_coilcans(can_names=can_names):
+
+def pop_coilcans(can_names=can_names,dRsplit=100.0 , dZsplit=100.0):
     coilcans={}
     for name in can_names:
-        tcancoils=cancoils(this_dir+'/MASTU_pass/'+name+'Can.csv')
+        tcancoils=cancoils(this_dir+'/MASTU_pass/'+name+'Can.csv',dRsplit , dZsplit)
         # print(name)
         # print(tcancoils)
         for (i,coil) in enumerate(tcancoils):
-            coilcans['can_'+name+'upper_'+str(i)]= {'R':coil['R']/1000.0,'Z':coil['Z']/1000.0,'dR':coil['dR']/1000.0,'dZ':coil['dZ']/1000.0}
-            coilcans['can_'+name+'lower_'+str(i)]= {'R':coil['R']/1000.0,'Z':-coil['Z']/1000.0,'dR':coil['dR']/1000.0,'dZ':coil['dZ']/1000.0}
+            coilcans['pas_can_'+name+'upper_'+str(i)]= {'R':coil['R']/1000.0,'Z':coil['Z']/1000.0,'dR':coil['dR']/1000.0,'dZ':coil['dZ']/1000.0}
+            coilcans['pas_can_'+name+'lower_'+str(i)]= {'R':coil['R']/1000.0,'Z':-coil['Z']/1000.0,'dR':coil['dR']/1000.0,'dZ':coil['dZ']/1000.0}
     # print(coilcans)
     # print(len(coilcans))
     return coilcans
+
+def pop_multicoilcans(can_names=can_names,dRsplit=100.0 , dZsplit=100.0):
+    canlists={}
+    for name in can_names:
+        tcancoils=cancoils(this_dir+'/MASTU_pass/'+name+'Can.csv',dRsplit , dZsplit)
+        # print(name)
+        # print(tcancoils)
+        for (i,coil) in enumerate(tcancoils):
+            try:
+                canlists['pas_can_'+name+'upper_'+str(i)]['Rs']=canlists['pas_can_'+name+'upper_'+str(i)]['Rs']+[coil['R']/1000.0]
+                canlists['pas_can_'+name+'lower_'+str(i)]['Rs']=canlists['pas_can_'+name+'lower_'+str(i)]['Rs']+[coil['R']/1000.0]
+                canlists['pas_can_'+name+'upper_'+str(i)]['Zs']=canlists['pas_can_'+name+'upper_'+str(i)]['Zs']+[coil['Z']/1000.0]
+                canlists['pas_can_'+name+'lower_'+str(i)]['Zs']=canlists['pas_can_'+name+'lower_'+str(i)]['Zs']+[-coil['Z']/1000.0]
+                canlists['pas_can_'+name+'upper_'+str(i)]['series']=canlists['pas_can_'+name+'upper_'+str(i)]['series']+(2.0*3.14159*coil['R']/1000.0)/((coil['dR']/1000.0)*(coil['dZ']/1000.0))
+                canlists['pas_can_'+name+'lower_'+str(i)]['series']=canlists['pas_can_'+name+'lower_'+str(i)]['series']+(2.0*3.14159*coil['R']/1000.0)/((coil['dR']/1000.0)*(coil['dZ']/1000.0))
+            except:
+                canlists['pas_can_'+name+'upper_'+str(i)]= {'Rs':[coil['R']/1000.0],'Zs':[coil['Z']/1000.0],'series':(2.0*3.14159*coil['R']/1000.0)/((coil['dR']/1000.0)*(coil['dZ']/1000.0))}
+                canlists['pas_can_'+name+'lower_'+str(i)]= {'Rs':[coil['R']/1000.0],'Zs':[-coil['Z']/1000.0],'series':(2.0*3.14159*coil['R']/1000.0)/((coil['dR']/1000.0)*(coil['dZ']/1000.0))}
+    # print(coilcans)
+    # print(len(coilcans))
+    return canlists

@@ -1327,12 +1327,13 @@ N_active=len(coils_dict.keys())
 for key in coils_dict.keys():
     coils_dict[key]['resistivity'] = eta_copper/(coils_dict[key]['dR']*coils_dict[key]['dZ']) #(dRc*dZc)
 
-for tkey in pass_coil_dict.keys():
-    tentry = pass_coil_dict[tkey]
-    coils_dict[tkey] = {}
-    coils_dict[tkey]['coords'] = np.array([ [tentry['R']], [tentry['Z']] ])
-    coils_dict[tkey]['polarity'] = np.array([1])
-    coils_dict[tkey]['resistivity'] = eta_steel/(tentry['dr']*tentry['dz'])
+#  these must be replaced with the actual vessel filaments
+# for tkey in pass_coil_dict.keys():
+#     tentry = pass_coil_dict[tkey]
+#     coils_dict[tkey] = {}
+#     coils_dict[tkey]['coords'] = np.array([ [tentry['R']], [tentry['Z']] ])
+#     coils_dict[tkey]['polarity'] = np.array([1])
+#     coils_dict[tkey]['resistivity'] = eta_steel/(tentry['dr']*tentry['dz'])
 
 if multican:
     for tkey in multicoilcans_dict.keys():
@@ -1493,11 +1494,11 @@ def MASTU_wpass():
     #
     # here we must add the passive-structure coils
     # e.g. ( "pas_1", Coil(R, Z) ) 
-    for tkey in pass_coil_dict.keys():
-        tentry=pass_coil_dict[tkey]
-        coils.append((tkey, Coil(R=tentry['R'], Z=tentry['Z'], 
-                                 area=tentry['dr']*tentry['dz'], 
-                                 control=False)))
+    # for tkey in pass_coil_dict.keys():
+    #     tentry=pass_coil_dict[tkey]
+    #     coils.append((tkey, Coil(R=tentry['R'], Z=tentry['Z'], 
+    #                              area=tentry['dr']*tentry['dz'], 
+    #                              control=False)))
 #
 #
     rwall = [1.56442 , 1.73298 , 1.34848 , 1.0882  , 0.902253, 0.903669,

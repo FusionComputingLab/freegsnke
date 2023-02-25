@@ -749,10 +749,14 @@ for key in coils_dict.keys():
     coils_dict[key]['resistivity'] = eta_copper/(coils_dict[key]['dR']*coils_dict[key]['dZ']) #(dRc*dZc)
 
 
+
+import os
 # import passive structure details:
-with open('Fiesta_full_passive.pk','rb') as handle:
-    pass_coils = pickle.load(handle)
-pass_coils = pass_coils[0]
+this_dir, this_filename = os.path.split(__file__)
+passive_path=os.path.join(this_dir,'Fiesta_full_passive.pk')
+with open(passive_path,'rb') as handle:
+    pass_coils_dict = pickle.load(handle)
+pass_coils = pass_coils_dict[0]
 
 for i, coil in enumerate(pass_coils):
     tkey = 'pass_'+str(i)
@@ -762,34 +766,47 @@ for i, coil in enumerate(pass_coils):
     coils_dict[tkey]['resistivity'] = coil[-1]/(coil[2]*coil[3])
 
 
-#calculate coil-coil inductances and coil resistances
-nloops_per_coil = np.zeros(len(coils_dict.keys()))
-coil_resist = np.zeros(len(coils_dict.keys()))
-coil_self_ind = np.zeros((len(coils_dict.keys()), len(coils_dict.keys())))
-for i,labeli in enumerate(coils_dict.keys()):
-    nloops_per_coil[i] = len(coils_dict[labeli]['coords'][0])    
-    #for coil-coil flux
-    for j,labelj in enumerate(coils_dict.keys()):
-        greenm = Greens(coils_dict[labeli]['coords'][0][np.newaxis,:],
-                        coils_dict[labeli]['coords'][1][np.newaxis,:],
-                        coils_dict[labelj]['coords'][0][:,np.newaxis],
-                        coils_dict[labelj]['coords'][1][:,np.newaxis])
+# #calculate coil-coil inductances and coil resistances
+# nloops_per_coil = np.zeros(len(coils_dict.keys()))
+# coil_resist = np.zeros(len(coils_dict.keys()))
+# coil_self_ind = np.zeros((len(coils_dict.keys()), len(coils_dict.keys())))
+# for i,labeli in enumerate(coils_dict.keys()):
+#     nloops_per_coil[i] = len(coils_dict[labeli]['coords'][0])    
+#     #for coil-coil flux
+#     for j,labelj in enumerate(coils_dict.keys()):
+#         greenm = Greens(coils_dict[labeli]['coords'][0][np.newaxis,:],
+#                         coils_dict[labeli]['coords'][1][np.newaxis,:],
+#                         coils_dict[labelj]['coords'][0][:,np.newaxis],
+#                         coils_dict[labelj]['coords'][1][:,np.newaxis])
         
-        greenm *= coils_dict[labelj]['polarity'][:,np.newaxis]
-        greenm *= coils_dict[labeli]['polarity'][np.newaxis,:]
-        coil_self_ind[i,j] = np.sum(greenm)
-    #resistance = resistivity/area * number of loops * mean_radius * 2pi
-    coil_resist[i] = coils_dict[labeli]['resistivity']*np.sum(coils_dict[labeli]['coords'][0])
+#         greenm *= coils_dict[labelj]['polarity'][:,np.newaxis]
+#         greenm *= coils_dict[labeli]['polarity'][np.newaxis,:]
+#         coil_self_ind[i,j] = np.sum(greenm)
+#     #resistance = resistivity/area * number of loops * mean_radius * 2pi
+#     #voltages in terms of total applied voltage
+#     coil_resist[i] = coils_dict[labeli]['resistivity']*np.sum(coils_dict[labeli]['coords'][0])
+# coil_self_ind *= 2*np.pi
+# coil_resist *= 2*np.pi
 
-# active coils are up-down symmetric: no inductance on p6
-coil_self_ind[:11,11] = 0
-coil_self_ind[11,:11] = 0
+# # active coils are up-down symmetric: no inductance on p6
+# coil_self_ind[:11,11] = 0
+# coil_self_ind[11,:11] = 0
 
 
-coil_self_ind *= 2*np.pi
+# calculations above replaced with final result
+coil_self_ind = pass_coils_dict[1]
+coil_resist = pass_coils_dict[2]
 
-#voltages in terms of total applied voltage
-coil_resist *= 2*np.pi
+
+# normal modes of the vessel, passive+active
+R12 = np.diag(coil_resist**.5)
+Mm1 = np.linalg.inv(coil_self_ind)
+w,v = np.linalg.eig(R12@(Mm1@R12))
+ordw = np.argsort(w)
+w = w[ordw]
+Vmatrix = ((v.T)[ordw]).T
+
+
 
 
 from freegs.machine import Machine, Circuit, Wall, Solenoid

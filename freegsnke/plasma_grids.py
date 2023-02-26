@@ -13,9 +13,10 @@ def define_reduced_plasma_grid(R, Z):
     mask_inside_limiter *= (Z<.96+1*R)*(Z>-.96-1*R)
     mask_inside_limiter *= (Z<-2+9.*R)*(Z>2-9.*R)
     mask_inside_limiter *= (Z<2.28-1.1*R)*(Z>-2.28+1.1*R)
+    mask_inside_limiter = mask_inside_limiter.astype(bool)
 
-    plasma_pts = np.concatenate((R[mask_inside_limiter.astype(bool)][:,np.newaxis],
-                                 Z[mask_inside_limiter.astype(bool)][:,np.newaxis]), axis=-1)
+    plasma_pts = np.concatenate((R[mask_inside_limiter][:,np.newaxis],
+                                 Z[mask_inside_limiter][:,np.newaxis]), axis=-1)
 
     return plasma_pts, mask_inside_limiter
 

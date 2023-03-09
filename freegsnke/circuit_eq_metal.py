@@ -2,13 +2,14 @@ import numpy as np
 
 from . import MASTU_coils
 from . import plasma_grids
+from .implicit_euler import implicit_euler_solver
 
-class evolve_metal_currents:
-    # implicit Euler time stepper for the linearized circuit equation
-    # solves an equation of the type
-    # MIdot + RI = F
-    # with generic M, R and F, whose form depend on the flags
-    # plasma inductance is included in the forcing term
+
+
+class metal_currents:
+    # sets up framework for all metal currents
+    # calculates residuals of full non linear circuit eq 
+    # sets up to solve metal circuit eq for vacuum shots
     
     def __init__(self, flag_vessel_eig,
                        flag_plasma,
@@ -18,14 +19,14 @@ class evolve_metal_currents:
                        full_timestep=.0001):
                     
         self.n_coils = len(MASTU_coils.coil_self_ind)
-        self.N_active = MASTU_coils.N_active
+        self.n_active_coils = MASTU_coils.N_active
 
         self.flag_vessel_eig = flag_vessel_eig
         self.flag_plasma = flag_plasma
 
-        # dictionary to collect inv(Mm1R*dt+1) for various dt
-        self.inverse_operator = {}
-
+        self.max_internal_timestep = max_internal_timestep
+        self.full_timestep = full_timestep
+        
         if flag_vessel_eig:
             self.max_mode_frequency = max_mode_frequency
             self.initialize_for_eig()
@@ -33,7 +34,6 @@ class evolve_metal_currents:
             self.max_mode_frequency = 0
             self.initialize_for_no_eig()
 
-        self.set_timesteps(full_timestep=full_timestep, max_internal_timestep=max_internal_timestep)
 
         # change if plasma by using set_plasma
         if flag_plasma:
@@ -41,32 +41,34 @@ class evolve_metal_currents:
             self.Mey = plasma_grids.Mey(plasma_pts)            
 
         #dummy voltage vector
-        self.empty_U = np.zeros(self.independent_var)
-
+        self.empty_U = np.zeros(self.n_coils)
+        
 
 
 
     def initialize_for_eig(self, ):
-        self.independent_var = np.sum(MASTU_coils.w < self.max_mode_frequency)
+        self.n_independent_vars = np.sum(MASTU_coils.w < self.max_mode_frequency)
         
         # Id = Vm1 R**(1/2) I 
         # to change base to truncated modes
         # I = R**(-1/2) V Id 
-        self.Vm1 = ((MASTU_coils.Vmatrix).T)[:self.independent_var]
-        self.V = (MASTU_coils.Vmatrix)[:, :self.independent_var]
+        self.Vm1 = ((MASTU_coils.Vmatrix).T)[:self.n_independent_vars]
+        self.V = (MASTU_coils.Vmatrix)[:, :self.n_independent_vars]
 
         # equation is Lambda**(-1)Iddot + I = F
         # where Lambda is such that R12@M-1@R12 = V Lambda V-1
         # w are frequences, eigenvalues of Lambda, 
-        # so M are timescales
-        self.Lambda = MASTU_coils.w[:self.independent_var]
-        self.R = np.ones(self.independent_var)
-
+        self.Lambda = MASTU_coils.w[:self.n_independent_vars]
+        self.R = MASTU_coils.coil_resist
         self.R12 = MASTU_coils.coil_resist**.5
         self.Rm12 = MASTU_coils.coil_resist**(-.5)
         # note Lambda, R, R12, Rm12 are vectors rather than matrices!
 
-        self.internal_stepper = self.internal_stepper_eig
+        self.solver = implicit_euler_solver(Mmatrix=np.diag(self.Lambda**-1), 
+                                            Rmatrix=np.eye(self.n_independent_vars), 
+                                            max_internal_timestep=self.max_internal_timestep,
+                                            full_timestep=self.full_timestep)
+
         if self.flag_plasma:
             self.forcing_term = self.forcing_term_eig_plasma
         else:
@@ -76,7 +78,7 @@ class evolve_metal_currents:
 
 
     def initialize_for_no_eig(self, ):
-        self.independent_var = len(MASTU_coils.coil_self_ind)
+        self.n_independent_vars = self.n_coils
         self.M = MASTU_coils.coil_self_ind
         self.Mm1 = MASTU_coils.Mm1
         self.R = np.diag(MASTU_coils.coil_resist)
@@ -84,7 +86,12 @@ class evolve_metal_currents:
         self.Mm1R = self.Mm1@self.R
         self.Rm1M = np.diag(1/MASTU_coils.coil_resist)@self.M
 
-        self.internal_stepper = self.internal_stepper_no_eig
+        # equation is MIdot + RI = F
+        self.solver = implicit_euler_solver(Mmatrix=self.M, 
+                                            Rmatrix=self.R, 
+                                            max_internal_timestep=self.max_internal_timestep,
+                                            full_timestep=self.full_timestep)
+
         if self.flag_plasma:
             self.forcing_term = self.forcing_term_no_eig_plasma
         else:
@@ -93,16 +100,30 @@ class evolve_metal_currents:
 
 
 
-    def set_mode(self, flag_plasma, flag_vessel_eig, reference_eq=0, max_mode_frequency=1):
+    def reset_mode(self, flag_vessel_eig,
+                        flag_plasma,
+                        reference_eq=0,
+                        max_mode_frequency=1,
+                        max_internal_timestep=.0001,
+                        full_timestep=.0001):
+        # allows reset of init inputs
         
-        control = (flag_plasma != self.flag_plasma)
+        control = (self.max_internal_timestep != max_internal_timestep)
+        self.max_internal_timestep = max_internal_timestep
+
+        control += (self.full_timestep != full_timestep)
+        self.full_timestep = full_timestep
+
+        control += (flag_plasma != self.flag_plasma)
         self.flag_plasma = flag_plasma
+
         if control*flag_plasma: 
             plasma_pts, self.mask_inside_limiter = plasma_grids.define_reduced_plasma_grid(reference_eq.R, reference_eq.Z)
             self.Mey = plasma_grids.Mey(plasma_pts)        
         
         control += (flag_vessel_eig != self.flag_vessel_eig)
         self.flag_vessel_eig = flag_vessel_eig
+
         if flag_vessel_eig:
             control += (max_mode_frequency != self.max_mode_frequency)
             self.max_mode_frequency = max_mode_frequency
@@ -113,43 +134,44 @@ class evolve_metal_currents:
 
 
 
-    def calc_inverse_operator(self, dt):
-        if dt not in self.inverse_operator.keys():
-            self.inverse_operator[dt] = np.linalg.inv(np.eye(self.independent_var) + dt*self.Mm1R)
-        self.set_inverse_operator = 1.0*self.inverse_operator[dt]
 
 
-    def set_timesteps(self, full_timestep, max_internal_timestep):
-        self.full_timestep = full_timestep
-        self.max_internal_timestep = max_internal_timestep
-        self.n_steps = int(self.full_timestep/self.max_internal_timestep + .999)
-        self.internal_timestep = self.full_timestep/self.n_steps 
-        if self.flag_vessel_eig<1:
-            self.calc_inverse_operator(self.internal_timestep)
+    # def calc_inverse_operator(self, dt):
+    #     if dt not in self.inverse_operator.keys():
+    #         self.inverse_operator[dt] = np.linalg.inv(np.eye(self.n_independent_vars) + dt*self.Mm1R)
+    #     self.set_inverse_operator = 1.0*self.inverse_operator[dt]
+
+
+    # def set_timesteps(self, full_timestep, max_internal_timestep):
+    #     self.full_timestep = full_timestep
+    #     self.max_internal_timestep = max_internal_timestep
+    #     self.n_steps = int(self.full_timestep/self.max_internal_timestep + .999)
+    #     self.internal_timestep = self.full_timestep/self.n_steps 
+    #     if self.flag_vessel_eig<1:
+    #         self.calc_inverse_operator(self.internal_timestep)
 
 
     def forcing_term_eig_plasma(self, active_voltage_vec, Iydot):
         all_Us = self.empty_U.copy()
-        all_Us[:MASTU_coils.N_active] = active_voltage_vec
+        all_Us[:self.n_active_coils] = active_voltage_vec
         all_Us -= self.Mey@Iydot
         all_Us = self.Vm1@(self.Rm12*all_Us)
         return all_Us
     def forcing_term_eig_no_plasma(self, active_voltage_vec, Iydot=0):
         all_Us = self.empty_U.copy()
-        all_Us[:MASTU_coils.N_active] = active_voltage_vec
+        all_Us[:self.n_active_coils] = active_voltage_vec
         all_Us = self.Vm1@(self.Rm12*all_Us)
         return all_Us
     def forcing_term_no_eig_plasma(self, active_voltage_vec, Iydot):
         all_Us = self.empty_U.copy()
-        all_Us[:MASTU_coils.N_active] = active_voltage_vec
+        all_Us[:self.n_active_coils] = active_voltage_vec
         all_Us -= self.Mey@Iydot
-        all_Us = self.Mm1@all_Us
         return all_Us
     def forcing_term_no_eig_no_plasma(self, active_voltage_vec, Iydot=0):
         all_Us = self.empty_U.copy()
-        all_Us[:MASTU_coils.N_active] = active_voltage_vec
-        all_Us = self.Mm1@all_Us
+        all_Us[:self.n_active_coils] = active_voltage_vec
         return all_Us
+
 
 
     def IvesseltoId(self, Ivessel):
@@ -178,23 +200,24 @@ class evolve_metal_currents:
         return Itpdt
 
 
-    def full_stepper(self, It, active_voltage_vec, Iydot=0):
+    def stepper(self, It, active_voltage_vec, Iydot=0):
         # input It and output I(t+dt) are vessel currents if no_eig or normal modes if eig
 
         forcing = self.forcing_term(active_voltage_vec, Iydot)
-        
-        for _ in range(self.n_steps):
-            It = self.internal_stepper(It, forcing)
-        
+        It = self.solver(It, forcing)
         return It
 
 
-    def current_residual(self, It, Itpdt, active_voltage_vec, Iydot=0):
+    def Iedot(self, It, Itpdt):
+        iedot = (Itpdt - It)/self.full_timestep
+        return iedot
+
+
+    def current_residual(self, Itpdt, Iedot, forcing_term):
         # returns residual of circuit equations in normal modes:
         # residual = Lambda^-1 Idot + I - forcing
-        forcing = self.forcing_term(active_voltage_vec, Iydot=0)
-        residual = (Itpdt - It)/(self.Lambda*self.full_timestep)
-        residual += Itpdt - forcing
+        residual = Iedot/self.Lambda
+        residual += Itpdt - forcing_term
         return residual
 
 

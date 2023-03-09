@@ -2,7 +2,7 @@ import numpy as np
 
 from . import plasma_grids
 
-class evolve_plasma_current:
+class plasma_current:
     # implements the plasma circuit equation
     # in projection on Iy.T:
     # Iy.T/Ip (Myy Iydot + Mye Iedot + Rp Iy) = 0
@@ -25,19 +25,21 @@ class evolve_plasma_current:
         return Iydot
 
 
-    def current_residual(self, Iy1, Iy0,
+    def current_residual(self,  red_Iy1, Ip,
+                                red_Iydot,
                                 Iedot,
-                                dt,
                                 Rp):
+
         # residual = Iy.T/Ip (Myy/Rp Iydot + Mey/Rp Iedot + Iy)
 
-        Iydot = self.Iydot(Iy1, Iy0, dt)
-        Iy1 = self.reduced_Iy(Iy1)
-        Ip = np.sum(Iy1)
+        # Iydot = self.Iydot(Iy1, Iy0, dt)
+        # Iy1 = self.reduced_Iy(Iy1)
+        # Ip = np.sum(red_Iy1)
 
-        Fy = self.Myy@Iydot
+        Fy = self.Myy@red_Iydot
         Fe = self.Mye@Iedot
         Ftot = (Fy+Fe)/Rp
-        Ftot += Iy1
-        residual = np.dot(Iy1, Ftot)/Ip
+        Ftot += red_Iy1
+        residual = np.dot(red_Iy1, Ftot)/Ip
         return residual
+

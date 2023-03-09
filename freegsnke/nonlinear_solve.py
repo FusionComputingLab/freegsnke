@@ -1,0 +1,780 @@
+import numpy as np
+
+from . import MASTU_coils
+from .MASTU_coils import coils_dict
+
+from copy import deepcopy
+
+# from . import quants_for_emu
+from .circuit_eq_metal import metal_currents
+from .circuit_eq_plasma import plasma_current
+from .linear_solve import simplified_solver
+from . import plasma_grids
+
+#from picardfast import fast_solve
+from .newtonkrylov import NewtonKrylov
+from .jtor_update import ConstrainPaxisIp
+
+class nonlinear_solver:
+    # interfaces the circuit equation with freeGS NK solver 
+    # executes dt evolution of fully non linear equations
+    
+    
+    def __init__(self, profiles, eq, 
+                 max_mode_frequency, 
+                 max_internal_timestep=.0001,
+                 full_timestep=.0001,
+                 plasma_resistance=1e-6,
+                 plasma_norm_factor=2000):
+        
+        #instantiate solver on eq's domain
+        self.NK = NewtonKrylov(eq)
+
+        # profiles are kept constant during evolution
+        # paxis, fvac and alpha values are taken from ICs and kept fixed thereafter
+        self.get_profiles_values(profiles)
+        
+        
+        #eq needs only have same tokamak and grid structure as those that will be evolved
+        #when calling time evolution on some initial eq, the eq object that is actually modified is eq1
+        #with profiles1 for changes in the plasma current
+        self.eq1 = deepcopy(eq)
+        self.profiles1 = deepcopy(profiles)   
+        # full plasma current density (make sure you start from an actual equilibrium!)
+                                   
+
+        #the numerical method used to solve for the time evolution uses iterations
+        #the eq object that is modified during the iterations is eq2
+        #with profiles2 for changes in the plasma current
+        self.eq2 = deepcopy(eq)
+        self.profiles2 = deepcopy(profiles)   
+
+        for i,labeli in enumerate(coils_dict):
+            self.eq1.tokamak[labeli].control = False
+            self.eq2.tokamak[labeli].control = False
+        
+        
+        self.time_step = full_timestep
+        self.plasma_resistance = plasma_resistance
+        self.plasma_norm_factor = plasma_norm_factor
+
+
+        #qfe is an instance of the quants_for_emulation class
+        #calculates fluxes of plasma on coils and on itself
+        #as well as all other time-dependent quantities needed for time evolution
+        # self.qfe = quants_for_emu.quants_for_emulation(eq)
+        
+        # to calculate residual of metal circuit eq
+        self.evol_metal_curr = metal_currents(flag_vessel_eig=1,
+                                                flag_plasma=1,
+                                                reference_eq=eq,
+                                                max_mode_frequency=max_mode_frequency,
+                                                max_internal_timestep=max_internal_timestep,
+                                                full_timestep=self.time_step)
+        # this is the number of independent normal mode currents associated to max_mode_frequency
+        self.n_metal_modes = self.evol_metal_curr.n_independent_vars
+
+        # to calculate residual of plasma collapsed circuit eq
+        self.evol_plasma_curr = plasma_current(reference_eq=eq)
+
+
+        self.simplified_solver = simplified_solver(Lambdam1=np.diag(self.evol_metal_curr.Lambda**-1), 
+                                                    Vm1Rm12=self.evol_metal_curr.Vm1@np.diag(self.evol_metal_curr.Rm12), 
+                                                    Mey=self.evol_metal_curr.Mey, 
+                                                    Myy=self.evol_plasma_curr.Myy,
+                                                    plasma_norm_factor=self.plasma_norm_factor,
+                                                    max_internal_timestep=max_internal_timestep,
+                                                    full_timestep=self.time_step,
+                                                    plasma_resistance=self.plasma_resistance)
+        
+
+        # vector of full coil currents (not normal modes) is self.vessel_currents_vec
+        # initial self.vessel_currents_vec values are taken from eq.tokamak
+        # does not include plasma current
+        n_coils = len(coils_dict.keys())
+        self.len_currents = n_coils
+        vessel_currents_vec = np.zeros(n_coils)
+        eq_currents = eq.tokamak.getCurrents()
+        for i,labeli in enumerate(coils_dict.keys()):
+            vessel_currents_vec[i] = eq_currents[labeli]
+        self.vessel_currents_vec = 1.0*vessel_currents_vec
+        # vector of normal mode currents is self.eig_currents_vec
+        self.eig_currents_vec = self.evol_metal_curr.IvesseltoId(Ivessel=self.vessel_currents_vec)
+        
+        # norm plasma current is divided by plasma_norm_factor to keep homogeneity
+        self.norm_plasma_current = eq.plasmaCurrent()/self.plasma_norm_factor
+        # vector of currents on which non linear system is solved is self.currents_vec
+        currents_vec = np.zeros(self.n_metal_modes+1)
+        currents_vec[:self.n_metal_modes] = 1.0*self.eig_currents_vec
+        currents_vec[-1] = self.norm_plasma_current
+        self.currents_vec = 1.0*currents_vec
+        self.new_currents = 1.0*currents_vec
+        
+        #self.npshape = np.shape(eq.plasma_psi)
+        # self.dt_step_plasma = 0
+
+        # threshold to calculate rel_change in the currents to set value of dt_step
+        # it may be useful to use different values for different coils and for passive/active structures later on
+        # self.threshold = np.array([1000]*MASTU_coils.N_active
+        #                           +[5000]*(len(self.currents_vec)-MASTU_coils.N_active-1)
+        #                           +[1000])
+
+        # self.void_matrix = np.zeros((self.len_currents, self.len_currents))
+        # self.dummy_vec = np.zeros(self.len_currents)
+
+        # #calculate eigenvectors of time evolution:
+        # invm = np.linalg.inv(self.evol_currents.R_matrix[:-1,:-1]+MASTU_coils.coil_self_ind/.001)
+        # v, w = np.linalg.eig(np.matmul(invm, MASTU_coils.coil_self_ind/.001))
+        # w = w[:, np.argsort(-v)[:50]]
+        # mw = np.mean(w, axis = 0, keepdims = True)
+        # self.w = np.append(w, mw, axis=0)
+        
+
+        # mask identifying if plasma is hitting the wall
+        plasma_pts, self.mask_inside_limiter = plasma_grids.define_reduced_plasma_grid(eq.R, eq.Z)
+        self.mask_outside_limiter = 1 - self.mask_inside_limiter
+        self.plasma_against_wall = 0
+
+        # area factor for Iy
+        dR = eq.R[1, 0] - eq.R[0, 0]
+        dZ = eq.Z[0, 1] - eq.Z[0, 0]
+        self.dRdZ = dR*dZ
+
+    def reset_plasma_resistance(self, plasma_resistance):
+        self.plasma_resistance = plasma_resistance
+    
+    def reset_timestep(self, time_step):
+        self.time_step = time_step
+    
+    def get_profiles_values(self, profiles):
+        #this allows to use the same instantiation of the time_evolution_class
+        #on ICs with different paxis, fvac and alpha values
+        #if these are different from those used when first instantiating the class
+        #just call this function on the new profile object:
+        self.paxis = profiles.paxis
+        self.fvac = profiles.fvac
+        self.alpha_m = profiles.alpha_m
+        self.alpha_n = profiles.alpha_n
+
+    def Iyplasma(self, jtor):
+        red_Iy = jtor[self.mask_inside_limiter]*self.dRdZ
+        return red_Iy
+
+    def Jplasma(self, jtor):
+        red_Iy = jtor[self.mask_inside_limiter]/np.sum(jtor)
+        return red_Iy
+
+
+    def set_currents_eq1(self, eq):
+        #sets currents and initial plasma_psi in eq1
+        eq_currents = eq.tokamak.getCurrents()
+        for i,labeli in enumerate(coils_dict.keys()):
+            self.vessel_currents_vec[i] = eq_currents[labeli]
+        # vector of normal mode currents is self.eig_currents_vec
+        self.eig_currents_vec = self.evol_metal_curr.IvesseltoId(Ivessel=self.vessel_currents_vec)
+        self.norm_plasma_current = eq.plasmaCurrent()/self.plasma_norm_factor
+        # vector of currents on which non linear system is solved is self.currents_vec
+        self.currents_vec[:self.n_metal_modes] = 1.0*self.eig_currents_vec
+        self.currents_vec[-1] = self.norm_plasma_current
+        # vector of plasma current density (already reduced on grid from plasma_grids)
+        self.jtor = 1.0*self.NK.jtor
+        self.red_Iy = self.Iyplasma(self.jtor)
+
+        self.profiles1 = ConstrainPaxisIp(self.paxis, # Plasma pressure on axis [Pascals]
+                                            eq.plasmaCurrent(), # Plasma current [Amps]
+                                            self.fvac, # vacuum f = R*Bt
+                                            alpha_m = self.alpha_m,
+                                            alpha_n = self.alpha_n)
+        self.eq1.plasma_psi = eq.plasma_psi.copy()
+        self.eq2.plasma_psi = eq.plasma_psi.copy()
+
+
+    def initialize_from_ICs(self, eq, profile): # eq for ICs, with all properties set up at time t=0, 
+                            # ie with eq.tokamak.currents = I(t) and eq.plasmaCurrent = I_p(t) 
+        #get profile parametrization
+        self.get_profiles_values(profile)
+
+        #ensure it's a GS solution
+        self.NK.solve(eq, profile, rel_convergence=1e-8)
+
+        #prepare currents
+        self.set_currents_eq1(eq)
+
+        # #calculate inductances 
+        # self.NK.solve(self.eq1, self.profiles1, rel_convergence=1e-8)
+        # self.results = self.qfe.quants_out(self.eq1, self.profiles1)
+
+        # check if against the wall
+        self.plasma_against_wall = np.any(self.mask_outside_limiter*self.NK.jtor)
+
+        # self.dR = 0
+        # self.dt_step = .0001
+        # self.dt_step_plasma = .0001
+
+
+    def assign_currents(self, currents_vec, profile, eq):
+        #uses currents_vec to assign currents to both plasma and tokamak in eq/profiles
+
+        profile = ConstrainPaxisIp(paxis=self.paxis, # Plasma pressure on axis [Pascals]
+                                   Ip=self.plasma_norm_factor*currents_vec[-1], # Plasma current [Amps]
+                                   fvac=self.fvac, # vacuum f = R*Bt
+                                    alpha_m = self.alpha_m,
+                                    alpha_n = self.alpha_n) 
+
+        # calculate vessel currents from normal modes
+        vessel_currents = self.evol_metal_curr.IdtoIvessel(Id=currents_vec[:-1])
+        for i,labeli in enumerate(coils_dict):
+            self.eq2.tokamak[labeli].current = vessel_currents[i]
+
+
+
+    def Fresidual(self, trial_currents, active_voltage_vec, rtol_NK=1e-8):
+        # root problem for circuit equation
+        # collects both metal normal modes and norm_plasma
+        
+        self.assign_currents(trial_currents, self.profiles2, self.eq2)
+        self.NK.solve(self.eq2, self.profiles2, rel_convergence=rtol_NK)
+        self.red_Iy_trial = self.Iyplasma(self.NK.jtor)
+
+        self.red_Iy_dot = (self.red_Iy_trial - self.red_Iy)/self.time_step
+        self.Ie_dot = ((trial_currents - self.currents_vec)/self.time_step)[:-1]
+        self.vessel_Ie_dot = self.evol_metal_curr.IdtoIvessel(Id=self.Ie_dot)
+
+        self.residual = np.zeros_like(self.currents_vec)
+
+        forcing_term = self.evol_metal_curr.forcing_term_eig_plasma(active_voltage_vec=active_voltage_vec, Iydot=self.red_Iy_dot)
+
+        self.residual[:-1] = self.evol_metal_curr.current_residual(Itpdt=trial_currents[:-1], 
+                                                                    Iedot=self.Ie_dot, 
+                                                                    forcing_term=forcing_term)
+
+        self.residual[-1] = self.evol_plasma_curr.current_residual(red_Iy1=self.red_Iy_trial, 
+                                                                    Ip=self.plasma_norm_factor*trial_currents[-1],
+                                                                    red_Iydot=self.red_Iy_dot,
+                                                                    Iedot=self.vessel_Ie_dot,
+                                                                    Rp=self.plasma_resistance)/self.plasma_norm_factor
+
+    
+
+    def LSQP(self, Fresidual, G, Q, clip=3):
+        #solve the least sq problem in coeffs: min||G*coeffs+Fresidual||^2
+        self.coeffs = np.matmul(np.matmul(np.linalg.inv(np.matmul(G.T, G)),
+                                     G.T), -Fresidual)
+        self.eplained_res = np.sum(G*self.coeffs[np.newaxis,:], axis=1)                             
+        self.coeffs = np.clip(self.coeffs, -clip, clip)
+        #get the associated step in candidate_d_sol space
+        self.d_sol_step = np.sum(Q*self.coeffs[np.newaxis,:], axis=1)
+        return self.d_sol_step
+
+
+    def Arnoldi_iteration(self, trial_sol, #trial_current expansion point
+                                vec_direction, #first vector for current basis
+                                Fresidual, #circuit eq. residual at trial_current expansion point: Fresidual(trial_current)
+                                active_voltage_vec,
+                                n_k=10, # max number of basis vectors (must be less than number of modes + 1)
+                                conv_crit=.1,   #add basis vector 
+                                                #if unexplained orthogonal component is larger than
+                                grad_eps=.001 #infinitesimal step
+                          ):
+        
+        ncurrents_vec = np.linalg.norm(self.currents_vec)
+        nFresidual = np.linalg.norm(Fresidual)
+
+        #basis in Psi space
+        Q = np.zeros((self.n_metal_modes, n_k+1))
+        #orthonormal basis in Psi space
+        Qn = np.zeros((self.n_metal_modes, n_k+1))
+        #basis in grandient space
+        G = np.zeros((self.n_metal_modes, n_k+1))
+        
+        
+        n_it = 0
+        #control on whether to add a new basis vector
+        arnoldi_control = 1
+        #use at least 3 orthogonal terms, but not more than n_k
+        while arnoldi_control*(n_it<n_k)>0:
+            grad_coeff = grad_eps*ncurrents_vec*(nFresidual/1)
+
+            candidate_d_sol = grad_coeff*vec_direction/np.linalg.norm(vec_direction)
+            ri = self.Fcircuit(trial_sol + candidate_d_sol)
+            lvec_direction = ri - Fresidual
+            # lvec_direction = candidate_usable.reshape(-1)
+
+
+            # if ((np.linalg.norm(candidate_usable)/nFresidual)<2)+((np.linalg.norm(candidate_usable)/nFresidual)>10):
+            #     print('using di factor = ', 2*(nFresidual/np.linalg.norm(candidate_usable)))
+            #     candidate_dpsi *= 2*(nFresidual/np.linalg.norm(candidate_usable))
+            #     ri = self._F(plasma_psi + candidate_dpsi)
+            #     candidate_usable = ri - Fresidual
+
+
+            Q[:,n_it] = 1.0*candidate_d_sol
+            #print('dcurrent = ', Q[:,n_it])
+
+            Qn[:,n_it] = Q[:,n_it]/np.linalg.norm(Q[:,n_it])
+            
+            
+            # vec_direction = candidate_usable.copy()
+            # lvec_direction = vec_direction.reshape(-1)
+            #print('usable/residual = ', np.linalg.norm(vec_direction)/nFresidual)
+            # if verbose_currents:
+            #     print('trial dI = ',Q[:,n_it])
+            #     print('associated residual to use = ', vec_direction)
+            G[:,n_it] = 1.0*lvec_direction
+            n_it += 1
+
+            #orthogonalize residual 
+            lvec_direction -= np.sum(np.sum(Qn[:,:n_it]*lvec_direction[:,np.newaxis], axis=0, keepdims=True)*Qn[:,:n_it], axis=1)
+            vec_direction = 1.0*lvec_direction
+
+            #check if more terms are needed
+            #arnoldi_control = (np.linalg.norm(vec_direction)/nFresidual > conv_crit)
+            self.G = G[:,:n_it]
+            self.Q = Q[:,:n_it]
+            self.LSQP(Fresidual, G=self.G, Q=self.Q, clip=3)
+            rel_unexpl_res = np.linalg.norm(self.eplained_res + Fresidual)/nFresidual
+            #print('relative_unexplained_residual = ', rel_unexpl_res)
+            arnoldi_control = (rel_unexpl_res > conv_crit)
+
+
+
+    
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    # def set_currents_eq1(self, eq):
+    #     #sets currents and initial plasma_psi in eq1
+    #     eq_currents = eq.tokamak.getCurrents()
+    #     currents_vec = np.zeros(len(eq_currents)+1)
+    #     for i,labeli in enumerate(coils_dict.keys()):
+    #         currents_vec[i] = eq_currents[labeli]
+    #     currents_vec[-1] = eq.plasmaCurrent()
+    #     self.currents_vec = currents_vec.copy()
+    #     self.profiles1 = ConstrainPaxisIp(self.paxis, # Plasma pressure on axis [Pascals]
+    #                                         eq.plasmaCurrent(), # Plasma current [Amps]
+    #                                         self.fvac, # vacuum f = R*Bt
+    #                                         alpha_m = self.alpha_m,
+    #                                         alpha_n = self.alpha_n)
+    #     self.eq1.plasma_psi = eq.plasma_psi.copy()
+    #     self.eq2.plasma_psi = eq.plasma_psi.copy()
+
+
+        
+    # def assign_currents_1(self, currents_vec):
+    #     #uses currents_vec to assign currents to both plasma and tokamak in eq/profiles
+    #     self.profiles1 = ConstrainPaxisIp(self.paxis, # Plasma pressure on axis [Pascals]
+    #                                                 currents_vec[-1], # Plasma current [Amps]
+    #                                                 self.fvac, # vacuum f = R*Bt
+    #                                                 alpha_m = self.alpha_m,
+    #                                                 alpha_n = self.alpha_n) 
+    #     for i,labeli in enumerate(coils_dict):
+    #         self.eq1.tokamak[labeli].current = currents_vec[i]
+    # def assign_currents_2(self, currents_vec):
+    #     #uses currents_vec to assign currents to both plasma and tokamak in eq/profiles
+    #     self.profiles2 = ConstrainPaxisIp(self.paxis, # Plasma pressure on axis [Pascals]
+    #                                                 currents_vec[-1], # Plasma current [Amps]
+    #                                                 self.fvac, # vacuum f = R*Bt
+    #                                                 alpha_m = self.alpha_m,
+    #                                                 alpha_n = self.alpha_n) 
+    #     for i,labeli in enumerate(coils_dict):
+    #         self.eq2.tokamak[labeli].current = currents_vec[i]
+
+        
+        
+    # # def find_dt_evolve(self, U_active, max_rel_change, results=None, dR=0):
+    # #     #solves linearized circuit eq on eq1
+    # #     #currents at time t are as in eq1.tokamak and profiles1
+    # #     #progressively smaller timestep dt_step is used
+    # #     #up to achieving a relative change in the currents of max_rel_change
+    # #     #since some currents can cross 0, rel change is calculated with respect to 
+    # #     #either the current itself or a changeable threshold value, set in init as self.threshold
+    # #     #the new currents are in self.new_currents
+    # #     #this works using qfe quantities (i.e. inductances) based on eq1/profiles1
+    # #     if results==None:
+    # #         self.results = self.qfe.quants_out(self.eq1, self.profiles1)
+    # #     else: 
+    # #         self.results = results
+        
+    # #     rel_change_curr = np.ones(5)
+    # #     dt_step = .002
+    # #     while np.sum(abs(rel_change_curr)>max_rel_change):
+    # #         dt_step /= 1.5
+    # #         new_currents = self.evol_currents.new_currents_out(self.eq1, 
+    # #                                                            self.results, 
+    # #                                                            U_active, 
+    # #                                                            dt_step,
+    # #                                                            dR)
+    # #         rel_change_curr = abs(new_currents-self.currents_vec)/self.vals_for_rel_change
+    # #     #print('find_dt_evolve dt = ', dt_step)
+
+    # #     #print('rel_change_currents = ', abs(rel_change_curr))
+    # #     self.new_currents = new_currents
+    # #     self.dt_step_plasma = dt_step
+       
+    
+
+
+    
+    # def update_R_matrix(self, trial_currents, rtol_NK=1e-8):#, verbose_NK=False):
+    #     """calculates the matrix dL/dt using the previous estimate of I(t+dt)
+    #     this is equivalent to a non diagonal resistance term, hence the name"""
+
+    #     self.assign_currents_2(trial_currents)
+    #     self.NK.solve(self.eq2, self.profiles2, rel_convergence=rtol_NK) #verbose_NK)
+    #     #calculate new fluxes and inductances
+    #     self.results1 = self.qfe.quants_out(self.eq2, self.profiles2)
+    #     #self.Lplus1 = self.results1['plasma_ind_on_coils']
+        
+    #     dLpc = self.results1['plasma_ind_on_coils'] - self.results['plasma_ind_on_coils']
+    #     dLpc /= self.dt_step_plasma
+
+    #     dLcp = self.results1['plasma_coil_ind'] - self.results['plasma_coil_ind']
+    #     dLcp /= self.dt_step_plasma
+        
+    #     dR = self.void_matrix.copy()
+    #     dR[:,-1] = dLpc
+    #     dR[-1,:-1] = dLcp
+
+    #     return dR
+
+ 
+
+    # def Fcircuit(self,  trial_currents,
+    #                     rtol_NK=1e-7):
+    #                   #,  verbose_NK=False):
+    #     self._dR = self.update_R_matrix(trial_currents, rtol_NK)#, verbose_NK)
+    #     new_currents = self.evol_currents.stepper_adapt_repeat(self.currents_vec, dR=self._dR)
+    #     return (new_currents-trial_currents)/self.vals_for_rel_change
+
+
+    # def dI(self, res0, G, Q, clip=5):
+    # #solve the least sq problem in coeffs: min||G.coeffs+res0||^2
+    #     self.coeffs = np.matmul(np.matmul(np.linalg.inv(np.matmul(G.T, G)),
+    #                                       G.T), -res0)
+    #     # print('intermediate_coeffs = ', self.coeffs)
+    #     self.coeffs = np.clip(self.coeffs, -clip, clip)
+    #     self.eplained_res = np.sum(G*self.coeffs[np.newaxis,:], axis=1)
+    #     #get the associated step in I space
+    #     self.di_Arnoldi = np.sum(Q*self.coeffs[np.newaxis,:], axis=1)
+
+            
+  
+
+
+    # def Arnoldi_iter(self,      trial_currents, #expansion point of the root problem function
+    #                             vec_direction, #first direction for I basis
+    #                             Fresidual, #residual of trial currents
+    #                             n_k=10, #max number of basis vectors, must be smaller than tot number of coils+1
+    #                             conv_crit=.5, #add basis vector 
+    #                                           #if orthogonal residual is larger than
+    #                             grad_eps=.001, #relative magnitude of infinitesimal step, with respect to self.vals_for_rel_change 
+    #                                            #adjust in line to 0.1*max_rel_change
+    #                             accept_threshold = .2,
+    #                             max_collinearity = .6,
+    #                             clip = 1.5,
+    #                             verbose=False
+    #                             ):
+
+    #     # clip_vec = np.array([clip])
+
+    #     ntrial_currents = np.linalg.norm(self.trial_currents)
+    #     nFresidual = np.linalg.norm(Fresidual)
+    #     dFresidual = Fresidual/nFresidual
+    #     #print('nFresidual', nFresidual)
+
+    #     #basis in input space
+    #     Q = np.zeros((self.len_currents, n_k+1))
+    #     #orthonormal version of the basis above
+    #     Qn = np.zeros((self.len_currents, n_k+1))
+    #     #basis in residual space
+    #     G = np.zeros((self.len_currents, n_k+1))
+    #     #normalized version of the basis above
+    #     Gn = np.zeros((self.len_currents, n_k+1))
+        
+    #     n_it = 0
+    #     #control on whether to add a new basis vector
+    #     arnoldi_control = 1
+    #     #use at least 1 orthogonal terms, but not more than n_k
+    #     failure_count = 0
+    #     while ((n_it<1)+(arnoldi_control>0))*(n_it<n_k)*((failure_count<2)+(n_it<1))>0:
+
+    #         #print('failure_count', failure_count)
+    #         nvec_direction = np.linalg.norm(vec_direction)
+    #         grad_coeff = grad_eps*ntrial_currents/nvec_direction*nFresidual/.01
+    #         candidate_di = vec_direction*min(grad_coeff, 200/abs(vec_direction[-1]))
+    #         ri = self.Fcircuit(trial_currents + candidate_di)
+    #         #print('trial currents in arnoldi', trial_currents)
+    #         #internal_res = np.abs(ri)/self.vals_for_rel_change
+    #         #print('internal residual = ', max(internal_res), np.argmax(internal_res), internal_res.mean())
+    #         #print('all residual', internal_res)
+    #         candidate_usable = ri - Fresidual
+    #         ncandidate_usable = np.linalg.norm(candidate_usable)
+    #         di_factor = ncandidate_usable/nFresidual
+    #         #print('di_factor', di_factor)
+
+    #         if ((di_factor<.3)*(abs(candidate_di[-1])<150))+(di_factor>6):
+    #             #print('using factor = ', 1/di_factor)
+    #             candidate_di *= min(1/di_factor, 200/abs(candidate_di[-1]))
+    #             ri = self.Fcircuit(trial_currents + candidate_di)
+    #             candidate_usable = ri - Fresidual
+    #             ncandidate_usable = np.linalg.norm(candidate_usable)
+    #             di_factor = ncandidate_usable/nFresidual
+            
+    #         #print('dcurrent = ', candidate_di)
+            
+    #         dcandidate_usable = candidate_usable/ncandidate_usable
+    #         costerm = abs(np.sum(dFresidual*dcandidate_usable)) 
+    #         if verbose:
+    #             print('candidate_di = ', candidate_di)
+    #             print('usable/residual = ', candidate_usable/Fresidual)
+    #             print('costerm', costerm)
+
+    #         if costerm>accept_threshold:
+    #             collinearity = (np.sum(dcandidate_usable[:,np.newaxis]*Gn[:,:n_it], axis=0) > max_collinearity)
+    #             if np.sum(collinearity):
+    #                 #print('not accepting this term!, ', collinearity)
+    #                 idx = np.random.randint(50)
+    #                 vec_direction += nvec_direction*self.w[:, idx]
+    #                 conv_crit = .95
+    #                 #print('reshuffled', idx)
+    #                 failure_count += 1
+
+
+    #             else:
+    #                 Q[:,n_it] = candidate_di.copy()
+    #                 Qn[:,n_it] = Q[:,n_it]/np.linalg.norm(Q[:,n_it])
+                    
+    #                 G[:,n_it] = candidate_usable.copy()
+    #                 Gn[:,n_it] = dcandidate_usable.copy()
+
+    #                 n_it += 1
+    #                 self.G = G[:,:n_it]
+    #                 self.Q = Q[:,:n_it]
+    #                 self.dI(Fresidual, G=self.G, Q=self.Q, clip=clip)
+    #                 rel_unexpl_res = np.linalg.norm(self.eplained_res+Fresidual)/nFresidual
+    #                 if verbose:
+    #                     print('relative_unexplained_residual = ', rel_unexpl_res)
+    #                 arnoldi_control = (rel_unexpl_res > conv_crit)
+
+    #                 vec_direction = candidate_usable*self.vals_for_rel_change
+    #                 #vec_direction -= np.sum(np.sum(Qn[:,:n_it]*vec_direction[:,np.newaxis], axis=0, keepdims=True)*Qn[:,:n_it], axis=1)
+    #         else: 
+    #             #print('costerm too small!')
+    #             idx = np.random.randint(50)
+    #             vec_direction += nvec_direction*self.w[:, idx]
+    #             grad_eps = .0001
+    #             accept_threshold /= 1.2
+    #             #print('reshuffled', idx)
+    #             failure_count += 1
+
+                
+    #     return n_it
+
+   
+
+    
+
+    
+    # def get_max_rel_change(self, U_active, # active potential
+    #                             max_dt_step_currents = .00002, # do multiple timesteps in Euler using constant \dotL if dt_step_plasma larger than
+    #                             rtol_NK=1e-6, # for convergence of the NK solver of GS
+    #                             ): 
+    #     self.evol_currents.initialize_time_t(self.results)
+    #     self.evol_currents.determine_currents_stepsize(self.dt_step_plasma, max_dt_step_currents)
+    #     self.trial_currents = self.evol_currents.stepper_adapt_first(self.currents_vec, U_active, self.dR)
+    #     Fresidual = self.Fcircuit(self.trial_currents, rtol_NK)#, verbose_NK)
+    #     rel_change = abs(Fresidual)
+    #     return max(rel_change), Fresidual
+
+
+    # def do_step_free(self,  U_active, # active potential
+    #                     max_rel_residual=.0013, # aim for a dt such that the maximum relative change in the currents is max_rel_change
+    #                     max_dt_step_currents = .00002, # do multiple timesteps in Euler using constant \dotL if dt_step_plasma larger than
+    #                     rtol_NK=1e-6, # for convergence of the NK solver of GS
+    #                     # verbose_NK=False,
+    #                     rtol_currents=3e-4, #for convergence of the circuit equation
+    #                     max_iter=10, # if more iterative steps are required, dt is reduced
+    #                     n_k=10, # maximum number of terms in Arnoldi expansion
+    #                     conv_crit=.15, # add more Arnoldi terms if residual is still larger than
+    #                     grad_eps=.00003,
+    #                     clip=1.5,
+    #                     cap_timestep=1, # if self-determined timestep is longer than, it is clipped at cap_timestep
+    #                     verbose=False
+    #                     ): 
+        
+
+    #     """advances both plasma and currents according to complete linearized eq.
+    #     Uses an NK iterative scheme to find consistent values of I(t+dt) and L(t+dt)
+    #     Does not modify the input object eq, rather the evolved plasma is in self.eq1
+    #     Outputs a flag that =1 if plasma is hitting the wall 
+    #     Timestepping necessary for convergence is self-determined, hence not uniform"""
+        
+    #     abs_currents = abs(self.currents_vec)
+    #     self.vals_for_rel_change = np.where(abs_currents>self.threshold, abs_currents, self.threshold)
+
+    #     not_done_flag = 1
+    #     while not_done_flag:
+
+    #         # determine if dt_step_plasma is of suitable size by checking residual
+    #         max_rel_change, Fresidual = self.get_max_rel_change(U_active, # active potential
+    #                                             max_dt_step_currents, # do multiple timesteps in Euler using constant \dotL if dt_step_plasma larger than
+    #                                             rtol_NK, # for convergence of the NK solver of GS
+    #                                             )
+
+    #         if max_rel_change<.6*max_rel_residual:
+    #             #print('increasing timestep')
+    #             self.dt_step_plasma *= min(3,(.8*max_rel_residual/max_rel_change))
+    #             max_rel_change, Fresidual = self.get_max_rel_change(U_active, # active potential
+    #                                             max_dt_step_currents, # do multiple timesteps in Euler using constant \dotL if dt_step_plasma larger than
+    #                                             rtol_NK, # for convergence of the NK solver of GS
+    #                                             )
+    #         while (max_rel_change > max_rel_residual)*(self.dt_step_plasma > 1e-5):
+    #             #print('reducing timestep')
+    #             self.dt_step_plasma *= (.8*max_rel_residual/max_rel_change)
+    #             max_rel_change, Fresidual = self.get_max_rel_change(U_active, # active potential
+    #                                             max_dt_step_currents, # do multiple timesteps in Euler using constant \dotL if dt_step_plasma larger than
+    #                                             rtol_NK, # for convergence of the NK solver of GS
+    #                                             )
+
+            
+    #         if self.dt_step_plasma>cap_timestep:
+    #             self.dt_step_plasma = cap_timestep
+    #             max_rel_change, Fresidual = self.get_max_rel_change(U_active, # active potential
+    #                                             max_dt_step_currents, # do multiple timesteps in Euler using constant \dotL if dt_step_plasma larger than
+    #                                             rtol_NK, # for convergence of the NK solver of GS
+    #                                             )
+
+
+    #         if verbose:
+    #             print('chosen timestep = ', self.dt_step_plasma)
+    #             #print('currents step from LdI/dt only = ', self.trial_currents-self.currents_vec)
+    #             #print('initial residual = ', Fresidual)
+    #             print('initial max_rel_change = ', max_rel_change)
+    #             #print('initial relative residual on inductances', max(abs(self.Lplus1-self.Lplus)/self.Lplus))
+            
+    #         if max_rel_change<rtol_currents: 
+    #             not_done_flag=0
+
+    #         it=0
+    #         while it<max_iter and not_done_flag:
+    #             self.Arnoldi_iter( self.trial_currents, 
+    #                                 Fresidual*self.vals_for_rel_change, #starting direction in I space
+    #                                 Fresidual, #F(trial_currents)
+    #                                 n_k, 
+    #                                 conv_crit, 
+    #                                 grad_eps, 
+    #                                 clip=clip,
+    #                                 verbose=verbose)
+    #             #print('self.di_Arnoldi', self.di_Arnoldi)
+    #             #print('trial current before update', self.trial_currents)
+    #             self.trial_currents += self.di_Arnoldi
+    #             Fresidual = self.Fcircuit(self.trial_currents)
+    #             #print('full residual after update', Fresidual)
+    #             rel_change = abs(Fresidual)#/self.vals_for_rel_change
+    #             max_rel_change = max(rel_change)
+    #             if max_rel_change<rtol_currents: 
+    #                 not_done_flag=0
+                
+    #             if verbose:
+    #                 print(' coeffs= ', self.coeffs)
+    #                 #print('new residual = ', Fresidual)
+    #                 print('new max_rel_change = ', max_rel_change, np.argmax(rel_change), rel_change.mean())
+                    
+    #             it += 1
+            
+    #         if it==max_iter:
+    #             #if max_iter was hit, then message:
+    #             print(f'failed to converge with less than {max_iter} iterations.') 
+    #             print(f'Last max rel_change={max_rel_change}.')
+    #             print('Restarting with smaller timestep')
+    #             max_rel_residual /= 2
+    #             grad_eps /= 2
+                
+    #     # if verbose:
+    #     #     print('number of Arnoldi iterations = ', it)
+
+    #     #get ready for next step
+    #     self.old_currents = self.currents_vec.copy()
+    #     self.currents_vec = self.trial_currents.copy()
+    #     self.assign_currents_1(self.currents_vec)
+    #     self.eq1.plasma_psi = self.eq2.plasma_psi.copy()
+    #     self.old_results = self.results.copy()
+    #     # self.results = self.results1.copy()
+    #     self.dR = self._dR.copy()
+        
+    #     self.plasma_against_wall = np.sum(self.mask_outside_reactor*self.results['separatrix'][1])
+    #     return self.plasma_against_wall
+
+
+
+    # def do_step(self,  U_active, # active potential
+    #                     max_rel_residual=.0016, # aim for a dt such that the maximum relative change in the currents is max_rel_change
+    #                     max_dt_step_currents = .00002, # do multiple timesteps in Euler using constant \dotL if dt_step_plasma larger than
+    #                     rtol_NK=1e-6, # for convergence of the NK solver of GS
+    #                     # verbose_NK=False,
+    #                     rtol_currents=3e-4, #for convergence of the circuit equation
+    #                     verbose=False,
+    #                     max_iter=10, # if more iterative steps are required, dt is reduced
+    #                     n_k=10, # maximum number of terms in Arnoldi expansion
+    #                     conv_crit=.15, # add more Arnoldi terms if residual is still larger than
+    #                     grad_eps=.00003,
+    #                     clip=1.5,
+    #                     force_timestep=0.0002 # set desired timestep                        
+    #                     ): 
+                        
+    #     """advances both plasma and currents according to complete linearized eq.
+    #     Uses an NK iterative scheme to find consistent values of I(t+dt) and L(t+dt)
+    #     Does not modify the input object eq, rather the evolved plasma is in self.eq1
+    #     Outputs a flag that =1 if plasma is hitting the wall 
+    #     Timestepping necessary for convergence is self-determined, hence not uniform"""
+        
+    #     dt_advance = 0
+    #     self.n_plasma_steps = 0
+
+    #     while (dt_advance<force_timestep)*(self.plasma_against_wall<1):
+    #         self.n_plasma_steps += 1
+    #         cap_timestep = force_timestep - dt_advance
+    #         self.do_step_free(U_active, # active potential
+    #                     max_rel_residual, # aim for a dt such that the maximum relative change in the currents is max_rel_change
+    #                     max_dt_step_currents, # do multiple timesteps in Euler using constant \dotL if dt_step_plasma larger than
+    #                     rtol_NK, # for convergence of the NK solver of GS
+    #                     # verbose_NK=False,
+    #                     rtol_currents, # for convergence of the circuit equation
+    #                     max_iter, # if more iterative steps are required, dt is reduced
+    #                     n_k, # maximum number of terms in Arnoldi expansion
+    #                     conv_crit, # add more Arnoldi terms if residual is still larger than
+    #                     grad_eps,
+    #                     clip,
+    #                     cap_timestep=cap_timestep, # if self-determined timestep is longer than, it is clipped at cap_timestep
+    #                     verbose=verbose
+    #                     )
+    #         dt_advance += self.dt_step_plasma
+        
+    #     self.dt_step = dt_advance
+
+    #     return self.plasma_against_wall
+
+
+
+    # def do_step_(self,  U_active, # active potential
+    #                     force_timestep=0.0002, # set desired timestep    
+    #                     max_dt_step_currents = .00002, # do multiple timesteps in Euler using constant \dotL if dt_step_plasma larger than
+    #                     rtol_NK=1e-6, # for convergence of the NK solver of GS
+    #                     rtol_dI=3e-4, #for convergence of the circuit equation
+    #                     verbose=False
+    #                     ): 
+
+        
+        
+    #     return 

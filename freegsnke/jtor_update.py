@@ -257,6 +257,7 @@ class ConstrainBetapIp(Profile):
 
         # Toroidal current
         Jtor = L * (Beta0 * R / self.Raxis + (1 - Beta0) * self.Raxis / R) * jtorshape
+        self.jtor = Jtor
 
         self.L = L
         self.Beta0 = Beta0
@@ -392,6 +393,7 @@ class ConstrainPaxisIp(Profile):
 
         # Toroidal current
         Jtor = L * (Beta0 * R / self.Raxis + (1 - Beta0) * self.Raxis / R) * jtorshape
+        self.jtor = Jtor
 
         self.L = L
         self.Beta0 = Beta0

@@ -24,8 +24,23 @@ class nonlinear_solver:
                  max_mode_frequency, 
                  max_internal_timestep=.0001,
                  full_timestep=.0001,
-                 plasma_resistance=1e-6,
+                 plasma_resistivity=1e-4,
                  plasma_norm_factor=2000):
+
+        self.nx = np.shape(eq.R)[0]
+        self.ny = np.shape(eq.R)[1]
+        # area factor for Iy
+        dR = eq.R[1, 0] - eq.R[0, 0]
+        dZ = eq.Z[0, 1] - eq.Z[0, 0]
+        self.dRdZ = dR*dZ
+
+        # mask identifying if plasma is hitting the wall
+        self.plasma_pts, self.mask_inside_limiter = plasma_grids.define_reduced_plasma_grid(eq.R, eq.Z)
+        self.mask_outside_limiter = 1 - self.mask_inside_limiter
+        self.plasma_against_wall = 0
+        self.idxs_mask = np.mgrid[0:self.nx, 0:self.ny][np.tile(self.mask_inside_limiter,(2,1,1))].reshape(2,-1)
+
+
         
         #instantiate solver on eq's domain
         self.NK = NewtonKrylov(eq)
@@ -55,8 +70,10 @@ class nonlinear_solver:
         
         
         self.time_step = full_timestep
-        self.plasma_resistance = plasma_resistance
         self.plasma_norm_factor = plasma_norm_factor
+        self.max_internal_timestep = max_internal_timestep
+        self.max_mode_frequency = max_mode_frequency
+        self.reset_plasma_resistivity(plasma_resistivity)
 
 
         #qfe is an instance of the quants_for_emulation class
@@ -68,24 +85,24 @@ class nonlinear_solver:
         self.evol_metal_curr = metal_currents(flag_vessel_eig=1,
                                                 flag_plasma=1,
                                                 reference_eq=eq,
-                                                max_mode_frequency=max_mode_frequency,
-                                                max_internal_timestep=max_internal_timestep,
+                                                max_mode_frequency=self.max_mode_frequency,
+                                                max_internal_timestep=self.max_internal_timestep,
                                                 full_timestep=self.time_step)
         # this is the number of independent normal mode currents associated to max_mode_frequency
         self.n_metal_modes = self.evol_metal_curr.n_independent_vars
 
         # to calculate residual of plasma collapsed circuit eq
-        self.evol_plasma_curr = plasma_current(reference_eq=eq)
+        self.evol_plasma_curr = plasma_current(reference_eq=eq,
+                                                Rm12V=np.matmul(np.diag(self.evol_metal_curr.Rm12), self.evol_metal_curr.V))
 
 
         self.simplified_solver = simplified_solver(Lambdam1=np.diag(self.evol_metal_curr.Lambda**-1), 
-                                                    Vm1Rm12=self.evol_metal_curr.Vm1@np.diag(self.evol_metal_curr.Rm12), 
+                                                    Vm1Rm12=np.matmul(self.evol_metal_curr.Vm1, np.diag(self.evol_metal_curr.Rm12)), 
                                                     Mey=self.evol_metal_curr.Mey, 
                                                     Myy=self.evol_plasma_curr.Myy,
                                                     plasma_norm_factor=self.plasma_norm_factor,
-                                                    max_internal_timestep=max_internal_timestep,
-                                                    full_timestep=self.time_step,
-                                                    plasma_resistance=self.plasma_resistance)
+                                                    max_internal_timestep=self.max_internal_timestep,
+                                                    full_timestep=self.time_step)
         
 
         # vector of full coil currents (not normal modes) is self.vessel_currents_vec
@@ -109,6 +126,7 @@ class nonlinear_solver:
         currents_vec[-1] = self.norm_plasma_current
         self.currents_vec = 1.0*currents_vec
         self.new_currents = 1.0*currents_vec
+        self.residual = np.zeros_like(self.currents_vec)
         
         #self.npshape = np.shape(eq.plasma_psi)
         # self.dt_step_plasma = 0
@@ -130,18 +148,16 @@ class nonlinear_solver:
         # self.w = np.append(w, mw, axis=0)
         
 
-        # mask identifying if plasma is hitting the wall
-        plasma_pts, self.mask_inside_limiter = plasma_grids.define_reduced_plasma_grid(eq.R, eq.Z)
-        self.mask_outside_limiter = 1 - self.mask_inside_limiter
-        self.plasma_against_wall = 0
-
-        # area factor for Iy
-        dR = eq.R[1, 0] - eq.R[0, 0]
-        dZ = eq.Z[0, 1] - eq.Z[0, 0]
-        self.dRdZ = dR*dZ
-
-    def reset_plasma_resistance(self, plasma_resistance):
-        self.plasma_resistance = plasma_resistance
+       
+        
+    def reset_plasma_resistivity(self, plasma_resistivity):
+        self.plasma_resistivity = plasma_resistivity
+        plasma_resistance_matrix = self.eq1.R*(2*np.pi/self.dRdZ)*self.plasma_resistivity
+        self.plasma_resistance_1d = plasma_resistance_matrix[self.mask_inside_limiter]
+    
+    def calc_plasma_resistance(self, norm_red_Iy):
+        self.plasma_resistance_0d = np.sum(self.plasma_resistance_1d*norm_red_Iy**2)
+        return self.plasma_resistance_0d
     
     def reset_timestep(self, time_step):
         self.time_step = time_step
@@ -156,41 +172,47 @@ class nonlinear_solver:
         self.alpha_m = profiles.alpha_m
         self.alpha_n = profiles.alpha_n
 
-    def Iyplasma(self, jtor):
+    def Iyplasmafromjtor(self, jtor):
         red_Iy = jtor[self.mask_inside_limiter]*self.dRdZ
         return red_Iy
 
-    def Jplasma(self, jtor):
-        red_Iy = jtor[self.mask_inside_limiter]/np.sum(jtor)
+    def reduce_normalize(self, jtor):
+        red_Iy = jtor[self.mask_inside_limiter]/np.abs(np.sum(jtor))
         return red_Iy
 
+    def rebuild_grid_map(self, red_vec):
+        mapd = np.zeros_like(self.eq1.R)
+        mapd[self.idxs_mask[0], self.idxs_mask[1]] = red_vec
+        return mapd
 
-    def set_currents_eq1(self, eq):
-        #sets currents and initial plasma_psi in eq1
+
+
+    def set_currents_eq1(self, eq, rtol_NK=1e-8):
+        #gets initial currents from ICs, note these are before mode truncation!
         eq_currents = eq.tokamak.getCurrents()
         for i,labeli in enumerate(coils_dict.keys()):
             self.vessel_currents_vec[i] = eq_currents[labeli]
         # vector of normal mode currents is self.eig_currents_vec
         self.eig_currents_vec = self.evol_metal_curr.IvesseltoId(Ivessel=self.vessel_currents_vec)
+
         self.norm_plasma_current = eq.plasmaCurrent()/self.plasma_norm_factor
         # vector of currents on which non linear system is solved is self.currents_vec
         self.currents_vec[:self.n_metal_modes] = 1.0*self.eig_currents_vec
         self.currents_vec[-1] = self.norm_plasma_current
         # vector of plasma current density (already reduced on grid from plasma_grids)
-        self.jtor = 1.0*self.NK.jtor
-        self.red_Iy = self.Iyplasma(self.jtor)
 
-        self.profiles1 = ConstrainPaxisIp(self.paxis, # Plasma pressure on axis [Pascals]
-                                            eq.plasmaCurrent(), # Plasma current [Amps]
-                                            self.fvac, # vacuum f = R*Bt
-                                            alpha_m = self.alpha_m,
-                                            alpha_n = self.alpha_n)
         self.eq1.plasma_psi = eq.plasma_psi.copy()
-        self.eq2.plasma_psi = eq.plasma_psi.copy()
+        # solve GS again with vessel currents you get after truncating modes:
+        self.assign_currents(self.currents_vec, self.eq1, self.profiles1)
+        self.NK.solve(self.eq1, self.profiles1, rel_convergence=rtol_NK)
+        self.red_Iy = self.Iyplasmafromjtor(self.profiles1.jtor)
+
+        self.eq2.plasma_psi = self.eq1.plasma_psi.copy()
 
 
     def initialize_from_ICs(self, eq, profile): # eq for ICs, with all properties set up at time t=0, 
                             # ie with eq.tokamak.currents = I(t) and eq.plasmaCurrent = I_p(t) 
+        
         #get profile parametrization
         self.get_profiles_values(profile)
 
@@ -200,68 +222,121 @@ class nonlinear_solver:
         #prepare currents
         self.set_currents_eq1(eq)
 
-        # #calculate inductances 
-        # self.NK.solve(self.eq1, self.profiles1, rel_convergence=1e-8)
-        # self.results = self.qfe.quants_out(self.eq1, self.profiles1)
-
         # check if against the wall
         self.plasma_against_wall = np.any(self.mask_outside_limiter*self.NK.jtor)
 
-        # self.dR = 0
-        # self.dt_step = .0001
-        # self.dt_step_plasma = .0001
+        self.time = 0
 
 
-    def assign_currents(self, currents_vec, profile, eq):
+    def assign_currents(self, currents_vec, eq, profile):
         #uses currents_vec to assign currents to both plasma and tokamak in eq/profiles
 
-        profile = ConstrainPaxisIp(paxis=self.paxis, # Plasma pressure on axis [Pascals]
-                                   Ip=self.plasma_norm_factor*currents_vec[-1], # Plasma current [Amps]
-                                   fvac=self.fvac, # vacuum f = R*Bt
-                                    alpha_m = self.alpha_m,
-                                    alpha_n = self.alpha_n) 
+        profile.Ip = self.plasma_norm_factor*currents_vec[-1]
 
         # calculate vessel currents from normal modes
-        vessel_currents = self.evol_metal_curr.IdtoIvessel(Id=currents_vec[:-1])
+        self.vessel_currents_vec = self.evol_metal_curr.IdtoIvessel(Id=currents_vec[:-1])
         for i,labeli in enumerate(coils_dict):
-            self.eq2.tokamak[labeli].current = vessel_currents[i]
+            eq.tokamak[labeli].current = self.vessel_currents_vec[i]
 
 
 
-    def Fresidual(self, trial_currents, active_voltage_vec, rtol_NK=1e-8):
+    def Fresidual(self, trial_currents, active_voltage_vec, Rp, rtol_NK=1e-8):
         # root problem for circuit equation
         # collects both metal normal modes and norm_plasma
         
-        self.assign_currents(trial_currents, self.profiles2, self.eq2)
+        self.assign_currents(trial_currents, profile=self.profiles2, eq=self.eq2)
         self.NK.solve(self.eq2, self.profiles2, rel_convergence=rtol_NK)
-        self.red_Iy_trial = self.Iyplasma(self.NK.jtor)
+        self.red_Iy_trial = self.Iyplasmafromjtor(self.profiles2.jtor)
+        self.Ip_trial = self.plasma_norm_factor*trial_currents[-1]
+        self.norm_red_Iy_trial = self.red_Iy_trial/self.Ip_trial
+        self.calc_plasma_resistance(self.norm_red_Iy_trial)
 
         self.red_Iy_dot = (self.red_Iy_trial - self.red_Iy)/self.time_step
-        self.Ie_dot = ((trial_currents - self.currents_vec)/self.time_step)[:-1]
-        self.vessel_Ie_dot = self.evol_metal_curr.IdtoIvessel(Id=self.Ie_dot)
+        self.Id_dot = ((trial_currents - self.currents_vec)/self.time_step)[:-1]
 
-        self.residual = np.zeros_like(self.currents_vec)
+        self.forcing_term = self.evol_metal_curr.forcing_term_eig_plasma(active_voltage_vec=active_voltage_vec, 
+                                                                    Iydot=self.red_Iy_dot)
+        self.residual[:-1] = 1.0*self.evol_metal_curr.current_residual( Itpdt=trial_currents[:-1], 
+                                                                        Iddot=self.Id_dot, 
+                                                                        forcing_term=self.forcing_term)
 
-        forcing_term = self.evol_metal_curr.forcing_term_eig_plasma(active_voltage_vec=active_voltage_vec, Iydot=self.red_Iy_dot)
-
-        self.residual[:-1] = self.evol_metal_curr.current_residual(Itpdt=trial_currents[:-1], 
-                                                                    Iedot=self.Ie_dot, 
-                                                                    forcing_term=forcing_term)
-
-        self.residual[-1] = self.evol_plasma_curr.current_residual(red_Iy1=self.red_Iy_trial, 
-                                                                    Ip=self.plasma_norm_factor*trial_currents[-1],
-                                                                    red_Iydot=self.red_Iy_dot,
-                                                                    Iedot=self.vessel_Ie_dot,
-                                                                    Rp=self.plasma_resistance)/self.plasma_norm_factor
-
+        self.residual[-1] = 1.0*self.evol_plasma_curr.current_residual( norm_red_Iy1=self.norm_red_Iy_trial, 
+                                                                        Ip=self.Ip_trial,
+                                                                        red_Iydot=self.red_Iy_dot,
+                                                                        Iddot=self.Id_dot,
+                                                                        Rp=Rp)/self.plasma_norm_factor
+        return self.residual
     
 
-    def LSQP(self, Fresidual, G, Q, clip=3):
+
+    def nonlinear_step_iterative(self, active_voltage_vec, 
+                                       alpha=.85, 
+                                       rtol_NK=5e-4,
+                                       rtol_conv0=1e-3,
+                                       rtol_conv1=1e-3,
+                                       return_n_steps=False):
+
+        J = self.reduce_normalize(self.profiles1.jtor)
+        Jdot = 1.0*J
+        Rp = self.calc_plasma_resistance(J)
+        simplified_c = 1.0*self.simplified_solver.stepper(It=self.currents_vec,
+                                                          norm_red_Iy=J, 
+                                                          norm_red_Iy_dot=Jdot, 
+                                                          active_voltage_vec=active_voltage_vec, 
+                                                          Rp=Rp)
+        res = 1.0*self.Fresidual(trial_currents=simplified_c, 
+                                active_voltage_vec=active_voltage_vec, 
+                                Rp=Rp,
+                                rtol_NK=rtol_NK)   
+        
+        iterative_steps = 0
+        control = 1
+        while control:
+            J = self.reduce_normalize(self.profiles2.jtor)
+            Jdot = (1-alpha)*Jdot + alpha*self.reduce_normalize(self.profiles2.jtor-self.profiles1.jtor)
+            Rp = self.calc_plasma_resistance(J)
+            simplified_c1 = 1.0*self.simplified_solver.stepper(It=self.currents_vec,
+                                                                norm_red_Iy=J, 
+                                                                norm_red_Iy_dot=Jdot, 
+                                                                active_voltage_vec=active_voltage_vec, 
+                                                                Rp=Rp)
+            res = 1.0*self.Fresidual(trial_currents=simplified_c, 
+                                active_voltage_vec=active_voltage_vec, 
+                                Rp=Rp,
+                                rtol_NK=rtol_NK)     
+
+            control = np.any(np.abs((simplified_c-simplified_c1)/(simplified_c1-self.currents_vec))>rtol_conv0)
+            control += np.any(np.abs(res/(simplified_c1-self.currents_vec))>rtol_conv1)
+            iterative_steps += 1
+
+            simplified_c = 1.0*simplified_c1
+        
+        self.time += self.time_step
+        self.currents_vec = 1.0*simplified_c
+        self.profiles1 = deepcopy(self.profiles2)
+        self.eq1 = deepcopy(self.eq2)
+
+        if return_n_steps:
+            return iterative_steps
+
+
+
+
+
+
+
+
+
+
+
+
+
+    def LSQP(self, Fresidual, G, Q, clip=1):
         #solve the least sq problem in coeffs: min||G*coeffs+Fresidual||^2
         self.coeffs = np.matmul(np.matmul(np.linalg.inv(np.matmul(G.T, G)),
-                                     G.T), -Fresidual)
-        self.eplained_res = np.sum(G*self.coeffs[np.newaxis,:], axis=1)                             
+                                     G.T), -Fresidual)                            
         self.coeffs = np.clip(self.coeffs, -clip, clip)
+        self.explained_res = np.sum(G*self.coeffs[np.newaxis,:], axis=1) 
         #get the associated step in candidate_d_sol space
         self.d_sol_step = np.sum(Q*self.coeffs[np.newaxis,:], axis=1)
         return self.d_sol_step
@@ -281,22 +356,22 @@ class nonlinear_solver:
         nFresidual = np.linalg.norm(Fresidual)
 
         #basis in Psi space
-        Q = np.zeros((self.n_metal_modes, n_k+1))
+        Q = np.zeros((self.n_metal_modes+1, n_k+1))
         #orthonormal basis in Psi space
-        Qn = np.zeros((self.n_metal_modes, n_k+1))
+        Qn = np.zeros((self.n_metal_modes+1, n_k+1))
         #basis in grandient space
-        G = np.zeros((self.n_metal_modes, n_k+1))
+        G = np.zeros((self.n_metal_modes+1, n_k+1))
         
         
         n_it = 0
         #control on whether to add a new basis vector
         arnoldi_control = 1
         #use at least 3 orthogonal terms, but not more than n_k
+        grad_coeff = grad_eps*ncurrents_vec*(nFresidual/200)
         while arnoldi_control*(n_it<n_k)>0:
-            grad_coeff = grad_eps*ncurrents_vec*(nFresidual/1)
 
             candidate_d_sol = grad_coeff*vec_direction/np.linalg.norm(vec_direction)
-            ri = self.Fcircuit(trial_sol + candidate_d_sol)
+            ri = self.Fresidual(trial_sol + candidate_d_sol, active_voltage_vec=active_voltage_vec)
             lvec_direction = ri - Fresidual
             # lvec_direction = candidate_usable.reshape(-1)
 
@@ -332,7 +407,7 @@ class nonlinear_solver:
             self.G = G[:,:n_it]
             self.Q = Q[:,:n_it]
             self.LSQP(Fresidual, G=self.G, Q=self.Q, clip=3)
-            rel_unexpl_res = np.linalg.norm(self.eplained_res + Fresidual)/nFresidual
+            rel_unexpl_res = np.linalg.norm(self.explained_res + Fresidual)/nFresidual
             #print('relative_unexplained_residual = ', rel_unexpl_res)
             arnoldi_control = (rel_unexpl_res > conv_crit)
 

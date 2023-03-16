@@ -152,20 +152,20 @@ class metal_currents:
 
 
     def forcing_term_eig_plasma(self, active_voltage_vec, Iydot):
-        all_Us = self.empty_U.copy()
+        all_Us = np.zeros_like(self.empty_U)
         all_Us[:self.n_active_coils] = active_voltage_vec
         all_Us -= self.Mey@Iydot
-        all_Us = self.Vm1@(self.Rm12*all_Us)
+        all_Us = np.dot(self.Vm1, self.Rm12*all_Us)
         return all_Us
     def forcing_term_eig_no_plasma(self, active_voltage_vec, Iydot=0):
         all_Us = self.empty_U.copy()
         all_Us[:self.n_active_coils] = active_voltage_vec
-        all_Us = self.Vm1@(self.Rm12*all_Us)
+        all_Us = np.dot(self.Vm1, self.Rm12*all_Us)
         return all_Us
     def forcing_term_no_eig_plasma(self, active_voltage_vec, Iydot):
         all_Us = self.empty_U.copy()
         all_Us[:self.n_active_coils] = active_voltage_vec
-        all_Us -= self.Mey@Iydot
+        all_Us -= np.dot(self.Mey, Iydot)
         return all_Us
     def forcing_term_no_eig_no_plasma(self, active_voltage_vec, Iydot=0):
         all_Us = self.empty_U.copy()
@@ -175,29 +175,29 @@ class metal_currents:
 
 
     def IvesseltoId(self, Ivessel):
-        Id = self.Vm1@(self.R12*Ivessel)
+        Id = np.dot(self.Vm1, self.R12*Ivessel)
         return Id
     def IdtoIvessel(self, Id):
-        Ivessel = self.Rm12*(self.V@Id)
+        Ivessel = self.Rm12*np.dot(self.V, Id)
         return Ivessel
 
     
   
-    def internal_stepper_eig(self, It, forcing):
-        # advances current for equation
-        # Lambda^-1 Idot + I = forcing
-        # where Lambda is R12@M^-1@R12 = V@Lambda@V^-1
-        # I are normal modes: Inormal = V^-1@R12@I
-        # forcing here is V^-1@Rm12@(voltage-plasma_inductance), like calculated in forcing_term
-        elambdadt = np.exp(-self.internal_timestep*self.Lambda)
-        Itpdt = It*elambdadt + (1-elambdadt)*forcing
-        return Itpdt
-    def internal_stepper_no_eig(self, It, forcing):
-        # advances current using equation
-        # Itpdt = (Mm1@R*dt+1)^-1(forcing+It)
-        # forcing is Mm1@(voltage-plasma_inductance),like calculated in forcing_term
-        Itpdt = self.set_inverse_operator@(forcing*self.internal_timestep + It)
-        return Itpdt
+    # def internal_stepper_eig(self, It, forcing):
+    #     # advances current for equation
+    #     # Lambda^-1 Idot + I = forcing
+    #     # where Lambda is R12@M^-1@R12 = V@Lambda@V^-1
+    #     # I are normal modes: Inormal = V^-1@R12@I
+    #     # forcing here is V^-1@Rm12@(voltage-plasma_inductance), like calculated in forcing_term
+    #     elambdadt = np.exp(-self.internal_timestep*self.Lambda)
+    #     Itpdt = It*elambdadt + (1-elambdadt)*forcing
+    #     return Itpdt
+    # def internal_stepper_no_eig(self, It, forcing):
+    #     # advances current using equation
+    #     # Itpdt = (Mm1@R*dt+1)^-1(forcing+It)
+    #     # forcing is Mm1@(voltage-plasma_inductance),like calculated in forcing_term
+    #     Itpdt = self.set_inverse_operator@(forcing*self.internal_timestep + It)
+    #     return Itpdt
 
 
     def stepper(self, It, active_voltage_vec, Iydot=0):
@@ -208,16 +208,17 @@ class metal_currents:
         return It
 
 
-    def Iedot(self, It, Itpdt):
-        iedot = (Itpdt - It)/self.full_timestep
-        return iedot
+    # def Iedot(self, It, Itpdt):
+    #     iedot = (Itpdt - It)/self.full_timestep
+    #     return iedot
 
 
-    def current_residual(self, Itpdt, Iedot, forcing_term):
+    def current_residual(self, Itpdt, Iddot, forcing_term):
         # returns residual of circuit equations in normal modes:
         # residual = Lambda^-1 Idot + I - forcing
-        residual = Iedot/self.Lambda
-        residual += Itpdt - forcing_term
+        residual = Iddot/self.Lambda
+        residual += Itpdt 
+        residual -= forcing_term
         return residual
 
 

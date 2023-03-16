@@ -782,9 +782,10 @@ for i, coil in enumerate(pass_coils):
 #         greenm *= coils_dict[labelj]['polarity'][:,np.newaxis]
 #         greenm *= coils_dict[labeli]['polarity'][np.newaxis,:]
 #         coil_self_ind[i,j] = np.sum(greenm)
-#     #resistance = resistivity/area * number of loops * mean_radius * 2pi
-#     #voltages in terms of total applied voltage
+#     # resistance = resistivity/area * number of loops * mean_radius * 2pi
+#     # voltages in terms of total applied voltage
 #     coil_resist[i] = coils_dict[labeli]['resistivity']*np.sum(coils_dict[labeli]['coords'][0])
+# freeGS greens = Mij/2pi
 # coil_self_ind *= 2*np.pi
 # coil_resist *= 2*np.pi
 

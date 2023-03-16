@@ -25,7 +25,7 @@ def define_reduced_plasma_grid(R, Z):
 def Myy(plasma_pts):
     greenm = Greens(plasma_pts[:, np.newaxis, 0], plasma_pts[:, np.newaxis, 1],
                     plasma_pts[np.newaxis, :, 0], plasma_pts[np.newaxis, :, 1])
-    return greenm
+    return 2*np.pi*greenm
 
 
 # calculate Mey: matrix of mutual indicances between plasma grid points and all vessel coils
@@ -39,6 +39,6 @@ def Mey(plasma_pts):
                         coils_dict[labelj]['coords'][1][np.newaxis, :])        
         greenm *= coils_dict[labelj]['polarity'][np.newaxis, :]
         mey[j] = np.sum(greenm, axis=-1)
-    return mey
+    return 2*np.pi*mey
 
 

@@ -1,6 +1,6 @@
 import numpy as np
 
-from .implicit_euler import implicit_euler_solver
+from .implicit_euler import implicit_euler_solver_d
 from . import MASTU_coils
 
 class simplified_solver:
@@ -31,40 +31,53 @@ class simplified_solver:
         # sets up implicit euler to solve system of 
         # - metal circuit eq
         # - plasma circuit eq
-        # with the assumption that Iy(t+dt) = Ip(t+dt)*norm_red_Iy 
-        # where norm_red_Iy is Iy(t)/Ip(t) and kept fixed
+        # it uses that \deltaIy = dJ*deltaIp
+        # where deltaJ is a sum 1 vector and deltaIp is the increment in the total plasma current
+        # the simplification consists in using a specified dJ vector rather than the self-consistent one
         # solver is initialized here but matrices are set up 
         # at each timestep using prepare_solver
-        self.solver = implicit_euler_solver(Mmatrix=self.Mmatrix, 
-                                            Rmatrix=np.eye(self.n_independent_vars+1), 
-                                            max_internal_timestep=self.max_internal_timestep,
-                                            full_timestep=self.full_timestep)
+        self.solver = implicit_euler_solver_d(Mmatrix=self.Mmatrix, 
+                                              Rmatrix=np.eye(self.n_independent_vars+1), 
+                                              max_internal_timestep=self.max_internal_timestep,
+                                              full_timestep=self.full_timestep)
 
         # dummy vessel voltage vector
         self.empty_U = np.zeros(np.shape(Vm1Rm12)[1])
         # dummy voltage vec for eig modes
         self.forcing = np.zeros(self.n_independent_vars+1)
+        
+        # dummy Sdiag for the ueler solver
+        self.Sdiag = np.ones(self.n_independent_vars+1)
 
 
 
-    def prepare_solver(self, norm_red_Iy, norm_red_Iy_dot, active_voltage_vec, Rp):
+    def prepare_solver(self, norm_red_Iy0, norm_red_Iy_dot, active_voltage_vec, Rp, Sp):
 
         simplified_mutual_v = np.dot(self.Vm1Rm12Mey, norm_red_Iy_dot)
-        simplified_mutual_h = np.dot(self.Vm1Rm12Mey, norm_red_Iy)
         self.Mmatrix[:-1, -1] = simplified_mutual_v*self.plasma_norm_factor
-        self.Mmatrix[-1, :-1] = (simplified_mutual_h/Rp)/self.plasma_norm_factor
 
-        simplified_plasma_self = np.sum(norm_red_Iy[:,np.newaxis]*norm_red_Iy_dot[np.newaxis,:]*self.Myy)
+        simplified_mutual_h = np.dot(self.Vm1Rm12Mey, norm_red_Iy0)
+        self.Mmatrix[-1, :-1] = simplified_mutual_h/(Rp*self.plasma_norm_factor)
+
+        simplified_plasma_self = np.sum(norm_red_Iy0[:,np.newaxis]*norm_red_Iy_dot[np.newaxis,:]*self.Myy)
         self.Mmatrix[-1, -1] = simplified_plasma_self/Rp
 
         self.solver.set_Mmatrix(self.Mmatrix)
+
+
+        self.Sdiag[-1] = Sp
+        self.solver.set_Smatrix(self.Sdiag)
+
+
+        self.solver.calc_inverse_operator()
+
 
         self.empty_U[:self.n_active_coils] = active_voltage_vec
         self.forcing[:-1] = np.dot(self.Vm1Rm12, self.empty_U)
 
     
 
-    def stepper(self, It, norm_red_Iy, norm_red_Iy_dot, active_voltage_vec, Rp):
-        self.prepare_solver(norm_red_Iy, norm_red_Iy_dot, active_voltage_vec, Rp)
+    def stepper(self, It, norm_red_Iy0, norm_red_Iy_dot, active_voltage_vec, Rp, Sp):
+        self.prepare_solver(norm_red_Iy0, norm_red_Iy_dot, active_voltage_vec, Rp, Sp)
         Itpdt = self.solver.full_stepper(It, self.forcing)
         return Itpdt

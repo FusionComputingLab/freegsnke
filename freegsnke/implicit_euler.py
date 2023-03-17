@@ -84,7 +84,7 @@ class implicit_euler_solver_d:
     def __init__(self, Mmatrix, Rmatrix, full_timestep, max_internal_timestep):
 
         self.Mmatrix = Mmatrix
-        self.Mmatrixm1 = np.linalg.inv(Mmatrix)
+        # self.Mmatrixm1 = np.linalg.inv(Mmatrix)
 
         self.Rmatrix = Rmatrix
         self.Smatrix = Rmatrix
@@ -108,7 +108,7 @@ class implicit_euler_solver_d:
         self.Smatrix = np.diag(Sdiag)
     
     def calc_inverse_operator(self, ):
-        self.inverse_operator = np.linalg.inv(self.Mmatrix + self.internal_timestep*(self.Smatrix))
+        self.inverse_operator = np.linalg.inv(self.Mmatrix + self.internal_timestep*self.Smatrix)
 
 
 
@@ -122,7 +122,7 @@ class implicit_euler_solver_d:
 
     def internal_stepper(self, It, forcing):
         # executes on self.internal_timestep
-        # deltaI = dt . (M + Rdt)^-1 . (F - RI(t))
+        # deltaI = dt . (M + Sdt)^-1 . (F - RI(t))
         Itpdt = It + self.internal_timestep*np.dot(self.inverse_operator, forcing - np.dot(self.Rmatrix, It))
         return Itpdt
 

@@ -15,17 +15,23 @@ from . import plasma_grids
 from .newtonkrylov import NewtonKrylov
 from .jtor_update import ConstrainPaxisIp
 
-class nonlinear_solver:
+
+from .faster_shape import shapes
+from .faster_shape import check_against_the_wall
+
+class nl_solver:
     # interfaces the circuit equation with freeGS NK solver 
     # executes dt evolution of fully non linear equations
     
     
     def __init__(self, profiles, eq, 
                  max_mode_frequency, 
-                 max_internal_timestep=.0001,
+                #  max_internal_timestep=.0001,
                  full_timestep=.0001,
                  plasma_resistivity=1e-4,
                  plasma_norm_factor=2000):
+
+        self.shapes = shapes 
 
         self.nx = np.shape(eq.R)[0]
         self.ny = np.shape(eq.R)[1]
@@ -36,10 +42,9 @@ class nonlinear_solver:
 
         # mask identifying if plasma is hitting the wall
         self.plasma_pts, self.mask_inside_limiter = plasma_grids.define_reduced_plasma_grid(eq.R, eq.Z)
-        self.mask_outside_limiter = 1 - self.mask_inside_limiter
+        self.mask_outside_limiter = (1 - self.mask_inside_limiter).astype(bool)
         self.plasma_against_wall = 0
         self.idxs_mask = np.mgrid[0:self.nx, 0:self.ny][np.tile(self.mask_inside_limiter,(2,1,1))].reshape(2,-1)
-
 
         
         #instantiate solver on eq's domain
@@ -69,9 +74,10 @@ class nonlinear_solver:
             self.eq2.tokamak[labeli].control = False
         
         
-        self.time_step = full_timestep
+        self.dt_step = full_timestep
         self.plasma_norm_factor = plasma_norm_factor
-        self.max_internal_timestep = max_internal_timestep
+        # forcing no time step refinement, that's necessary for convergence
+        self.max_internal_timestep = full_timestep
         self.max_mode_frequency = max_mode_frequency
         self.reset_plasma_resistivity(plasma_resistivity)
 
@@ -87,7 +93,7 @@ class nonlinear_solver:
                                                 reference_eq=eq,
                                                 max_mode_frequency=self.max_mode_frequency,
                                                 max_internal_timestep=self.max_internal_timestep,
-                                                full_timestep=self.time_step)
+                                                full_timestep=self.dt_step)
         # this is the number of independent normal mode currents associated to max_mode_frequency
         self.n_metal_modes = self.evol_metal_curr.n_independent_vars
 
@@ -103,7 +109,7 @@ class nonlinear_solver:
                                                     Myy=self.evol_plasma_curr.Myy,
                                                     plasma_norm_factor=self.plasma_norm_factor,
                                                     max_internal_timestep=self.max_internal_timestep,
-                                                    full_timestep=self.time_step)
+                                                    full_timestep=self.dt_step)
         
 
         # vector of full coil currents (not normal modes) is self.vessel_currents_vec
@@ -161,7 +167,7 @@ class nonlinear_solver:
         return plasma_resistance_0d
     
     def reset_timestep(self, time_step):
-        self.time_step = time_step
+        self.dt_step = time_step
     
     def get_profiles_values(self, profiles):
         #this allows to use the same instantiation of the time_evolution_class
@@ -228,10 +234,14 @@ class nonlinear_solver:
         # dJ in the direction of the plasma current change in the timestep
         self.dJ = 1.0*self.J0
 
-        # check if against the wall
-        self.plasma_against_wall = np.any(self.mask_outside_limiter*self.profiles1.jtor)
-
         self.time = 0
+
+        # check if against the wall
+        if check_against_the_wall(jtor=self.profiles1.jtor, 
+                                  boole_mask_outside_limiter=self.mask_outside_limiter):
+            print('plasma in ICs is touching the wall!')
+
+        
 
 
     def assign_currents(self, currents_vec, eq, profile):
@@ -254,8 +264,8 @@ class nonlinear_solver:
         self.NK.solve(self.eq2, self.profiles2, rel_convergence=rtol_NK)
         self.red_Iy_trial = self.Iyplasmafromjtor(self.profiles2.jtor)
 
-        self.red_Iy_dot = (self.red_Iy_trial - self.red_Iy)/self.time_step
-        self.Id_dot = ((trial_currents - self.currents_vec)/self.time_step)[:-1]
+        self.red_Iy_dot = (self.red_Iy_trial - self.red_Iy)/self.dt_step
+        self.Id_dot = ((trial_currents - self.currents_vec)/self.dt_step)[:-1]
 
         self.forcing_term = self.evol_metal_curr.forcing_term_eig_plasma(active_voltage_vec=active_voltage_vec, 
                                                                          Iydot=self.red_Iy_dot)
@@ -279,7 +289,8 @@ class nonlinear_solver:
 
     
     def iterative_unit(self, active_voltage_vec,
-                             Rp, rtol_NK):
+                             Rp, 
+                             rtol_NK):
         Sp = self.calc_plasma_resistance(self.J0, self.dJ)/Rp
         simplified_c1 = 1.0*self.simplified_solver.stepper(It=self.currents_vec,
                                                             norm_red_Iy0=self.J0, 
@@ -287,24 +298,29 @@ class nonlinear_solver:
                                                             active_voltage_vec=active_voltage_vec, 
                                                             Rp=Rp, Sp=Sp)
         res = 1.0*self.Fresidual(trial_currents=simplified_c1, 
-                                     active_voltage_vec=active_voltage_vec, 
-                                     rtol_NK=rtol_NK)   
+                                 active_voltage_vec=active_voltage_vec, 
+                                 rtol_NK=rtol_NK)   
         return simplified_c1, res
 
 
-    def nonlinear_step_iterative(self, active_voltage_vec, 
+
+    def nl_step_iterative(self, active_voltage_vec, 
                                        alpha=.8, 
                                        rtol_NK=5e-4,
                                        atol_increments=1e-3,
                                        rtol_residuals=1e-3,
-                                       return_n_steps=False):
+                                       verbose=False,
+                                       threshold=.001):
         
         Rp = self.calc_plasma_resistance(self.J0, self.J0)
         
         simplified_c, res = self.iterative_unit(active_voltage_vec=active_voltage_vec,
                                                  Rp=Rp, 
                                                  rtol_NK=rtol_NK)
-        
+
+        dcurrents = np.abs(simplified_c-self.currents_vec)
+        vals_for_check = np.where(dcurrents>threshold, dcurrents, threshold)
+
         iterative_steps = 0
         control = 1
         while control:
@@ -313,49 +329,118 @@ class nonlinear_solver:
                                                      Rp=Rp, 
                                                      rtol_NK=rtol_NK)   
 
-            control = np.any(np.abs(simplified_c-simplified_c1)>atol_increments)
-            control += np.any(np.abs(res/(simplified_c1-self.currents_vec))>rtol_residuals)
+            abs_increments = np.abs(simplified_c-simplified_c1)
+            vals_for_check = np.where(abs_increments>threshold, abs_increments, threshold)
+            rel_residuals = np.abs(res)/vals_for_check
+            control = np.any(abs_increments>atol_increments)
+            control += np.any(rel_residuals>rtol_residuals)            
+            if verbose:
+                print(np.mean(abs_increments), np.mean(rel_residuals))
+
             iterative_steps += 1
 
             simplified_c = 1.0*simplified_c1
         
-        self.time += self.time_step
+        self.time += self.dt_step
         self.step_complete_assign(simplified_c)
+        
+        flag = check_against_the_wall(jtor=self.profiles2.jtor, 
+                                      boole_mask_outside_limiter=self.mask_outside_limiter)
 
-        if return_n_steps:
-            return iterative_steps
+        return flag
+
+
+
+    def nl_mix_unit(self, active_voltage_vec,
+                                 Rp, 
+                                 rtol_NK,
+                                 n_k=10, # max number of basis vectors (must be less than number of modes + 1)
+                                 conv_crit=.1,   #add basis vector 
+                                                #if unexplained orthogonal component is larger than
+                                 max_collinearity=.3,
+                                 grad_eps=.005, #infinitesimal step
+                                 clip=3):
+
+        simplified_c, res = self.iterative_unit(active_voltage_vec=active_voltage_vec,
+                                                 Rp=Rp, 
+                                                 rtol_NK=rtol_NK)
+        
+        self.Arnoldi_iteration(trial_sol=simplified_c, #trial_current expansion point
+                                vec_direction=-res, #first vector for current basis
+                                Fresidual=res, #circuit eq. residual at trial_current expansion point: Fresidual(trial_current)
+                                active_voltage_vec=active_voltage_vec,
+                                n_k=n_k, # max number of basis vectors (must be less than number of modes + 1)
+                                conv_crit=conv_crit,   #add basis vector 
+                                                #if unexplained orthogonal component is larger than
+                                max_collinearity=max_collinearity,
+                                grad_eps=grad_eps, #infinitesimal step
+                                clip=clip)
+
+        simplified_c1 = simplified_c + self.d_sol_step
+        res1 = self.Fresidual(trial_currents=simplified_c1, 
+                             active_voltage_vec=active_voltage_vec, 
+                             rtol_NK=rtol_NK)   
+        return simplified_c1, res1
 
 
 
 
-    def nonlinear_step_mix(self, active_voltage_vec, 
+    def nl_step_mix(self, active_voltage_vec, 
                                  alpha=.8, 
                                  rtol_NK=5e-4,
                                  atol_increments=1e-3,
                                  rtol_residuals=1e-3,
-                                 return_n_steps=False):
+                                 n_k=10, # max number of basis vectors (must be less than number of modes + 1)
+                                 conv_crit=.1,   #add basis vector 
+                                                #if unexplained orthogonal component is larger than
+                                 max_collinearity=.3,
+                                 grad_eps=.005, #infinitesimal step
+                                 clip=3,
+                                 return_n_steps=False,
+                                 verbose=False,
+                                 threshold=.001):
         
         Rp = self.calc_plasma_resistance(self.J0, self.J0)
         
-        simplified_c, res = self.iterative_unit(active_voltage_vec=active_voltage_vec,
-                                                 Rp=Rp, 
-                                                 rtol_NK=rtol_NK)
+        simplified_c, res = self.nl_mix_unit(active_voltage_vec=active_voltage_vec,
+                                                    Rp=Rp, 
+                                                    rtol_NK=rtol_NK,
+                                                    n_k=n_k, # max number of basis vectors (must be less than number of modes + 1)
+                                                    conv_crit=conv_crit,   #add basis vector 
+                                                                #if unexplained orthogonal component is larger than
+                                                    max_collinearity=max_collinearity,
+                                                    grad_eps=grad_eps, #infinitesimal step
+                                                    clip=clip)
+
+        dcurrents = np.abs(simplified_c-self.currents_vec)
+        vals_for_check = np.where(dcurrents>threshold, dcurrents, threshold)                                        
         
         iterative_steps = 0
         control = 1
         while control:
             self.dJ = (1-alpha)*self.dJ + alpha*self.reduce_normalize(self.profiles2.jtor-self.profiles1.jtor)
-            simplified_c1, res = self.iterative_unit(active_voltage_vec=active_voltage_vec,
-                                                     Rp=Rp, 
-                                                     rtol_NK=rtol_NK)   
+            simplified_c1, res = self.nl_mix_unit(active_voltage_vec=active_voltage_vec,
+                                                        Rp=Rp, 
+                                                        rtol_NK=rtol_NK,
+                                                        n_k=n_k, # max number of basis vectors (must be less than number of modes + 1)
+                                                        conv_crit=conv_crit,   #add basis vector 
+                                                                    #if unexplained orthogonal component is larger than
+                                                        max_collinearity=max_collinearity,
+                                                        grad_eps=grad_eps, #infinitesimal step
+                                                        clip=clip)
 
-            control = np.any(np.abs(simplified_c-simplified_c1)>atol_increments)
-            control += np.any(np.abs(res/(simplified_c1-self.currents_vec))>rtol_residuals)
+            abs_increments = np.abs(simplified_c-simplified_c1)
+            rel_residuals = np.abs(res)/vals_for_check
+            control = np.any(abs_increments>atol_increments)
+            control += np.any(rel_residuals>rtol_residuals)            
+            if verbose:
+                print(np.mean(abs_increments), np.mean(rel_residuals))
+
             iterative_steps += 1
 
             simplified_c = 1.0*simplified_c1
         
-        self.time += self.time_step
+        self.time += self.dt_step
         self.step_complete_assign(simplified_c)
 
         if return_n_steps:
@@ -406,8 +491,7 @@ class nonlinear_solver:
                                                 #if unexplained orthogonal component is larger than
                                 max_collinearity=.3,
                                 grad_eps=.005, #infinitesimal step
-                                clip=3
-                          ):
+                                clip=3):
         
         nFresidual = np.linalg.norm(Fresidual)
 

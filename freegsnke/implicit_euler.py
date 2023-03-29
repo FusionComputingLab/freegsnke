@@ -126,11 +126,12 @@ class implicit_euler_solver_d:
         Itpdt = It + self.internal_timestep*np.dot(self.inverse_operator, forcing - np.dot(self.Rmatrix, It))
         return Itpdt
 
+
     def full_stepper(self, It, forcing):
         # executes on self.full_timestep
         # by repeating over self.n_steps
 
         for _ in range(self.n_steps):
-            It = self.internal_stepper(It, forcing)
+            It = 1.0*self.internal_stepper(It, forcing)
         
         return It

@@ -176,15 +176,26 @@ def Separatrix(eq, profiles, ntheta, psival=1.0):
 
 
 def geometricElongation(eq, profiles, npoints=20):
-        """Calculates the elongation of a plasma using the range of R and Z of
-        the separatrix
+    """Calculates the elongation of a plasma using the range of R and Z of
+    the separatrix
 
-        """
-        separatrix = Separatrix(eq, profiles, ntheta=npoints)[:, 0:2]  # [:,2]
-        # Range in Z / range in R
-        return (max(separatrix[:, 1]) - min(separatrix[:, 1])) / (
-            max(separatrix[:, 0]) - min(separatrix[:, 0])
-        )
+    """
+    separatrix = Separatrix(eq, profiles, ntheta=npoints)[:, 0:2]  # [:,2]
+    # Range in Z / range in R
+    return (max(separatrix[:, 1]) - min(separatrix[:, 1])) / (
+        max(separatrix[:, 0]) - min(separatrix[:, 0])
+    )
 
 
+def shapes(eq, profiles):
+    width = calculate_width(eq, profiles) #simple width at z=0:
+    opoint = np.array(profiles.opt[0])[np.newaxis]
+    # Rvals = eq.R*self.plasma_mask
+    # Zvals = eq.Z*self.plasma_mask
+    # geometricElongation = (np.max(Zvals)-np.min(Zvals))/(np.max(Rvals)-np.min(Rvals))
+    gE = geometricElongation(eq, profiles, npoints=20)
+    return width, opoint, gE
 
+
+def check_against_the_wall(jtor, boole_mask_outside_limiter):
+    return np.sum(jtor[boole_mask_outside_limiter])

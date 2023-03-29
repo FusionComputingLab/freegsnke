@@ -36,16 +36,15 @@ class plasma_current:
         # where Rp0 =  Iy0.T/Ip0 Ryy Iy0/Ip0
 
         Ip0 = np.sum(red_Iy0)
+        norm_red_Iy0 = red_Iy0/Ip0
         
         Fy = np.dot(self.Myy, red_Iydot)
         Fe = np.dot(self.MyeRm12V, Iddot)
         Fr = self.Ryy*red_Iy1
         Ftot = Fy+Fe+Fr
 
-        residual = np.dot(red_Iy0, Ftot)
-
-        # residual *= 1/Ip0 * Ip0**2/np.dot(red_Iy0,red_Iy0*self.Ryy)
-        residual *= Ip0/np.sum(red_Iy0*red_Iy0*self.Ryy)
+        residual = np.dot(norm_red_Iy0, Ftot)
+        residual *= 1/np.sum(norm_red_Iy0*norm_red_Iy0*self.Ryy)
 
         return residual
 

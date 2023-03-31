@@ -9,7 +9,7 @@ class plasma_current:
 
     def __init__(self, reference_eq, Rm12V, plasma_resistance_1d):
 
-        plasma_pts, self.mask_inside_limiter = plasma_grids.define_reduced_plasma_grid(reference_eq.R, reference_eq.Z)
+        plasma_pts, self.mask_inside_limiter= plasma_grids.define_reduced_plasma_grid(reference_eq.R, reference_eq.Z)
         self.Mye = (plasma_grids.Mey(plasma_pts)).T
         self.Myy = plasma_grids.Myy(plasma_pts)
         self.MyeRm12V = np.matmul(self.Mye, Rm12V)

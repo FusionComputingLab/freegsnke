@@ -42,7 +42,7 @@ class nl_solver:
 
         # mask identifying if plasma is hitting the wall
         self.plasma_pts, self.mask_inside_limiter = plasma_grids.define_reduced_plasma_grid(eq.R, eq.Z)
-        self.mask_outside_limiter = (1 - self.mask_inside_limiter).astype(bool)
+        self.mask_outside_limiter = plasma_grids.make_layer_mask(self.mask_inside_limiter)
         self.plasma_against_wall = 0
         self.idxs_mask = np.mgrid[0:self.nx, 0:self.ny][np.tile(self.mask_inside_limiter,(2,1,1))].reshape(2,-1)
 
@@ -103,7 +103,7 @@ class nl_solver:
                                                plasma_resistance_1d=self.plasma_resistance_1d)
 
 
-        self.simplified_solver = simplified_solver(Lambdam1=np.diag(self.evol_metal_curr.Lambda**-1), 
+        self.simplified_solver = simplified_solver(Lambdam1=self.evol_metal_curr.Lambdam1, 
                                                     Vm1Rm12=np.matmul(self.evol_metal_curr.Vm1, np.diag(self.evol_metal_curr.Rm12)), 
                                                     Mey=self.evol_metal_curr.Mey, 
                                                     Myy=self.evol_plasma_curr.Myy,
@@ -335,7 +335,7 @@ class nl_solver:
             control = np.any(abs_increments>atol_increments)
             control += np.any(rel_residuals>rtol_residuals)            
             if verbose:
-                print(np.mean(abs_increments), np.mean(rel_residuals))
+                print(np.mean(abs_increments), np.mean(rel_residuals), np.max(rel_residuals))
 
             iterative_steps += 1
 

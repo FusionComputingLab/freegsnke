@@ -4,7 +4,7 @@ from . import MASTU_coils
 
 
 
-# extracts points inside the wall
+# extracts points inside the limiter and just outside it
 # R = eq.R, Z = eq.Z
 def define_reduced_plasma_grid(R, Z):
 
@@ -19,6 +19,19 @@ def define_reduced_plasma_grid(R, Z):
                                  Z[mask_inside_limiter][:,np.newaxis]), axis=-1)
 
     return plasma_pts, mask_inside_limiter
+
+# extracts mask of points just outside limiter, ofr a width=layer_size
+def make_layer_mask(mask_inside_limiter, layer_size=3):
+    nx, ny = np.shape(mask_inside_limiter)
+    layer_mask = np.zeros(np.array([nx, ny]) + 2*np.array([layer_size, layer_size]))
+
+    for i in np.arange(-layer_size, layer_size+1)+layer_size:
+        for j in np.arange(-layer_size, layer_size+1)+layer_size:
+            layer_mask[i:i+nx, j:j+ny] += mask_inside_limiter
+    layer_mask = layer_mask[layer_size:layer_size+nx, layer_size:layer_size+ny]
+    layer_mask *= (1-mask_inside_limiter)
+    layer_mask = (layer_mask>0).astype(bool)
+    return layer_mask
 
 
 # calculate Myy: matrix of mutual inductunces between plasma grid points

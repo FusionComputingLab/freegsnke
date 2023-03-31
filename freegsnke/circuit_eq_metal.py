@@ -47,8 +47,11 @@ class metal_currents:
 
 
     def initialize_for_eig(self, ):
-        self.n_independent_vars = np.sum(MASTU_coils.w < self.max_mode_frequency)
-        
+        # from passive alone
+        self.n_independent_vars = np.sum(MASTU_coils.w_passive < self.max_mode_frequency)
+        # include active
+        self.n_independent_vars += MASTU_coils.N_active
+
         # Id = Vm1 R**(1/2) I 
         # to change base to truncated modes
         # I = R**(-1/2) V Id 
@@ -58,13 +61,15 @@ class metal_currents:
         # equation is Lambda**(-1)Iddot + I = F
         # where Lambda is such that R12@M-1@R12 = V Lambda V-1
         # w are frequences, eigenvalues of Lambda, 
-        self.Lambda = MASTU_coils.w[:self.n_independent_vars]
+        self.Lambda = self.Vm1@MASTU_coils.lm1r@self.V
+        self.Lambdam1 = self.Vm1@MASTU_coils.rm1l@self.V
+
         self.R = MASTU_coils.coil_resist
         self.R12 = MASTU_coils.coil_resist**.5
-        self.Rm12 = MASTU_coils.coil_resist**(-.5)
-        # note Lambda, R, R12, Rm12 are vectors rather than matrices!
+        self.Rm12 = MASTU_coils.coil_resist**-.5
+        # R, R12, Rm12 are vectors rather than matrices!
 
-        self.solver = implicit_euler_solver(Mmatrix=np.diag(self.Lambda**-1), 
+        self.solver = implicit_euler_solver(Mmatrix=self.Lambdam1, 
                                             Rmatrix=np.eye(self.n_independent_vars), 
                                             max_internal_timestep=self.max_internal_timestep,
                                             full_timestep=self.full_timestep)
@@ -216,7 +221,7 @@ class metal_currents:
     def current_residual(self, Itpdt, Iddot, forcing_term):
         # returns residual of circuit equations in normal modes:
         # residual = Lambda^-1 Idot + I - forcing
-        residual = Iddot/self.Lambda
+        residual = np.dot(self.Lambdam1, Iddot)
         residual += Itpdt 
         residual -= forcing_term
         return residual

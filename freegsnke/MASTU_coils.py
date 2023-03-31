@@ -5,7 +5,6 @@ from freegs.gradshafranov import Greens
 
 eta_copper = 1.55e-8 #resistivity in Ohm*m, for active coils 
 eta_steel = 5.5e-7 #in Ohm*m, for passive structures
-eta_plasma = 1e-6
 
 d1_upper_r = [
     0.35275,
@@ -798,16 +797,45 @@ for i, coil in enumerate(pass_coils):
 coil_self_ind = pass_coils_dict[1]
 coil_resist = pass_coils_dict[2]
 
+n_coils = len(coil_resist)
 
-# normal modes of the vessel, passive+active
+
+
+# extract normal modes
+
+# 0. active + passive
 R12 = np.diag(coil_resist**.5)
+Rm12 = np.diag(coil_resist**-.5)
 Mm1 = np.linalg.inv(coil_self_ind)
+lm1r = R12@Mm1@R12
+rm1l = Rm12@coil_self_ind@Rm12
+# w,v = np.linalg.eig(R12@(Mm1@R12))
+# ordw = np.argsort(w)
+# w_active = w[ordw]
+# Vmatrix_full = ((v.T)[ordw]).T
+
+
+# 1. active coils
+R12 = np.diag(coil_resist[:N_active]**.5)
+Mm1 = np.linalg.inv(coil_self_ind)[:N_active, :N_active]
 w,v = np.linalg.eig(R12@(Mm1@R12))
 ordw = np.argsort(w)
-w = w[ordw]
-Vmatrix = ((v.T)[ordw]).T
+w_active = w[ordw]
+Vmatrix_active = ((v.T)[ordw]).T
 
 
+# 2. passive structures
+R12 = np.diag(coil_resist[N_active:]**.5)
+Mm1 = np.linalg.inv(coil_self_ind[N_active:, N_active:])
+w,v = np.linalg.eig(R12@(Mm1@R12))
+ordw = np.argsort(w)
+w_passive = w[ordw]
+Vmatrix_passive = ((v.T)[ordw]).T
+
+# compose full 
+Vmatrix = np.zeros((n_coils, n_coils))
+Vmatrix[:N_active, :N_active] = 1.0*Vmatrix_active
+Vmatrix[N_active:, N_active:] = 1.0*Vmatrix_passive
 
 
 from freegs.machine import Machine, Circuit, Wall, Solenoid

@@ -128,7 +128,7 @@ class nl_solver:
         # norm plasma current is divided by plasma_norm_factor to keep homogeneity
         self.norm_plasma_current = eq.plasmaCurrent()/self.plasma_norm_factor
         # vector of currents on which non linear system is solved is self.currents_vec
-        currents_vec = np.zeros(self.n_metal_modes+1)
+        currents_vec = np.zeros(self.n_metal_modes + 1)
         currents_vec[:self.n_metal_modes] = 1.0*self.eig_currents_vec
         currents_vec[-1] = self.norm_plasma_current
         self.currents_vec = 1.0*currents_vec
@@ -216,14 +216,14 @@ class nl_solver:
         self.eq2.plasma_psi = 1.0*self.eq1.plasma_psi
 
 
-    def initialize_from_ICs(self, eq, profile): # eq for ICs, with all properties set up at time t=0, 
+    def initialize_from_ICs(self, eq, profile, rtol_NK=1e-8, reset_dJ=True): # eq for ICs, with all properties set up at time t=0, 
                             # ie with eq.tokamak.currents = I(t) and eq.plasmaCurrent = I_p(t) 
         
         #get profile parametrization
         self.get_profiles_values(profile)
 
         #ensure it's a GS solution
-        self.NK.solve(eq, profile, rel_convergence=1e-8)
+        self.NK.solve(eq, profile, rel_convergence=rtol_NK)
 
         #prepare currents
         self.set_currents_eq1(eq)
@@ -231,8 +231,9 @@ class nl_solver:
         self.red_Iy = self.Iyplasmafromjtor(self.profiles1.jtor)
         # J0 is the direction of the plasma current vector at time t0
         self.J0 = self.red_Iy/np.sum(self.red_Iy)
-        # dJ in the direction of the plasma current change in the timestep
-        self.dJ = 1.0*self.J0
+        if reset_dJ:
+            # dJ in the direction of the plasma current change in the timestep
+            self.dJ = 1.0*self.J0
 
         self.time = 0
 
@@ -249,10 +250,12 @@ class nl_solver:
 
         profile.Ip = self.plasma_norm_factor*currents_vec[-1]
 
-        # calculate vessel currents from normal modes
+        # calculate vessel currents from normal modes and assign
         self.vessel_currents_vec = self.evol_metal_curr.IdtoIvessel(Id=currents_vec[:-1])
         for i,labeli in enumerate(coils_dict):
             eq.tokamak[labeli].current = self.vessel_currents_vec[i]
+        # assign plasma current to equilibrium
+        eq._current = self.plasma_norm_factor*currents_vec[-1]
 
 
 
@@ -280,12 +283,33 @@ class nl_solver:
         return self.residual
     
 
+    def Fresidual_dJ(self,   dJ,
+                             active_voltage_vec,
+                             rtol_NK):
+        # dJ /= np.sum(dJ)
+        Sp = self.calc_plasma_resistance(self.J0, dJ)/self.Rp
+        self.simplified_c1 = 1.0*self.simplified_solver.stepper(It=self.currents_vec,
+                                                            norm_red_Iy0=self.J0, 
+                                                            norm_red_Iy_dot=dJ, 
+                                                            active_voltage_vec=active_voltage_vec, 
+                                                            Rp=self.Rp, Sp=Sp)
+        res = 1.0*self.Fresidual(trial_currents=self.simplified_c1, 
+                                 active_voltage_vec=active_voltage_vec, 
+                                 rtol_NK=rtol_NK)   
+        dJ1 = self.red_Iy_dot/np.sum(self.red_Iy_dot)
+        return dJ1-dJ
+    
+
+
+
     def step_complete_assign(self, trial_currents):
         self.profiles1.jtor = 1.0*self.profiles2.jtor
         self.eq1.plasma_psi = 1.0*self.eq2.plasma_psi
+
         self.currents_vec = 1.0*trial_currents
         self.red_Iy = 1.0*self.red_Iy_trial
         self.J0 = self.red_Iy/np.sum(self.red_Iy)
+        self.assign_currents(self.currents_vec, self.eq1, self.profiles1)
 
     
     def iterative_unit(self, active_voltage_vec,
@@ -324,7 +348,9 @@ class nl_solver:
         iterative_steps = 0
         control = 1
         while control:
-            self.dJ = (1-alpha)*self.dJ + alpha*self.reduce_normalize(self.profiles2.jtor-self.profiles1.jtor)
+            self.dJ1 = (1-alpha)*self.dJ + alpha*self.reduce_normalize(self.profiles2.jtor-self.profiles1.jtor)
+            self.ddJ = self.dJ1-self.dJ
+            self.dJ = 1.0*self.dJ1
             simplified_c1, res = self.iterative_unit(active_voltage_vec=active_voltage_vec,
                                                      Rp=Rp, 
                                                      rtol_NK=rtol_NK)   
@@ -336,6 +362,7 @@ class nl_solver:
             control += np.any(rel_residuals>rtol_residuals)            
             if verbose:
                 print(np.mean(abs_increments), np.mean(rel_residuals), np.max(rel_residuals))
+                print(np.mean(np.abs(self.ddJ)), np.max(np.abs(self.ddJ)))
 
             iterative_steps += 1
 
@@ -368,6 +395,7 @@ class nl_solver:
         self.Arnoldi_iteration(trial_sol=simplified_c, #trial_current expansion point
                                 vec_direction=-res, #first vector for current basis
                                 Fresidual=res, #circuit eq. residual at trial_current expansion point: Fresidual(trial_current)
+                                Fresidual_function=self.Fresidual,
                                 active_voltage_vec=active_voltage_vec,
                                 n_k=n_k, # max number of basis vectors (must be less than number of modes + 1)
                                 conv_crit=conv_crit,   #add basis vector 
@@ -447,6 +475,69 @@ class nl_solver:
             return iterative_steps
 
     
+    def nl_step_nk(self, trial_sol, #trial_current expansion point
+                        active_voltage_vec,
+                        n_k=10, # max number of basis vectors (must be less than number of modes + 1)
+                        conv_crit=.2,   #add basis vector 
+                                        #if unexplained orthogonal component is larger than
+                        max_collinearity=.3,
+                        grad_eps=.5, #infinitesimal step
+                        clip=3,
+                        rtol_NK=1e-5,
+                        atol_increments=1e-3,
+                        rtol_residuals=1e-3,
+                        verbose=False,
+                        threshold=.001):
+        
+        self.Rp = self.calc_plasma_resistance(self.J0, self.J0)
+
+        resJ = self.Fresidual_dJ(trial_sol, active_voltage_vec=active_voltage_vec, rtol_NK=rtol_NK)
+        
+        simplified_c = 1.0*self.simplified_c1
+        dcurrents = np.abs(self.simplified_c1-self.currents_vec)
+        vals_for_check = np.where(dcurrents>threshold, dcurrents, threshold)
+
+        iterative_steps = 0
+        control = 1
+        while control:
+            self.Arnoldi_iteration(trial_sol=trial_sol, #trial_current expansion point
+                                vec_direction=-resJ, #first vector for current basis
+                                Fresidual=resJ, #circuit eq. residual at trial_current expansion point: Fresidual(trial_current)
+                                Fresidual_function=self.Fresidual_dJ,
+                                active_voltage_vec=active_voltage_vec,
+                                n_k=n_k, # max number of basis vectors (must be less than number of modes + 1)
+                                conv_crit=conv_crit,   #add basis vector 
+                                                #if unexplained orthogonal component is larger than
+                                max_collinearity=max_collinearity,
+                                grad_eps=grad_eps, #infinitesimal step
+                                clip=clip)
+            print(self.coeffs)
+            trial_sol += self.d_sol_step
+            resJ = self.Fresidual_dJ(trial_sol, 
+                             active_voltage_vec=active_voltage_vec, 
+                             rtol_NK=rtol_NK)   
+            
+            
+            abs_increments = np.abs(simplified_c-self.simplified_c1)
+            vals_for_check = np.where(abs_increments>threshold, abs_increments, threshold)
+            rel_residuals = np.abs(self.residual)/vals_for_check
+            control = np.any(abs_increments>atol_increments)
+            control += np.any(rel_residuals>rtol_residuals)            
+            if verbose:
+                print(np.mean(abs_increments), np.mean(rel_residuals), np.max(rel_residuals))
+                print(np.mean(np.abs(resJ)), np.max(np.abs(resJ)))          
+
+            iterative_steps += 1
+
+            simplified_c = 1.0*self.simplified_c1
+        
+        self.time += self.dt_step
+        self.step_complete_assign(simplified_c)
+        
+        flag = check_against_the_wall(jtor=self.profiles2.jtor, 
+                                      boole_mask_outside_limiter=self.mask_outside_limiter)
+
+        return flag
     
 
     def LSQP(self, Fresidual, G, Q, clip=1):
@@ -462,13 +553,15 @@ class nl_solver:
     def Arnoldi_unit(self,  trial_sol, #trial_current expansion point
                             vec_direction, #first vector for current basis
                             Fresidual, #circuit eq. residual at trial_current expansion point: Fresidual(trial_current)
+                            Fresidual_function,
                             active_voltage_vec,
                             grad_coeff,
-                            clip
+                            rtol_NK
                             ):
 
         candidate_d_sol = grad_coeff*vec_direction/np.linalg.norm(vec_direction)
-        ri = self.Fresidual(trial_sol + candidate_d_sol, active_voltage_vec=active_voltage_vec)
+        print('norm candidate step', np.linalg.norm(candidate_d_sol))
+        ri = Fresidual_function(trial_sol + candidate_d_sol, active_voltage_vec=active_voltage_vec, rtol_NK=rtol_NK)
         lvec_direction = ri - Fresidual
 
         self.Q[:,self.n_it] = 1.0*candidate_d_sol
@@ -485,27 +578,33 @@ class nl_solver:
     def Arnoldi_iteration(self, trial_sol, #trial_current expansion point
                                 vec_direction, #first vector for current basis
                                 Fresidual, #circuit eq. residual at trial_current expansion point: Fresidual(trial_current)
+                                Fresidual_function,
                                 active_voltage_vec,
-                                n_k=10, # max number of basis vectors (must be less than number of modes + 1)
+                                n_k=5, # max number of basis vectors (must be less than number of modes + 1)
                                 conv_crit=.1,   #add basis vector 
                                                 #if unexplained orthogonal component is larger than
                                 max_collinearity=.3,
-                                grad_eps=.005, #infinitesimal step
-                                clip=3):
+                                grad_eps=.05, #infinitesimal step size, when compared to norm(trial)
+                                clip=3,
+                                rtol_NK=1e-5):
         
         nFresidual = np.linalg.norm(Fresidual)
+        problem_d = len(trial_sol)
 
         #basis in Psi space
-        self.Q = np.zeros((self.n_metal_modes+1, n_k+1))
+        self.Q = np.zeros((problem_d, n_k+1))
         #orthonormal basis in Psi space
-        self.Qn = np.zeros((self.n_metal_modes+1, n_k+1))
+        self.Qn = np.zeros((problem_d, n_k+1))
         #basis in grandient space
-        self.G = np.zeros((self.n_metal_modes+1, n_k+1))
+        self.G = np.zeros((problem_d, n_k+1))
         #basis in grandient space
-        self.Gn = np.zeros((self.n_metal_modes+1, n_k+1))
+        self.Gn = np.zeros((problem_d, n_k+1))
         
         self.n_it = 0
-        grad_coeff = grad_eps*(nFresidual/500)
+        self.n_it_tot = 0
+        grad_coeff = min(grad_eps*nFresidual, .05)
+
+        print('norm trial_sol', np.linalg.norm(trial_sol))
 
         control = 1
         while control:
@@ -513,17 +612,20 @@ class nl_solver:
             vec_direction = self.Arnoldi_unit(trial_sol, #trial_current expansion point
                                                 vec_direction, #first vector for current basis
                                                 Fresidual, #circuit eq. residual at trial_current expansion point: Fresidual(trial_current)
+                                                Fresidual_function,
                                                 active_voltage_vec,
                                                 grad_coeff,
-                                                clip)
-            collinear_control = 1-np.any( np.sum(self.Gn[:,:self.n_it]*self.Gn[:,self.n_it:self.n_it+1], axis=0)>max_collinearity )
+                                                rtol_NK=rtol_NK
+                                                )
+            collinear_control = 1 - np.any( np.sum(self.Gn[:,:self.n_it]*self.Gn[:,self.n_it:self.n_it+1], axis=0)>max_collinearity )
+            self.n_it_tot += 1
             if collinear_control:
                 self.n_it += 1
                 self.LSQP(Fresidual, G=self.G[:,:self.n_it], Q=self.Q[:,:self.n_it], clip=clip)
                 rel_unexpl_res = np.linalg.norm(self.explained_res + Fresidual)/nFresidual
                 arnoldi_control = (rel_unexpl_res > conv_crit)
 
-            control = arnoldi_control*collinear_control*(self.n_it<n_k)
+            control = arnoldi_control*collinear_control*(self.n_it_tot<n_k)
 
 
 

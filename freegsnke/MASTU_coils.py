@@ -816,21 +816,18 @@ rm1l = Rm12@coil_self_ind@Rm12
 
 
 # 1. active coils
-R12 = np.diag(coil_resist[:N_active]**.5)
-Mm1 = np.linalg.inv(coil_self_ind)[:N_active, :N_active]
-w,v = np.linalg.eig(R12@(Mm1@R12))
+w,v = np.linalg.eig(lm1r[:N_active, :N_active])
 ordw = np.argsort(w)
 w_active = w[ordw]
 Vmatrix_active = ((v.T)[ordw]).T
 
 
 # 2. passive structures
-R12 = np.diag(coil_resist[N_active:]**.5)
-Mm1 = np.linalg.inv(coil_self_ind[N_active:, N_active:])
-w,v = np.linalg.eig(R12@(Mm1@R12))
+w,v = np.linalg.eig(lm1r[N_active:, N_active:])
 ordw = np.argsort(w)
 w_passive = w[ordw]
 Vmatrix_passive = ((v.T)[ordw]).T
+
 
 # compose full 
 Vmatrix = np.zeros((n_coils, n_coils))

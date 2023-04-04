@@ -23,6 +23,7 @@ class NewtonKrylov:
         #for integration
         dR = R[1, 0] - R[0, 0]
         dZ = Z[0, 1] - Z[0, 0]
+        self.dRdZ = dR*dZ
 
 
         #linear solver for del*Psi=RHS with fixed RHS
@@ -54,7 +55,7 @@ class NewtonKrylov:
         # Prevent infinity/nan by removing Greens(x,y,x,y) 
         zeros = np.ones_like(greenfunc)
         zeros[np.arange(len(bndry_indices)), bndry_indices[:,0], bndry_indices[:,1]] = 0
-        self.greenfunc = greenfunc*zeros*dR*dZ
+        self.greenfunc = greenfunc*zeros*self.dRdZ
 
         
         #RHS/Jtor
@@ -238,8 +239,11 @@ class NewtonKrylov:
             
             it += 1
         
-        #update eq with new solution
+        # update eq with new solution
         eq.plasma_psi = trial_plasma_psi
+
+        # update plasma current
+        eq._current = np.sum(profiles.jtor)*self.dRdZ
         
         #if max_iter was hit, then message:
         if not it<max_iter:

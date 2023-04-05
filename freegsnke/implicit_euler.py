@@ -7,12 +7,15 @@ class implicit_euler_solver:
     # with generic M, R and F
 
     # internal_stepper and full_stepper solve for I(t+dt) using
-    # I(t+dt) = (M-1Rdt + 1)^-1 . (M-1Fdt + I(t))
+    # I(t+dt) = (M + Rdt)^-1 . (Fdt + MI(t))
+
+    # it allows for a different M != L , where
+    # I(t+dt) = (M + Rdt)^-1 . (Fdt + LI(t))
     
     def __init__(self, Mmatrix, Rmatrix, full_timestep, max_internal_timestep):
 
         self.Mmatrix = Mmatrix
-        self.Mmatrixm1 = np.linalg.inv(Mmatrix)
+        self.Lmatrix = Mmatrix
 
         self.Rmatrix = Rmatrix
 
@@ -24,18 +27,20 @@ class implicit_euler_solver:
         #dummy voltage vector
         self.empty_U = np.zeros(self.dims)
 
-
+    
     def set_Mmatrix(self, Mmatrix):
         self.Mmatrix = Mmatrix
-        self.Mmatrixm1 = np.linalg.inv(Mmatrix)
         self.calc_inverse_operator()
+    
+    def set_Lmatrix(self, Lmatrix):
+        self.Lmatrix = Lmatrix
 
     def set_Rmatrix(self, Rmatrix):
         self.Rmatrix = Rmatrix
         self.calc_inverse_operator()
     
     def calc_inverse_operator(self, ):
-        self.inverse_operator = np.linalg.inv(np.eye(np.shape(self.Mmatrix)[0]) + self.internal_timestep*np.matmul(self.Mmatrixm1, self.Rmatrix))
+        self.inverse_operator = np.linalg.inv(self.Mmatrix + self.internal_timestep*self.Rmatrix)
 
     def set_timesteps(self, full_timestep, max_internal_timestep):
         self.full_timestep = full_timestep
@@ -46,11 +51,11 @@ class implicit_euler_solver:
 
 
 
-    def internal_stepper(self, It, Mm1forcing):
+    def internal_stepper(self, It, forcing):
         # executes on self.internal_timestep
         # I(t+dt) = (M-1Rdt + 1)^-1 . (Mm1forcing.dt + I(t))
         # note the different definition of the forcing term with respect to full_stepper
-        Itpdt = np.dot(self.inverse_operator, Mm1forcing*self.internal_timestep + It)
+        Itpdt = np.dot(self.inverse_operator, forcing*self.internal_timestep + np.dot(self.Lmatrix,It))
         return Itpdt
 
     def full_stepper(self, It, forcing):
@@ -59,9 +64,8 @@ class implicit_euler_solver:
         # I(t+dt) = (M-1Rdt + 1)^-1 . (M-1.forcing.dt + I(t))
         # note the different definition of the forcing term with respect to internal_stepper
 
-        Mm1forcing = np.dot(self.Mmatrixm1, forcing)
         for _ in range(self.n_steps):
-            It = self.internal_stepper(It, Mm1forcing)
+            It = self.internal_stepper(It, forcing)
         
         return It
 

@@ -61,7 +61,7 @@ class simplified_solver_dJ:
 
     def prepare_solver(self, norm_red_Iy0, norm_red_Iy_dot, active_voltage_vec, Rp):
 
-        Sp = np.sum(self.plasma_resistance_1d*norm_red_Iy0*norm_red_Iy0)/Rp
+        Sp = np.sum(self.plasma_resistance_1d*norm_red_Iy0*norm_red_Iy_dot)/Rp
 
         simplified_mutual_v = np.dot(self.Vm1Rm12Mey, norm_red_Iy_dot)
         self.Mmatrix[:-1, -1] = simplified_mutual_v*self.plasma_norm_factor
@@ -148,26 +148,23 @@ class simplified_solver_J1:
 
     def prepare_solver(self, norm_red_Iy0, norm_red_Iy1, active_voltage_vec):
 
-        Rp = np.sum(self.plasma_resistance_1d*(norm_red_Iy1**2))
+        Rp = np.sum(self.plasma_resistance_1d*norm_red_Iy1*norm_red_Iy0)
 
         simplified_mutual_1 = np.dot(self.Vm1Rm12Mey, norm_red_Iy1)
         simplified_mutual_0 = np.dot(self.Vm1Rm12Mey, norm_red_Iy0)
 
-        simplified_self_11 = np.dot(self.Myy, norm_red_Iy1)
-        simplified_self_10 = np.dot(simplified_self_11, norm_red_Iy0)
-        simplified_self_11 = np.dot(simplified_self_11, norm_red_Iy1)
+        simplified_self_00 = np.dot(self.Myy, norm_red_Iy0)
+        simplified_self_10 = np.dot(simplified_self_00, norm_red_Iy1)
+        simplified_self_00 = np.dot(simplified_self_00, norm_red_Iy0)
 
-        self.Mmatrix[-1, :-1] = simplified_mutual_1/(Rp*self.plasma_norm_factor)
+        self.Mmatrix[-1, :-1] = simplified_mutual_0/(Rp*self.plasma_norm_factor)
         self.Lmatrix[-1, :-1] = 1.0*self.Mmatrix[-1, :-1]
 
         self.Mmatrix[:-1, -1] = simplified_mutual_1*self.plasma_norm_factor
         self.Lmatrix[:-1, -1] = simplified_mutual_0*self.plasma_norm_factor
 
-        self.Mmatrix[-1, -1] = simplified_self_11/Rp
-        self.Lmatrix[-1, -1] = simplified_self_10/Rp
-
-        simplified_mutual_h = np.dot(self.Vm1Rm12Mey, norm_red_Iy0)
-        self.Mmatrix[-1, :-1] = simplified_mutual_h/(Rp*self.plasma_norm_factor)
+        self.Mmatrix[-1, -1] = simplified_self_10/Rp
+        self.Lmatrix[-1, -1] = simplified_self_00/Rp
 
         self.solver.set_Lmatrix(self.Lmatrix)
         self.solver.set_Mmatrix(self.Mmatrix)

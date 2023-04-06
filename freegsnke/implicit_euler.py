@@ -19,10 +19,10 @@ class implicit_euler_solver:
 
         self.Rmatrix = Rmatrix
 
+        self.dims = np.shape(Mmatrix)[0]
+
         self.set_timesteps(full_timestep, max_internal_timestep)
         
-        self.dims = np.shape(Mmatrix)[0]
-            
 
         #dummy voltage vector
         self.empty_U = np.zeros(self.dims)
@@ -46,6 +46,7 @@ class implicit_euler_solver:
         self.full_timestep = full_timestep
         self.max_internal_timestep = max_internal_timestep
         self.n_steps = int(full_timestep/max_internal_timestep + .999)
+        self.intermediate_results = np.zeros((self.dims, self.n_steps))
         self.internal_timestep = self.full_timestep/self.n_steps 
         self.calc_inverse_operator()
 
@@ -53,19 +54,17 @@ class implicit_euler_solver:
 
     def internal_stepper(self, It, forcing):
         # executes on self.internal_timestep
-        # I(t+dt) = (M-1Rdt + 1)^-1 . (Mm1forcing.dt + I(t))
-        # note the different definition of the forcing term with respect to full_stepper
+        # I(t+dt) = (M + Rdt)^-1 . (Fdt + LI(t))        
         Itpdt = np.dot(self.inverse_operator, forcing*self.internal_timestep + np.dot(self.Lmatrix,It))
         return Itpdt
 
     def full_stepper(self, It, forcing):
         # executes on self.full_timestep
         # by repeating over self.n_steps
-        # I(t+dt) = (M-1Rdt + 1)^-1 . (M-1.forcing.dt + I(t))
-        # note the different definition of the forcing term with respect to internal_stepper
-
-        for _ in range(self.n_steps):
+        # I(t+dt) = (M + Rdt)^-1 . (Fdt + LI(t))     
+        for i in range(self.n_steps):
             It = self.internal_stepper(It, forcing)
+            self.intermediate_results[:, i] = It
         
         return It
 
@@ -93,9 +92,11 @@ class implicit_euler_solver_d:
         self.Rmatrix = Rmatrix
         self.Smatrix = Rmatrix
 
+        self.dims = np.shape(Mmatrix)[0]
+
         self.set_timesteps(full_timestep, max_internal_timestep)
         
-        self.dims = np.shape(Mmatrix)[0]
+        
             
 
         #dummy voltage vector
@@ -120,6 +121,7 @@ class implicit_euler_solver_d:
         self.full_timestep = full_timestep
         self.max_internal_timestep = max_internal_timestep
         self.n_steps = int(full_timestep/max_internal_timestep + .999)
+        self.intermediate_results = np.zeros((self.dims, self.n_steps))
         self.internal_timestep = self.full_timestep/self.n_steps 
         self.calc_inverse_operator()
 
@@ -135,7 +137,8 @@ class implicit_euler_solver_d:
         # executes on self.full_timestep
         # by repeating over self.n_steps
 
-        for _ in range(self.n_steps):
+        for i in range(self.n_steps):
             It = 1.0*self.internal_stepper(It, forcing)
+            self.intermediate_results[:, i] = It
         
         return It

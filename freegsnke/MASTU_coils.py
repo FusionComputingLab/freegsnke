@@ -835,6 +835,8 @@ Vmatrix[:N_active, :N_active] = 1.0*Vmatrix_active
 Vmatrix[N_active:, N_active:] = 1.0*Vmatrix_passive
 
 
+
+
 from freegs.machine import Machine, Circuit, Wall, Solenoid
 from freegs.coil import Coil
 from freegs.multi_coil import MultiCoil

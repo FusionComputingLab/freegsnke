@@ -27,7 +27,7 @@ class nl_solver:
     
     def __init__(self, profiles, eq, 
                  max_mode_frequency, 
-                #  max_internal_timestep=.0001,
+                 max_internal_timestep=.0001,
                  full_timestep=.0001,
                  plasma_resistivity=1e-4,
                  plasma_norm_factor=2000):
@@ -77,8 +77,8 @@ class nl_solver:
         
         self.dt_step = full_timestep
         self.plasma_norm_factor = plasma_norm_factor
-        # forcing no time step refinement, that's necessary for convergence
-        self.max_internal_timestep = full_timestep
+    
+        self.max_internal_timestep = max_internal_timestep
         self.max_mode_frequency = max_mode_frequency
         self.reset_plasma_resistivity(plasma_resistivity)
 
@@ -270,31 +270,69 @@ class nl_solver:
 
 
 
-    def Fresidual(self, trial_currents, active_voltage_vec, rtol_NK=1e-8):
+    def Fresidual_J1(self, trial_currents, active_voltage_vec, rtol_NK=1e-8):
+        # trial_currents is the full array of intermediate results from euler solver
         # root problem for circuit equation
         # collects both metal normal modes and norm_plasma
         
-        self.assign_currents(trial_currents, profile=self.profiles2, eq=self.eq2)
+        # current at t+dt
+        current_tpdt = trial_currents[:, -1]
+        self.assign_currents(current_tpdt, profile=self.profiles2, eq=self.eq2)
         self.NK.solve(self.eq2, self.profiles2, rel_convergence=rtol_NK)
         self.red_Iy_trial = self.Iyplasmafromjtor(self.profiles2.jtor)
 
         self.red_Iy_dot = (self.red_Iy_trial - self.red_Iy)/self.dt_step
-        self.Id_dot = ((trial_currents - self.currents_vec)/self.dt_step)[:-1]
+        self.Id_dot = ((current_tpdt - self.currents_vec)/self.dt_step)[:-1]
 
         self.forcing_term = self.evol_metal_curr.forcing_term_eig_plasma(active_voltage_vec=active_voltage_vec, 
                                                                          Iydot=self.red_Iy_dot)
-        self.residual[:-1] = 1.0*self.evol_metal_curr.current_residual( Itpdt=trial_currents[:-1], 
+
+        mean_curr = np.mean(trial_currents, axis=-1)                                                                 
+        self.residual[:-1] = 1.0*self.evol_metal_curr.current_residual( Itpdt=mean_curr[:-1], 
                                                                         Iddot=self.Id_dot, 
                                                                         forcing_term=self.forcing_term)
 
+
+        mean_Iy = mean_curr[-1]*self.J1*self.plasma_norm_factor
+        # mean_Iy = 1.0*self.red_Iy_trial
         self.residual[-1] = 1.0*self.evol_plasma_curr.current_residual( red_Iy0=self.red_Iy, 
-                                                                        red_Iy1=self.red_Iy_trial,
+                                                                        red_Iy1=mean_Iy,
+                                                                        red_Iydot=self.red_Iy_dot,
+                                                                        Iddot=self.Id_dot)/self.plasma_norm_factor
+        return self.residual
+
+
+    def Fresidual_dJ(self, trial_currents, active_voltage_vec, rtol_NK=1e-8):
+        # trial_currents is the full array of intermediate results from euler solver
+        # root problem for circuit equation
+        # collects both metal normal modes and norm_plasma
+        
+        # current at t+dt
+        current_tpdt = trial_currents[:, -1]
+        self.assign_currents(current_tpdt, profile=self.profiles2, eq=self.eq2)
+        self.NK.solve(self.eq2, self.profiles2, rel_convergence=rtol_NK)
+        self.red_Iy_trial = self.Iyplasmafromjtor(self.profiles2.jtor)
+
+        self.red_Iy_dot = (self.red_Iy_trial - self.red_Iy)/self.dt_step
+        self.Id_dot = ((current_tpdt - self.currents_vec)/self.dt_step)[:-1]
+
+        self.forcing_term = self.evol_metal_curr.forcing_term_eig_plasma(active_voltage_vec=active_voltage_vec, 
+                                                                         Iydot=self.red_Iy_dot)
+
+        mean_curr = np.mean(trial_currents, axis=-1)                                                                 
+        self.residual[:-1] = 1.0*self.evol_metal_curr.current_residual( Itpdt=mean_curr[:-1], 
+                                                                        Iddot=self.Id_dot, 
+                                                                        forcing_term=self.forcing_term)
+
+        mean_Iy = (mean_curr[-1] - self.currents_vec[-1])*self.dJ*self.plasma_norm_factor + self.red_Iy
+        self.residual[-1] = 1.0*self.evol_plasma_curr.current_residual( red_Iy0=self.red_Iy, 
+                                                                        red_Iy1=mean_Iy,
                                                                         red_Iydot=self.red_Iy_dot,
                                                                         Iddot=self.Id_dot)/self.plasma_norm_factor
         return self.residual
     
 
-    def Fresidual_dJ(self,   dJ,
+    def Fresidual_nk_dJ(self,   dJ,
                              active_voltage_vec,
                              rtol_NK):
         
@@ -325,15 +363,15 @@ class nl_solver:
 
 
     def iterative_unit_J1(self, J1,
-                             active_voltage_vec,
-                             rtol_NK):
+                                active_voltage_vec,
+                                rtol_NK):
         simplified_c1 = 1.0*self.simplified_solver_J1.stepper(It=self.currents_vec,
                                                                 norm_red_Iy0=self.J0, 
                                                                 norm_red_Iy1=J1, 
                                                                 active_voltage_vec=active_voltage_vec)
-        res = 1.0*self.Fresidual(trial_currents=simplified_c1, 
-                                 active_voltage_vec=active_voltage_vec, 
-                                 rtol_NK=rtol_NK)   
+        res = 1.0*self.Fresidual_J1(trial_currents=self.simplified_solver_J1.solver.intermediate_results, 
+                                    active_voltage_vec=active_voltage_vec, 
+                                    rtol_NK=rtol_NK)   
         return simplified_c1, res
 
     def nl_step_iterative_J1(self, active_voltage_vec, 
@@ -348,8 +386,8 @@ class nl_solver:
         self.J1 = 1.0*J1
         
         simplified_c, res = self.iterative_unit_J1(J1=self.J1,
-                                                 active_voltage_vec=active_voltage_vec,
-                                                 rtol_NK=rtol_NK)
+                                                    active_voltage_vec=active_voltage_vec,
+                                                    rtol_NK=rtol_NK)
 
         dcurrents = np.abs(simplified_c-self.currents_vec)
         vals_for_check = np.where(dcurrents>threshold, dcurrents, threshold)
@@ -358,11 +396,11 @@ class nl_solver:
         control = 1
         while control:
             self.J1n = (1-alpha)*self.J1 + alpha*self.reduce_normalize(self.profiles2.jtor)
-            self.ddJ = self.J1n-self.J1
+            self.ddJ = self.J1n - self.J1
             self.J1 = 1.0*self.J1n
             simplified_c1, res = self.iterative_unit_J1(J1=self.J1,
-                                                     active_voltage_vec=active_voltage_vec,
-                                                     rtol_NK=rtol_NK)   
+                                                        active_voltage_vec=active_voltage_vec,
+                                                        rtol_NK=rtol_NK)   
 
             abs_increments = np.abs(simplified_c-simplified_c1)
             dcurrents = np.abs(simplified_c1-self.currents_vec)
@@ -397,7 +435,7 @@ class nl_solver:
                                                                 norm_red_Iy_dot=dJ, 
                                                                 active_voltage_vec=active_voltage_vec, 
                                                                 Rp=Rp)
-        res = 1.0*self.Fresidual(trial_currents=simplified_c1, 
+        res = 1.0*self.Fresidual_dJ(trial_currents=self.simplified_solver_dJ.solver.intermediate_results, 
                                  active_voltage_vec=active_voltage_vec, 
                                  rtol_NK=rtol_NK)   
         return simplified_c1, res
@@ -572,7 +610,7 @@ class nl_solver:
         
         self.Rp = self.calc_plasma_resistance(self.J0, self.J0)
 
-        resJ = self.Fresidual_dJ(trial_sol, active_voltage_vec=active_voltage_vec, rtol_NK=rtol_NK)
+        resJ = self.Fresidual_nk_dJ(trial_sol, active_voltage_vec=active_voltage_vec, rtol_NK=rtol_NK)
         
         simplified_c = 1.0*self.simplified_c1
         dcurrents = np.abs(self.simplified_c1-self.currents_vec)
@@ -584,7 +622,7 @@ class nl_solver:
             self.Arnoldi_iteration(trial_sol=trial_sol, #trial_current expansion point
                                     vec_direction=-resJ, #first vector for current basis
                                     Fresidual=resJ, #circuit eq. residual at trial_current expansion point: Fresidual(trial_current)
-                                    Fresidual_function=self.Fresidual_dJ,
+                                    Fresidual_function=self.Fresidual_nk_dJ,
                                     active_voltage_vec=active_voltage_vec,
                                     n_k=n_k, # max number of basis vectors (must be less than number of modes + 1)
                                     conv_crit=conv_crit,   #add basis vector 
@@ -594,7 +632,7 @@ class nl_solver:
                                     clip=clip)
             print(self.coeffs)
             trial_sol += self.d_sol_step
-            resJ = self.Fresidual_dJ(trial_sol, 
+            resJ = self.Fresidual_nk_dJ(trial_sol, 
                              active_voltage_vec=active_voltage_vec, 
                              rtol_NK=rtol_NK)   
             

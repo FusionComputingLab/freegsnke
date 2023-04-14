@@ -382,8 +382,8 @@ class nl_solver:
                                 J1,
                                 alpha=.8, 
                                 rtol_NK=5e-4,
-                                atol_increments=1e-3,
-                                rtol_residuals=1e-3,
+                                atol_currents=1e-3,
+                                atol_J=1e-3,
                                 verbose=False,
                                 threshold=.01):
         
@@ -393,8 +393,8 @@ class nl_solver:
                                                     active_voltage_vec=active_voltage_vec,
                                                     rtol_NK=rtol_NK)
 
-        dcurrents = np.abs(simplified_c-self.currents_vec)
-        vals_for_check = np.where(dcurrents>threshold, dcurrents, threshold)
+        # dcurrents = np.abs(simplified_c-self.currents_vec)
+        # vals_for_check = np.where(dcurrents>threshold, dcurrents, threshold)
 
         iterative_steps = 0
         control = 1
@@ -407,14 +407,16 @@ class nl_solver:
                                                         rtol_NK=rtol_NK)   
 
             abs_increments = np.abs(simplified_c-simplified_c1)
-            dcurrents = np.abs(simplified_c1-self.currents_vec)
-            vals_for_check = np.where(dcurrents>threshold, dcurrents, threshold)
-            rel_residuals = np.abs(res)/vals_for_check
-            control = np.any(abs_increments>atol_increments)
-            control += np.any(rel_residuals>rtol_residuals)            
+            # dcurrents = np.abs(simplified_c1-self.currents_vec)
+            # vals_for_check = np.where(dcurrents>threshold, dcurrents, threshold)
+            rel_residuals = np.abs(res)#/vals_for_check
+            control = np.any(abs_increments>atol_currents)
+            # control += np.any(rel_residuals>rtol_residuals)
+            control += np.any(self.ddJ>atol_J)
             if verbose:
-                print(np.mean(abs_increments), np.mean(rel_residuals), np.max(rel_residuals))
-                print(np.mean(np.abs(self.ddJ)), np.max(np.abs(self.ddJ)))
+                print('max currents change = ', np.max(abs_increments))
+                print('max J direction change = ', np.max(np.abs(self.ddJ)))
+                print('max circuit eq residual (dim of currents) = ', np.max(rel_residuals))
 
             iterative_steps += 1
 
@@ -450,8 +452,8 @@ class nl_solver:
                                 dJ,
                                 alpha=.8, 
                                 rtol_NK=5e-4,
-                                atol_increments=1e-3,
-                                rtol_residuals=1e-3,
+                                atol_currents=1e-3,
+                                atol_J=1e-3,
                                 verbose=False,
                                 threshold=.001):
         
@@ -463,8 +465,8 @@ class nl_solver:
                                                  Rp=Rp, 
                                                  rtol_NK=rtol_NK)
 
-        dcurrents = np.abs(simplified_c-self.currents_vec)
-        vals_for_check = np.where(dcurrents>threshold, dcurrents, threshold)
+        # dcurrents = np.abs(simplified_c-self.currents_vec)
+        # vals_for_check = np.where(dcurrents>threshold, dcurrents, threshold)
 
         iterative_steps = 0
         control = 1
@@ -478,14 +480,16 @@ class nl_solver:
                                                      rtol_NK=rtol_NK)   
 
             abs_increments = np.abs(simplified_c-simplified_c1)
-            dcurrents = np.abs(simplified_c1-self.currents_vec)
-            vals_for_check = np.where(dcurrents>threshold, dcurrents, threshold)
-            rel_residuals = np.abs(res)/vals_for_check
-            control = np.any(abs_increments>atol_increments)
-            control += np.any(rel_residuals>rtol_residuals)            
+            # dcurrents = np.abs(simplified_c1-self.currents_vec)
+            # vals_for_check = np.where(dcurrents>threshold, dcurrents, threshold)
+            rel_residuals = np.abs(res)#/vals_for_check
+            control = np.any(abs_increments>atol_currents)
+            # control += np.any(rel_residuals>rtol_residuals)
+            control += np.any(self.ddJ>atol_J)         
             if verbose:
-                print(np.mean(abs_increments), np.mean(rel_residuals), np.max(rel_residuals))
-                print(np.mean(np.abs(self.ddJ)), np.max(np.abs(self.ddJ)))
+                print('max currents change = ', np.max(abs_increments))
+                print('max J direction change = ', np.max(np.abs(self.ddJ)))
+                print('max circuit eq residual (dim of currents) = ', np.max(rel_residuals))
 
             iterative_steps += 1
 

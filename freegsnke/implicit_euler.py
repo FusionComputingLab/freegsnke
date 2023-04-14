@@ -55,7 +55,7 @@ class implicit_euler_solver:
     def internal_stepper(self, It, forcing):
         # executes on self.internal_timestep
         # I(t+dt) = (M + Rdt)^-1 . (Fdt + LI(t))        
-        Itpdt = np.dot(self.inverse_operator, forcing*self.internal_timestep + np.dot(self.Lmatrix,It))
+        Itpdt = np.dot(self.inverse_operator, forcing*self.internal_timestep + np.dot(self.Lmatrix, It))
         return Itpdt
 
     def full_stepper(self, It, forcing):
@@ -129,8 +129,8 @@ class implicit_euler_solver_d:
     def internal_stepper(self, It, forcing):
         # executes on self.internal_timestep
         # deltaI = dt . (M + Sdt)^-1 . (F - RI(t))
-        Itpdt = It + self.internal_timestep*np.dot(self.inverse_operator, forcing - np.dot(self.Rmatrix, It))
-        return Itpdt
+        dI = self.internal_timestep*np.dot(self.inverse_operator, forcing - np.dot(self.Rmatrix, It))
+        return dI
 
 
     def full_stepper(self, It, forcing):
@@ -138,7 +138,8 @@ class implicit_euler_solver_d:
         # by repeating over self.n_steps
 
         for i in range(self.n_steps):
-            It = 1.0*self.internal_stepper(It, forcing)
-            self.intermediate_results[:, i] = It
+            dI = 1.0*self.internal_stepper(It, forcing)
+            self.intermediate_results[:, i] = 1.0*dI
+            It = It + dI
         
         return It

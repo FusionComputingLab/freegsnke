@@ -97,6 +97,7 @@ class nl_solver:
                                                 full_timestep=self.dt_step)
         # this is the number of independent normal mode currents associated to max_mode_frequency
         self.n_metal_modes = self.evol_metal_curr.n_independent_vars
+        
 
         # to calculate residual of plasma collapsed circuit eq
         self.evol_plasma_curr = plasma_current(reference_eq=eq,
@@ -112,6 +113,7 @@ class nl_solver:
                                                             plasma_resistance_1d=self.plasma_resistance_1d,
                                                             max_internal_timestep=self.max_internal_timestep,
                                                             full_timestep=self.dt_step)
+        self.n_step_range = np.arange(self.simplified_solver_dJ.solver.n_steps)[::-1][np.newaxis] + 1                                                    
         
         self.simplified_solver_J1 = simplified_solver_J1(Lambdam1=self.evol_metal_curr.Lambdam1, 
                                                             Vm1Rm12=np.matmul(self.evol_metal_curr.Vm1, np.diag(self.evol_metal_curr.Rm12)), 
@@ -308,23 +310,25 @@ class nl_solver:
         # collects both metal normal modes and norm_plasma
         
         # current at t+dt
-        current_tpdt = trial_currents[:, -1]
-        self.assign_currents(current_tpdt, profile=self.profiles2, eq=self.eq2)
+        d_current_tpdt = np.sum(trial_currents, axis=-1)
+
+        self.assign_currents(d_current_tpdt + self.currents_vec, profile=self.profiles2, eq=self.eq2)
         self.NK.solve(self.eq2, self.profiles2, rel_convergence=rtol_NK)
         self.red_Iy_trial = self.Iyplasmafromjtor(self.profiles2.jtor)
 
         self.red_Iy_dot = (self.red_Iy_trial - self.red_Iy)/self.dt_step
-        self.Id_dot = ((current_tpdt - self.currents_vec)/self.dt_step)[:-1]
+        self.Id_dot = (d_current_tpdt/self.dt_step)[:-1]
 
         self.forcing_term = self.evol_metal_curr.forcing_term_eig_plasma(active_voltage_vec=active_voltage_vec, 
                                                                          Iydot=self.red_Iy_dot)
 
-        mean_curr = np.mean(trial_currents, axis=-1)                                                                 
-        self.residual[:-1] = 1.0*self.evol_metal_curr.current_residual( Itpdt=mean_curr[:-1], 
+        mean_curr = np.mean(trial_currents*self.n_step_range, axis=-1)
+        self.residual[:-1] = 1.0*self.evol_metal_curr.current_residual( Itpdt=(mean_curr+self.currents_vec)[:-1], 
                                                                         Iddot=self.Id_dot, 
                                                                         forcing_term=self.forcing_term)
 
-        mean_Iy = (mean_curr[-1] - self.currents_vec[-1])*self.dJ*self.plasma_norm_factor + self.red_Iy
+        mean_Iy = mean_curr[-1]*self.dJ*self.plasma_norm_factor + self.red_Iy
+        mean_Iy = 1.0*self.red_Iy_trial
         self.residual[-1] = 1.0*self.evol_plasma_curr.current_residual( red_Iy0=self.red_Iy, 
                                                                         red_Iy1=mean_Iy,
                                                                         red_Iydot=self.red_Iy_dot,
@@ -436,8 +440,8 @@ class nl_solver:
                                                                 active_voltage_vec=active_voltage_vec, 
                                                                 Rp=Rp)
         res = 1.0*self.Fresidual_dJ(trial_currents=self.simplified_solver_dJ.solver.intermediate_results, 
-                                 active_voltage_vec=active_voltage_vec, 
-                                 rtol_NK=rtol_NK)   
+                                    active_voltage_vec=active_voltage_vec, 
+                                    rtol_NK=rtol_NK)   
         return simplified_c1, res
     
 

@@ -11,6 +11,7 @@ from .circuit_eq_plasma import plasma_current
 from .linear_solve import simplified_solver_dJ
 from .linear_solve import simplified_solver_J1
 from . import plasma_grids
+from . import extrapolate
 
 #from picardfast import fast_solve
 from .newtonkrylov import NewtonKrylov
@@ -29,7 +30,9 @@ class nl_solver:
                  max_mode_frequency, 
                  max_internal_timestep=.0001,
                  full_timestep=.0001,
-                 plasma_resistivity=1e-4,
+                 plasma_resistivity=1e-6,
+                 extrapolator_input_size=4,
+                 extrapolator_order=1,
                  plasma_norm_factor=2000):
 
         self.shapes = shapes 
@@ -124,6 +127,10 @@ class nl_solver:
                                                             max_internal_timestep=self.max_internal_timestep,
                                                             full_timestep=self.dt_step)
         
+        self.extrapolator = extrapolate.extrapolator(input_size=extrapolator_input_size,
+                                                     interpolation_order=extrapolator_order,
+                                                     parallel_dims=self.n_metal_modes+1)
+        self.extrapolator_input_size = extrapolator_input_size
 
         # vector of full coil currents (not normal modes) is self.vessel_currents_vec
         # initial self.vessel_currents_vec values are taken from eq.tokamak
@@ -148,6 +155,8 @@ class nl_solver:
         self.new_currents = 1.0*currents_vec
         self.residual = np.zeros_like(self.currents_vec)
         
+        self.step_no = 0
+
         #self.npshape = np.shape(eq.plasma_psi)
         # self.dt_step_plasma = 0
 
@@ -247,8 +256,10 @@ class nl_solver:
         if reset_dJ:
             # dJ in the direction of the plasma current change in the timestep
             self.dJ = 1.0*self.J0
+            self.J1 = 1.0*self.J0
 
         self.time = 0
+        self.step_no = 0
 
         # check if against the wall
         if check_against_the_wall(jtor=self.profiles1.jtor, 
@@ -269,6 +280,26 @@ class nl_solver:
             eq.tokamak[labeli].current = self.vessel_currents_vec[i]
         # assign plasma current to equilibrium
         eq._current = self.plasma_norm_factor*currents_vec[-1]
+
+
+    def guess_J_from_extrapolation(self, alpha, rtol_NK):
+        # run after step is complete and assigned, prepares for next step
+
+        if self.step_no >= self.extrapolator_input_size:
+            currents_guess = self.extrapolator.in_out(self.currents_vec)
+
+            self.assign_currents(currents_vec=currents_guess, profile=self.profiles2, eq=self.eq2)
+            self.NK.solve(self.eq2, self.profiles2, rel_convergence=rtol_NK)
+
+            self.J1 = (1-alpha)*self.J1 + alpha*self.reduce_normalize(self.profiles2.jtor)
+            self.dJ = (1-alpha)*self.dJ + alpha*self.reduce_normalize(self.profiles2.jtor-self.profiles1.jtor)
+
+        else:
+            self.extrapolator.set_Y(self.step_no, self.currents_vec)
+        
+        self.step_no += 1
+        
+
 
 
 
@@ -378,6 +409,7 @@ class nl_solver:
                                     rtol_NK=rtol_NK)   
         return simplified_c1, res
 
+
     def nl_step_iterative_J1(self, active_voltage_vec, 
                                 J1,
                                 alpha=.8, 
@@ -424,6 +456,8 @@ class nl_solver:
         
         self.time += self.dt_step
         self.step_complete_assign(simplified_c)
+
+        self.guess_J_from_extrapolation(alpha=alpha, rtol_NK=rtol_NK)
         
         flag = check_against_the_wall(jtor=self.profiles2.jtor, 
                                       boole_mask_outside_limiter=self.mask_outside_limiter)
@@ -441,7 +475,7 @@ class nl_solver:
                                                                 norm_red_Iy_dot=dJ, 
                                                                 active_voltage_vec=active_voltage_vec, 
                                                                 Rp=Rp)
-        res = 1.0*self.Fresidual_dJ(trial_currents=self.simplified_solver_dJ.solver.intermediate_results, 
+        res = self.Fresidual_dJ(trial_currents=self.simplified_solver_dJ.solver.intermediate_results, 
                                     active_voltage_vec=active_voltage_vec, 
                                     rtol_NK=rtol_NK)   
         return simplified_c1, res
@@ -497,9 +531,14 @@ class nl_solver:
         
         self.time += self.dt_step
         self.step_complete_assign(simplified_c)
+
+        self.guess_J_from_extrapolation(alpha=alpha, rtol_NK=rtol_NK)
+
         
         flag = check_against_the_wall(jtor=self.profiles2.jtor, 
                                       boole_mask_outside_limiter=self.mask_outside_limiter)
+
+
 
         return flag
 

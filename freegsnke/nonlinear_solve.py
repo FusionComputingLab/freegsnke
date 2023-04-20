@@ -367,19 +367,19 @@ class nl_solver:
         return self.residual
     
 
-    def Fresidual_nk_dJ(self,   dJ,
-                             active_voltage_vec,
-                             rtol_NK):
+    def Fresidual_nk_dJ(self, dJ,
+                              active_voltage_vec,
+                              rtol_NK):
         
-        Sp = self.calc_plasma_resistance(self.J0, dJ)/self.Rp
+        # Sp = self.calc_plasma_resistance(self.J0, dJ)/self.Rp
         self.simplified_c1 = 1.0*self.simplified_solver_dJ.stepper(It=self.currents_vec,
                                                             norm_red_Iy0=self.J0, 
                                                             norm_red_Iy_dot=dJ, 
                                                             active_voltage_vec=active_voltage_vec, 
-                                                            Rp=self.Rp, Sp=Sp)
-        res = 1.0*self.Fresidual(trial_currents=self.simplified_c1, 
-                                 active_voltage_vec=active_voltage_vec, 
-                                 rtol_NK=rtol_NK)   
+                                                            Rp=self.Rp)
+        res = 1.0*self.Fresidual_dJ(trial_currents=self.simplified_solver_dJ.solver.intermediate_results, 
+                                    active_voltage_vec=active_voltage_vec, 
+                                    rtol_NK=rtol_NK)   
         dJ1 = self.red_Iy_dot/np.sum(self.red_Iy_dot)
         return dJ1-dJ
     
@@ -457,7 +457,7 @@ class nl_solver:
         self.time += self.dt_step
         self.step_complete_assign(simplified_c)
 
-        self.guess_J_from_extrapolation(alpha=alpha, rtol_NK=rtol_NK)
+        self.guess_J_from_extrapolation(alpha=.99, rtol_NK=rtol_NK)
         
         flag = check_against_the_wall(jtor=self.profiles2.jtor, 
                                       boole_mask_outside_limiter=self.mask_outside_limiter)
@@ -650,18 +650,18 @@ class nl_solver:
                         grad_eps=.5, #infinitesimal step
                         clip=3,
                         rtol_NK=1e-5,
-                        atol_increments=1e-3,
-                        rtol_residuals=1e-3,
-                        verbose=False,
-                        threshold=.001):
+                        atol_currents=1e-3,
+                        atol_J=1e-3,
+                        verbose=False):
         
         self.Rp = self.calc_plasma_resistance(self.J0, self.J0)
 
         resJ = self.Fresidual_nk_dJ(trial_sol, active_voltage_vec=active_voltage_vec, rtol_NK=rtol_NK)
         
+
         simplified_c = 1.0*self.simplified_c1
-        dcurrents = np.abs(self.simplified_c1-self.currents_vec)
-        vals_for_check = np.where(dcurrents>threshold, dcurrents, threshold)
+        # dcurrents = np.abs(self.simplified_c1-self.currents_vec)
+        # vals_for_check = np.where(dcurrents>threshold, dcurrents, threshold)
 
         iterative_steps = 0
         control = 1
@@ -685,14 +685,16 @@ class nl_solver:
             
             
             abs_increments = np.abs(simplified_c-self.simplified_c1)
-            dcurrents = np.abs(self.simplified_c1-self.currents_vec)
-            vals_for_check = np.where(dcurrents>threshold, dcurrents, threshold)
-            rel_residuals = np.abs(self.residual)/vals_for_check
-            control = np.any(abs_increments>atol_increments)
-            control += np.any(rel_residuals>rtol_residuals)            
+            # dcurrents = np.abs(simplified_c1-self.currents_vec)
+            # vals_for_check = np.where(dcurrents>threshold, dcurrents, threshold)
+            rel_residuals = np.abs(self.residual)#/vals_for_check
+            control = np.any(abs_increments>atol_currents)
+            # control += np.any(rel_residuals>rtol_residuals)
+            control += np.any(resJ>atol_J)       
             if verbose:
-                print('abs_change=', np.mean(abs_increments),'mean_rel_residual=',  np.mean(rel_residuals), np.max(rel_residuals))
-                print(np.mean(np.abs(resJ)), np.max(np.abs(resJ)))          
+                print('max currents change = ', np.max(abs_increments))
+                print('max J direction change = ', np.max(np.abs(resJ)))
+                print('max circuit eq residual (dim of currents) = ', np.max(rel_residuals))
 
             iterative_steps += 1
 
@@ -769,7 +771,7 @@ class nl_solver:
         
         self.n_it = 0
         self.n_it_tot = 0
-        grad_coeff = min(grad_eps*nFresidual, .05)
+        grad_coeff = min(grad_eps*nFresidual, .005)
 
         print('norm trial_sol', np.linalg.norm(trial_sol))
 

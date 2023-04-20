@@ -831,7 +831,8 @@ Vmatrix_passive = ((v.T)[ordw]).T
 
 # compose full 
 Vmatrix = np.zeros((n_coils, n_coils))
-Vmatrix[:N_active, :N_active] = 1.0*Vmatrix_active
+# Vmatrix[:N_active, :N_active] = 1.0*Vmatrix_active
+Vmatrix[:N_active, :N_active] = np.eye(N_active)
 Vmatrix[N_active:, N_active:] = 1.0*Vmatrix_passive
 
 

@@ -23,7 +23,6 @@ class implicit_euler_solver:
 
         self.set_timesteps(full_timestep, max_internal_timestep)
         
-
         #dummy voltage vector
         self.empty_U = np.zeros(self.dims)
 

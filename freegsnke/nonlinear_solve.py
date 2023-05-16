@@ -21,6 +21,9 @@ from .jtor_update import ConstrainPaxisIp
 from .faster_shape import shapes
 from .faster_shape import check_against_the_wall
 
+import matplotlib.pyplot as plt
+
+
 class nl_solver:
     # interfaces the circuit equation with freeGS NK solver 
     # executes dt evolution of fully non linear equations
@@ -155,6 +158,8 @@ class nl_solver:
         self.new_currents = 1.0*currents_vec
         self.residual = np.zeros_like(self.currents_vec)
         
+        self.mapd = np.zeros_like(self.eq1.R)
+
         self.step_no = 0
 
         #self.npshape = np.shape(eq.plasma_psi)
@@ -205,14 +210,13 @@ class nl_solver:
         red_Iy = jtor[self.mask_inside_limiter]*self.dRdZ
         return red_Iy
 
-    def reduce_normalize(self, jtor):
-        red_Iy = jtor[self.mask_inside_limiter]/np.sum(jtor)
+    def reduce_normalize(self, jtor, epsilon=1e-6):
+        red_Iy = jtor[self.mask_inside_limiter]/(np.sum(jtor) + epsilon)
         return red_Iy
 
     def rebuild_grid_map(self, red_vec):
-        mapd = np.zeros_like(self.eq1.R)
-        mapd[self.idxs_mask[0], self.idxs_mask[1]] = red_vec
-        return mapd
+        self.mapd[self.idxs_mask[0], self.idxs_mask[1]] = red_vec
+        return self.mapd
 
 
 
@@ -489,7 +493,8 @@ class nl_solver:
                                 atol_currents=1e-3,
                                 atol_J=1e-3,
                                 verbose=False,
-                                threshold=.001):
+                                # threshold=.001
+                                ):
         
         Rp = self.calc_plasma_resistance(self.J0, self.J0)
         self.dJ = 1.0*dJ
@@ -505,7 +510,15 @@ class nl_solver:
         iterative_steps = 0
         control = 1
         while control:
-            self.dJ1 = (1-alpha)*self.dJ + alpha*self.reduce_normalize(self.profiles2.jtor-self.profiles1.jtor)
+            
+            if verbose:
+                plt.figure()
+                plt.imshow(self.rebuild_grid_map(self.dJ))
+                plt.colorbar()
+                plt.title(str(np.sum(self.dJ))+'   '+str(simplified_c[-1]))
+
+
+            self.dJ1 = (1-alpha)*self.dJ + alpha*(self.reduce_normalize(self.profiles2.jtor - self.profiles1.jtor))
             self.ddJ = self.dJ1-self.dJ
             self.dJ = 1.0*self.dJ1
             simplified_c1, res = self.iterative_unit_dJ(dJ=self.dJ, 
@@ -519,7 +532,7 @@ class nl_solver:
             rel_residuals = np.abs(res)#/vals_for_check
             control = np.any(abs_increments>atol_currents)
             # control += np.any(rel_residuals>rtol_residuals)
-            control += np.any(self.ddJ>atol_J)         
+            control += np.any(np.abs(self.ddJ)>atol_J)         
             if verbose:
                 print('max currents change = ', np.max(abs_increments))
                 print('max J direction change = ', np.max(np.abs(self.ddJ)))
@@ -612,7 +625,7 @@ class nl_solver:
         iterative_steps = 0
         control = 1
         while control:
-            self.dJ = (1-alpha)*self.dJ + alpha*self.reduce_normalize(self.profiles2.jtor-self.profiles1.jtor)
+            self.dJ = (1-alpha)*self.dJ + alpha*(self.reduce_normalize(self.profiles2.jtor - self.profiles1.jtor))
             simplified_c1, res = self.nl_mix_unit(active_voltage_vec=active_voltage_vec,
                                                     Rp=Rp, 
                                                     rtol_NK=rtol_NK,
@@ -730,10 +743,13 @@ class nl_solver:
 
         candidate_d_sol = grad_coeff*vec_direction/np.linalg.norm(vec_direction)
         print('norm candidate step', np.linalg.norm(candidate_d_sol))
-        ri = Fresidual_function(trial_sol + candidate_d_sol, active_voltage_vec=active_voltage_vec, rtol_NK=rtol_NK)
+        candidate_sol = trial_sol + candidate_d_sol
+        # candidate_sol /= np.sum(candidate_sol)
+        ri = Fresidual_function(candidate_sol, active_voltage_vec=active_voltage_vec, rtol_NK=rtol_NK)
         lvec_direction = ri - Fresidual
 
         self.Q[:,self.n_it] = 1.0*candidate_d_sol
+        # self.Q[:,self.n_it] = candidate_sol - trial_sol
         self.Qn[:,self.n_it] = self.Q[:,self.n_it]/np.linalg.norm(self.Q[:,self.n_it])
         
         self.G[:,self.n_it] = 1.0*lvec_direction

@@ -38,9 +38,9 @@ class full_circuit_eqs:
         self.full_R_matrix[len_metal:, len_metal:] = np.diag(evol_plasma_curr.Ryy)
 
         self.solver_full = implicit_euler.implicit_euler_solver(Mmatrix=self.full_M_matrix, 
-                                                           Rmatrix=self.full_R_matrix,  
-                                                           max_internal_timestep=evol_metal_curr.max_internal_timestep,
-                                                           full_timestep=evol_metal_curr.full_timestep)
+                                                                Rmatrix=self.full_R_matrix,  
+                                                                max_internal_timestep=evol_metal_curr.max_internal_timestep,
+                                                                full_timestep=evol_metal_curr.full_timestep)
         self.solver_mask = copy.deepcopy(self.solver_full)
 
         self.empty_U = np.zeros(len_full)

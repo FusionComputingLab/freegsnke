@@ -9,16 +9,18 @@ from . import MASTU_coils
 def define_reduced_plasma_grid(R, Z):
 
     mask_inside_limiter = np.ones_like(R)
-    mask_inside_limiter *= (R>0.263)*(R<1.584)
-    mask_inside_limiter *= (Z<.96+1*R)*(Z>-.96-1*R)
-    mask_inside_limiter *= (Z<-2+9.*R)*(Z>2-9.*R)
-    mask_inside_limiter *= (Z<2.28-1.1*R)*(Z>-2.28+1.1*R)
+    mask_inside_limiter *= (R>0.265)*(R<1.582)
+    mask_inside_limiter *= (Z<.95+1*R)*(Z>-.95-1*R)
+    mask_inside_limiter *= (Z<-1.98+9.*R)*(Z>1.98-9.*R)
+    mask_inside_limiter *= (Z<2.26-1.1*R)*(Z>-2.26+1.1*R)
     mask_inside_limiter = mask_inside_limiter.astype(bool)
 
     plasma_pts = np.concatenate((R[mask_inside_limiter][:,np.newaxis],
                                  Z[mask_inside_limiter][:,np.newaxis]), axis=-1)
 
     return plasma_pts, mask_inside_limiter
+
+
 
 # extracts mask of points just outside limiter, ofr a width=layer_size
 def make_layer_mask(mask_inside_limiter, layer_size=3):

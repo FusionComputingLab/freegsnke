@@ -765,10 +765,10 @@ for i, coil in enumerate(pass_coils):
     coils_dict[tkey]['resistivity'] = coil[-1]/(coil[2]*coil[3])
 
 
-# #calculate coil-coil inductances and coil resistances
-# nloops_per_coil = np.zeros(len(coils_dict.keys()))
-# coil_resist = np.zeros(len(coils_dict.keys()))
-# coil_self_ind = np.zeros((len(coils_dict.keys()), len(coils_dict.keys())))
+#calculate coil-coil inductances and coil resistances
+nloops_per_coil = np.zeros(len(coils_dict.keys()))
+coil_resist = np.zeros(len(coils_dict.keys()))
+coil_self_ind = np.zeros((len(coils_dict.keys()), len(coils_dict.keys())))
 # for i,labeli in enumerate(coils_dict.keys()):
 #     nloops_per_coil[i] = len(coils_dict[labeli]['coords'][0])    
 #     #for coil-coil flux
@@ -781,19 +781,19 @@ for i, coil in enumerate(pass_coils):
 #         greenm *= coils_dict[labelj]['polarity'][:,np.newaxis]
 #         greenm *= coils_dict[labeli]['polarity'][np.newaxis,:]
 #         coil_self_ind[i,j] = np.sum(greenm)
-#     # resistance = resistivity/area * number of loops * mean_radius * 2pi
-#     # voltages in terms of total applied voltage
-#     coil_resist[i] = coils_dict[labeli]['resistivity']*np.sum(coils_dict[labeli]['coords'][0])
+    # resistance = resistivity/area * number of loops * mean_radius * 2pi
+    # voltages in terms of total applied voltage
+    # coil_resist[i] = coils_dict[labeli]['resistivity']*np.sum(coils_dict[labeli]['coords'][0])
 # freeGS greens = Mij/2pi
 # coil_self_ind *= 2*np.pi
 # coil_resist *= 2*np.pi
 
-# # active coils are up-down symmetric: no inductance on p6
+# active coils are up-down symmetric: no inductance on p6
 # coil_self_ind[:11,11] = 0
 # coil_self_ind[11,:11] = 0
 
 
-# calculations above replaced with final result
+# # calculations above replaced with final result
 coil_self_ind = pass_coils_dict[1]
 coil_resist = pass_coils_dict[2]
 

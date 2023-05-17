@@ -420,8 +420,8 @@ class nl_solver:
                                 rtol_NK=5e-4,
                                 atol_currents=1e-3,
                                 atol_J=1e-3,
-                                verbose=False,
-                                threshold=.01):
+                                use_extrapolation=True,
+                                verbose=False):
         
         self.J1 = 1.0*J1
         
@@ -460,8 +460,8 @@ class nl_solver:
         
         self.time += self.dt_step
         self.step_complete_assign(simplified_c)
-
-        self.guess_J_from_extrapolation(alpha=.99, rtol_NK=rtol_NK)
+        if use_extrapolation:
+            self.guess_J_from_extrapolation(alpha=alpha, rtol_NK=rtol_NK)
         
         flag = check_against_the_wall(jtor=self.profiles2.jtor, 
                                       boole_mask_outside_limiter=self.mask_outside_limiter)
@@ -493,7 +493,7 @@ class nl_solver:
                                 atol_currents=1e-3,
                                 atol_J=1e-3,
                                 verbose=False,
-                                # threshold=.001
+                                use_extrapolation=True,
                                 ):
         
         Rp = self.calc_plasma_resistance(self.J0, self.J0)
@@ -515,7 +515,7 @@ class nl_solver:
                 plt.figure()
                 plt.imshow(self.rebuild_grid_map(self.dJ))
                 plt.colorbar()
-                plt.title(str(np.sum(self.dJ))+'   '+str(simplified_c[-1]))
+                plt.title(str(np.sum(self.dJ))+'   '+str(simplified_c[-1]-self.currents_vec[-1]))
 
 
             self.dJ1 = (1-alpha)*self.dJ + alpha*(self.reduce_normalize(self.profiles2.jtor - self.profiles1.jtor))
@@ -545,7 +545,8 @@ class nl_solver:
         self.time += self.dt_step
         self.step_complete_assign(simplified_c)
 
-        self.guess_J_from_extrapolation(alpha=alpha, rtol_NK=rtol_NK)
+        if use_extrapolation:
+            self.guess_J_from_extrapolation(alpha=alpha, rtol_NK=rtol_NK)
 
         
         flag = check_against_the_wall(jtor=self.profiles2.jtor, 

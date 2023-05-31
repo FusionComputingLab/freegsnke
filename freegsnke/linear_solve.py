@@ -59,7 +59,12 @@ class simplified_solver_dJ:
 
 
 
-    def prepare_solver(self, norm_red_Iy0, norm_red_Iy_dot, active_voltage_vec, Rp):
+    def prepare_solver(self, norm_red_Iy0,
+                            #  norm_red_Iy_m1, 
+                             norm_red_Iy_dot, 
+                             active_voltage_vec, 
+                             Rp,
+                             central_2):
 
         Sp = np.sum(self.plasma_resistance_1d*norm_red_Iy0*norm_red_Iy_dot)/Rp
 
@@ -74,21 +79,17 @@ class simplified_solver_dJ:
 
         self.solver.set_Mmatrix(self.Mmatrix)
 
-
         self.Sdiag[-1] = Sp
-        self.solver.set_Smatrix(self.Sdiag)
-
+        self.solver.set_Smatrix(central_2*self.Sdiag)
 
         self.solver.calc_inverse_operator()
-
 
         self.empty_U[:self.n_active_coils] = active_voltage_vec
         self.forcing[:-1] = np.dot(self.Vm1Rm12, self.empty_U)
 
-    
 
-    def stepper(self, It, norm_red_Iy0, norm_red_Iy_dot, active_voltage_vec, Rp):
-        self.prepare_solver(norm_red_Iy0, norm_red_Iy_dot, active_voltage_vec, Rp)
+    def stepper(self, It, norm_red_Iy0, norm_red_Iy_dot, active_voltage_vec, Rp, central_2):
+        self.prepare_solver(norm_red_Iy0, norm_red_Iy_dot, active_voltage_vec, Rp, central_2)
         Itpdt = self.solver.full_stepper(It, self.forcing)
         return Itpdt
 

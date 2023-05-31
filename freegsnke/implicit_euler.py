@@ -130,6 +130,7 @@ class implicit_euler_solver_d:
         # deltaI = dt . (M + Sdt)^-1 . (F - RI(t))
         dI = self.internal_timestep*np.dot(self.inverse_operator, forcing - np.dot(self.Rmatrix, It))
         return dI
+    
 
 
     def full_stepper(self, It, forcing):
@@ -141,4 +142,5 @@ class implicit_euler_solver_d:
             self.intermediate_results[:, i] = 1.0*dI
             It = It + dI
         
-        return It
+        # only return dI
+        return np.sum(self.intermediate_results, axis=-1)

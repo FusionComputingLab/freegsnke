@@ -147,35 +147,36 @@ class simplified_solver_J1:
 
 
 
-    def prepare_solver(self, norm_red_Iy0, norm_red_Iy1, active_voltage_vec):
+    def prepare_solver(self, norm_red_Iy_m1, norm_red_Iy0, norm_red_Iy1, active_voltage_vec, central_2):
 
         Rp = np.sum(self.plasma_resistance_1d*norm_red_Iy1*norm_red_Iy0)
 
+        simplified_mutual_m1 = np.dot(self.Vm1Rm12Mey, norm_red_Iy_m1)
         simplified_mutual_1 = np.dot(self.Vm1Rm12Mey, norm_red_Iy1)
         simplified_mutual_0 = np.dot(self.Vm1Rm12Mey, norm_red_Iy0)
 
-        simplified_self_00 = np.dot(self.Myy, norm_red_Iy0)
-        simplified_self_10 = np.dot(simplified_self_00, norm_red_Iy1)
-        simplified_self_00 = np.dot(simplified_self_00, norm_red_Iy0)
+        simplified_self_0 = np.dot(self.Myy, norm_red_Iy0)
+        simplified_self_0_1 = np.dot(simplified_self_0, norm_red_Iy1)
+        simplified_self_0_m1 = np.dot(simplified_self_0, norm_red_Iy_m1)
 
         self.Mmatrix[-1, :-1] = simplified_mutual_0/(Rp*self.plasma_norm_factor)
         self.Lmatrix[-1, :-1] = 1.0*self.Mmatrix[-1, :-1]
 
         self.Mmatrix[:-1, -1] = simplified_mutual_1*self.plasma_norm_factor
-        self.Lmatrix[:-1, -1] = simplified_mutual_0*self.plasma_norm_factor
+        self.Lmatrix[:-1, -1] = simplified_mutual_m1*self.plasma_norm_factor
 
-        self.Mmatrix[-1, -1] = simplified_self_10/Rp
-        self.Lmatrix[-1, -1] = simplified_self_00/Rp
+        self.Mmatrix[-1, -1] = simplified_self_0_1/Rp
+        self.Lmatrix[-1, -1] = simplified_self_0_m1/Rp
 
-        self.solver.set_Lmatrix(self.Lmatrix)
-        self.solver.set_Mmatrix(self.Mmatrix)
+        self.solver.set_Lmatrix(self.Lmatrix/central_2)
+        self.solver.set_Mmatrix(self.Mmatrix/central_2)
 
         self.empty_U[:self.n_active_coils] = active_voltage_vec
         self.forcing[:-1] = np.dot(self.Vm1Rm12, self.empty_U)
 
     
 
-    def stepper(self, It, norm_red_Iy0, norm_red_Iy1, active_voltage_vec):
-        self.prepare_solver(norm_red_Iy0, norm_red_Iy1, active_voltage_vec)
+    def stepper(self, It, norm_red_Iy_m1, norm_red_Iy0, norm_red_Iy1, active_voltage_vec, central_2):
+        self.prepare_solver(norm_red_Iy_m1, norm_red_Iy0, norm_red_Iy1, active_voltage_vec, central_2)
         Itpdt = self.solver.full_stepper(It, self.forcing)
         return Itpdt

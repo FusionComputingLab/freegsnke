@@ -44,7 +44,7 @@ class plasma_current:
         Ftot = Fy+Fe+Fr
 
         residual = np.dot(norm_red_Iy0, Ftot)
-        residual *= 1/np.sum(norm_red_Iy0*norm_red_Iy0*self.Ryy)
+        residual *= 1/np.sum(norm_red_Iy0*Fr)
 
         return residual
 

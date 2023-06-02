@@ -80,7 +80,7 @@ class simplified_solver_dJ:
         self.solver.set_Mmatrix(self.Mmatrix)
 
         self.Sdiag[-1] = Sp
-        self.solver.set_Smatrix(central_2*self.Sdiag)
+        self.solver.set_Smatrix(self.Sdiag)
 
         self.solver.calc_inverse_operator()
 

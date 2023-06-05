@@ -31,7 +31,7 @@ class nl_solver:
     
     def __init__(self, profiles, eq, 
                  max_mode_frequency, 
-                 max_internal_timestep=.0001,
+                #  max_internal_timestep=.0001, has been fixed to full_timestep
                  full_timestep=.0001,
                  plasma_resistivity=1e-6,
                  extrapolator_input_size=4,
@@ -84,7 +84,8 @@ class nl_solver:
         self.dt_step = full_timestep
         self.plasma_norm_factor = plasma_norm_factor
     
-        self.max_internal_timestep = max_internal_timestep
+        # self.max_internal_timestep = max_internal_timestep
+        self.max_internal_timestep = 1.0*full_timestep
         self.max_mode_frequency = max_mode_frequency
         self.reset_plasma_resistivity(plasma_resistivity)
 
@@ -371,7 +372,7 @@ class nl_solver:
                                                                 norm_red_Iy1=J1, 
                                                                 active_voltage_vec=active_voltage_vec,
                                                                 central_2=self.central_2)
-        self.Fresidual_J1(trial_currents=simplified_c1, 
+        self.Fresidual_dJ(trial_currents=simplified_c1, 
                             active_voltage_vec=active_voltage_vec, 
                             rtol_NK=rtol_NK)   
         return simplified_c1, self.residual
@@ -455,48 +456,46 @@ class nl_solver:
         self.forcing_term = self.evol_metal_curr.forcing_term_eig_plasma(active_voltage_vec=active_voltage_vec, 
                                                                          Iydot=self.red_Iy_dot)
 
-        
         self.residual[:-1] = 1.0*self.evol_metal_curr.current_residual( Itpdt=trial_currents[:-1], 
                                                                         Iddot=self.Id_dot, 
                                                                         forcing_term=self.forcing_term)
 
-        
         self.residual[-1] = 1.0*self.evol_plasma_curr.current_residual( red_Iy0=self.red_Iy, 
                                                                         red_Iy1=self.red_Iy_trial,
                                                                         red_Iydot=self.red_Iy_dot,
                                                                         Iddot=self.Id_dot)/self.plasma_norm_factor
         # return self.residual
 
-    def Fresidual_J1(self, trial_currents, active_voltage_vec, rtol_NK=1e-8):
-        # trial_currents is the full array of intermediate results from euler solver
-        # root problem for circuit equation
-        # collects both metal normal modes and norm_plasma
+    # def Fresidual_J1(self, trial_currents, active_voltage_vec, rtol_NK=1e-8):
+    #     # trial_currents is the full array of intermediate results from euler solver
+    #     # root problem for circuit equation
+    #     # collects both metal normal modes and norm_plasma
         
-        # current at t+dt
-        # current_tpdt = 1.0*trial_currents#[:, -1]
-        self.assign_currents(trial_currents, profile=self.profiles2, eq=self.eq2)
-        self.NK.solve(self.eq2, self.profiles2, rel_convergence=rtol_NK)
-        self.red_Iy_trial = self.Iyplasmafromjtor(self.profiles2.jtor)
+    #     # current at t+dt
+    #     # current_tpdt = 1.0*trial_currents#[:, -1]
+    #     self.assign_currents(trial_currents, profile=self.profiles2, eq=self.eq2)
+    #     self.NK.solve(self.eq2, self.profiles2, rel_convergence=rtol_NK)
+    #     self.red_Iy_trial = self.Iyplasmafromjtor(self.profiles2.jtor)
 
-        self.red_Iy_dot = (self.red_Iy_trial - self.red_Iy_m1)/(2*self.dt_step)
-        self.Id_dot = ((trial_currents - self.currents_vec_m1)/(2*self.dt_step))[:-1]
+    #     self.red_Iy_dot = (self.red_Iy_trial - self.red_Iy_m1)/(2*self.dt_step)
+    #     self.Id_dot = ((trial_currents - self.currents_vec_m1)/(2*self.dt_step))[:-1]
 
-        self.forcing_term = self.evol_metal_curr.forcing_term_eig_plasma(active_voltage_vec=active_voltage_vec, 
-                                                                         Iydot=self.red_Iy_dot)
+    #     self.forcing_term = self.evol_metal_curr.forcing_term_eig_plasma(active_voltage_vec=active_voltage_vec, 
+    #                                                                      Iydot=self.red_Iy_dot)
 
-        # mean_curr = np.mean(trial_currents, axis=-1)                                                                 
-        self.residual[:-1] = 1.0*self.evol_metal_curr.current_residual( Itpdt=trial_currents[:-1], 
-                                                                        Iddot=self.Id_dot, 
-                                                                        forcing_term=self.forcing_term)
+    #     # mean_curr = np.mean(trial_currents, axis=-1)                                                                 
+    #     self.residual[:-1] = 1.0*self.evol_metal_curr.current_residual( Itpdt=trial_currents[:-1], 
+    #                                                                     Iddot=self.Id_dot, 
+    #                                                                     forcing_term=self.forcing_term)
 
 
-        # mean_Iy = trial_currents[-1]*self.J1*self.plasma_norm_factor
-        mean_Iy = 1.0*self.red_Iy_trial
-        self.residual[-1] = 1.0*self.evol_plasma_curr.current_residual( red_Iy0=self.red_Iy, 
-                                                                        red_Iy1=mean_Iy,
-                                                                        red_Iydot=self.red_Iy_dot,
-                                                                        Iddot=self.Id_dot)/self.plasma_norm_factor
-        # return self.residual
+    #     # mean_Iy = trial_currents[-1]*self.J1*self.plasma_norm_factor
+    #     # mean_Iy = 1.0*self.red_Iy_trial
+    #     self.residual[-1] = 1.0*self.evol_plasma_curr.current_residual( red_Iy0=self.red_Iy, 
+    #                                                                     red_Iy1=self.red_Iy_trial,
+    #                                                                     red_Iydot=self.red_Iy_dot,
+    #                                                                     Iddot=self.Id_dot)/self.plasma_norm_factor
+    #     # return self.residual
 
 
 

@@ -203,7 +203,7 @@ class implicit_euler_solver_d():
         self.calc_inverse_operator()
 
     def internal_stepper(self, It, forcing):
-        """Calculates the next internal timestep $\deltaI(t + `self.internal_timestep`) = dt  (M + Sdt)^{-1} . (F - RI(t))$
+        """Calculates the next internal timestep $\delta I(t + `self.internal_timestep`) = dt  (M + Sdt)^{-1} . (F - RI(t))$
         
         Parameters
         ----------

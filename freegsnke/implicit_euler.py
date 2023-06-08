@@ -43,7 +43,6 @@ class implicit_euler_solver():
             (NxN) Mutual inductance matrix
         """
         self.Mmatrix = Mmatrix
-        self.calc_inverse_operator()
     
     def set_Lmatrix(self, Lmatrix):
         """Set a separate mutual inductance matrix L != M.
@@ -64,7 +63,6 @@ class implicit_euler_solver():
             (NxN) Diagonal resistance matrix
         """
         self.Rmatrix = Rmatrix
-        self.calc_inverse_operator()
     
     def calc_inverse_operator(self):
         """Calculates the inverse operator (M + Rdt)^-1

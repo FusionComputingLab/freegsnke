@@ -216,7 +216,7 @@ class implicit_euler_solver_d():
         return dI
     
     def full_stepper(self, It, forcing):
-        """Calculates the next full timestep $\deltaI(t + dt) = dt  (M + Sdt)^{-1} . (F - RI(t))$, where dt = `self.full_timestep`, by repeatedly solving for the internal timestep I(t + `self.internal_timestep`) for `self.n_steps` steps
+        """Calculates the next full timestep $\delta I(t + dt) = dt  (M + Sdt)^{-1} . (F - RI(t))$, where dt = `self.full_timestep`, by repeatedly solving for the internal timestep I(t + `self.internal_timestep`) for `self.n_steps` steps
         
         Parameters
         ----------

@@ -46,7 +46,7 @@ calculate_self_inductance_and_resistance = False
 self_inductance_path = os.environ.get('SELF_INDUCTANCE_PATH', None)
 if self_inductance_path is None:
     self_inductance_path = os.path.join(os.path.split(active_coils_path)[0],
-                                        'self_inductance.pk')
+                                        'self_inductance.pickle')
     if not os.path.exists(self_inductance_path):
         calculate_self_inductance_and_resistance = True
     else:
@@ -59,7 +59,7 @@ else:
 resistance_path = os.environ.get('RESISTANCE_PATH', None)
 if resistance_path is None:
     resistance_path = os.path.join(os.path.split(active_coils_path)[0],
-                                   'resistance.pk')
+                                   'resistance.pickle')
     if not os.path.exists(resistance_path):
         calculate_self_inductance_and_resistance = True
     else:
@@ -71,6 +71,10 @@ else:
 
 
 if calculate_self_inductance_and_resistance:
+    print(
+        "At least one of the self inductance and resistance data files does"
+        " not exist. Calculating them now."
+    )
     # Create dictionary of coils
     coils_dict = {}
     for i, coil_name in enumerate(active_coils):
@@ -81,6 +85,7 @@ if calculate_self_inductance_and_resistance:
             coils_dict[coil_name]['dR'] = active_coils[coil_name]["dR"]
             coils_dict[coil_name]['dZ'] = active_coils[coil_name]["dZ"]
             coils_dict[coil_name]['resistivity'] = active_coils[coil_name]["resistivity"]
+            coils_dict[coil_name]['multiplier'] = np.array([active_coils[coil_name]["multiplier"]] * len(active_coils[coil_name]["R"]))
             continue
         coils_dict[coil_name] = {}
 
@@ -98,9 +103,14 @@ if calculate_self_inductance_and_resistance:
             polarity.extend([active_coils[coil_name][ind]["polarity"]] * len(active_coils[coil_name][ind]["R"]))
         coils_dict[coil_name]['polarity'] = np.array(polarity)
 
-        # coils_dict[coil_name]['polarity'] = np.array([active_coils[coil_name][ind]["polarity"] * len(active_coils[coil_name][ind]["R"]) for ind in active_coils[coil_name].keys()])
+        multiplier = []
+        for ind in active_coils[coil_name].keys():
+            multiplier.extend([active_coils[coil_name][ind]["multiplier"]] * len(active_coils[coil_name][ind]["R"]))
+        coils_dict[coil_name]['multiplier'] = np.array(multiplier)
+
         coils_dict[coil_name]['dR'] = active_coils[coil_name][list(active_coils[coil_name].keys())[0]]["dR"]
         coils_dict[coil_name]['dZ'] = active_coils[coil_name][list(active_coils[coil_name].keys())[0]]["dZ"]
+
         coils_dict[coil_name]['resistivity'] = active_coils[coil_name][list(active_coils[coil_name].keys())[0]]["resistivity"] / (coils_dict[coil_name]['dR'] * coils_dict[coil_name]['dZ'])
     
     for i, coil in enumerate(passive_coils):
@@ -108,6 +118,7 @@ if calculate_self_inductance_and_resistance:
         coils_dict[tkey] = {}
         coils_dict[tkey]['coords'] = np.array((coil["R"], coil["Z"]))[:, np.newaxis]
         coils_dict[tkey]['polarity'] = np.array([1])
+        coils_dict[tkey]['multiplier'] = np.array([1])
         coils_dict[tkey]['resistivity'] = coil["resistivity"] / (coil["dR"] * coil["dZ"])
 
     nloops_per_coil = np.zeros(n_coils, dtype=int)
@@ -123,7 +134,7 @@ if calculate_self_inductance_and_resistance:
                             coils_dict[labelj]['coords'][0][:,np.newaxis],
                             coils_dict[labelj]['coords'][1][:,np.newaxis])
             
-            greenm *= coils_dict[labelj]['polarity'][:,np.newaxis]  # TODO: multiplier
+            greenm *= coils_dict[labelj]['polarity'][:,np.newaxis]
             greenm *= coils_dict[labelj]['multiplier'][:,np.newaxis]
             greenm *= coils_dict[labeli]['polarity'][np.newaxis,:]
             greenm *= coils_dict[labeli]['multiplier'][np.newaxis,:]

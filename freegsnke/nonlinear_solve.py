@@ -1,7 +1,7 @@
 import numpy as np
 
-from . import MASTU_coils
-from .MASTU_coils import coils_dict
+from . import machine_config
+from .machine_config import coils_dict
 
 from copy import deepcopy
 

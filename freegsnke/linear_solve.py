@@ -2,7 +2,7 @@ import numpy as np
 
 from .implicit_euler import implicit_euler_solver_d
 from .implicit_euler import implicit_euler_solver
-from . import MASTU_coils
+from . import machine_config
 
 class simplified_solver_dJ:
     # implements solver of circuit eq + plasma system 
@@ -32,7 +32,7 @@ class simplified_solver_dJ:
         self.Vm1Rm12Mey = np.matmul(Vm1Rm12, Mey)
         self.Myy = Myy
 
-        self.n_active_coils = MASTU_coils.N_active
+        self.n_active_coils = machine_config.N_active
 
         self.plasma_resistance_1d = plasma_resistance_1d
 
@@ -124,7 +124,7 @@ class simplified_solver_J1:
         self.Vm1Rm12Mey = np.matmul(Vm1Rm12, Mey)
         self.Myy = Myy
 
-        self.n_active_coils = MASTU_coils.N_active
+        self.n_active_coils = machine_config.N_active
 
         self.plasma_resistance_1d = plasma_resistance_1d
 

@@ -2,8 +2,8 @@ import profile
 from freegs.gradshafranov import Greens
 import numpy as np
 
-from . import MASTU_coils
-from .MASTU_coils import coils_dict
+from . import machine_config
+from .machine_config import coils_dict
 from freegsnke.faster_shape import calculate_width
 from freegsnke.faster_shape import geometricElongation
 

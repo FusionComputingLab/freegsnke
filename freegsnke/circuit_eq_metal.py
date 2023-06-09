@@ -1,6 +1,6 @@
 import numpy as np
 
-from . import MASTU_coils
+from . import machine_config
 from . import plasma_grids
 from .implicit_euler import implicit_euler_solver
 
@@ -18,8 +18,8 @@ class metal_currents:
                        max_internal_timestep=.0001,
                        full_timestep=.0001):
                     
-        self.n_coils = len(MASTU_coils.coil_self_ind)
-        self.n_active_coils = MASTU_coils.N_active
+        self.n_coils = len(machine_config.coil_self_ind)
+        self.n_active_coils = machine_config.N_active
 
         self.flag_vessel_eig = flag_vessel_eig
         self.flag_plasma = flag_plasma
@@ -48,25 +48,25 @@ class metal_currents:
 
     def initialize_for_eig(self, ):
         # from passive alone
-        self.n_independent_vars = np.sum(MASTU_coils.w_passive < self.max_mode_frequency)
+        self.n_independent_vars = np.sum(machine_config.w_passive < self.max_mode_frequency)
         # include active
-        self.n_independent_vars += MASTU_coils.N_active
+        self.n_independent_vars += machine_config.N_active
 
         # Id = Vm1 R**(1/2) I 
         # to change base to truncated modes
         # I = R**(-1/2) V Id 
-        self.Vm1 = ((MASTU_coils.Vmatrix).T)[:self.n_independent_vars]
-        self.V = (MASTU_coils.Vmatrix)[:, :self.n_independent_vars]
+        self.Vm1 = ((machine_config.Vmatrix).T)[:self.n_independent_vars]
+        self.V = (machine_config.Vmatrix)[:, :self.n_independent_vars]
 
         # equation is Lambda**(-1)Iddot + I = F
         # where Lambda is such that R12@M-1@R12 = V Lambda V-1
         # w are frequences, eigenvalues of Lambda, 
-        self.Lambda = self.Vm1@MASTU_coils.lm1r@self.V
-        self.Lambdam1 = self.Vm1@MASTU_coils.rm1l@self.V
+        self.Lambda = self.Vm1@machine_config.lm1r@self.V
+        self.Lambdam1 = self.Vm1@machine_config.rm1l@self.V
 
-        self.R = MASTU_coils.coil_resist
-        self.R12 = MASTU_coils.coil_resist**.5
-        self.Rm12 = MASTU_coils.coil_resist**-.5
+        self.R = machine_config.coil_resist
+        self.R12 = machine_config.coil_resist**.5
+        self.Rm12 = machine_config.coil_resist**-.5
         # R, R12, Rm12 are vectors rather than matrices!
 
         self.solver = implicit_euler_solver(Mmatrix=self.Lambdam1, 
@@ -84,12 +84,12 @@ class metal_currents:
 
     def initialize_for_no_eig(self, ):
         self.n_independent_vars = self.n_coils
-        self.M = MASTU_coils.coil_self_ind
-        self.Mm1 = MASTU_coils.Mm1
-        self.R = np.diag(MASTU_coils.coil_resist)
-        self.Rm1 = 1/MASTU_coils.coil_resist #it's a vector!
+        self.M = machine_config.coil_self_ind
+        self.Mm1 = machine_config.Mm1
+        self.R = np.diag(machine_config.coil_resist)
+        self.Rm1 = 1/machine_config.coil_resist #it's a vector!
         self.Mm1R = self.Mm1@self.R
-        self.Rm1M = np.diag(1/MASTU_coils.coil_resist)@self.M
+        self.Rm1M = np.diag(1/machine_config.coil_resist)@self.M
 
         # equation is MIdot + RI = F
         self.solver = implicit_euler_solver(Mmatrix=self.M, 

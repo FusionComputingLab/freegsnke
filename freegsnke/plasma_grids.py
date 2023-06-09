@@ -1,6 +1,6 @@
 import numpy as np
 from freegs.gradshafranov import Greens
-from . import MASTU_coils
+from . import machine_config
 
 
 
@@ -45,7 +45,7 @@ def Myy(plasma_pts):
 
 # calculate Mey: matrix of mutual indicances between plasma grid points and all vessel coils
 def Mey(plasma_pts):
-    coils_dict = MASTU_coils.coils_dict
+    coils_dict = machine_config.coils_dict
     mey = np.zeros((len(coils_dict), len(plasma_pts)))
     for j,labelj in enumerate(coils_dict.keys()):
         greenm = Greens(plasma_pts[:, 0, np.newaxis],

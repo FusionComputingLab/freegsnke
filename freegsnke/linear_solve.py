@@ -170,6 +170,7 @@ class simplified_solver_J1:
 
         self.solver.set_Lmatrix(self.Lmatrix/central_2)
         self.solver.set_Mmatrix(self.Mmatrix/central_2)
+        self.solver.calc_inverse_operator() # recalculate the inverse operator1
 
         self.empty_U[:self.n_active_coils] = active_voltage_vec
         self.forcing[:-1] = np.dot(self.Vm1Rm12, self.empty_U)

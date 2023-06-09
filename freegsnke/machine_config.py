@@ -39,8 +39,8 @@ n_active_coils = len(active_coils)
 n_coils = n_active_coils + len(passive_coils)
 
 
-# Check for existence of resistance matrix and self inductance matrix and
-# calculate them if they don't exist
+# Check for existence of resistance matrix and self inductance matrix data
+# files. Calculates and saves them if they don't exist.
 calculate_self_inductance_and_resistance = False
 
 self_inductance_path = os.environ.get('SELF_INDUCTANCE_PATH', None)

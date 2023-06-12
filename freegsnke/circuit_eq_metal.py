@@ -1,6 +1,7 @@
 import numpy as np
 
 from . import machine_config
+from . import normal_modes
 from . import plasma_grids
 from .implicit_euler import implicit_euler_solver
 
@@ -48,21 +49,21 @@ class metal_currents:
 
     def initialize_for_eig(self, ):
         # from passive alone
-        self.n_independent_vars = np.sum(machine_config.w_passive < self.max_mode_frequency)
+        self.n_independent_vars = np.sum(normal_modes.w_passive < self.max_mode_frequency)
         # include active
         self.n_independent_vars += self.n_active_coils
 
         # Id = Vm1 R**(1/2) I 
         # to change base to truncated modes
         # I = R**(-1/2) V Id 
-        self.Vm1 = ((machine_config.Vmatrix).T)[:self.n_independent_vars]
-        self.V = (machine_config.Vmatrix)[:, :self.n_independent_vars]
+        self.Vm1 = ((normal_modes.Vmatrix).T)[:self.n_independent_vars]
+        self.V = (normal_modes.Vmatrix)[:, :self.n_independent_vars]
 
         # equation is Lambda**(-1)Iddot + I = F
         # where Lambda is such that R12@M-1@R12 = V Lambda V-1
         # w are frequences, eigenvalues of Lambda, 
-        self.Lambda = self.Vm1@machine_config.lm1r@self.V
-        self.Lambdam1 = self.Vm1@machine_config.rm1l@self.V
+        self.Lambda = self.Vm1@normal_modes.lm1r@self.V
+        self.Lambdam1 = self.Vm1@normal_modes.rm1l@self.V
 
         self.R = machine_config.coil_resist
         self.R12 = machine_config.coil_resist**.5
@@ -85,7 +86,7 @@ class metal_currents:
     def initialize_for_no_eig(self, ):
         self.n_independent_vars = self.n_coils
         self.M = machine_config.coil_self_ind
-        self.Mm1 = machine_config.Mm1
+        self.Mm1 = normal_modes.Mm1
         self.R = np.diag(machine_config.coil_resist)
         self.Rm1 = 1/machine_config.coil_resist #it's a vector!
         self.Mm1R = self.Mm1@self.R

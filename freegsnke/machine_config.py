@@ -175,35 +175,35 @@ if calculate_self_inductance_and_resistance:
         pickle.dump(coils_order, f)
 
 
-# Extract normal modes
-# 0. active + passive
-R12 = np.diag(coil_resist**.5)
-Rm12 = np.diag(coil_resist**-.5)
-Mm1 = np.linalg.inv(coil_self_ind)
-lm1r = R12@Mm1@R12
-rm1l = Rm12@coil_self_ind@Rm12
-# w,v = np.linalg.eig(R12@(Mm1@R12))
+# # Extract normal modes
+# # 0. active + passive
+# R12 = np.diag(coil_resist**.5)
+# Rm12 = np.diag(coil_resist**-.5)
+# Mm1 = np.linalg.inv(coil_self_ind)
+# lm1r = R12@Mm1@R12
+# rm1l = Rm12@coil_self_ind@Rm12
+# # w,v = np.linalg.eig(R12@(Mm1@R12))
+# # ordw = np.argsort(w)
+# # w_active = w[ordw]
+# # Vmatrix_full = ((v.T)[ordw]).T
+
+# # 1. active coils
+# w,v = np.linalg.eig(lm1r[:n_active_coils, :n_active_coils])
 # ordw = np.argsort(w)
 # w_active = w[ordw]
-# Vmatrix_full = ((v.T)[ordw]).T
+# Vmatrix_active = ((v.T)[ordw]).T
 
-# 1. active coils
-w,v = np.linalg.eig(lm1r[:n_active_coils, :n_active_coils])
-ordw = np.argsort(w)
-w_active = w[ordw]
-Vmatrix_active = ((v.T)[ordw]).T
+# # 2. passive structures
+# w,v = np.linalg.eig(lm1r[n_active_coils:, n_active_coils:])
+# ordw = np.argsort(w)
+# w_passive = w[ordw]
+# Vmatrix_passive = ((v.T)[ordw]).T
 
-# 2. passive structures
-w,v = np.linalg.eig(lm1r[n_active_coils:, n_active_coils:])
-ordw = np.argsort(w)
-w_passive = w[ordw]
-Vmatrix_passive = ((v.T)[ordw]).T
-
-# compose full 
-Vmatrix = np.zeros((n_coils, n_coils))
-# Vmatrix[:n_active_coils, :n_active_coils] = 1.0*Vmatrix_active
-Vmatrix[:n_active_coils, :n_active_coils] = np.eye(n_active_coils)
-Vmatrix[n_active_coils:, n_active_coils:] = 1.0*Vmatrix_passive
+# # compose full 
+# Vmatrix = np.zeros((n_coils, n_coils))
+# # Vmatrix[:n_active_coils, :n_active_coils] = 1.0*Vmatrix_active
+# Vmatrix[:n_active_coils, :n_active_coils] = np.eye(n_active_coils)
+# Vmatrix[n_active_coils:, n_active_coils:] = 1.0*Vmatrix_passive
 
 
 # TODO: Unit tests

@@ -645,7 +645,7 @@ px_upper_z = [
 
 active_coil_dict = {}
 
-active_coil_dict["solenoid"] = {
+active_coil_dict["Solenoid"] = {
     "R": [0.19475]*324,
     "Z": list(np.linspace(-1.581, 1.581, 324)),
     "dR": 0.012,
@@ -654,6 +654,27 @@ active_coil_dict["solenoid"] = {
     "resistivity": eta_copper,
     "multiplier": 1,
 }
+
+active_coil_dict["PX"] = {}
+active_coil_dict["PX"]["1"] = {
+    "R": px_upper_r,
+    "Z": px_upper_z,
+    "dR": 0.011,
+    "dZ": 0.018,
+    "resistivity": eta_copper,
+    "polarity": 1,
+    "multiplier": 1,
+}
+active_coil_dict["PX"]["2"] = {
+    "R": px_upper_r,
+    "Z": [-1*z for z in px_upper_z],
+    "dR": 0.011,
+    "dZ": 0.018,
+    "resistivity": eta_copper,
+    "polarity": 1,
+    "multiplier": 1,
+}
+
 
 active_coil_dict["D1"] = {}
 active_coil_dict["D1"]["1"] = {
@@ -835,6 +856,8 @@ active_coil_dict["P5"]["2"] = {
     "multiplier": 1,
 }
 
+
+
 active_coil_dict["P6"] = {}
 active_coil_dict["P6"]["1"] = {
     "R": p6_upper_r,
@@ -852,26 +875,6 @@ active_coil_dict["P6"]["2"] = {
     "dZ": 0.02836,
     "resistivity": eta_copper,
     "polarity": -1,
-    "multiplier": 1,
-}
-
-active_coil_dict["PX"] = {}
-active_coil_dict["PX"]["1"] = {
-    "R": px_upper_r,
-    "Z": px_upper_z,
-    "dR": 0.011,
-    "dZ": 0.018,
-    "resistivity": eta_copper,
-    "polarity": 1,
-    "multiplier": 1,
-}
-active_coil_dict["PX"]["2"] = {
-    "R": px_upper_r,
-    "Z": [-1*z for z in px_upper_z],
-    "dR": 0.011,
-    "dZ": 0.018,
-    "resistivity": eta_copper,
-    "polarity": 1,
     "multiplier": 1,
 }
 

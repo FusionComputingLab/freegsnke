@@ -26,7 +26,7 @@ with open(active_coils_path, 'rb') as f:
 with open(wall_path, 'rb') as f:
     wall = pickle.load(f)
 
-if 'solenoid' not in active_coils:
+if 'Solenoid' not in active_coils:
     raise ValueError('No solenoid in active coils.')
 
 
@@ -43,15 +43,15 @@ def tokamak():
                     (
                         "Solenoid",
                         MultiCoil(
-                            active_coils['solenoid']['R'],
-                            active_coils['solenoid']['Z']),
-                            active_coils['solenoid']['polarity']
+                            active_coils['Solenoid']['R'],
+                            active_coils['Solenoid']['Z']),
+                            active_coils['Solenoid']['polarity']
                     ),
                 ]
             ),
         ),
     ]
-    del active_coils['solenoid']
+    del active_coils['Solenoid']
 
     # Add remaining active coils
     for coil_name in active_coils:

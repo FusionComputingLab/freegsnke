@@ -92,8 +92,8 @@ def Mey(plasma_pts):
         Array of mutual inductances between plasma grid points and all vessel coils
     """
     coils_dict = machine_config.coils_dict
-    mey = np.zeros((len(coils_dict), len(plasma_pts)))
-    for j,labelj in enumerate(coils_dict.keys()):
+    mey = np.zeros((machine_config.n_coils, len(plasma_pts)))
+    for j,labelj in enumerate(machine_config.coils_order):
         greenm = Greens(plasma_pts[:, 0, np.newaxis],
                         plasma_pts[:, 1, np.newaxis],
                         coils_dict[labelj]['coords'][0][np.newaxis, :],

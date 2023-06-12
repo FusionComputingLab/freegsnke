@@ -19,7 +19,7 @@ class metal_currents:
                        full_timestep=.0001):
                     
         self.n_coils = len(machine_config.coil_self_ind)
-        self.n_active_coils = machine_config.N_active
+        self.n_active_coils = machine_config.n_active_coils
 
         self.flag_vessel_eig = flag_vessel_eig
         self.flag_plasma = flag_plasma
@@ -50,7 +50,7 @@ class metal_currents:
         # from passive alone
         self.n_independent_vars = np.sum(machine_config.w_passive < self.max_mode_frequency)
         # include active
-        self.n_independent_vars += machine_config.N_active
+        self.n_independent_vars += self.n_active_coils
 
         # Id = Vm1 R**(1/2) I 
         # to change base to truncated modes

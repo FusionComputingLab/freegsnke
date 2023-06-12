@@ -3,8 +3,8 @@ from numpy.linalg import inv
 
 import freegs
 
-from . import MASTU_coils
-from .MASTU_coils import coils_dict
+from . import machine_config
+from .machine_config import coils_dict
 
 import copy
 
@@ -108,16 +108,16 @@ class evolve_plasma_NK:
 
         # threshold to calculate rel_change in the currents to set value of dt_step
         # it may be useful to use different values for different coils and for passive/active structures later on
-        self.threshold = np.array([1000]*MASTU_coils.N_active
-                                  +[3000]*(len(self.currents_vec)-MASTU_coils.N_active-1)
+        self.threshold = np.array([1000]*machine_config.N_active
+                                  +[3000]*(len(self.currents_vec)-machine_config.N_active-1)
                                   +[1000])
 
         self.void_matrix = np.zeros((self.len_currents, self.len_currents))
         self.dummy_vec = np.zeros(self.len_currents)
 
         #calculate eigenvectors of time evolution:
-        invm = np.linalg.inv(self.evol_currents.R_matrix[:-1,:-1]+MASTU_coils.coil_self_ind/.001)
-        v, w = np.linalg.eig(np.matmul(invm, MASTU_coils.coil_self_ind/.001))
+        invm = np.linalg.inv(self.evol_currents.R_matrix[:-1,:-1]+machine_config.coil_self_ind/.001)
+        v, w = np.linalg.eig(np.matmul(invm, machine_config.coil_self_ind/.001))
         w = w[:, np.argsort(-v)[:50]]
         mw = np.mean(w, axis = 0, keepdims = True)
         self.w = np.append(w, mw, axis=0)

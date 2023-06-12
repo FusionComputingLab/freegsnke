@@ -1,7 +1,7 @@
 import numpy as np
 
-from . import MASTU_coils
-from .MASTU_coils import coils_dict
+from . import machine_config
+from .machine_config import coils_order
 
 from copy import deepcopy
 
@@ -76,7 +76,7 @@ class nl_solver:
         self.eq2 = deepcopy(eq)
         self.profiles2 = deepcopy(profiles)   
 
-        for i,labeli in enumerate(coils_dict):
+        for i,labeli in enumerate(coils_order):
             self.eq1.tokamak[labeli].control = False
             self.eq2.tokamak[labeli].control = False
         
@@ -139,11 +139,11 @@ class nl_solver:
         # vector of full coil currents (not normal modes) is self.vessel_currents_vec
         # initial self.vessel_currents_vec values are taken from eq.tokamak
         # does not include plasma current
-        n_coils = len(coils_dict.keys())
-        self.len_currents = n_coils
-        vessel_currents_vec = np.zeros(n_coils)
+        # n_coils = len(coils_order)
+        # self.len_currents = n_coils
+        vessel_currents_vec = np.zeros(machine_config.n_coils)
         eq_currents = eq.tokamak.getCurrents()
-        for i,labeli in enumerate(coils_dict.keys()):
+        for i,labeli in enumerate(coils_order):
             vessel_currents_vec[i] = eq_currents[labeli]
         self.vessel_currents_vec = 1.0*vessel_currents_vec
         # vector of normal mode currents is self.eig_currents_vec
@@ -228,7 +228,7 @@ class nl_solver:
     def set_currents_eq1(self, eq, rtol_NK=1e-8):
         #gets initial currents from ICs, note these are before mode truncation!
         eq_currents = eq.tokamak.getCurrents()
-        for i,labeli in enumerate(coils_dict.keys()):
+        for i,labeli in enumerate(coils_order):
             self.vessel_currents_vec[i] = eq_currents[labeli]
         # vector of normal mode currents is self.eig_currents_vec
         self.eig_currents_vec = self.evol_metal_curr.IvesseltoId(Ivessel=self.vessel_currents_vec)
@@ -312,7 +312,7 @@ class nl_solver:
 
         # calculate vessel currents from normal modes and assign
         self.vessel_currents_vec = self.evol_metal_curr.IdtoIvessel(Id=currents_vec[:-1])
-        for i,labeli in enumerate(coils_dict):
+        for i,labeli in enumerate(coils_order):
             eq.tokamak[labeli].current = self.vessel_currents_vec[i]
         # assign plasma current to equilibrium
         eq._current = self.plasma_norm_factor*currents_vec[-1]
@@ -875,7 +875,7 @@ class nl_solver:
     #     #sets currents and initial plasma_psi in eq1
     #     eq_currents = eq.tokamak.getCurrents()
     #     currents_vec = np.zeros(len(eq_currents)+1)
-    #     for i,labeli in enumerate(coils_dict.keys()):
+    #     for i,labeli in enumerate(coils_order):
     #         currents_vec[i] = eq_currents[labeli]
     #     currents_vec[-1] = eq.plasmaCurrent()
     #     self.currents_vec = currents_vec.copy()

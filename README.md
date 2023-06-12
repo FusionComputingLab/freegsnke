@@ -22,7 +22,11 @@ Building from source is currently the only supported installation method and req
 6. `cd` back to the `freegsnke` repository directory and install this package by running `pip install .` from the respository home directory. If you plan on doing development, it is better to install with symlinks: `pip install -e .`.
 
 ## Usage
-See the Jupyter notebook in the `example/` directory. This requires the notebook package, which is not listed as a requirement of this package.
+See the Jupyter notebook in the `example/` directory. This requires the `notebook` Python package, which is not listed as a requirement of this package.
+
+TODO: Describe machine configuration usage.
+
+TODO: Give details of origin of MAST-U machine config.
 
 ## Release notes
 

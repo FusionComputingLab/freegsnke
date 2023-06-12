@@ -2,7 +2,7 @@ import numpy as np
 import copy
 
 from . import implicit_euler
-from . import MASTU_coils
+from . import machine_config
 
 
 class full_circuit_eqs:
@@ -12,7 +12,7 @@ class full_circuit_eqs:
 
     def __init__(self, evol_metal_curr, evol_plasma_curr):
 
-        self.N_active = MASTU_coils.N_active
+        self.N_active = machine_config.N_active
 
         len_plasma = len(evol_plasma_curr.Ryy)
         len_metal = evol_metal_curr.n_independent_vars

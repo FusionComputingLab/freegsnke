@@ -61,7 +61,8 @@ class metal_currents:
 
         # equation is Lambda**(-1)Iddot + I = F
         # where Lambda is such that R12@M-1@R12 = V Lambda V-1
-        # w are frequences, eigenvalues of Lambda, 
+        # w are frequences, eigenvalues of Lambda
+        # note Lambda is not diagonal because of active/passive mode separation
         self.Lambda = self.Vm1@normal_modes.lm1r@self.V
         self.Lambdam1 = self.Vm1@normal_modes.rm1l@self.V
 

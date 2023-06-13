@@ -3,8 +3,36 @@ import freegs
 from freegs.gradshafranov import Greens
 
 class NewtonKrylov:
+
+    """Implementation of Newton Krylow algorithm for solving
+    non linear forward static Grad Shafranov (GS) problems.
+
+    The solution domain is set at instantiation time, through the 
+    input freeGS equilibrium object.
+
+    The non-linear solver itself is called using the 'solve' method.
+    """
      
     def __init__(self, eq):
+
+        """Instantiates the NewtonKrylov class.
+        Based on the domain grid of the input equilibrium object, it prepares
+            - the linear solver 'self.solver'
+            - the response matrix of boundary grid points 'self.greens_boundary'
+
+
+        Parameters
+        ----------
+        eq : a freeGS equilibrium object.
+             The domain grid defined by (eq.R, eq.Z) is the solution domain 
+             adopted for the GS problems. Calls to the nonlinear solver will
+             use the grid domain set at instantiation time. Re-instantiation 
+             is necessary in order to change the propertes of either grid or
+             domain.
+
+        """
+     
+   
         #eq is an Equilibrium instance, it has to have the same domain and grid as 
         #the ones the solver will be called on
         
@@ -64,6 +92,20 @@ class NewtonKrylov:
         
             
     def freeboundary(self, plasma_psi, tokamak_psi, profiles):
+        """Imposes boundary conditions on set of boundary points. 
+
+        Parameters
+        ----------
+        plasma_psi : np.array of size (eq.nx, eq.ny)
+            magnetic flux due to the plasma
+        tokamak_psi : np.array of size (eq.nx, eq.ny)
+            magnetic flux due to the tokamak alone, including all metal currents,
+            in both active coils and passive structures
+        profiles : freeGS profile object
+            profile object describing target plasma properties, 
+            used to calculate jtor(plasma_psi)
+        """
+
         #tokamak_psi is psi from the currents assigned to the tokamak coils in eq, ie.
         #tokamak_psi = eq.tokamak.calcPsiFromGreens(pgreen=eq._pgreen)
         
@@ -87,22 +129,42 @@ class NewtonKrylov:
         self.rhs[:, -1] = self.psi_boundary[:, -1]
          
         
-    def F(self, plasma_psi, profiles, eq): #root problem on Psi
-        self.freeboundary(plasma_psi, profiles, eq)
-        return plasma_psi - self.solver(self.psi_boundary, self.rhs)
+    # def F(self, plasma_psi, profiles, eq): #root problem on Psi
+    #     self.freeboundary(plasma_psi, profiles, eq)
+    #     return plasma_psi - self.solver(self.psi_boundary, self.rhs)
     
     def _F(self, plasma_psi): 
+        """Nonlinear Grad Shafranov equation written as a root problem
+        F(plasma_psi) \equiv [\delta* - J](plasma_psi)
+        The plasma_psi that solves the Grad Shafranov problem satisfies
+        F(plasma_psi) = [\delta* - J](plasma_psi) = 0
+
+        
+        Parameters
+        ----------
+        plasma_psi : np.array of size (eq.nx, eq.ny)
+            magnetic flux due to the plasma
+
+        Needs self.tokamak_psi and self.profiles.
+        Both are set in the 'solve' call.
+        
+        Returns
+        -------
+        residual : np.array of size (eq.nx, eq.ny)
+            residual of the GS equation
+        """ 
         #same as above, but uses private profiles and tokamak_psi
         self.freeboundary(plasma_psi, self.tokamak_psi, self.profiles)
         return plasma_psi - self.solver(self.psi_boundary, self.rhs)
     
+
     def Arnoldi_iteration(self, plasma_psi, #trial plasma_psi
                                 vec_direction, #first vector for psi basis, both are in 2Dformat
                                 Fresidual=None, #residual of trial plasma_psi: F(plasma_psi)
                                 n_k=10, #max number of basis vectors
-                                conv_crit=.1, #add basis vector 
+                                conv_crit=.2, #add basis vector 
                                                 #if orthogonal component is larger than
-                                grad_eps=.001 #infinitesimal step
+                                grad_eps=1 #infinitesimal step
                          ):
         
         nplasma_psi = np.linalg.norm(plasma_psi)
@@ -126,7 +188,7 @@ class NewtonKrylov:
         arnoldi_control = 1
         #use at least 3 orthogonal terms, but not more than n_k
         while arnoldi_control*(n_it<n_k)>0:
-            grad_coeff = grad_eps*nplasma_psi/np.linalg.norm(vec_direction)*nFresidual*1000
+            grad_coeff = grad_eps*nplasma_psi/np.linalg.norm(vec_direction)*nFresidual/(n_it+1)**1.2
 
             candidate_dpsi = vec_direction*grad_coeff
             ri = self._F(plasma_psi + candidate_dpsi)
@@ -198,8 +260,8 @@ class NewtonKrylov:
                     profiles,
                     rel_convergence=1e-6, 
                     n_k=8, #this is a good compromise between convergence and speed
-                    conv_crit=.1, 
-                    grad_eps=.001,
+                    conv_crit=.15, 
+                    grad_eps=.5,
                     clip=10, #maximum absolute value of coefficients in psi space
                     #verbose=True,
                     max_iter=30 #after these it just stops
@@ -208,6 +270,7 @@ class NewtonKrylov:
         
         # rel_c_history = []
         
+        print('starting NK')
         trial_plasma_psi = eq.plasma_psi
         self.profiles = profiles
         self.tokamak_psi = eq.tokamak.calcPsiFromGreens(pgreen=eq._pgreen)
@@ -224,11 +287,13 @@ class NewtonKrylov:
             
         it=0
         while rel_change>rel_convergence and it<max_iter:
+            print(rel_change)
             self.Arnoldi_iteration(trial_plasma_psi, 
                                    res0, #starting vector in psi space is the residual itself
                                    res0, #F(trial_plasma_psi) already calculated
                                    n_k, conv_crit, grad_eps)
             dpsi = self.dpsi(res0, self.G, self.Q, clip)
+            print(self.coeffs)
             trial_plasma_psi += dpsi
             res0 = self._F(trial_plasma_psi)
             rel_change = np.amax(np.abs(res0))

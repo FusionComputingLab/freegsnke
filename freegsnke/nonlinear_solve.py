@@ -24,6 +24,9 @@ from .faster_shape import check_against_the_wall
 import matplotlib.pyplot as plt
 
 
+from scipy.signal import convolve2d
+
+
 class nl_solver:
     # interfaces the circuit equation with freeGS NK solver 
     # executes dt evolution of fully non linear equations
@@ -366,12 +369,16 @@ class nl_solver:
     def iterative_unit_J1(self, J1,
                                 active_voltage_vec,
                                 rtol_NK):
+        mix_map = self.rebuild_grid_map(self.J0_m1+self.J1)
+        self.broad_J0 = self.reduce_normalize(convolve2d(mix_map, np.ones((5,5)), mode='same'))
+        
         simplified_c1 = 1.0*self.simplified_solver_J1.stepper(It=self.currents_vec_m1,
                                                                 norm_red_Iy_m1=self.J0_m1, 
-                                                                norm_red_Iy0=self.J0, 
+                                                                norm_red_Iy0=self.broad_J0, 
                                                                 norm_red_Iy1=J1, 
                                                                 active_voltage_vec=active_voltage_vec,
                                                                 central_2=self.central_2)
+        
         self.Fresidual_dJ(trial_currents=simplified_c1, 
                             active_voltage_vec=active_voltage_vec, 
                             rtol_NK=rtol_NK)   
@@ -427,6 +434,17 @@ class nl_solver:
             simplified_c = 1.0*simplified_c1
         
         self.time += self.dt_step
+
+        plt.figure()
+        plt.imshow(self.profiles2.jtor - self.jtor_m1)
+        plt.colorbar()
+        plt.show()
+
+        plt.figure()
+        plt.imshow(self.eq2.plasma_psi - self.eq1.plasma_psi)
+        plt.colorbar()
+        plt.show()
+
         self.step_complete_assign(simplified_c)
         if use_extrapolation:
             self.guess_J_from_extrapolation(alpha=alpha, rtol_NK=rtol_NK)
@@ -434,8 +452,91 @@ class nl_solver:
         flag = check_against_the_wall(jtor=self.profiles2.jtor, 
                                       boole_mask_outside_limiter=self.mask_outside_limiter)
 
+        
+
         return flag
     
+    def Fresidual_nk_J1(self, J1, active_voltage_vec, rtol_NK=1e-8):
+        simplified_c, res = self.iterative_unit_J1(J1, active_voltage_vec, rtol_NK)
+        self.J1_new = self.reduce_normalize(self.profiles2.jtor)
+        return self.J1_new - J1
+
+
+
+    def nl_step_nk_J1(self, active_voltage_vec, 
+                                J1,
+                                # alpha=.8, 
+                                rtol_NK=5e-4,
+                                atol_currents=1e-3,
+                                atol_J=1e-3,
+                                use_extrapolation=True,
+                                verbose=False):
+        
+        self.J1 = 1.0*J1
+        self.central_2  = (1 + (self.step_no>0))
+
+        
+        simplified_c, res = self.iterative_unit_J1(J1=self.J1,
+                                                    active_voltage_vec=active_voltage_vec,
+                                                    rtol_NK=rtol_NK)
+
+        # dcurrents = np.abs(simplified_c-self.currents_vec)
+        # vals_for_check = np.where(dcurrents>threshold, dcurrents, threshold)
+
+        iterative_steps = 0
+        control = 1
+        while control:
+            self.J1n = (1-alpha)*self.J1 + alpha*self.reduce_normalize(self.profiles2.jtor)
+            self.J1n /= np.sum(self.J1n)
+            self.ddJ = self.J1n - self.J1
+            self.J1 = 1.0*self.J1n
+            simplified_c1, res = self.iterative_unit_J1(J1=self.J1,
+                                                        active_voltage_vec=active_voltage_vec,
+                                                        rtol_NK=rtol_NK)   
+
+            abs_increments = np.abs(simplified_c-simplified_c1)
+            # dcurrents = np.abs(simplified_c1-self.currents_vec)
+            # vals_for_check = np.where(dcurrents>threshold, dcurrents, threshold)
+            # rel_residuals = np.abs(res)#/vals_for_check
+            control = np.any(abs_increments>atol_currents)
+            # control += np.any(rel_residuals>rtol_residuals)
+            control += np.any(self.ddJ>atol_J)
+            if verbose:
+                print('max currents change = ', np.max(abs_increments))
+                print('max J direction change = ', np.max(np.abs(self.ddJ)), np.linalg.norm(self.ddJ))
+                print('max circuit eq residual (dim of currents) = ', np.argmax(abs(res)), res)
+                print(simplified_c1 - self.currents_vec_m1)
+
+            iterative_steps += 1
+
+            simplified_c = 1.0*simplified_c1
+        
+        self.time += self.dt_step
+
+        plt.figure()
+        plt.imshow(self.profiles2.jtor - self.jtor_m1)
+        plt.colorbar()
+        plt.show()
+
+        plt.figure()
+        plt.imshow(self.eq2.plasma_psi - self.eq1.plasma_psi)
+        plt.colorbar()
+        plt.show()
+
+        self.step_complete_assign(simplified_c)
+        if use_extrapolation:
+            self.guess_J_from_extrapolation(alpha=alpha, rtol_NK=rtol_NK)
+        
+        flag = check_against_the_wall(jtor=self.profiles2.jtor, 
+                                      boole_mask_outside_limiter=self.mask_outside_limiter)
+
+        
+
+        return flag
+
+
+
+
 
     def Fresidual_dJ(self, trial_currents, active_voltage_vec, rtol_NK=1e-8):
         # trial_currents is the full array of intermediate results from euler solver

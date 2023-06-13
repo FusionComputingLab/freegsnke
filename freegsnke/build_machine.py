@@ -51,7 +51,6 @@ def tokamak():
             ),
         ),
     ]
-    # del active_coils['Solenoid']
 
     # Add remaining active coils
     for coil_name in active_coils:

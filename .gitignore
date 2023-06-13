@@ -6,5 +6,5 @@
 .ipynb_checkpoints
 __pycache__
 .DS_Store
-examples/example_NK_evolution_*
-freegsnke/example_NK_evolution_*
+examples/example_nonlinear_evolution_*
+freegsnke/newtonkrylov_*

@@ -1,12 +1,12 @@
 import numpy as np
 from . import machine_config
 
-    """This calculates matrix data needed for normal mode decomposition of the vessel.
-    Resistance data (coil_resist) and metal mutual inductance matrix (coil_self_ind)
-    are as calculated in machine_config.py 
-    Matrix data calculated here is used to reformulate the system of circuit eqs,
-    primarily in circuit_eq_metal.py
-    """
+"""This calculates matrix data needed for normal mode decomposition of the vessel.
+Resistance data (coil_resist) and metal mutual inductance matrix (coil_self_ind)
+are as calculated in machine_config.py 
+Matrix data calculated here is used to reformulate the system of circuit eqs,
+primarily in circuit_eq_metal.py
+"""
 
 # active + passive
 R12 = np.diag(machine_config.coil_resist**.5)

@@ -27,7 +27,7 @@ with open(wall_path, 'rb') as f:
     wall = pickle.load(f)
 
 if 'Solenoid' not in active_coils:
-    raise ValueError('No solenoid in active coils.')
+    raise ValueError('No Solenoid in active coils. Must be capitalised Solenoid.')
 
 
 def tokamak():
@@ -51,28 +51,33 @@ def tokamak():
             ),
         ),
     ]
-    del active_coils['Solenoid']
+    # del active_coils['Solenoid']
 
     # Add remaining active coils
     for coil_name in active_coils:
-        coils.append(
-            (
-                coil_name,
-                Circuit(
-                    [
-                        (
-                            coil_name+ind,
-                            MultiCoil(
-                                active_coils[coil_name][ind]['R'],
-                                active_coils[coil_name][ind]['Z']
-                            ),
-                            float(active_coils[coil_name][ind]['polarity']) * \
-                            float(active_coils[coil_name][ind]['multiplier'])
-                        ) for ind in active_coils[coil_name]
-                    ]
+        if not coil_name == 'Solenoid':
+            coils.append(
+                (
+                    coil_name,
+                    Circuit(
+                        [
+                            (
+                                coil_name+ind,
+                                MultiCoil(
+                                    active_coils[coil_name][ind]['R'],
+                                    active_coils[coil_name][ind]['Z']
+                                ),
+                                float(
+                                    active_coils[coil_name][ind]['polarity']
+                                ) * \
+                                float(
+                                    active_coils[coil_name][ind]['multiplier']
+                                )
+                            ) for ind in active_coils[coil_name]
+                        ]
+                    )
                 )
             )
-        )
 
     # Add passive coils
     for i, coil in enumerate(passive_coils):

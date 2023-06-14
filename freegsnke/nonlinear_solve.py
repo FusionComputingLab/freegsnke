@@ -34,7 +34,7 @@ class nl_solver:
     
     def __init__(self, profiles, eq, 
                  max_mode_frequency, 
-                #  max_internal_timestep=.0001, has been fixed to full_timestep
+                 max_internal_timestep=.0001, #has been fixed to full_timestep
                  full_timestep=.0001,
                  plasma_resistivity=1e-6,
                  extrapolator_input_size=4,
@@ -366,9 +366,9 @@ class nl_solver:
     def currents_from_J1(self, J1,
                                 active_voltage_vec,
                                 rtol_NK):
-        # mix_map = self.rebuild_grid_map(self.J0_m1+self.J1)
-        # self.broad_J0 = self.reduce_normalize(convolve2d(mix_map, np.ones((5,5)), mode='same'))
-        self.broad_J0 = self.J0_m1 + self.J1
+        mix_map = self.rebuild_grid_map(self.J0_m1+self.J1)
+        self.broad_J0 = self.reduce_normalize(convolve2d(mix_map, np.ones((5,5)), mode='same'))
+        # self.broad_J0 = self.J0_m1 + self.J1
         self.broad_J0 /= np.sum(self.broad_J0)
         simplified_c1 = 1.0*self.simplified_solver_J1.stepper(It=self.currents_vec_m1,
                                                                 norm_red_Iy_m1=self.J0_m1, 
@@ -398,7 +398,8 @@ class nl_solver:
                                 atol_currents=1e-3,
                                 atol_J=1e-3,
                                 use_extrapolation=True,
-                                verbose=False):
+                                verbose=False
+                                ):
         
         self.J1 = 1.0*J1
         self.central_2  = (1 + (self.step_no>0))
@@ -422,18 +423,18 @@ class nl_solver:
                                                         active_voltage_vec=active_voltage_vec,
                                                         rtol_NK=rtol_NK)   
 
-            abs_increments = np.abs(simplified_c-simplified_c1)
+            abs_increments = np.abs(simplified_c - simplified_c1)
             # dcurrents = np.abs(simplified_c1-self.currents_vec)
             # vals_for_check = np.where(dcurrents>threshold, dcurrents, threshold)
             # rel_residuals = np.abs(res)#/vals_for_check
             control = np.any(abs_increments>atol_currents)
             # control += np.any(rel_residuals>rtol_residuals)
-            control += np.any(self.ddJ>atol_J)
+            control += np.any( abs(self.ddJ) > atol_J )
             if verbose:
                 print('max currents change = ', np.max(abs_increments))
                 print('max J direction change = ', np.max(np.abs(self.ddJ)), np.linalg.norm(self.ddJ))
-                print('max circuit eq residual (dim of currents) = ', np.argmax(abs(res)), res)
-                print(simplified_c1 - self.currents_vec_m1)
+                # print('max circuit eq residual (dim of currents) = ', np.argmax(abs(res)), res)
+                # print(simplified_c1 - self.currents_vec_m1)
 
             iterative_steps += 1
 
@@ -480,10 +481,10 @@ class nl_solver:
     def nl_step_nk_J1(self, active_voltage_vec, 
                                 J1,
                                 # alpha=.8, 
-                                rtol_NK=5e-4,
+                                rtol_NK=1e-9,
                                 atol_currents=1e-3,
                                 atol_J=1e-3,
-                                use_extrapolation=True,
+                                # use_extrapolation=True,
                                 verbose=False,
                                 n_k=6,
                                 conv_crit=.3,
@@ -499,6 +500,7 @@ class nl_solver:
                                                         active_voltage_vec=active_voltage_vec,
                                                         rtol_NK=rtol_NK)
         print('starting: ', max(abs(d_currents)), max(abs(resJ)))
+        simplified_c = 1.0*self.simplified_c
         control = np.any(abs(d_currents)>atol_currents)
         control += np.any(resJ>atol_J)
 
@@ -506,7 +508,7 @@ class nl_solver:
 
         while control:
             self.Arnoldi_iteration(trial_sol=self.J1, #trial_current expansion point
-                                    vec_direction=-resJ, #first vector for current basis
+                                    vec_direction=resJ, #first vector for current basis
                                     Fresidual=resJ, #circuit eq. residual at trial_current expansion point: Fresidual(trial_current)
                                     Fresidual_function=self.Fresidual_nk_J1,
                                     active_voltage_vec=active_voltage_vec,
@@ -515,7 +517,8 @@ class nl_solver:
                                                     #if unexplained orthogonal component is larger than
                                     max_collinearity=max_collinearity,
                                     grad_eps=grad_eps, #infinitesimal step
-                                    clip=clip)
+                                    clip=clip,
+                                    rtol_NK=rtol_NK)
             print(self.coeffs)
             
             # self.J1 += self.d_sol_step
@@ -524,21 +527,25 @@ class nl_solver:
             J1new = self.J1 + self.d_sol_step
             J1new /= np.sum(J1new)
 
-            resJ, d_currents = self.Fresidual_nk_J1_currents(J1=J1new,
-                                                            active_voltage_vec=active_voltage_vec,
-                                                            rtol_NK=rtol_NK)
+            resJ = self.Fresidual_nk_J1(J1=J1new,
+                                        active_voltage_vec=active_voltage_vec,
+                                        rtol_NK=rtol_NK)
 
             self.J1 = 1.0*J1new
 
-            print('cycle: ', max(abs(d_currents)), max(abs(resJ)))
-            control = np.any(abs(d_currents)>atol_currents)
+           
+            abs_increments = abs(simplified_c - self.simplified_c)
+            control = np.any(abs_increments>atol_currents)
             control += np.any(abs(resJ)>atol_J)
+            simplified_c = 1.0*self.simplified_c
+
+            print('cycle: ', max(abs_increments), max(abs(resJ)))
 
             if verbose:
-                # print('max currents change = ', np.max(abs_increments))
+                print('max currents change = ', np.max(abs_increments))
                 print('max J direction change = ', np.max(np.abs(resJ)), np.linalg.norm(resJ))
-                print('max circuit eq residual (dim of currents) = ', np.argmax(abs(self.circ_eq_res)), self.circ_eq_res)
-                print(self.simplified_c - self.currents_vec_m1)
+                # print('max circuit eq residual (dim of currents) = ', np.argmax(abs(self.circ_eq_res)), self.circ_eq_res)
+                # print(self.simplified_c - self.currents_vec_m1)
 
             iterative_steps += 1
 
@@ -580,11 +587,11 @@ class nl_solver:
 
         self.assign_currents(trial_currents, profile=self.profiles2, eq=self.eq2)
         self.NK.solve(self.eq2, self.profiles2, rel_convergence=rtol_NK)
-        self.red_Iy_trial = self.Iyplasmafromjtor(self.profiles2.jtor)
+        
 
-        # self.red_Iy_dot = (self.red_Iy_trial - self.red_Iy)/self.dt_step
-        self.red_Iy_dot = (self.red_Iy_trial - self.red_Iy_m1)/(2*self.dt_step)
-        self.Id_dot = ((trial_currents - self.currents_vec_m1)/(2*self.dt_step))[:-1]
+        self.red_Iy_trial = self.Iyplasmafromjtor(self.profiles2.jtor)
+        self.red_Iy_dot = (self.red_Iy_trial - self.red_Iy_m1)/(self.central_2*self.dt_step)
+        self.Id_dot = ((trial_currents - self.currents_vec_m1)/(self.central_2*self.dt_step))[:-1]
 
         self.forcing_term = self.evol_metal_curr.forcing_term_eig_plasma(active_voltage_vec=active_voltage_vec, 
                                                                          Iydot=self.red_Iy_dot)
@@ -829,7 +836,7 @@ class nl_solver:
     #         return iterative_steps
 
     
-    def nl_step_nk(self, trial_sol, #trial_current expansion point
+    def nl_step_nk_dJ(self, trial_sol, #trial_current expansion point
                         active_voltage_vec,
                         n_k=10, # max number of basis vectors (must be less than number of modes + 1)
                         conv_crit=.2,   #add basis vector 
@@ -864,7 +871,8 @@ class nl_solver:
                                                     #if unexplained orthogonal component is larger than
                                     max_collinearity=max_collinearity,
                                     grad_eps=grad_eps, #infinitesimal step
-                                    clip=clip)
+                                    clip=clip,
+                                    rtol_NK=rtol_NK)
             print(self.coeffs)
             trial_sol += self.d_sol_step
             resJ = self.Fresidual_nk_dJ(trial_sol, 
@@ -946,7 +954,7 @@ class nl_solver:
                                 max_collinearity=.3,
                                 grad_eps=.3, #infinitesimal step size, when compared to norm(trial)
                                 clip=3,
-                                rtol_NK=1e-5):
+                                rtol_NK=1e-9):
         
         nFresidual = np.linalg.norm(Fresidual)
         problem_d = len(trial_sol)
@@ -974,7 +982,7 @@ class nl_solver:
                                                 Fresidual, #circuit eq. residual at trial_current expansion point: Fresidual(trial_current)
                                                 Fresidual_function,
                                                 active_voltage_vec,
-                                                grad_coeff,
+                                                grad_coeff/(self.n_it+1)**1.2,
                                                 rtol_NK=rtol_NK
                                                 )
             collinear_control = 1 - np.any( np.sum(self.Gn[:,:self.n_it]*self.Gn[:,self.n_it:self.n_it+1], axis=0)>max_collinearity )

@@ -270,7 +270,7 @@ class NewtonKrylov:
         
         # rel_c_history = []
         
-        print('starting NK')
+        # print('starting NK')
         trial_plasma_psi = eq.plasma_psi
         self.profiles = profiles
         self.tokamak_psi = eq.tokamak.calcPsiFromGreens(pgreen=eq._pgreen)
@@ -287,13 +287,13 @@ class NewtonKrylov:
             
         it=0
         while rel_change>rel_convergence and it<max_iter:
-            print(rel_change)
+            # print(rel_change)
             self.Arnoldi_iteration(trial_plasma_psi, 
                                    res0, #starting vector in psi space is the residual itself
                                    res0, #F(trial_plasma_psi) already calculated
                                    n_k, conv_crit, grad_eps)
             dpsi = self.dpsi(res0, self.G, self.Q, clip)
-            print(self.coeffs)
+            # print(self.coeffs)
             trial_plasma_psi += dpsi
             res0 = self._F(trial_plasma_psi)
             rel_change = np.amax(np.abs(res0))

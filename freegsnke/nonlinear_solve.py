@@ -45,6 +45,8 @@ class nl_solver:
 
         self.nx = np.shape(eq.R)[0]
         self.ny = np.shape(eq.R)[1]
+        self.eqR = eq.R
+        self.eqZ = eq.Z
         # area factor for Iy
         dR = eq.R[1, 0] - eq.R[0, 0]
         dZ = eq.Z[0, 1] - eq.Z[0, 0]
@@ -77,11 +79,16 @@ class nl_solver:
         #the eq object that is modified during the iterations is eq2
         #with profiles2 for changes in the plasma current
         self.eq2 = deepcopy(eq)
-        self.profiles2 = deepcopy(profiles)   
+        self.profiles2 = deepcopy(profiles) 
+
+        self.eq3 = deepcopy(eq)
+        self.profiles3 = deepcopy(profiles)   
+
 
         for i,labeli in enumerate(coils_order):
             self.eq1.tokamak[labeli].control = False
             self.eq2.tokamak[labeli].control = False
+            self.eq3.tokamak[labeli].control = False
         
         
         self.dt_step = full_timestep
@@ -287,6 +294,7 @@ class nl_solver:
             print('plasma in ICs is touching the wall!')
 
         
+
     def step_complete_assign(self, trial_currents):
         self.jtor_m1 = 1.0*self.profiles1.jtor
 
@@ -367,7 +375,7 @@ class nl_solver:
                                 active_voltage_vec,
                                 rtol_NK):
         mix_map = self.rebuild_grid_map(self.J0_m1+self.J1)
-        self.broad_J0 = self.reduce_normalize(convolve2d(mix_map, np.ones((5,5)), mode='same'))
+        self.broad_J0 = self.reduce_normalize(convolve2d(mix_map, np.ones((3,3)), mode='same'))
         # self.broad_J0 = self.J0_m1 + self.J1
         self.broad_J0 /= np.sum(self.broad_J0)
         simplified_c1 = 1.0*self.simplified_solver_J1.stepper(It=self.currents_vec_m1,
@@ -415,9 +423,10 @@ class nl_solver:
         iterative_steps = 0
         control = 1
         while control:
-            self.J1n = (1-alpha)*self.J1 + alpha*self.reduce_normalize(self.profiles2.jtor)
-            self.J1n /= np.sum(self.J1n)
+            self.J1n = self.reduce_normalize(self.profiles2.jtor)
             self.ddJ = self.J1n - self.J1
+            self.J1n = (1-alpha)*self.J1 + alpha*self.J1n
+            self.J1n /= np.sum(self.J1n)
             self.J1 = 1.0*self.J1n
             simplified_c1, res = self.iterative_unit_J1(J1=self.J1,
                                                         active_voltage_vec=active_voltage_vec,
@@ -535,8 +544,8 @@ class nl_solver:
 
            
             abs_increments = abs(simplified_c - self.simplified_c)
-            control = np.any(abs_increments>atol_currents)
-            control += np.any(abs(resJ)>atol_J)
+            control = np.any(abs_increments > atol_currents)
+            control += np.any(abs(resJ) > atol_J)
             simplified_c = 1.0*self.simplified_c
 
             print('cycle: ', max(abs_increments), max(abs(resJ)))
@@ -557,10 +566,12 @@ class nl_solver:
         plt.colorbar()
         plt.show()
 
+        self.dpsi = self.eq2.plasma_psi - self.eq1.plasma_psi
         plt.figure()
-        plt.imshow(self.eq2.plasma_psi - self.eq1.plasma_psi)
+        plt.imshow(self.dpsi)
         plt.colorbar()
         plt.show()
+
 
         self.step_complete_assign(self.simplified_c)
         # if use_extrapolation:
@@ -573,6 +584,106 @@ class nl_solver:
 
         return flag
 
+
+    def Fresidual_psi(self, trial_plasma_psi, active_voltage_vec, rtol_NK=1e-8):
+        self.assign_currents(self.ref_currents, profile=self.profiles2, eq=self.eq2)
+        trial_plasma_psi_2d = trial_plasma_psi.reshape(self.nx, self.ny)
+        jtor_ = self.profiles2.Jtor(self.eqR, self.eqZ, self.tokamak_psi+trial_plasma_psi_2d)
+        hatjtor_ = self.reduce_normalize(jtor_)
+        self.simplified_c, res = self.iterative_unit_J1(J1=hatjtor_,
+                                                    active_voltage_vec=active_voltage_vec,
+                                                    rtol_NK=rtol_NK)
+        psi_residual = self.eq2.plasma_psi.reshape(-1) - trial_plasma_psi
+        # self.currents_nk_psi = np.append(self.currents_nk_psi, simplified_c[:,np.newaxis], axis=1)
+        return psi_residual
+    
+    
+
+
+    def nl_step_nk_psi(self, active_voltage_vec, 
+                                trial_currents,
+                                rtol_NK=1e-9,
+                                atol_currents=1e-3,
+                                atol_J=1e-3,
+                                verbose=False,
+                                n_k=6,
+                                conv_crit=.3,
+                                max_collinearity=.3,
+                                grad_eps=1,
+                                clip=3):
+        
+        self.central_2  = (1 + (self.step_no>0))
+
+        self.Fresidual_dJ(trial_currents, active_voltage_vec, rtol_NK)
+        self.ref_currents = 1.0*trial_currents
+        self.tokamak_psi = 1.0*self.NK.tokamak_psi
+        psi0 = 1.0*self.eq2.plasma_psi.reshape(-1)
+
+        
+        res_psi = self.Fresidual_psi(trial_plasma_psi=psi0,
+                                        active_voltage_vec=active_voltage_vec, 
+                                        rtol_NK=1e-9)
+        
+        abs_increments = abs(self.simplified_c - trial_currents)
+        control = np.any(abs_increments > atol_currents)
+        control += np.any(res_psi > atol_J)
+        print('starting: ', max(abs(res_psi)), max(abs_increments))
+        simplified_c = 1.0*self.simplified_c
+         
+        while control:
+            self.Arnoldi_iteration(trial_sol=psi0, #trial_current expansion point
+                                    vec_direction=res_psi, #first vector for current basis
+                                    Fresidual=res_psi, #circuit eq. residual at trial_current expansion point: Fresidual(trial_current)
+                                    Fresidual_function=self.Fresidual_psi,
+                                    active_voltage_vec=active_voltage_vec,
+                                    n_k=n_k, # max number of basis vectors (must be less than number of modes + 1)
+                                    conv_crit=conv_crit,   #add basis vector 
+                                                    #if unexplained orthogonal component is larger than
+                                    max_collinearity=max_collinearity,
+                                    grad_eps=grad_eps, #infinitesimal step size, when compared to norm(trial)
+                                    clip=clip,
+                                    rtol_NK=rtol_NK)
+            
+            res_psi = self.Fresidual_psi(trial_plasma_psi=psi0+self.d_sol_step,
+                                            active_voltage_vec=active_voltage_vec, 
+                                            rtol_NK=rtol_NK)
+            self.Fresidual_dJ(trial_currents=self.simplified_c,
+                                active_voltage_vec=active_voltage_vec,
+                                rtol_NK=rtol_NK)
+            
+            abs_increments = abs(self.simplified_c - simplified_c)
+            control = np.any(abs_increments > atol_currents)
+            control += np.any(res_psi > atol_J)
+            print('cycle: ', max(abs(res_psi)), max(abs_increments))
+
+            psi0 = 1.0*self.eq2.plasma_psi.reshape(-1)
+            self.tokamak_psi = 1.0*self.NK.tokamak_psi
+            self.ref_currents = 1.0*self.simplified_c
+            simplified_c = 1.0*self.simplified_c
+
+        self.time += self.dt_step
+
+        plt.figure()
+        plt.imshow(self.profiles2.jtor - self.jtor_m1)
+        plt.colorbar()
+        plt.show()
+
+        self.dpsi = self.eq2.plasma_psi - self.eq1.plasma_psi
+        plt.figure()
+        plt.imshow(self.dpsi)
+        plt.colorbar()
+        plt.show()
+
+
+        self.step_complete_assign(self.simplified_c)
+        # if use_extrapolation:
+        #     self.guess_J_from_extrapolation(alpha=alpha, rtol_NK=rtol_NK)
+        
+        flag = check_against_the_wall(jtor=self.profiles2.jtor, 
+                                      boole_mask_outside_limiter=self.mask_outside_limiter)
+
+        
+        return flag
 
 
 
@@ -992,7 +1103,8 @@ class nl_solver:
                 self.LSQP(Fresidual, G=self.G[:,:self.n_it], Q=self.Q[:,:self.n_it], clip=clip)
                 rel_unexpl_res = np.linalg.norm(self.explained_res + Fresidual)/nFresidual
                 arnoldi_control = (rel_unexpl_res > conv_crit)
-                
+            # else:
+            #     self.currents_nk_psi = self.currents_nk_psi[:,:-1]
 
             control = arnoldi_control*collinear_control*(self.n_it_tot<n_k)
 

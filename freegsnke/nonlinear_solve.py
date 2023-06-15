@@ -373,8 +373,8 @@ class nl_solver:
     
     def currents_from_J1(self, J1,
                                 active_voltage_vec,
-                                rtol_NK):
-        mix_map = self.rebuild_grid_map(self.J0_m1+self.J1)
+                                ):
+        mix_map = self.rebuild_grid_map(self.J0_m1 + J1)
         self.broad_J0 = self.reduce_normalize(convolve2d(mix_map, np.ones((3,3)), mode='same'))
         # self.broad_J0 = self.J0_m1 + self.J1
         self.broad_J0 /= np.sum(self.broad_J0)
@@ -392,7 +392,7 @@ class nl_solver:
                                 rtol_NK):
         simplified_c1 = self.currents_from_J1(J1,
                                 active_voltage_vec,
-                                rtol_NK)
+                                )
         self.Fresidual_dJ(trial_currents=simplified_c1, 
                             active_voltage_vec=active_voltage_vec, 
                             rtol_NK=rtol_NK)   
@@ -468,9 +468,123 @@ class nl_solver:
         flag = check_against_the_wall(jtor=self.profiles2.jtor, 
                                       boole_mask_outside_limiter=self.mask_outside_limiter)
 
-        
 
         return flag
+    
+
+    def calculate_J1hat(self, currents, plasma_psi_2d):
+        self.assign_currents(currents, profile=self.profiles2, eq=self.eq2)
+        self.tokamak_psi = self.eq2.tokamak.calcPsiFromGreens(pgreen=self.eq2._pgreen)
+        jtor_ = self.profiles2.Jtor(self.eqR, self.eqZ, self.tokamak_psi+plasma_psi_2d)
+        J1hat = self.reduce_normalize(jtor_)
+        return J1hat
+
+    def Fresidual_curr(self, trial_currents, active_voltage_vec, rtol_NK=1e-9):
+        # this will not call NK
+        J1hat = self.calculate_J1hat(trial_currents, self.trial_plasma_psi)
+        iterated_currs = self.currents_from_J1(J1hat, active_voltage_vec)
+        current_res = iterated_currs - trial_currents
+        return current_res                                            
+
+    def find_best_convex_combination(self, previous_residual, 
+                                            trial_currents, 
+                                            active_voltage_vec, 
+                                            pts=[.05,.95],
+                                            blend=1.):
+        note_plasma_psi = 1.0*self.trial_plasma_psi
+        res_list = []
+        for alpha in pts:
+            self.trial_plasma_psi = (1-alpha)*note_plasma_psi + alpha*self.eq2.plasma_psi
+            res_list.append(np.sum(np.abs(self.Fresidual_curr(trial_currents, active_voltage_vec))))
+        a = (res_list[1] - res_list[0])/(pts[1] - pts[0])
+        if a>0:
+            b = res_list[0] - a*pts[0]
+            best_alpha = max(.0, min(1, (blend*previous_residual - b)/a))
+            print(best_alpha)
+        else:
+            best_alpha = 1
+            print(best_alpha, 'this was negative!')
+        
+        self.trial_plasma_psi = (1-best_alpha)*note_plasma_psi + best_alpha*self.eq2.plasma_psi
+        
+
+    def nl_step_nk_curr(self, active_voltage_vec, 
+                                rtol_NK=1e-9,
+                                atol_currents=1e-3,
+                                rtol_psi=1e-3,
+                                verbose=False,
+                                n_k=6,
+                                conv_crit=.3,
+                                max_collinearity=.3,
+                                grad_eps=1,
+                                clip=3):
+        
+        self.central_2  = (1 + (self.step_no>0))
+
+        self.trial_currents, res = self.iterative_unit_J1(self.J0,
+                                                            active_voltage_vec,
+                                                            rtol_NK=rtol_NK)
+        self.trial_plasma_psi = 1.0*self.eq2.plasma_psi
+
+        res0 = self.Fresidual_curr(self.trial_currents, active_voltage_vec)
+        abs_res0 = np.abs(res0)
+        nres0 = np.sum(abs_res0)
+
+        control = np.any(abs_res0 > atol_currents)
+        r_dpsi = abs(self.eq2.plasma_psi - self.trial_plasma_psi)
+        r_dpsi /= (np.amax(self.trial_plasma_psi) - np.amin(self.trial_plasma_psi))
+        control += np.any(r_dpsi > rtol_psi)
+
+        print('starting:', nres0, np.amax(r_dpsi))
+
+        # self.trial_plasma_psi = 1.0*self.eq2.plasma_psi
+
+        while control:
+            self.Arnoldi_iteration(trial_sol=self.trial_currents, #trial_current expansion point
+                                    vec_direction=res0, #first vector for current basis
+                                    Fresidual=res0, #circuit eq. residual at trial_current expansion point: Fresidual(trial_current)
+                                    Fresidual_function=self.Fresidual_curr,
+                                    active_voltage_vec=active_voltage_vec,
+                                    n_k=n_k, # max number of basis vectors (must be less than number of modes + 1)
+                                    conv_crit=conv_crit,   #add basis vector 
+                                                    #if unexplained orthogonal component is larger than
+                                    max_collinearity=max_collinearity,
+                                    grad_eps=grad_eps, #infinitesimal step size, when compared to norm(trial)
+                                    clip=clip,
+                                    rtol_NK=rtol_NK,
+                                    clip_candidate_step=.5)
+            self.trial_currents += self.d_sol_step
+            
+            self.assign_solve(self.trial_currents, rtol_NK)
+
+            r_dpsi = abs(self.eq2.plasma_psi - self.trial_plasma_psi)
+            r_dpsi /= (np.amax(self.trial_plasma_psi)-np.amin(self.trial_plasma_psi))
+            control = np.any(r_dpsi > rtol_psi)
+
+            self.find_best_convex_combination(nres0,
+                                            self.trial_currents,
+                                            active_voltage_vec)
+            res0 = self.Fresidual_curr(self.trial_currents, active_voltage_vec)                                
+            abs_res0 = np.abs(res0)
+            nres0 = np.sum(abs_res0)
+            control += np.any(abs_res0 > atol_currents)
+
+            print('cycle:', nres0, np.amax(r_dpsi))
+   
+
+        self.step_complete_assign(self.trial_currents)
+        
+        flag = check_against_the_wall(jtor=self.profiles2.jtor, 
+                                      boole_mask_outside_limiter=self.mask_outside_limiter)
+
+
+        return flag
+
+
+
+
+
+
     
     def Fresidual_nk_J1(self, J1, active_voltage_vec, rtol_NK=1e-8):
         J1 /= np.sum(J1)
@@ -481,8 +595,8 @@ class nl_solver:
         dJ1 = self.Fresidual_nk_J1(J1, active_voltage_vec, rtol_NK)
         note_currents = 1.0*self.simplified_c
         iterated_c = self.currents_from_J1(self.J1_new,
-                                            active_voltage_vec,
-                                            rtol_NK)
+                                            active_voltage_vec)
+                                            
         d_currents = iterated_c - note_currents
         return dJ1, d_currents
 
@@ -687,23 +801,15 @@ class nl_solver:
 
 
 
-
-    def Fresidual_dJ(self, trial_currents, active_voltage_vec, rtol_NK=1e-8):
-        # trial_currents is the full array of intermediate results from euler solver
-        # root problem for circuit equation
-        # collects both metal normal modes and norm_plasma
-        
-        # current at t+dt
-        # d_current_tpdt = np.sum(trial_currents, axis=-1)
-
+    def assign_solve(self, trial_currents, rtol_NK=1e-8):
         self.assign_currents(trial_currents, profile=self.profiles2, eq=self.eq2)
         self.NK.solve(self.eq2, self.profiles2, rel_convergence=rtol_NK)
-        
-
         self.red_Iy_trial = self.Iyplasmafromjtor(self.profiles2.jtor)
         self.red_Iy_dot = (self.red_Iy_trial - self.red_Iy_m1)/(self.central_2*self.dt_step)
         self.Id_dot = ((trial_currents - self.currents_vec_m1)/(self.central_2*self.dt_step))[:-1]
 
+
+    def calculate_circ_eq_residual(self, trial_currents, active_voltage_vec):
         self.forcing_term = self.evol_metal_curr.forcing_term_eig_plasma(active_voltage_vec=active_voltage_vec, 
                                                                          Iydot=self.red_Iy_dot)
 
@@ -715,7 +821,23 @@ class nl_solver:
                                                                         red_Iy1=self.red_Iy_trial,
                                                                         red_Iydot=self.red_Iy_dot,
                                                                         Iddot=self.Id_dot)/self.plasma_norm_factor
-        # return self.residual
+        
+
+
+    def Fresidual_dJ(self, trial_currents, active_voltage_vec, rtol_NK=1e-8):
+        # trial_currents is the full array of intermediate results from euler solver
+        # root problem for circuit equation
+        # collects both metal normal modes and norm_plasma
+        
+        # current at t+dt
+        # d_current_tpdt = np.sum(trial_currents, axis=-1)
+
+        self.assign_solve(trial_currents, rtol_NK=rtol_NK)
+        self.calculate_circ_eq_residual(trial_currents, active_voltage_vec)
+        
+
+
+
 
     # def Fresidual_J1(self, trial_currents, active_voltage_vec, rtol_NK=1e-8):
     #     # trial_currents is the full array of intermediate results from euler solver
@@ -1065,7 +1187,8 @@ class nl_solver:
                                 max_collinearity=.3,
                                 grad_eps=.3, #infinitesimal step size, when compared to norm(trial)
                                 clip=3,
-                                rtol_NK=1e-9):
+                                rtol_NK=1e-9,
+                                clip_candidate_step=.0005):
         
         nFresidual = np.linalg.norm(Fresidual)
         problem_d = len(trial_sol)
@@ -1081,7 +1204,7 @@ class nl_solver:
         
         self.n_it = 0
         self.n_it_tot = 0
-        grad_coeff = min(grad_eps*nFresidual, .0005)
+        grad_coeff = min(grad_eps*nFresidual, clip_candidate_step)
 
         print('norm trial_sol', np.linalg.norm(trial_sol))
 

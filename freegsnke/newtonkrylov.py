@@ -129,9 +129,9 @@ class NewtonKrylov:
         self.rhs[:, -1] = self.psi_boundary[:, -1]
          
         
-    # def F(self, plasma_psi, profiles, eq): #root problem on Psi
-    #     self.freeboundary(plasma_psi, profiles, eq)
-    #     return plasma_psi - self.solver(self.psi_boundary, self.rhs)
+    def F(self, plasma_psi, tokamak_psi, profiles): #root problem on Psi
+        self.freeboundary(plasma_psi, tokamak_psi, profiles)
+        return plasma_psi - self.solver(self.psi_boundary, self.rhs)
     
     def _F(self, plasma_psi): 
         """Nonlinear Grad Shafranov equation written as a root problem

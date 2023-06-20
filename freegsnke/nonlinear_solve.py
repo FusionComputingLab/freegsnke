@@ -823,7 +823,7 @@ class nl_solver:
                 n_no_NK_psi += 1
 
 
-            self.trial_plasma_psi = 1.0*self.trial_plasma_psi.reshape(65,65)
+            self.trial_plasma_psi = 1.0*self.trial_plasma_psi.reshape(self.nx, self.ny)
             res0 = self.Fresidual_curr(self.trial_currents, active_voltage_vec)
             rel_curr_res = abs(res0 / curr_step)
             print('intermediate curr residual', np.amax(abs(res0/(self.trial_currents - self.currents_vec_m1 + curr_eps))), np.mean(abs(res0/(self.trial_currents - self.currents_vec_m1))))

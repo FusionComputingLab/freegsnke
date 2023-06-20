@@ -14,7 +14,7 @@ from . import plasma_grids
 from . import extrapolate
 
 #from picardfast import fast_solve
-from .newtonkrylov import NewtonKrylov
+from .GSstaticsolver import NKGSsolver
 from .jtor_update import ConstrainPaxisIp
 
 
@@ -60,7 +60,7 @@ class nl_solver:
 
         
         #instantiate solver on eq's domain
-        self.NK = NewtonKrylov(eq)
+        self.NK = NKGSsolver(eq)
 
         # profiles are kept constant during evolution
         # paxis, fvac and alpha values are taken from ICs and kept fixed thereafter
@@ -252,7 +252,7 @@ class nl_solver:
         self.eq1.plasma_psi = 1.0*eq.plasma_psi
         # solve GS again with vessel currents you get after truncating modes:
         self.assign_currents(self.currents_vec, self.eq1, self.profiles1)
-        self.NK.solve(self.eq1, self.profiles1, rel_convergence=rtol_NK)
+        self.NK.solve(self.eq1, self.profiles1, target_relative_tolerance=rtol_NK)
 
         self.eq2.plasma_psi = 1.0*self.eq1.plasma_psi
 
@@ -294,7 +294,7 @@ class nl_solver:
             self.assign_vessel_noise(eq, noise_level)
 
         #ensure it's a GS solution
-        self.NK.solve(eq, profile, rel_convergence=rtol_NK)
+        self.NK.solve(eq, profile, target_relative_tolerance=rtol_NK)
 
 
         #prepare currents
@@ -375,7 +375,7 @@ class nl_solver:
             currents_guess = self.extrapolator.in_out(self.currents_vec)
 
             self.assign_currents(currents_vec=currents_guess, profile=self.profiles2, eq=self.eq2)
-            self.NK.solve(self.eq2, self.profiles2, rel_convergence=rtol_NK)
+            self.NK.solve(self.eq2, self.profiles2, target_relative_tolerance=rtol_NK)
 
             self.J1 = (1-alpha)*self.J1 + alpha*self.reduce_normalize(self.profiles2.jtor)
             self.dJ = (1-alpha)*self.dJ + alpha*self.reduce_normalize(self.profiles2.jtor-self.jtor_m1)
@@ -850,9 +850,9 @@ class nl_solver:
 
             self.assign_currents(self.trial_currents, self.eq2, self.profiles2)
             self.tokamak_psi = self.eq2.tokamak.calcPsiFromGreens(pgreen=self.eq2._pgreen)
-            a_res_GS = np.amax(abs(self.NK.F(self.trial_plasma_psi,
-                                             self.tokamak_psi,
-                                             self.profiles2)))
+            a_res_GS = np.amax(abs(self.NK.F_function(self.trial_plasma_psi.reshape(-1),
+                                                        self.tokamak_psi.reshape(-1),
+                                                        self.profiles2)))
             self.dpsi = self.trial_plasma_psi - self.eq1.plasma_psi
             r_res_GS = a_res_GS/(np.amax(self.dpsi) - np.amin(self.dpsi))
             control += (r_res_GS > rtol_GS)
@@ -868,18 +868,18 @@ class nl_solver:
 
         self.eq2.plasma_psi = 1.0*self.trial_plasma_psi
 
-        plt.figure()
-        plt.imshow(self.profiles2.jtor - self.jtor_m1)
-        plt.colorbar()
-        plt.title('J1-J0')
-        plt.show()
+        # plt.figure()
+        # plt.imshow(self.profiles2.jtor - self.jtor_m1)
+        # plt.colorbar()
+        # plt.title('J1-J0')
+        # plt.show()
 
         
-        plt.figure()
-        plt.imshow(self.dpsi)
-        plt.title('psi1-psi0')
-        plt.colorbar()
-        plt.show()
+        # plt.figure()
+        # plt.imshow(self.dpsi)
+        # plt.title('psi1-psi0')
+        # plt.colorbar()
+        # plt.show()
 
 
         self.step_complete_assign(self.simplified_c)
@@ -1141,7 +1141,7 @@ class nl_solver:
 
     def assign_solve(self, trial_currents, rtol_NK=1e-8):
         self.assign_currents(trial_currents, profile=self.profiles2, eq=self.eq2)
-        self.NK.solve(self.eq2, self.profiles2, rel_convergence=rtol_NK)
+        self.NK.solve(self.eq2, self.profiles2, target_relative_tolerance=rtol_NK)
         self.red_Iy_trial = self.Iyplasmafromjtor(self.profiles2.jtor)
         self.red_Iy_dot = (self.red_Iy_trial - self.red_Iy_m1)/(self.central_2*self.dt_step)
         self.Id_dot = ((trial_currents - self.currents_vec_m1)/(self.central_2*self.dt_step))[:-1]
@@ -1185,7 +1185,7 @@ class nl_solver:
     #     # current at t+dt
     #     # current_tpdt = 1.0*trial_currents#[:, -1]
     #     self.assign_currents(trial_currents, profile=self.profiles2, eq=self.eq2)
-    #     self.NK.solve(self.eq2, self.profiles2, rel_convergence=rtol_NK)
+    #     self.NK.solve(self.eq2, self.profiles2, target_relative_tolerance=rtol_NK)
     #     self.red_Iy_trial = self.Iyplasmafromjtor(self.profiles2.jtor)
 
     #     self.red_Iy_dot = (self.red_Iy_trial - self.red_Iy_m1)/(2*self.dt_step)
@@ -1476,13 +1476,15 @@ class nl_solver:
     #     return flag
     
 
-    def LSQP(self, Fresidual, G, Q, clip):
+    def LSQP(self, Fresidual, nFresidual, G, Q, clip, threshold=.99, clip_hard=1.):
         #solve the least sq problem in coeffs: min||G*coeffs+Fresidual||^2
         self.coeffs = np.matmul(np.matmul(np.linalg.inv(np.matmul(G.T, G)),
                                      G.T), -Fresidual)                            
         self.coeffs = np.clip(self.coeffs, -clip, clip)
         self.explained_res = np.sum(G*self.coeffs[np.newaxis,:], axis=1) 
-        #get the associated step in candidate_d_sol space
+        self.rel_unexpl_res = np.linalg.norm(self.explained_res + Fresidual)/nFresidual
+        if self.rel_unexpl_res > threshold:
+            self.coeffs = np.clip(self.coeffs, -clip_hard, clip_hard)
         self.d_sol_step = np.sum(Q*self.coeffs[np.newaxis,:], axis=1)
 
 
@@ -1560,18 +1562,18 @@ class nl_solver:
             self.n_it_tot += 1
             if collinear_control:
                 self.n_it += 1
-                self.LSQP(Fresidual, G=self.G[:,:self.n_it], Q=self.Q[:,:self.n_it], clip=clip)
-                rel_unexpl_res = np.linalg.norm(self.explained_res + Fresidual)/nFresidual
-                print('rel_unexpl_res', rel_unexpl_res)
-                arnoldi_control = (rel_unexpl_res > conv_crit)
+                self.LSQP(Fresidual, nFresidual, G=self.G[:,:self.n_it], Q=self.Q[:,:self.n_it], clip=clip)
+                # rel_unexpl_res = np.linalg.norm(self.explained_res + Fresidual)/nFresidual
+                print('rel_unexpl_res', self.rel_unexpl_res)
+                arnoldi_control = (self.rel_unexpl_res > conv_crit)
             else:
                 print('collinear!')
                 # self.currents_nk_psi = self.currents_nk_psi[:,:-1]
 
             control = arnoldi_control*(self.n_it_tot<n_k)
-            if rel_unexpl_res > .6:
-                clip = 1.5
-            self.LSQP(Fresidual, G=self.G[:,:self.n_it], Q=self.Q[:,:self.n_it], clip=clip)
+            # if rel_unexpl_res > .6:
+            #     clip = 1.5
+            # self.LSQP(Fresidual, G=self.G[:,:self.n_it], Q=self.Q[:,:self.n_it], clip=clip)
 
 
     

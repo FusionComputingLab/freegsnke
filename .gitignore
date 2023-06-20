@@ -7,4 +7,5 @@
 __pycache__
 .DS_Store
 examples/example_nonlinear_evolution_*
+examples/modes
 freegsnke/newtonkrylov_*

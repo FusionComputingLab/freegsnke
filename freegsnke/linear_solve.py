@@ -7,10 +7,14 @@ from . import machine_config
 
 
 class simplified_solver_J1:
-    # implements solver of circuit eq + plasma system 
-    # in which the direction J1 has been fixed
-    # J1 is the direction of the vector Iy(t+dt)
-    # direction means that sum(J1) = 1
+    """
+    Takes full system of (discretised) circuit equations and applies that 
+    $$I_y(t+dt) = \hat{I_y}*I_p(t+dt)$$
+    where $\hat{I_y}$ is assigned (and such that np.sum(\hat{I_y})=1).
+    With this hypothesis, the system can be solved to find all of the 
+    extensive currents at t+dt.
+    """
+   
     
     def __init__(self, Lambdam1, Vm1Rm12, Mey, Myy,
                        plasma_norm_factor,
@@ -21,14 +25,13 @@ class simplified_solver_J1:
         
         self.max_internal_timestep = max_internal_timestep
         self.full_timestep = full_timestep
-        # self.plasma_resistivity = plasma_resistivity
         self.plasma_norm_factor = plasma_norm_factor
 
-        self.n_independent_vars = len(Lambdam1)
-        self.Mmatrix = np.eye(self.n_independent_vars+1)
+        self.n_independent_vars = np.shape(Lambdam1)[0]
+        self.Mmatrix = np.eye(self.n_independent_vars + 1)
         self.Mmatrix[:-1,:-1] = Lambdam1
 
-        self.Lmatrix = 1.0*self.Mmatrix
+        self.Lmatrix = np.copy(self.Mmatrix)
 
         self.Vm1Rm12 = Vm1Rm12
         self.Vm1Rm12Mey = np.matmul(Vm1Rm12, Mey)
@@ -45,41 +48,41 @@ class simplified_solver_J1:
         # solver is initialized here but matrices are set up 
         # at each timestep using prepare_solver
         self.solver = implicit_euler_solver(Mmatrix=self.Mmatrix, 
-                                            Rmatrix=np.eye(self.n_independent_vars+1), 
+                                            Rmatrix=np.eye(self.n_independent_vars + 1), 
                                             max_internal_timestep=self.max_internal_timestep,
                                             full_timestep=self.full_timestep)
 
         # dummy vessel voltage vector
         self.empty_U = np.zeros(np.shape(Vm1Rm12)[1])
         # dummy voltage vec for eig modes
-        self.forcing = np.zeros(self.n_independent_vars+1)
+        self.forcing = np.zeros(self.n_independent_vars + 1)
         
 
 
 
-    def prepare_solver(self, norm_red_Iy_m1, norm_red_Iy0, norm_red_Iy1, active_voltage_vec, central_2):
+    def prepare_solver(self, hatIy_left, hatIy_0, hatIy_1, active_voltage_vec):
 
-        Rp = np.sum(self.plasma_resistance_1d*norm_red_Iy1*norm_red_Iy0)
+        Rp = np.sum(self.plasma_resistance_1d*hatIy_left*hatIy_1)
 
-        simplified_mutual_m1 = np.dot(self.Vm1Rm12Mey, norm_red_Iy_m1)
-        simplified_mutual_1 = np.dot(self.Vm1Rm12Mey, norm_red_Iy1)
-        simplified_mutual_0 = np.dot(self.Vm1Rm12Mey, norm_red_Iy0)
+        simplified_mutual_left = np.dot(self.Vm1Rm12Mey, hatIy_left)
+        simplified_mutual_1 = np.dot(self.Vm1Rm12Mey, hatIy_1)
+        simplified_mutual_0 = np.dot(self.Vm1Rm12Mey, hatIy_0)
 
-        simplified_self_0 = np.dot(self.Myy, norm_red_Iy0)
-        simplified_self_0_1 = np.dot(simplified_self_0, norm_red_Iy1)
-        simplified_self_0_m1 = np.dot(simplified_self_0, norm_red_Iy_m1)
+        simplified_self_left = np.dot(self.Myy, hatIy_left)
+        simplified_self_1 = np.dot(simplified_self_left, hatIy_1)
+        simplified_self_0 = np.dot(simplified_self_left, hatIy_0)
 
-        self.Mmatrix[-1, :-1] = simplified_mutual_0/(Rp*self.plasma_norm_factor)
-        self.Lmatrix[-1, :-1] = 1.0*self.Mmatrix[-1, :-1]
+        self.Mmatrix[-1, :-1] = simplified_mutual_left/(Rp*self.plasma_norm_factor)
+        self.Lmatrix[-1, :-1] = np.copy(self.Mmatrix[-1, :-1])
 
         self.Mmatrix[:-1, -1] = simplified_mutual_1*self.plasma_norm_factor
-        self.Lmatrix[:-1, -1] = simplified_mutual_m1*self.plasma_norm_factor
+        self.Lmatrix[:-1, -1] = simplified_mutual_0*self.plasma_norm_factor
 
-        self.Mmatrix[-1, -1] = simplified_self_0_1/Rp
-        self.Lmatrix[-1, -1] = simplified_self_0_m1/Rp
+        self.Mmatrix[-1, -1] = simplified_self_1/Rp
+        self.Lmatrix[-1, -1] = simplified_self_0/Rp
 
-        self.solver.set_Lmatrix(self.Lmatrix/central_2)
-        self.solver.set_Mmatrix(self.Mmatrix/central_2)
+        self.solver.set_Lmatrix(self.Lmatrix)
+        self.solver.set_Mmatrix(self.Mmatrix)
         self.solver.calc_inverse_operator() # recalculate the inverse operator1
 
         self.empty_U[:self.n_active_coils] = active_voltage_vec
@@ -87,8 +90,8 @@ class simplified_solver_J1:
 
     
 
-    def stepper(self, It, norm_red_Iy_m1, norm_red_Iy0, norm_red_Iy1, active_voltage_vec, central_2):
-        self.prepare_solver(norm_red_Iy_m1, norm_red_Iy0, norm_red_Iy1, active_voltage_vec, central_2)
+    def stepper(self, It, hatIy_left, hatIy_0, hatIy_1, active_voltage_vec):
+        self.prepare_solver(hatIy_left, hatIy_0, hatIy_1, active_voltage_vec)
         Itpdt = self.solver.full_stepper(It, self.forcing)
         return Itpdt
 

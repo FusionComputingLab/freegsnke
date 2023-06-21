@@ -413,16 +413,13 @@ class nl_solver:
                                 active_voltage_vec,
                                 ):
         mix_map = self.rebuild_grid_map(self.J0_m1 + J1)
-        self.broad_J0 = self.reduce_normalize(convolve2d(mix_map, np.ones((3,3)), mode='same'))
-        # self.broad_J0 = self.J0_m1 + self.J1
+        self.broad_J0 = self.reduce_normalize(convolve2d(mix_map, np.ones((4,4)), mode='same'))
         self.broad_J0 /= np.sum(self.broad_J0)
-        simplified_c1 = 1.0*self.simplified_solver_J1.stepper(It=self.currents_vec_m1,
-                                                                # It=self.currents_vec,
-                                                                norm_red_Iy_m1=self.J0_m1, 
-                                                                norm_red_Iy0=self.broad_J0, 
-                                                                norm_red_Iy1=J1, 
-                                                                active_voltage_vec=active_voltage_vec,
-                                                                central_2=self.central_2)
+        simplified_c1 = 1.0*self.simplified_solver_J1.stepper(It=self.currents_vec,
+                                                                hatIy_left=self.broad_J0, 
+                                                                hatIy_0=self.J0, 
+                                                                hatIy_1=J1, 
+                                                                active_voltage_vec=active_voltage_vec)
         return simplified_c1
 
 
@@ -535,7 +532,7 @@ class nl_solver:
         
         note_tokamak_psi = 1.0*self.NK.tokamak_psi
         
-        self.central_2  = (1 + (self.step_no>0))
+        # self.central_2  = (1 + (self.step_no>0))
         if use_extrapolation*(self.step_no > self.extrapolator_input_size):
             self.trial_currents = 1.0*self.currents_guess 
             
@@ -666,7 +663,7 @@ class nl_solver:
                                 grad_eps=1,
                                 clip=3):
         
-        self.central_2  = (1 + (self.step_no>0))
+        # self.central_2  = (1 + (self.step_no>0))
 
         self.trial_currents, res = self.iterative_unit_J1(self.J0,
                                                             active_voltage_vec,
@@ -763,7 +760,7 @@ class nl_solver:
                                 max_no_NK_psi=5
                                 ):
         
-        self.central_2  = (1 + (self.step_no>0))
+        # self.central_2  = (1 + (self.step_no>0))
 
 
         if use_extrapolation*(self.step_no > self.extrapolator_input_size):
@@ -939,7 +936,7 @@ class nl_solver:
                                 clip=3):
         
         self.J1 = 1.0*J1
-        self.central_2  = (1 + (self.step_no>0))
+        # self.central_2  = (1 + (self.step_no>0))
 
 
         resJ, d_currents = self.Fresidual_nk_J1_currents(J1=self.J1,
@@ -1033,8 +1030,8 @@ class nl_solver:
         jtor_ = self.profiles2.Jtor(self.eqR, self.eqZ, self.tokamak_psi + trial_plasma_psi_2d)
         hatjtor_ = self.reduce_normalize(jtor_)
         self.simplified_c, res = self.iterative_unit_J1(J1=hatjtor_,
-                                                    active_voltage_vec=active_voltage_vec,
-                                                    rtol_NK=rtol_NK)
+                                                        active_voltage_vec=active_voltage_vec,
+                                                        rtol_NK=rtol_NK)
         psi_residual = self.eq2.plasma_psi.reshape(-1) - trial_plasma_psi
         # self.currents_nk_psi = np.append(self.currents_nk_psi, self.simplified_c[:,np.newaxis], axis=1)
         return psi_residual
@@ -1057,7 +1054,7 @@ class nl_solver:
         
         self.currents_nk_psi = np.zeros((self.n_metal_modes+1, 0))
         
-        self.central_2  = (1 + (self.step_no>0))
+        # self.central_2  = (1 + (self.step_no>0))
 
         if use_extrapolation*(self.step_no > self.extrapolator_input_size):
             self.trial_currents = 1.0*self.currents_guess 
@@ -1144,8 +1141,8 @@ class nl_solver:
         self.assign_currents(trial_currents, profile=self.profiles2, eq=self.eq2)
         self.NK.solve(self.eq2, self.profiles2, target_relative_tolerance=rtol_NK)
         self.red_Iy_trial = self.Iyplasmafromjtor(self.profiles2.jtor)
-        self.red_Iy_dot = (self.red_Iy_trial - self.red_Iy_m1)/(self.central_2*self.dt_step)
-        self.Id_dot = ((trial_currents - self.currents_vec_m1)/(self.central_2*self.dt_step))[:-1]
+        self.red_Iy_dot = (self.red_Iy_trial - self.red_Iy)/self.dt_step
+        self.Id_dot = ((trial_currents - self.currents_vec)/self.dt_step)[:-1]
 
 
     def calculate_circ_eq_residual(self, trial_currents, active_voltage_vec):

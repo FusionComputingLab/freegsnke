@@ -1,17 +1,18 @@
 import numpy as np
 
-from . import plasma_grids
 
 class plasma_current:
     # implements the plasma circuit equation
     # in projection on Iy.T:
     # Iy.T/Ip (Myy Iydot + Mye Iedot + Rp Iy) = 0
 
-    def __init__(self, reference_eq, Rm12V, plasma_resistance_1d):
+    def __init__(self, plasma_grids, Rm12V, plasma_resistance_1d, Mye=None):
 
-        plasma_pts, self.mask_inside_limiter= plasma_grids.define_reduced_plasma_grid(reference_eq.R, reference_eq.Z)
-        self.Mye = (plasma_grids.Mey(plasma_pts)).T
-        self.Myy = plasma_grids.Myy(plasma_pts)
+        self.Myy = plasma_grids.Myy()
+        if Mye is None:
+            self.Mye = (plasma_grids.Mey()).T
+        else:
+            self.Mye = Mye
         self.MyeRm12V = np.matmul(self.Mye, Rm12V)
         self.Ryy = plasma_resistance_1d
     

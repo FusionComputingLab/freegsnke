@@ -5,21 +5,17 @@ from .machine_config import coils_order
 
 from copy import deepcopy
 
-# from . import quants_for_emu
 from .circuit_eq_metal import metal_currents
 from .circuit_eq_plasma import plasma_current
-# from .linear_solve import simplified_solver_dJ
-from .linear_solve import simplified_solver_J1
+
+from .simplified_solve import simplified_solver_J1
 from . import plasma_grids
 from . import extrapolate
 
-#from picardfast import fast_solve
 from .GSstaticsolver import NKGSsolver
-from .jtor_update import ConstrainPaxisIp
 
-
-from .faster_shape import shapes
-from .faster_shape import check_against_the_wall
+# from .faster_shape import shapes
+# from .faster_shape import self.plasma_grids.check_if_outside_domain
 
 import matplotlib.pyplot as plt
 
@@ -39,9 +35,10 @@ class nl_solver:
                  plasma_resistivity=1e-6,
                  extrapolator_input_size=4,
                  extrapolator_order=1,
-                 plasma_norm_factor=2000):
+                 plasma_norm_factor=2000,
+                 plasma_domain_mask=None):
 
-        self.shapes = shapes 
+        
 
         self.nx = np.shape(eq.R)[0]
         self.ny = np.shape(eq.R)[1]
@@ -51,12 +48,12 @@ class nl_solver:
         dR = eq.R[1, 0] - eq.R[0, 0]
         dZ = eq.Z[0, 1] - eq.Z[0, 0]
         self.dRdZ = dR*dZ
+        
 
+        self.plasma_grids = plasma_grids.Grids(eq, plasma_domain_mask)
         # mask identifying if plasma is hitting the wall
-        self.plasma_pts, self.mask_inside_limiter = plasma_grids.define_reduced_plasma_grid(eq.R, eq.Z)
-        self.mask_outside_limiter = plasma_grids.make_layer_mask(self.mask_inside_limiter)
+        self.plasma_domain_mask = self.plasma_grids.plasma_domain_mask
         self.plasma_against_wall = 0
-        self.idxs_mask = np.mgrid[0:self.nx, 0:self.ny][np.tile(self.mask_inside_limiter,(2,1,1))].reshape(2,-1)
 
         
         #instantiate solver on eq's domain
@@ -81,14 +78,10 @@ class nl_solver:
         self.eq2 = deepcopy(eq)
         self.profiles2 = deepcopy(profiles) 
 
-        self.eq3 = deepcopy(eq)
-        self.profiles3 = deepcopy(profiles)   
-
 
         for i,labeli in enumerate(coils_order):
             self.eq1.tokamak[labeli].control = False
             self.eq2.tokamak[labeli].control = False
-            self.eq3.tokamak[labeli].control = False
         
         
         self.dt_step = full_timestep
@@ -108,7 +101,7 @@ class nl_solver:
         # to calculate residual of metal circuit eq
         self.evol_metal_curr = metal_currents(flag_vessel_eig=1,
                                                 flag_plasma=1,
-                                                reference_eq=eq,
+                                                plasma_grids=self.plasma_grids,
                                                 max_mode_frequency=self.max_mode_frequency,
                                                 max_internal_timestep=self.max_internal_timestep,
                                                 full_timestep=self.dt_step)
@@ -117,9 +110,10 @@ class nl_solver:
         
 
         # to calculate residual of plasma collapsed circuit eq
-        self.evol_plasma_curr = plasma_current(reference_eq=eq,
+        self.evol_plasma_curr = plasma_current(plasma_grids=self.plasma_grids,
                                                Rm12V=np.matmul(np.diag(self.evol_metal_curr.Rm12), self.evol_metal_curr.V),
-                                               plasma_resistance_1d=self.plasma_resistance_1d)
+                                               plasma_resistance_1d=self.plasma_resistance_1d,
+                                               Mye=self.evol_metal_curr.Mey.T)
 
 
         # self.simplified_solver_dJ = simplified_solver_dJ(Lambdam1=self.evol_metal_curr.Lambdam1, 
@@ -198,11 +192,11 @@ class nl_solver:
     def reset_plasma_resistivity(self, plasma_resistivity):
         self.plasma_resistivity = plasma_resistivity
         plasma_resistance_matrix = self.eq1.R*(2*np.pi/self.dRdZ)*self.plasma_resistivity
-        self.plasma_resistance_1d = plasma_resistance_matrix[self.mask_inside_limiter]
+        self.plasma_resistance_1d = plasma_resistance_matrix[self.plasma_domain_mask]
     
-    def calc_plasma_resistance(self, norm_red_Iy0, norm_red_Iy1):
-        plasma_resistance_0d = np.sum(self.plasma_resistance_1d*norm_red_Iy0*norm_red_Iy1)
-        return plasma_resistance_0d
+    def calc_lumped_plasma_resistance(self, norm_red_Iy0, norm_red_Iy1):
+        lumped_plasma_resistance = np.sum(self.plasma_resistance_1d*norm_red_Iy0*norm_red_Iy1)
+        return lumped_plasma_resistance
     
     def reset_timestep(self, time_step):
         self.dt_step = time_step
@@ -217,21 +211,21 @@ class nl_solver:
         self.alpha_m = profiles.alpha_m
         self.alpha_n = profiles.alpha_n
 
-    def Iyplasmafromjtor(self, jtor):
-        red_Iy = jtor[self.mask_inside_limiter]*self.dRdZ
-        return red_Iy
-
-    def reduce_normalize(self, jtor, epsilon=1e-6):
-        red_Iy = jtor[self.mask_inside_limiter]/(np.sum(jtor) + epsilon)
-        return red_Iy
-    
-    # def reduce_normalize_l2(self, jtor):
-    #     red_Iy = jtor[self.mask_inside_limiter]/np.linalg.norm(jtor)
+    # def Iyplasmafromjtor(self, jtor):
+    #     red_Iy = jtor[self.plasma_domain_mask]*self.dRdZ
     #     return red_Iy
 
-    def rebuild_grid_map(self, red_vec):
-        self.mapd[self.idxs_mask[0], self.idxs_mask[1]] = red_vec
-        return self.mapd
+    # def reduce_normalize(self, jtor, epsilon=1e-6):
+    #     red_Iy = jtor[self.plasma_domain_mask]/(np.sum(jtor) + epsilon)
+    #     return red_Iy
+    
+    # def reduce_normalize_l2(self, jtor):
+    #     red_Iy = jtor[self.plasma_domain_mask]/np.linalg.norm(jtor)
+    #     return red_Iy
+
+    # def rebuild_grid_map(self, red_vec):
+    #     self.mapd[self.plasma_grids.idxs_mask[0], self.plasma_grids.idxs_mask[1]] = red_vec
+    #     return self.mapd
 
 
 
@@ -303,7 +297,7 @@ class nl_solver:
 
         self.jtor_m1 = 1.0*self.profiles1.jtor
 
-        self.red_Iy = self.Iyplasmafromjtor(self.profiles1.jtor)
+        self.red_Iy = self.plasma_grids.Iy_from_jtor(self.profiles1.jtor)
         self.red_Iy_m1 = 1.0*self.red_Iy
         # J0 is the direction of the plasma current vector at time t0
         # self.J0 = self.red_Iy/np.linalg.norm(self.red_Iy)
@@ -318,8 +312,7 @@ class nl_solver:
         self.step_no = 0
 
         # check if against the wall
-        if check_against_the_wall(jtor=self.profiles1.jtor, 
-                                  boole_mask_outside_limiter=self.mask_outside_limiter):
+        if self.plasma_grids.check_if_outside_domain(jtor=self.profiles1.jtor):
             print('plasma in ICs is touching the wall!')
 
         
@@ -377,8 +370,8 @@ class nl_solver:
             self.assign_currents(currents_vec=currents_guess, profile=self.profiles2, eq=self.eq2)
             self.NK.solve(self.eq2, self.profiles2, target_relative_tolerance=rtol_NK)
 
-            self.J1 = (1-alpha)*self.J1 + alpha*self.reduce_normalize(self.profiles2.jtor)
-            self.dJ = (1-alpha)*self.dJ + alpha*self.reduce_normalize(self.profiles2.jtor-self.jtor_m1)
+            self.J1 = (1-alpha)*self.J1 + alpha*self.plasma_grids.hat_Iy_from_jtor(self.profiles2.jtor)
+            # self.dJ = (1-alpha)*self.dJ + alpha*self.plasma_grids.hat_Iy_from_jtor(self.profiles2.jtor-self.jtor_m1)
 
         else:
             self.extrapolator.set_Y(self.step_no, self.currents_vec)
@@ -396,7 +389,7 @@ class nl_solver:
     #                           active_voltage_vec,
     #                           rtol_NK):
         
-    #     # Sp = self.calc_plasma_resistance(self.J0, dJ)/self.Rp
+    #     # Sp = self.calc_lumped_plasma_resistance(self.J0, dJ)/self.Rp
     #     self.simplified_c1 = 1.0*self.simplified_solver_dJ.stepper(It=self.currents_vec,
     #                                                         norm_red_Iy0=self.J0, 
     #                                                         norm_red_Iy_dot=dJ, 
@@ -412,8 +405,8 @@ class nl_solver:
     def currents_from_J1(self, J1,
                                 active_voltage_vec,
                                 ):
-        mix_map = self.rebuild_grid_map(self.J0_m1 + J1)
-        self.broad_J0 = self.reduce_normalize(convolve2d(mix_map, np.ones((4,4)), mode='same'))
+        mix_map = self.plasma_grids.rebuild_map2d(self.J0_m1 + J1)
+        self.broad_J0 = self.plasma_grids.hat_Iy_from_jtor(convolve2d(mix_map, np.ones((4,4)), mode='same'))
         self.broad_J0 /= np.sum(self.broad_J0)
         simplified_c1 = 1.0*self.simplified_solver_J1.stepper(It=self.currents_vec,
                                                                 hatIy_left=self.broad_J0, 
@@ -459,7 +452,7 @@ class nl_solver:
     #     iterative_steps = 0
     #     control = 1
     #     while control:
-    #         self.J1n = self.reduce_normalize(self.profiles2.jtor)
+    #         self.J1n = self.plasma_grids.hat_Iy_from_jtor(self.profiles2.jtor)
     #         self.ddJ = self.J1n - self.J1
     #         self.J1n = (1-alpha)*self.J1 + alpha*self.J1n
     #         self.J1n /= np.sum(self.J1n)
@@ -501,7 +494,7 @@ class nl_solver:
     #     if use_extrapolation:
     #         self.guess_J_from_extrapolation(alpha=alpha, rtol_NK=rtol_NK)
         
-    #     flag = check_against_the_wall(jtor=self.profiles2.jtor, 
+    #     flag = self.plasma_grids.check_if_outside_domain(jtor=self.profiles2.jtor, 
     #                                   boole_mask_outside_limiter=self.mask_outside_limiter)
 
 
@@ -510,7 +503,7 @@ class nl_solver:
     
     def calculate_J1hat_GS(self, trial_currents, rtol_NK=1e-9):
         self.assign_solve(trial_currents, rtol_NK=rtol_NK)
-        J1hat = self.reduce_normalize(self.profiles2.jtor)
+        J1hat = self.plasma_grids.hat_Iy_from_jtor(self.profiles2.jtor)
         return J1hat
     
     def Fresidual_curr_GS(self, trial_currents, active_voltage_vec, rtol_NK=1e-9):
@@ -603,8 +596,7 @@ class nl_solver:
 
         self.step_complete_assign(self.trial_currents)
         
-        flag = check_against_the_wall(jtor=self.profiles2.jtor, 
-                                      boole_mask_outside_limiter=self.mask_outside_limiter)
+        flag = self.plasma_grids.check_if_outside_domain(jtor=self.profiles2.jtor)
 
         if use_extrapolation:
             self.guess_currents_from_extrapolation()
@@ -620,7 +612,7 @@ class nl_solver:
         self.assign_currents(currents, profile=self.profiles2, eq=self.eq2)
         self.tokamak_psi = self.eq2.tokamak.calcPsiFromGreens(pgreen=self.eq2._pgreen)
         jtor_ = self.profiles2.Jtor(self.eqR, self.eqZ, self.tokamak_psi + plasma_psi_2d)
-        J1hat = self.reduce_normalize(jtor_)
+        J1hat = self.plasma_grids.hat_Iy_from_jtor(jtor_)
         return J1hat
 
     def Fresidual_curr(self, trial_currents, active_voltage_vec, rtol_NK=1e-9):
@@ -729,8 +721,7 @@ class nl_solver:
 
         self.step_complete_assign(self.trial_currents)
         
-        flag = check_against_the_wall(jtor=self.profiles2.jtor, 
-                                      boole_mask_outside_limiter=self.mask_outside_limiter)
+        flag = self.plasma_grids.check_if_outside_domain(jtor=self.profiles2.jtor)
 
 
         return flag
@@ -885,8 +876,7 @@ class nl_solver:
             self.guess_currents_from_extrapolation()
         
     
-        flag = check_against_the_wall(jtor=self.profiles2.jtor, 
-                                      boole_mask_outside_limiter=self.mask_outside_limiter)
+        flag = self.plasma_grids.check_if_outside_domain(jtor=self.profiles2.jtor)
 
 
         return flag
@@ -909,7 +899,7 @@ class nl_solver:
     def Fresidual_nk_J1(self, J1, active_voltage_vec, rtol_NK=1e-8):
         J1 /= np.sum(J1)
         self.simplified_c, self.circ_eq_res = self.iterative_unit_J1(J1, active_voltage_vec, rtol_NK)
-        self.J1_new = self.reduce_normalize(self.profiles2.jtor)
+        self.J1_new = self.plasma_grids.hat_Iy_from_jtor(self.profiles2.jtor)
         return self.J1_new - J1
     def Fresidual_nk_J1_currents(self, J1, active_voltage_vec, rtol_NK=1e-8):
         dJ1 = self.Fresidual_nk_J1(J1, active_voltage_vec, rtol_NK)
@@ -1016,8 +1006,7 @@ class nl_solver:
         
 
     
-        flag = check_against_the_wall(jtor=self.profiles2.jtor, 
-                                      boole_mask_outside_limiter=self.mask_outside_limiter)
+        flag = self.plasma_grids.check_if_outside_domain(jtor=self.profiles2.jtor)
 
         
 
@@ -1028,7 +1017,7 @@ class nl_solver:
         trial_plasma_psi_2d = trial_plasma_psi.reshape(self.nx, self.ny)
 
         jtor_ = self.profiles2.Jtor(self.eqR, self.eqZ, self.tokamak_psi + trial_plasma_psi_2d)
-        hatjtor_ = self.reduce_normalize(jtor_)
+        hatjtor_ = self.plasma_grids.hat_Iy_from_jtor(jtor_)
         self.simplified_c, res = self.iterative_unit_J1(J1=hatjtor_,
                                                         active_voltage_vec=active_voltage_vec,
                                                         rtol_NK=rtol_NK)
@@ -1129,8 +1118,7 @@ class nl_solver:
         # if use_extrapolation:
         #     self.guess_J_from_extrapolation(alpha=alpha, rtol_NK=rtol_NK)
         
-        flag = check_against_the_wall(jtor=self.profiles2.jtor, 
-                                      boole_mask_outside_limiter=self.mask_outside_limiter)
+        flag = self.plasma_grids.check_if_outside_domain(jtor=self.profiles2.jtor)
 
         
         return flag
@@ -1140,7 +1128,7 @@ class nl_solver:
     def assign_solve(self, trial_currents, rtol_NK=1e-8):
         self.assign_currents(trial_currents, profile=self.profiles2, eq=self.eq2)
         self.NK.solve(self.eq2, self.profiles2, target_relative_tolerance=rtol_NK)
-        self.red_Iy_trial = self.Iyplasmafromjtor(self.profiles2.jtor)
+        self.red_Iy_trial = self.plasma_grids.Iy_from_jtor(self.profiles2.jtor)
         self.red_Iy_dot = (self.red_Iy_trial - self.red_Iy)/self.dt_step
         self.Id_dot = ((trial_currents - self.currents_vec)/self.dt_step)[:-1]
 
@@ -1184,7 +1172,7 @@ class nl_solver:
     #     # current_tpdt = 1.0*trial_currents#[:, -1]
     #     self.assign_currents(trial_currents, profile=self.profiles2, eq=self.eq2)
     #     self.NK.solve(self.eq2, self.profiles2, target_relative_tolerance=rtol_NK)
-    #     self.red_Iy_trial = self.Iyplasmafromjtor(self.profiles2.jtor)
+    #     self.red_Iy_trial = self.plasma_grids.Iy_from_jtor(self.profiles2.jtor)
 
     #     self.red_Iy_dot = (self.red_Iy_trial - self.red_Iy_m1)/(2*self.dt_step)
     #     self.Id_dot = ((trial_currents - self.currents_vec_m1)/(2*self.dt_step))[:-1]
@@ -1246,7 +1234,7 @@ class nl_solver:
         
     #     self.central_2  = (1 + (self.step_no>0))
         
-    #     Rp = self.calc_plasma_resistance(self.J0, self.J0_m1)
+    #     Rp = self.calc_lumped_plasma_resistance(self.J0, self.J0_m1)
     #     self.dJ = 1.0*dJ
         
     #     simplified_c, res = self.iterative_unit_dJ(dJ=dJ,
@@ -1267,7 +1255,7 @@ class nl_solver:
     #         #     plt.colorbar()
     #         #     plt.title(str(np.sum(self.dJ))+'   '+str(simplified_c[-1]-self.currents_vec_m1[-1]))
 
-    #         self.dJ1 = self.reduce_normalize(self.profiles2.jtor - self.jtor_m1)
+    #         self.dJ1 = self.plasma_grids.hat_Iy_from_jtor(self.profiles2.jtor - self.jtor_m1)
     #         self.dJ1 = (1-alpha)*self.dJ + alpha*self.dJ1
     #         # self.dJ1 /= np.linalg.norm(self.dJ1)
     #         self.dJ1 /= np.sum(self.dJ1)
@@ -1301,7 +1289,7 @@ class nl_solver:
     #     if use_extrapolation:
     #         self.guess_J_from_extrapolation(alpha=alpha, rtol_NK=rtol_NK)
 
-    #     flag = check_against_the_wall(jtor=self.profiles2.jtor, 
+    #     flag = self.plasma_grids.check_if_outside_domain(jtor=self.profiles2.jtor, 
     #                                   boole_mask_outside_limiter=self.mask_outside_limiter)
 
     #     return flag
@@ -1358,7 +1346,7 @@ class nl_solver:
     #                              verbose=False,
     #                              threshold=.001):
         
-    #     Rp = self.calc_plasma_resistance(self.J0, self.J0)
+    #     Rp = self.calc_lumped_plasma_resistance(self.J0, self.J0)
         
     #     simplified_c, res = self.nl_mix_unit(active_voltage_vec=active_voltage_vec,
     #                                                 Rp=Rp, 
@@ -1376,7 +1364,7 @@ class nl_solver:
     #     iterative_steps = 0
     #     control = 1
     #     while control:
-    #         self.dJ = (1-alpha)*self.dJ + alpha*(self.reduce_normalize(self.profiles2.jtor - self.profiles1.jtor))
+    #         self.dJ = (1-alpha)*self.dJ + alpha*(self.plasma_grids.hat_Iy_from_jtor(self.profiles2.jtor - self.profiles1.jtor))
     #         simplified_c1, res = self.nl_mix_unit(active_voltage_vec=active_voltage_vec,
     #                                                 Rp=Rp, 
     #                                                 rtol_NK=rtol_NK,
@@ -1418,7 +1406,7 @@ class nl_solver:
     #                     atol_J=1e-3,
     #                     verbose=False):
         
-    #     self.Rp = self.calc_plasma_resistance(self.J0, self.J0)
+    #     self.Rp = self.calc_lumped_plasma_resistance(self.J0, self.J0)
 
     #     resJ = self.Fresidual_nk_dJ(trial_sol, active_voltage_vec=active_voltage_vec, rtol_NK=rtol_NK)
         
@@ -1468,7 +1456,7 @@ class nl_solver:
     #     self.time += self.dt_step
     #     self.step_complete_assign(simplified_c)
         
-    #     flag = check_against_the_wall(jtor=self.profiles2.jtor, 
+    #     flag = self.plasma_grids.check_if_outside_domain(jtor=self.profiles2.jtor, 
     #                                   boole_mask_outside_limiter=self.mask_outside_limiter)
 
     #     return flag

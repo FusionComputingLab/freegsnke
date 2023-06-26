@@ -1,4 +1,5 @@
 import numpy as np
+import math
 
 class implicit_euler_solver():
     """An implicit Euler time stepper for the linearized circuit equation. Solves an equation of type
@@ -81,22 +82,23 @@ class implicit_euler_solver():
         """
         self.full_timestep = full_timestep
         self.max_internal_timestep = max_internal_timestep
-        self.n_steps = int(full_timestep/max_internal_timestep + .999)
-        self.intermediate_results = np.zeros((self.dims, self.n_steps))
+        self.n_steps = math.ceil(full_timestep / max_internal_timestep)
+        # self.intermediate_results = np.zeros((self.dims, self.n_steps))
         self.internal_timestep = self.full_timestep/self.n_steps 
         self.calc_inverse_operator()
 
-    def internal_stepper(self, It, forcing):
+    def internal_stepper(self, It, dtforcing):
         """Calculates the next internal timestep I(t + internal_timestep)
         
         Parameters
         ----------
         It : np.ndarray
             Length N vector of the currents, I, at time t
-        forcing : np.ndarray
+        dtforcing : np.ndarray
             Lenght N vector of the forcing, F,  at time t
+            multiplied by self.internal_timestep
         """       
-        Itpdt = np.dot(self.inverse_operator, forcing*self.internal_timestep + np.dot(self.Lmatrix, It))
+        Itpdt = np.dot(self.inverse_operator, dtforcing + np.dot(self.Lmatrix, It))
         return Itpdt
 
     def full_stepper(self, It, forcing):
@@ -109,9 +111,11 @@ class implicit_euler_solver():
         forcing : np.ndarray
             Lenght N vector of the forcing, F,  at time t
         """
-        for i in range(self.n_steps):
-            It = self.internal_stepper(It, forcing)
-            self.intermediate_results[:, i] = It
+        dtforcing = forcing*self.internal_timestep
+
+        for _ in range(self.n_steps):
+            It = self.internal_stepper(It, dtforcing)
+            # self.intermediate_results[:, i] = It
         
         return It
 
@@ -197,7 +201,7 @@ class implicit_euler_solver_d():
         """
         self.full_timestep = full_timestep
         self.max_internal_timestep = max_internal_timestep
-        self.n_steps = int(full_timestep/max_internal_timestep + .999)
+        self.n_steps = math.ceil(full_timestep / max_internal_timestep)
         self.intermediate_results = np.zeros((self.dims, self.n_steps))
         self.internal_timestep = self.full_timestep/self.n_steps 
         self.calc_inverse_operator()

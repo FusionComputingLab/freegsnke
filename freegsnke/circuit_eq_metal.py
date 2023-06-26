@@ -2,7 +2,6 @@ import numpy as np
 
 from . import machine_config
 from . import normal_modes
-from . import plasma_grids
 from .implicit_euler import implicit_euler_solver
 
 
@@ -14,7 +13,7 @@ class metal_currents:
     
     def __init__(self, flag_vessel_eig,
                        flag_plasma,
-                       reference_eq=0,
+                       plasma_grids=None,
                        max_mode_frequency=1,
                        max_internal_timestep=.0001,
                        full_timestep=.0001):
@@ -38,8 +37,8 @@ class metal_currents:
 
         # change if plasma by using set_plasma
         if flag_plasma:
-            plasma_pts, self.mask_inside_limiter = plasma_grids.define_reduced_plasma_grid(reference_eq.R, reference_eq.Z)
-            self.Mey = plasma_grids.Mey(plasma_pts)            
+            self.plasma_grids = plasma_grids
+            self.Mey = plasma_grids.Mey()            
 
         #dummy voltage vector
         self.empty_U = np.zeros(self.n_coils)
@@ -109,7 +108,7 @@ class metal_currents:
 
     def reset_mode(self, flag_vessel_eig,
                         flag_plasma,
-                        reference_eq=0,
+                        plasma_grids=None,
                         max_mode_frequency=1,
                         max_internal_timestep=.0001,
                         full_timestep=.0001):
@@ -125,8 +124,8 @@ class metal_currents:
         self.flag_plasma = flag_plasma
 
         if control*flag_plasma: 
-            plasma_pts, self.mask_inside_limiter = plasma_grids.define_reduced_plasma_grid(reference_eq.R, reference_eq.Z)
-            self.Mey = plasma_grids.Mey(plasma_pts)        
+            self.plasma_grids = plasma_grids
+            self.Mey = plasma_grids.Mey()          
         
         control += (flag_vessel_eig != self.flag_vessel_eig)
         self.flag_vessel_eig = flag_vessel_eig

@@ -187,7 +187,7 @@ def geometricElongation(eq, profiles, npoints=20):
     )
 
 
-def shapes(eq, profiles):
+def shapes_f(eq, profiles):
     width = calculate_width(eq, profiles) #simple width at z=0:
     opoint = np.array(profiles.opt[0])[np.newaxis]
     # Rvals = eq.R*self.plasma_mask
@@ -197,5 +197,3 @@ def shapes(eq, profiles):
     return width, opoint, gE
 
 
-def check_against_the_wall(jtor, boole_mask_outside_limiter):
-    return np.sum(jtor[boole_mask_outside_limiter])

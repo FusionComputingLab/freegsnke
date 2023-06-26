@@ -73,7 +73,26 @@ class Grids:
         return Iy
 
 
-    def hat_Iy_from_jtor(self, jtor, epsilon=1e-6):
+    def normalize_sum(self, Iy, epsilon=1e-6):
+        """Normalises any vector by the linear sum of its elements.
+
+        Parameters
+        ----------
+        jtor : np.ndarray
+            Plasma current distribution on full domain. np.shape(jtor) = np.shape(eq.R)
+        epsilon : float, optional
+            avoid divergences, by default 1e-6
+
+        Returns
+        -------
+        _type_
+            _description_
+        """
+        hat_Iy = Iy/(np.sum(Iy)+epsilon)
+        return hat_Iy
+    
+
+    def hat_Iy_from_jtor(self, jtor):
         """Generates 1d vector on reduced plasma domain for the normalised vector 
         $$ Jtor*dR*dZ/I_p $$.
 
@@ -91,8 +110,10 @@ class Grids:
             Reduced 1d plasma current vector, normalized to total plasma current
             
         """
-        hat_Iy = jtor[self.plasma_domain_mask]/(np.sum(jtor) + epsilon)
+        hat_Iy = jtor[self.plasma_domain_mask]
+        hat_Iy = self.normalize_sum(hat_Iy)
         return hat_Iy
+    
     
 
     def check_if_outside_domain(self, jtor):

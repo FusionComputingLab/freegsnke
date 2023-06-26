@@ -8,6 +8,6 @@ __pycache__
 .DS_Store
 examples/example_nonlinear_evolution_*
 examples/modes
-freegsnke/nonlinear_solve_o*
+freegsnke/nonlinear_solve_*
 freegsnke/plasma_grids*
 freegsnke/newtonkrylov_*

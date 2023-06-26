@@ -92,7 +92,8 @@ for i, coil_name in enumerate(active_coils):
         coils_dict[coil_name]['polarity'] = np.array([active_coils[coil_name]["polarity"]] * len(active_coils[coil_name]["R"]))
         coils_dict[coil_name]['dR'] = active_coils[coil_name]["dR"]
         coils_dict[coil_name]['dZ'] = active_coils[coil_name]["dZ"]
-        coils_dict[coil_name]['resistivity'] = active_coils[coil_name]["resistivity"]
+        # this is resistivity divided by area
+        coils_dict[coil_name]['resistivity'] = active_coils[coil_name]["resistivity"]/(active_coils[coil_name]["dR"]*active_coils[coil_name]["dZ"])
         coils_dict[coil_name]['multiplier'] = np.array([active_coils[coil_name]["multiplier"]] * len(active_coils[coil_name]["R"]))
         continue
     coils_dict[coil_name] = {}

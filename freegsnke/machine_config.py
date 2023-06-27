@@ -5,6 +5,15 @@ import pickle
 from freegs.gradshafranov import Greens
 
 
+def Greens_with_depth(Rc,Zc, R,Z, dR, dZ, tol=1e-6):
+    # mask = (np.abs(R-Rc)<tol)
+    # mask *= (np.abs(Z-Zc)<tol)
+    # small_r = np.sqrt(dR*dZ/np.pi)
+    # Rc = np.where(mask, Rc-small_r, Rc)
+    greens = Greens(Rc,Zc, R,Z)
+    return greens
+
+
 eta_copper = 1.55e-8 # Resistivity in Ohm*m, for active coils 
 eta_steel = 5.5e-7 # In Ohm*m, for passive structures
 
@@ -127,6 +136,8 @@ for i, coil in enumerate(passive_coils):
     tkey = 'passive_' + str(i)
     coils_dict[tkey] = {}
     coils_dict[tkey]['coords'] = np.array((coil["R"], coil["Z"]))[:, np.newaxis]
+    coils_dict[tkey]['dR'] = coil["dR"]
+    coils_dict[tkey]["dZ"] = coil["dZ"]
     coils_dict[tkey]['polarity'] = np.array([1])
     coils_dict[tkey]['multiplier'] = np.array([1])
     # this is resistivity divided by area
@@ -151,10 +162,13 @@ if calculate_self_inductance_and_resistance:
         #for coil-coil flux
         # mutual inductance = 2pi * (sum of all Greens(R_i,Z_i, R_j,Z_j) on n_i*n_j terms, where n is the number of windings)
         for j,labelj in enumerate(coils_order):
-            greenm = Greens(coils_dict[labeli]['coords'][0][np.newaxis,:],
-                            coils_dict[labeli]['coords'][1][np.newaxis,:],
-                            coils_dict[labelj]['coords'][0][:,np.newaxis],
-                            coils_dict[labelj]['coords'][1][:,np.newaxis])
+            greenm = Greens_with_depth( coils_dict[labeli]['coords'][0][np.newaxis,:],
+                                        coils_dict[labeli]['coords'][1][np.newaxis,:],
+                                        coils_dict[labelj]['coords'][0][:,np.newaxis],
+                                        coils_dict[labelj]['coords'][1][:,np.newaxis],
+                                        np.array([coils_dict[labeli]['dR']])[:,np.newaxis],
+                                        np.array([coils_dict[labeli]['dZ']])[:,np.newaxis])
+                                        
             
             greenm *= coils_dict[labelj]['polarity'][:,np.newaxis]
             greenm *= coils_dict[labelj]['multiplier'][:,np.newaxis]

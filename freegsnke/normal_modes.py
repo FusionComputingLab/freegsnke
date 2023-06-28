@@ -33,6 +33,12 @@ ordw = np.argsort(w)
 w_passive = w[ordw]
 Vmatrix_passive = ((v.T)[ordw]).T
 
+if np.any(w_active < 0):
+    print('Negative eigenvalues in active coils! Please check coil sizes and coordinates.')
+if np.any(w_passive < 0):
+    print('Negative eigenvalues in passive vessel! Please check coil sizes and coordinates.')
+
+
 # compose full 
 Vmatrix = np.zeros((machine_config.n_coils, machine_config.n_coils))
 # Vmatrix[:n_active_coils, :n_active_coils] = 1.0*Vmatrix_active

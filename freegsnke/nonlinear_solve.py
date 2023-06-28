@@ -33,13 +33,13 @@ class nl_solver:
     def __init__(self, profiles, eq, 
                  max_mode_frequency, 
                  full_timestep=.0001,
-                #  max_internal_timestep=.0001, #has been fixed to full_timestep
+                 max_internal_timestep=.0001, #has been fixed to full_timestep
                  plasma_resistivity=1e-6,
                  plasma_norm_factor=2000,
                  plasma_domain_mask=None,
                  nbroad=3,
-                 solution_method='NK_on_psi_and_currents',
                  initial_guess='linearised_solution',
+                 solution_method='NK_on_psi_and_currents',
                  extrapolator_input_size=4,
                  extrapolator_order=1,
                  dIydI=None):
@@ -96,8 +96,8 @@ class nl_solver:
         self.dt_step = full_timestep
         self.plasma_norm_factor = plasma_norm_factor
     
-        # self.max_internal_timestep = max_internal_timestep
-        self.max_internal_timestep = 1.0*full_timestep
+        self.max_internal_timestep = max_internal_timestep
+        # self.max_internal_timestep = 1.0*full_timestep
         self.max_mode_frequency = max_mode_frequency
         self.reset_plasma_resistivity(plasma_resistivity, eqR=self.eqR)
 
@@ -198,17 +198,6 @@ class nl_solver:
         # self.w = np.append(w, mw, axis=0)
 
 
-        if solution_method=='NK_on_psi_and_currents':
-            self.psi_nk_solver = nk_solver.nksolver(self.nx * self.ny)
-            self.currents_nk_solver = nk_solver.nksolver(self.n_metal_modes + 1)
-        elif solution_method=='NK_on_currents_GS':
-            self.currents_nk_solver = nk_solver.nksolver(self.n_metal_modes + 1)
-        else:
-            print('solution method not recognised, use either')
-            print('NK_on_psi_and_currents')
-            print('NK_on_currents_GS')
-
-
         self.linearised_flag = False
         self.extrapolator_flag = False
         if initial_guess=='linearised_solution':
@@ -231,6 +220,26 @@ class nl_solver:
                                                      parallel_dims=self.n_metal_modes+1)
             self.extrapolator_input_size = extrapolator_input_size
             self.set_initial_trial_solution = self.set_initial_trial_solution_extrapolation
+
+
+        if solution_method=='NK_on_psi_and_currents':
+            self.psi_nk_solver = nk_solver.nksolver(self.nx * self.ny)
+            self.currents_nk_solver = nk_solver.nksolver(self.n_metal_modes + 1)
+            self.stepper = self.nl_step_nk_psi_curr
+        elif solution_method=='NK_on_currents_GS':
+            self.currents_nk_solver = nk_solver.nksolver(self.n_metal_modes + 1)
+            self.stepper = self.nl_step_nk_curr_GS
+        elif solution_method=='linearised_only':
+            if self.linearised_flag is False:
+                print('initial guess has to be set to \'linearised solution\' for this solution method, please adjust')
+            self.stepper = self.linear_step
+        else:
+            print('solution method not recognised, use either')
+            print('NK_on_psi_and_currents')
+            print('NK_on_currents_GS')
+            print('linearised_only')
+
+
 
 
 
@@ -415,7 +424,29 @@ class nl_solver:
         if self.plasma_grids.check_if_outside_domain(jtor=self.profiles1.jtor):
             print('plasma in ICs is touching the wall!')
 
+    
+    def step_complete_assign_simple(self, working_relative_tol_GS):
+        self.time += self.dt_step
+        self.currents_vec_m1 = np.copy(self.currents_vec)
+        self.Iy_m1 = np.copy(self.Iy)
+
+        plasma_psi_step = self.eq2.plasma_psi - self.eq1.plasma_psi
+        self.d_plasma_psi_step = np.amax(plasma_psi_step) - np.amin(plasma_psi_step)
+        # print(self.d_plasma_psi_step)
+
+        self.currents_vec = np.copy(self.trial_currents)
         
+        self.eq1.plasma_psi = np.copy(self.eq2.plasma_psi)
+        self.profiles1.Ip = np.copy(self.profiles2.Ip)
+        self.profiles1.jtor = np.copy(self.profiles2.jtor)
+
+        self.Iy = 1.0*self.plasma_grids.Iy_from_jtor(self.profiles1.jtor)
+        self.hatIy = self.plasma_grids.normalize_sum(self.Iy)
+
+        self.step_no += 1
+
+        self.rtol_NK = working_relative_tol_GS*self.d_plasma_psi_step
+
 
 
     def step_complete_assign(self, trial_currents, 
@@ -427,6 +458,7 @@ class nl_solver:
 
         self.currents_vec = np.copy(trial_currents)
         self.assign_currents(self.currents_vec, self.eq1, self.profiles1)
+        self.tokamak_psi = self.eq1.tokamak.calcPsiFromGreens(pgreen=self.eq1._pgreen)
         self.eq1.plasma_psi = np.copy(trial_plasma_psi)
         self.profiles1.Jtor(self.eqR, self.eqZ, (self.tokamak_psi + trial_plasma_psi).reshape(self.nx, self.ny))
 
@@ -634,7 +666,21 @@ class nl_solver:
         return r_res_GS
 
 
+
    
+    def linear_step(self, active_voltage_vec,
+                          working_relative_tol_GS):
+        
+        self.set_initial_trial_solution(active_voltage_vec)
+        
+        self.step_complete_assign_simple(working_relative_tol_GS)
+        
+        flag = self.plasma_grids.check_if_outside_domain(jtor=self.profiles2.jtor)
+
+        return flag
+        
+
+
 
 
 
@@ -664,6 +710,7 @@ class nl_solver:
                                 ):
 
         self.set_initial_trial_solution(active_voltage_vec)
+        # self.linear_currents.append(self.trial_currents)
         
         res_curr = self.F_function_curr(self.trial_currents, active_voltage_vec)
         # the above also calculates self.tokamak_psi in 2d

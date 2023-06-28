@@ -6,10 +6,10 @@ from freegs.gradshafranov import Greens
 
 
 def Greens_with_depth(Rc,Zc, R,Z, dR, dZ, tol=1e-6):
-    # mask = (np.abs(R-Rc)<tol)
-    # mask *= (np.abs(Z-Zc)<tol)
-    # small_r = np.sqrt(dR*dZ/np.pi)
-    # Rc = np.where(mask, Rc-small_r, Rc)
+    mask = (np.abs(R-Rc)<tol)
+    mask *= (np.abs(Z-Zc)<tol)
+    small_r = np.sqrt(dR*dZ/np.pi)
+    Rc = np.where(mask, Rc-small_r/2, Rc)
     greens = Greens(Rc,Zc, R,Z)
     return greens
 

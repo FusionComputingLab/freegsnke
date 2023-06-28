@@ -33,7 +33,7 @@ class nl_solver:
     def __init__(self, profiles, eq, 
                  max_mode_frequency, 
                  full_timestep=.0001,
-                 max_internal_timestep=.0001, #has been fixed to full_timestep
+                 max_internal_timestep=.0001, 
                  plasma_resistivity=1e-6,
                  plasma_norm_factor=2000,
                  plasma_domain_mask=None,
@@ -141,7 +141,8 @@ class nl_solver:
                                                             Myy=self.evol_plasma_curr.Myy,
                                                             plasma_norm_factor=self.plasma_norm_factor,
                                                             plasma_resistance_1d=self.plasma_resistance_1d,
-                                                            max_internal_timestep=self.max_internal_timestep,
+                                                            # this is used with no internal step subdivision, to help nonlinear convergence 
+                                                            max_internal_timestep=self.dt_step,
                                                             full_timestep=self.dt_step)
         
         
@@ -267,6 +268,7 @@ class nl_solver:
 
 
     def build_linear_matrices(self, eq, profile, rtol_NK, target_dIy, starting_dI):
+        print('I\'m building the linearization. This might take a minute or two.')
         self.NK.solve(eq, profile, target_relative_tolerance=rtol_NK)
         self.build_current_vec(eq, profile)
 

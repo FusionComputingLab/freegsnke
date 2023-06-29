@@ -36,7 +36,7 @@ class Grids:
 
 
         # the if statement should be eliminated in favour of actual input
-        if plasma_domain_mask == None:
+        if plasma_domain_mask is None:
             plasma_domain_mask = np.ones_like(self.R)
             plasma_domain_mask *= (self.R>0.265)*(self.R<1.582)
             plasma_domain_mask *= (self.Z<.95+1*self.R)*(self.Z>-.95-1*self.R)

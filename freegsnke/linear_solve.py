@@ -54,7 +54,7 @@ class linear_solver:
 
 
     def build_Mmatrix(self, ):
-        Rp = np.sum(self.plasma_resistance_1d * self.hatIy0 * self.hatIy0)
+        nRp = np.sum(self.plasma_resistance_1d * self.hatIy0 * self.hatIy0)*self.plasma_norm_factor
 
         self.Mmatrix[:self.n_independent_vars, :self.n_independent_vars] = np.copy(self.Lambdam1)
         self.Mmatrix[:self.n_independent_vars, :self.n_independent_vars] += np.matmul(self.Vm1Rm12Mey, self.dIydI[:,:-1])
@@ -63,10 +63,12 @@ class linear_solver:
 
         mat = np.matmul(self.Myy, self.dIydI[:,:-1]).T
         mat += self.Vm1Rm12Mey
-        self.Mmatrix[-1, :-1] = np.dot(mat, self.hatIy0)/(Rp*self.plasma_norm_factor)
+        self.Mmatrix[-1, :-1] = np.dot(mat, self.hatIy0)
 
+        self.Mmatrix[-1,-1] = np.dot(self.hatIy0, np.dot(self.Myy, self.dIydI[:,-1]))
 
-        self.Mmatrix[-1,-1] = np.dot(self.hatIy0, np.dot(self.Myy, self.dIydI[:,-1]))/(Rp*self.plasma_norm_factor)
+        self.Mmatrix[-1, :] /= nRp
+
 
 
 

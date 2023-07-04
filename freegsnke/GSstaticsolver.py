@@ -288,6 +288,11 @@ class NKGSsolver:
 
         # update plasma current
         eq._current = np.sum(profiles.jtor)*self.dRdZ
+
+        # record xpoints and opoints
+        eq.xpt = np.copy(profiles.xpt)
+        eq.opt = np.copy(profiles.opt)
+
         
         #if max_iter was hit, then message:
         if not iterations < max_solving_iterations:

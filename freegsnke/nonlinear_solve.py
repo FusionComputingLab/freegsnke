@@ -690,105 +690,81 @@ class nl_solver:
 
     def nl_step_nk_psi_curr(self, active_voltage_vec, 
                                 target_relative_tol_currents=.1,
-                                target_relative_tol_GS=.1,
-                                working_relative_tol_GS=.01,
-                                target_relative_unexplained_residual=.6,
-                                max_n_directions=4,
-                                max_Arnoldi_iterations=5,
-                                max_collinearity=.3,
-                                step_size_psi=.5,
-                                step_size_curr=1,
-                                scaling_with_n=0,
-                                relative_tol_for_nk_psi=.04,
-                                # blend_curr=1.0,
-                                # blend_psi=1.0,
-                                blend_GS=.4,
-                                curr_eps=1e-4,
-                                max_no_NK_psi=4,
-                                clip=3,
-                                threshold=1.5,
-                                clip_hard=1.5,
-                                verbose=False,
+                                        target_relative_tol_GS=.1,
+                                        working_relative_tol_GS=.003,
+                                        target_relative_unexplained_residual=.5,
+                                        max_n_directions=4,
+                                        max_Arnoldi_iterations=5,
+                                        max_collinearity=.3,
+                                        step_size_psi=.35,
+                                        step_size_curr=1.,
+                                        scaling_with_n=0,
+                                        relative_tol_for_nk_psi=.01,
+                                        blend_GS=.4,
+                                        curr_eps=1e-4,
+                                        max_no_NK_psi=5.,
+                                        clip=10,
+                                        threshold=2.,
+                                        clip_hard=3.,
+                                        verbose=False,
+                                        linear_only=False
                                 ):
 
         self.set_initial_trial_solution(active_voltage_vec)
-        # self.linear_currents.append(self.trial_currents)
-        
-        res_curr = self.F_function_curr(self.trial_currents, active_voltage_vec)
-        # the above also calculates self.tokamak_psi in 2d
 
-        rel_curr_res = self.calculate_rel_tolerance_currents(res_curr, curr_eps=curr_eps)
-        control = np.any(rel_curr_res > target_relative_tol_currents)
-        
-        if verbose:
-            print('starting: curr residual', np.amax(rel_curr_res), np.mean(rel_curr_res))
-        log = []
+        if linear_only:
+            self.step_complete_assign_simple(working_relative_tol_GS)
+        else:
 
-        n_no_NK_psi = 0
-        n_it = 0
+            res_curr = self.F_function_curr(self.trial_currents, active_voltage_vec)
+            # the above also calculates self.tokamak_psi in 2d
 
-
-        args_nk = [active_voltage_vec, self.rtol_NK]
-
-        while control:
+            rel_curr_res = self.calculate_rel_tolerance_currents(res_curr, curr_eps=curr_eps)
+            control = np.any(rel_curr_res > target_relative_tol_currents)
+            
             if verbose:
-                for _ in log:
-                    print(_)
-                
+                print('starting: curr residual', np.amax(rel_curr_res), np.mean(rel_curr_res))
             log = []
 
-            self.NK.solve(self.eq2, self.profiles2, self.rtol_NK)
-            self.trial_plasma_psi *= (1-blend_GS)
-            self.trial_plasma_psi += blend_GS*self.eq2.plasma_psi
-
-            self.assign_currents(self.trial_currents, self.eq2, self.profiles2)
-            self.tokamak_psi = self.eq2.tokamak.calcPsiFromGreens(pgreen=self.eq2._pgreen)
-            
-            self.trial_plasma_psi = self.trial_plasma_psi.reshape(-1)
-            self.tokamak_psi = self.tokamak_psi.reshape(-1)
+            n_no_NK_psi = 0
+            n_it = 0
 
 
-            res_psi = self.F_function_psi(trial_plasma_psi=self.trial_plasma_psi,
-                                            active_voltage_vec=active_voltage_vec, 
-                                            rtol_NK=self.rtol_NK)
-            del_res_psi = (np.amax(res_psi) - np.amin(res_psi))
+            args_nk = [active_voltage_vec, self.rtol_NK]
 
-            log.append([n_it, 'psi_residual', del_res_psi])
+            while control:
+                if verbose:
+                    for _ in log:
+                        print(_)
+                    
+                log = []
 
-            if (del_res_psi > self.rtol_NK/relative_tol_for_nk_psi)+(n_no_NK_psi > max_no_NK_psi):
-                n_no_NK_psi -= 2
-                self.psi_nk_solver.Arnoldi_iteration(x0=self.trial_plasma_psi, #trial_current expansion point
-                                                     dx=res_psi, #first vector for current basis
-                                                     R0=res_psi, #circuit eq. residual at trial_current expansion point: F_function(trial_current)
-                                                     F_function=self.F_function_psi,
-                                                     args=args_nk,
-                                                     step_size=step_size_psi,
-                                                     scaling_with_n=scaling_with_n,
-                                                     target_relative_unexplained_residual=target_relative_unexplained_residual,   #add basis vector 
-                                                     max_n_directions=max_n_directions, # max number of basis vectors (must be less than number of modes + 1)
-                                                     max_Arnoldi_iterations=max_Arnoldi_iterations,
-                                                     max_collinearity=max_collinearity,
-                                                     clip=clip,
-                                                     threshold=threshold,
-                                                     clip_hard=clip_hard)
-                log.append([n_it, 'psi_coeffs = ', self.psi_nk_solver.coeffs])
-                self.trial_plasma_psi += self.psi_nk_solver.dx#*blend_psi
-            else:
-                # print('n_no_NK_psi = ', n_no_NK_psi)
-                n_no_NK_psi += 1
+                self.NK.solve(self.eq2, self.profiles2, self.rtol_NK)
+                self.trial_plasma_psi *= (1-blend_GS)
+                self.trial_plasma_psi += blend_GS*self.eq2.plasma_psi
+
+                self.assign_currents(self.trial_currents, self.eq2, self.profiles2)
+                self.tokamak_psi = self.eq2.tokamak.calcPsiFromGreens(pgreen=self.eq2._pgreen)
+                
+                self.trial_plasma_psi = self.trial_plasma_psi.reshape(-1)
+                self.tokamak_psi = self.tokamak_psi.reshape(-1)
 
 
-            self.trial_plasma_psi = self.trial_plasma_psi.reshape(self.nx, self.ny)
-            res_curr = self.F_function_curr(self.trial_currents, active_voltage_vec)
-            rel_curr_res = abs(res_curr / self.curr_step)
-            
-            log.append([n_it, 'intermediate curr residual', np.amax(rel_curr_res), np.mean(rel_curr_res)])
-            self.currents_nk_solver.Arnoldi_iteration( x0=self.trial_currents, #trial_current expansion point
-                                                        dx=res_curr, #first vector for current basis
-                                                        R0=res_curr, #circuit eq. residual at trial_current expansion point: F_function(trial_current)
-                                                        F_function=self.F_function_curr,
-                                                        args=[active_voltage_vec],
-                                                        step_size=step_size_curr,
+                res_psi = self.F_function_psi(trial_plasma_psi=self.trial_plasma_psi,
+                                                active_voltage_vec=active_voltage_vec, 
+                                                rtol_NK=self.rtol_NK)
+                del_res_psi = (np.amax(res_psi) - np.amin(res_psi))
+
+                log.append([n_it, 'psi_residual', del_res_psi])
+
+                if (del_res_psi > self.rtol_NK/relative_tol_for_nk_psi)+(n_no_NK_psi > max_no_NK_psi):
+                    n_no_NK_psi -= 2
+                    self.psi_nk_solver.Arnoldi_iteration(x0=self.trial_plasma_psi, #trial_current expansion point
+                                                        dx=res_psi, #first vector for current basis
+                                                        R0=res_psi, #circuit eq. residual at trial_current expansion point: F_function(trial_current)
+                                                        F_function=self.F_function_psi,
+                                                        args=args_nk,
+                                                        step_size=step_size_psi,
                                                         scaling_with_n=scaling_with_n,
                                                         target_relative_unexplained_residual=target_relative_unexplained_residual,   #add basis vector 
                                                         max_n_directions=max_n_directions, # max number of basis vectors (must be less than number of modes + 1)
@@ -797,53 +773,79 @@ class nl_solver:
                                                         clip=clip,
                                                         threshold=threshold,
                                                         clip_hard=clip_hard)
-            # print('curr_coeffs = ', self.currents_nk_solver.coeffs)
-            self.trial_currents += self.currents_nk_solver.dx#*blend_curr
+                    log.append([n_it, 'psi_coeffs = ', self.psi_nk_solver.coeffs])
+                    self.trial_plasma_psi += self.psi_nk_solver.dx#*blend_psi
+                else:
+                    # print('n_no_NK_psi = ', n_no_NK_psi)
+                    n_no_NK_psi += 1
 
-            res_curr = self.F_function_curr(self.trial_currents, active_voltage_vec)
-            rel_curr_res = self.calculate_rel_tolerance_currents(res_curr, curr_eps=curr_eps)
-            control = np.any(rel_curr_res > target_relative_tol_currents)
 
-            self.assign_currents(self.trial_currents, self.eq2, self.profiles2)
-            self.tokamak_psi = self.eq2.tokamak.calcPsiFromGreens(pgreen=self.eq2._pgreen)
-            r_res_GS = self.calculate_rel_tolerance_GS()
-            control += (r_res_GS > target_relative_tol_GS)
+                self.trial_plasma_psi = self.trial_plasma_psi.reshape(self.nx, self.ny)
+                res_curr = self.F_function_curr(self.trial_currents, active_voltage_vec)
+                rel_curr_res = abs(res_curr / self.curr_step)
+                
+                log.append([n_it, 'intermediate curr residual', np.amax(rel_curr_res), np.mean(rel_curr_res)])
+                self.currents_nk_solver.Arnoldi_iteration( x0=self.trial_currents, #trial_current expansion point
+                                                            dx=res_curr, #first vector for current basis
+                                                            R0=res_curr, #circuit eq. residual at trial_current expansion point: F_function(trial_current)
+                                                            F_function=self.F_function_curr,
+                                                            args=[active_voltage_vec],
+                                                            step_size=step_size_curr,
+                                                            scaling_with_n=scaling_with_n,
+                                                            target_relative_unexplained_residual=target_relative_unexplained_residual,   #add basis vector 
+                                                            max_n_directions=max_n_directions, # max number of basis vectors (must be less than number of modes + 1)
+                                                            max_Arnoldi_iterations=max_Arnoldi_iterations,
+                                                            max_collinearity=max_collinearity,
+                                                            clip=clip,
+                                                            threshold=threshold,
+                                                            clip_hard=clip_hard)
+                # print('curr_coeffs = ', self.currents_nk_solver.coeffs)
+                self.trial_currents += self.currents_nk_solver.dx#*blend_curr
+
+                res_curr = self.F_function_curr(self.trial_currents, active_voltage_vec)
+                rel_curr_res = self.calculate_rel_tolerance_currents(res_curr, curr_eps=curr_eps)
+                control = np.any(rel_curr_res > target_relative_tol_currents)
+
+                self.assign_currents(self.trial_currents, self.eq2, self.profiles2)
+                self.tokamak_psi = self.eq2.tokamak.calcPsiFromGreens(pgreen=self.eq2._pgreen)
+                r_res_GS = self.calculate_rel_tolerance_GS()
+                control += (r_res_GS > target_relative_tol_GS)
+                
+                log.append([n_it, 'curr_coeffs = ', self.currents_nk_solver.coeffs])
+                log.append([n_it, 'full cycle curr residual', np.amax(rel_curr_res), np.mean(rel_curr_res)])
+                log.append([n_it, 'GS residual: ',r_res_GS])
+
+                
+
+                n_it += 1
+                
+
+                # print('cycle: ', np.amax(rel_curr_res), np.mean(rel_curr_res))
+                # print('GS residual: ',r_res_GS)
+
+            # update rtol_NK based on step just taken
             
-            log.append([n_it, 'curr_coeffs = ', self.currents_nk_solver.coeffs])
-            log.append([n_it, 'full cycle curr residual', np.amax(rel_curr_res), np.mean(rel_curr_res)])
-            log.append([n_it, 'GS residual: ',r_res_GS])
 
             
 
-            n_it += 1
+            # plt.figure()
+            # plt.imshow(self.profiles2.jtor - self.jtor_m1)
+            # plt.colorbar()
+            # plt.title('J1-J0')
+            # plt.show()
+
             
+            # plt.figure()
+            # plt.imshow(self.dpsi)
+            # plt.title('psi1-psi0')
+            # plt.colorbar()
+            # plt.show()
 
-            # print('cycle: ', np.amax(rel_curr_res), np.mean(rel_curr_res))
-            # print('GS residual: ',r_res_GS)
 
-        # update rtol_NK based on step just taken
+            self.step_complete_assign(self.simplified_c, self.trial_plasma_psi, working_relative_tol_GS)
         
 
-        
-
-        # plt.figure()
-        # plt.imshow(self.profiles2.jtor - self.jtor_m1)
-        # plt.colorbar()
-        # plt.title('J1-J0')
-        # plt.show()
-
-        
-        # plt.figure()
-        # plt.imshow(self.dpsi)
-        # plt.title('psi1-psi0')
-        # plt.colorbar()
-        # plt.show()
-
-
-        self.step_complete_assign(self.simplified_c, self.trial_plasma_psi, working_relative_tol_GS)
-        
         flag = self.plasma_grids.check_if_outside_domain(jtor=self.profiles2.jtor)
-
 
         return flag
 

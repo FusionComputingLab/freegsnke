@@ -79,7 +79,7 @@ class linear_solver:
         return Itpdt
     
 
-    def update_linearization(self, current_record, Iy_record, threshold_svd=.1):
+    def update_linearization(self, current_record, Iy_record, threshold_svd):
         current_dv = ((current_record - current_record[-1:])[:-1])
 
         Iy_dv = ((Iy_record - Iy_record[-1:])[:-1]).T

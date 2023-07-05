@@ -38,12 +38,12 @@ class nl_solver:
                  plasma_norm_factor=2000,
                  plasma_domain_mask=None,
                  nbroad=3,
-                 initial_guess='linearised_solution',
+                #  initial_guess='linearised_solution',
                  solution_method='NK_on_psi_and_currents',
-                 update_linearization=True,
-                 update_n_steps=15,
-                 extrapolator_input_size=4,
-                 extrapolator_order=1,
+                #  update_linearization=True,
+                 
+                #  extrapolator_input_size=4,
+                #  extrapolator_order=1,
                  dIydI=None):
 
         
@@ -201,53 +201,53 @@ class nl_solver:
         # self.w = np.append(w, mw, axis=0)
 
 
-        self.linearised_flag = False
-        self.extrapolator_flag = False
-        if initial_guess=='linearised_solution':
-            self.linearised_flag = True
-            self.dIydI = dIydI
-            self.linearised_sol = linear_solver(Lambdam1=self.evol_metal_curr.Lambdam1, 
-                                                Vm1Rm12=np.matmul(self.evol_metal_curr.Vm1, np.diag(self.evol_metal_curr.Rm12)), 
-                                                Mey=self.evol_metal_curr.Mey, 
-                                                Myy=self.evol_plasma_curr.Myy,
-                                                plasma_norm_factor=self.plasma_norm_factor,
-                                                plasma_resistance_1d=self.plasma_resistance_1d,
-                                                max_internal_timestep=self.max_internal_timestep,
-                                                full_timestep=self.dt_step)
-            self.set_initial_trial_solution = self.set_initial_trial_solution_linearization
-            self.update_linearization = update_linearization
-            if update_linearization:
-                self.step_no = 0
-                self.update_n_steps = update_n_steps
-                self.current_record = np.zeros((self.update_n_steps, self.n_metal_modes+1))
-                self.Iy_record = np.zeros((self.update_n_steps, self.plasma_domain_size))
+        # self.linearised_flag = False
+        # self.extrapolator_flag = False
+        # if initial_guess=='linearised_solution':
+        self.linearised_flag = True
+        self.dIydI = dIydI
+        self.linearised_sol = linear_solver(Lambdam1=self.evol_metal_curr.Lambdam1, 
+                                            Vm1Rm12=np.matmul(self.evol_metal_curr.Vm1, np.diag(self.evol_metal_curr.Rm12)), 
+                                            Mey=self.evol_metal_curr.Mey, 
+                                            Myy=self.evol_plasma_curr.Myy,
+                                            plasma_norm_factor=self.plasma_norm_factor,
+                                            plasma_resistance_1d=self.plasma_resistance_1d,
+                                            max_internal_timestep=self.max_internal_timestep,
+                                            full_timestep=self.dt_step)
+        self.set_initial_trial_solution = self.set_initial_trial_solution_linearization
+        # self.update_linearization = update_linearization
+        # if update_linearization:
+        self.step_no = 0
+        # self.update_n_steps = update_n_steps
+        self.current_record = np.zeros((self.n_metal_modes, self.n_metal_modes+1))
+        self.Iy_record = np.zeros((self.n_metal_modes, self.plasma_domain_size))
 
 
-        elif initial_guess=='extrapolated_solution':
-            self.extrapolator_flag = True
-            self.extrapolator = extrapolate.extrapolator(input_size=extrapolator_input_size,
-                                                     interpolation_order=extrapolator_order,
-                                                     parallel_dims=self.n_metal_modes+1)
-            self.extrapolator_input_size = extrapolator_input_size
-            self.set_initial_trial_solution = self.set_initial_trial_solution_extrapolation
+        # elif initial_guess=='extrapolated_solution':
+        #     self.extrapolator_flag = True
+        #     self.extrapolator = extrapolate.extrapolator(input_size=extrapolator_input_size,
+        #                                              interpolation_order=extrapolator_order,
+        #                                              parallel_dims=self.n_metal_modes+1)
+        #     self.extrapolator_input_size = extrapolator_input_size
+        #     self.set_initial_trial_solution = self.set_initial_trial_solution_extrapolation
 
 
-        if solution_method=='NK_on_psi_and_currents':
-            self.psi_nk_solver = nk_solver.nksolver(self.nx * self.ny)
-            self.currents_nk_solver = nk_solver.nksolver(self.n_metal_modes + 1)
-            self.stepper = self.nl_step_nk_psi_curr
-        elif solution_method=='NK_on_currents_GS':
-            self.currents_nk_solver = nk_solver.nksolver(self.n_metal_modes + 1)
-            self.stepper = self.nl_step_nk_curr_GS
-        elif solution_method=='linearised_only':
-            if self.linearised_flag is False:
-                print('initial guess has to be set to \'linearised solution\' for this solution method, please adjust')
-            self.stepper = self.linear_step
-        else:
-            print('solution method not recognised, use either')
-            print('NK_on_psi_and_currents')
-            print('NK_on_currents_GS')
-            print('linearised_only')
+        # if solution_method=='NK_on_psi_and_currents':
+        self.psi_nk_solver = nk_solver.nksolver(self.nx * self.ny)
+        self.currents_nk_solver = nk_solver.nksolver(self.n_metal_modes + 1)
+        self.stepper = self.nl_step_nk_psi_curr
+        # elif solution_method=='NK_on_currents_GS':
+        #     self.currents_nk_solver = nk_solver.nksolver(self.n_metal_modes + 1)
+        #     self.stepper = self.nl_step_nk_curr_GS
+        # elif solution_method=='linearised_only':
+        #     if self.linearised_flag is False:
+        #         print('initial guess has to be set to \'linearised solution\' for this solution method, please adjust')
+        #     self.stepper = self.linear_step
+        # else:
+        #     print('solution method not recognised, use either')
+        #     print('NK_on_psi_and_currents')
+        #     print('NK_on_currents_GS')
+        #     print('linearised_only')
 
 
 
@@ -380,7 +380,10 @@ class nl_solver:
                             rtol_NK=1e-8, 
                             noise_level=.01,
                             new_seed=True,
-                            dIydI=None
+                            dIydI=None,
+                            update_linearization=True,
+                            update_n_steps=10,
+                            threshold_svd=.1
                             ): 
                             # eq for ICs, with all properties set up at time t=0, 
                             # ie with eq.tokamak.currents = I(t) and eq.plasmaCurrent = I_p(t) 
@@ -388,6 +391,9 @@ class nl_solver:
         self.step_counter = 0
         self.currents_guess = False
         self.rtol_NK = rtol_NK
+        self.update_n_steps = update_n_steps
+        self.update_linearization = update_linearization
+        self.threshold_svd = threshold_svd
 
         #get profile parametrization
         self.get_profiles_values(profile)
@@ -439,7 +445,7 @@ class nl_solver:
             print('plasma in ICs is touching the wall!')
 
 
-    def record_for_update(self, ):
+    def record_for_update(self,):
         id = self.step_no % self.update_n_steps
         self.current_record[id] = self.currents_vec
         self.Iy_record[id] = self.Iy
@@ -472,9 +478,9 @@ class nl_solver:
         if self.update_linearization:
             self.record_for_update()
             if self.step_no and (self.step_no%self.update_n_steps)==0:
-                self.delta_dIydI = self.linearised_sol.update_linearization(self.current_record,
-                                                                            self.Iy_record,
-                                                                            )
+                self.delta_dIydI = self.linearised_sol.update_linearization(self.current_record[:self.update_n_steps],
+                                                                            self.Iy_record[:self.update_n_steps],
+                                                                            self.threshold_svd)
                 self.linearised_sol.set_linearization_point(dIydI=self.linearised_sol.dIydI+self.delta_dIydI, hatIy0=self.hatIy)
 
 

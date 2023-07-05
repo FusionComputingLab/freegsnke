@@ -40,6 +40,8 @@ class nl_solver:
                  nbroad=3,
                  initial_guess='linearised_solution',
                  solution_method='NK_on_psi_and_currents',
+                 update_linearization=True,
+                 update_n_steps=15,
                  extrapolator_input_size=4,
                  extrapolator_order=1,
                  dIydI=None):
@@ -213,6 +215,13 @@ class nl_solver:
                                                 max_internal_timestep=self.max_internal_timestep,
                                                 full_timestep=self.dt_step)
             self.set_initial_trial_solution = self.set_initial_trial_solution_linearization
+            self.update_linearization = update_linearization
+            if update_linearization:
+                self.step_no = 0
+                self.update_n_steps = update_n_steps
+                self.current_record = np.zeros((self.update_n_steps, self.n_metal_modes+1))
+                self.Iy_record = np.zeros((self.update_n_steps, self.plasma_domain_size))
+
 
         elif initial_guess=='extrapolated_solution':
             self.extrapolator_flag = True
@@ -250,6 +259,7 @@ class nl_solver:
                                                           active_voltage_vec=active_voltage_vec)
         self.assign_currents_solve_GS(self.trial_currents, self.rtol_NK)
         self.trial_plasma_psi = np.copy(self.eq2.plasma_psi)   
+
 
     def set_initial_trial_solution_extrapolation(self, active_voltage_vec):
         
@@ -421,13 +431,23 @@ class nl_solver:
             self.linearised_sol.set_linearization_point(dIydI=self.dIydI,
                                                         hatIy0=self.broad_J0)
 
+        if self.update_linearization:
+            self.record_for_update()
 
         # check if against the wall
         if self.plasma_grids.check_if_outside_domain(jtor=self.profiles1.jtor):
             print('plasma in ICs is touching the wall!')
 
-    
+
+    def record_for_update(self, ):
+        id = self.step_no % self.update_n_steps
+        self.current_record[id] = self.currents_vec
+        self.Iy_record[id] = self.Iy
+
+        
+
     def step_complete_assign_simple(self, working_relative_tol_GS):
+
         self.time += self.dt_step
         self.currents_vec_m1 = np.copy(self.currents_vec)
         self.Iy_m1 = np.copy(self.Iy)
@@ -449,11 +469,21 @@ class nl_solver:
 
         self.rtol_NK = working_relative_tol_GS*self.d_plasma_psi_step
 
+        if self.update_linearization:
+            self.record_for_update()
+            if self.step_no and (self.step_no%self.update_n_steps)==0:
+                self.delta_dIydI = self.linearised_sol.update_linearization(self.current_record,
+                                                                            self.Iy_record,
+                                                                            )
+                self.linearised_sol.set_linearization_point(dIydI=self.linearised_sol.dIydI+self.delta_dIydI, hatIy0=self.hatIy)
+
+
 
 
     def step_complete_assign(self, trial_currents, 
                                    trial_plasma_psi,
                                    working_relative_tol_GS):
+
         self.time += self.dt_step
         self.currents_vec_m1 = np.copy(self.currents_vec)
         self.Iy_m1 = np.copy(self.Iy)
@@ -474,6 +504,16 @@ class nl_solver:
 
         if self.extrapolator_flag:
             self.guess_currents_from_extrapolation()
+        
+        if self.linearised_flag and self.update_linearization:
+            self.record_for_update()
+            if self.step_no and (self.step_no%self.update_n_steps)==0:
+                delta = self.linearised_sol.update_linearization(self.current_record,
+                                                                 self.Iy_record)
+                self.dIydI += delta
+                self.linearised_sol.set_linearization_point(self, dIydI=self.dIydI, hatIy0=self.hatIy)
+                
+
 
 
 

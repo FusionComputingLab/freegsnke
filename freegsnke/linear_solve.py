@@ -12,7 +12,8 @@ class linear_solver:
                        plasma_norm_factor,
                        plasma_resistance_1d,
                        max_internal_timestep=.0001,
-                       full_timestep=.0001):
+                       full_timestep=.0001,
+                       ):
         
         self.max_internal_timestep = max_internal_timestep
         self.full_timestep = full_timestep
@@ -71,11 +72,39 @@ class linear_solver:
 
 
 
-
     def stepper(self, It, active_voltage_vec):
         self.empty_U[:self.n_active_coils] = active_voltage_vec
         self.forcing[:-1] = np.dot(self.Vm1Rm12, self.empty_U)
         Itpdt = self.solver.full_stepper(It, self.forcing)
         return Itpdt
+    
+
+    def update_linearization(self, current_record, Iy_record, threshold_svd=.1):
+        current_dv = ((current_record - current_record[-1:])[:-1])
+
+        Iy_dv = ((Iy_record - Iy_record[-1:])[:-1]).T
+        self.predicted_Iy = np.matmul(self.dIydI, current_dv.T)
+        Iy_dv = Iy_dv - self.predicted_Iy
+
+        svd = np.linalg.svd(current_dv.T, full_matrices=False)
+
+        mask = svd[1] > threshold_svd
+        
+        self.Iy_dv = (Iy_dv@(svd[-1].T)@np.diag(1/svd[1]))
+
+        self.current_dv = (svd[0].T)[np.newaxis]
+        delta = self.Iy_dv[:,:, np.newaxis]*self.current_dv/np.sum(self.current_dv**2, axis=-1, keepdims=True)
+        delta = delta[:,mask,:]
+        delta = np.sum(delta, axis=1)
+        
+        return delta
+
+
+
+
+
+
+
+
 
 

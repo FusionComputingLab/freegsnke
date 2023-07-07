@@ -35,16 +35,17 @@ class nl_solver:
                  full_timestep=.0001,
                  max_internal_timestep=.0001, 
                  plasma_resistivity=1e-6,
-                 plasma_norm_factor=2000,
+                 plasma_norm_factor=1000,
                  plasma_domain_mask=None,
                  nbroad=3,
                 #  initial_guess='linearised_solution',
-                 solution_method='NK_on_psi_and_currents',
+                #  solution_method='NK_on_psi_and_currents',
                 #  update_linearization=True,
-                 
                 #  extrapolator_input_size=4,
                 #  extrapolator_order=1,
-                 dIydI=None):
+                 dIydI=None,
+                 initialize=True,
+                 automatic_timestep=False):
 
         
 
@@ -56,6 +57,9 @@ class nl_solver:
         dR = eq.R[1, 0] - eq.R[0, 0]
         dZ = eq.Z[0, 1] - eq.Z[0, 0]
         self.dRdZ = dR*dZ
+
+        # self.eq = eq
+        # self.profiles = profiles
         
 
         self.plasma_grids = plasma_grids.Grids(eq, plasma_domain_mask)
@@ -99,7 +103,6 @@ class nl_solver:
         self.plasma_norm_factor = plasma_norm_factor
     
         self.max_internal_timestep = max_internal_timestep
-        # self.max_internal_timestep = 1.0*full_timestep
         self.max_mode_frequency = max_mode_frequency
         self.reset_plasma_resistivity(plasma_resistivity, eqR=self.eqR)
 
@@ -204,7 +207,7 @@ class nl_solver:
         # self.linearised_flag = False
         # self.extrapolator_flag = False
         # if initial_guess=='linearised_solution':
-        self.linearised_flag = True
+        # self.linearised_flag = True
         self.dIydI = dIydI
         self.linearised_sol = linear_solver(Lambdam1=self.evol_metal_curr.Lambdam1, 
                                             Vm1Rm12=np.matmul(self.evol_metal_curr.Vm1, np.diag(self.evol_metal_curr.Rm12)), 
@@ -214,7 +217,7 @@ class nl_solver:
                                             plasma_resistance_1d=self.plasma_resistance_1d,
                                             max_internal_timestep=self.max_internal_timestep,
                                             full_timestep=self.dt_step)
-        self.set_initial_trial_solution = self.set_initial_trial_solution_linearization
+        # self.set_initial_trial_solution = self.set_initial_trial_solution_linearization
         # self.update_linearization = update_linearization
         # if update_linearization:
         self.step_no = 0
@@ -249,11 +252,37 @@ class nl_solver:
         #     print('NK_on_currents_GS')
         #     print('linearised_only')
 
+        if initialize:
+            self.initialize_from_ICs(eq, profiles, 
+                                    rtol_NK=1e-8,
+                                    noise_level=0, 
+                                    dIydI=dIydI)
+            self.linearised_sol.calculate_linear_growth_rate()
+            if len(self.linearised_sol.growth_rates):
+                print('This equilibrium has a linear growth rate of 1/', abs(self.linearised_sol.growth_rates[0]), 's')
+                if automatic_timestep is None:
+                    print('The solver\'s timestep was set at', self.dt_step,
+                        'If necessary, reset.')
+                else:
+                    dt_step = abs(self.linearised_sol.growth_rates[0]*automatic_timestep)
+                    self.reset_timestep(full_timestep=dt_step, 
+                                        max_internal_timestep=dt_step/10)
+                    print('The solver\'s timestep has been reset accordingly at ', self.dt_step)
+                
+            else: 
+                print('No unstable modes found.', 
+                      'Either plasma is stable or it is Alfven unstable.', 
+                      'Try adding more passive modes.')
+                if automatic_timestep:
+                    print('I could not adjust the solver\'s timestep!')
 
 
 
 
-    def set_initial_trial_solution_linearization(self, active_voltage_vec):
+    def set_linear_solution(self, active_voltage_vec):
+        # solves linearised problem in the currents  
+        # solves GS for those currents
+        # assigns self.trial_currents and self.trial_plasma_psi accordingly
 
         self.trial_currents = self.linearised_sol.stepper(It=self.currents_vec, 
                                                           active_voltage_vec=active_voltage_vec)
@@ -261,23 +290,25 @@ class nl_solver:
         self.trial_plasma_psi = np.copy(self.eq2.plasma_psi)   
 
 
-    def set_initial_trial_solution_extrapolation(self, active_voltage_vec):
+    # def set_initial_trial_solution_extrapolation(self, active_voltage_vec):
         
-        if (self.step_no > self.extrapolator_input_size):
-            self.trial_currents = np.copy(self.currents_guess)
-            self.assign_currents_solve_GS(self.trial_currents, self.rtol_NK)
+    #     if (self.step_no > self.extrapolator_input_size):
+    #         self.trial_currents = np.copy(self.currents_guess)
+    #         self.assign_currents_solve_GS(self.trial_currents, self.rtol_NK)
             
-        else:
-            self.trial_currents = self.hatIy1_iterative_cycle(self.hatIy,
-                                                              active_voltage_vec,
-                                                              rtol_NK=self.rtol_NK)
+    #     else:
+    #         self.trial_currents = self.hatIy1_iterative_cycle(self.hatIy,
+    #                                                           active_voltage_vec,
+    #                                                           rtol_NK=self.rtol_NK)
             
-        self.trial_plasma_psi = np.copy(self.eq2.plasma_psi)    
+    #     self.trial_plasma_psi = np.copy(self.eq2.plasma_psi)    
         
 
 
 
-    def build_linear_matrices(self, eq, profile, rtol_NK, target_dIy, starting_dI):
+
+
+    def build_linear_matrices(self, eq, profile, rtol_NK, target_dIy=20, starting_dI=5):
         print('I\'m building the linearization. This might take a minute or two.')
         self.NK.solve(eq, profile, target_relative_tolerance=rtol_NK)
         self.build_current_vec(eq, profile)
@@ -298,6 +329,12 @@ class nl_solver:
             self.dIydI[:,i] = (self.plasma_grids.Iy_from_jtor(self.profiles2.jtor)-self.Iy)/final_dI
         
 
+    def calculate_linear_growth_rates(self, rtol=1e-8):
+        self.build_linear_matrices(self.eq1, self.profiles1, rtol)
+        growth_rates = np.sort(np.linalg.eig(self.linearised_sol.solver.Mmatrix)[0])
+        self.growth_rates = growth_rates[growth_rates < 0]
+        return self.growth_rates 
+
         
     def reset_plasma_resistivity(self, plasma_resistivity, eqR):
         self.plasma_resistivity = plasma_resistivity
@@ -308,8 +345,19 @@ class nl_solver:
         lumped_plasma_resistance = np.sum(self.plasma_resistance_1d*norm_red_Iy0*norm_red_Iy1)
         return lumped_plasma_resistance
     
-    def reset_timestep(self, time_step):
-        self.dt_step = time_step
+    def reset_timestep(self, full_timestep, max_internal_timestep):
+        self.dt_step = full_timestep
+        self.max_internal_timestep = max_internal_timestep
+        self.evol_metal_curr.reset_mode(flag_vessel_eig=1,
+                                        flag_plasma=1,
+                                        plasma_grids=self.plasma_grids,
+                                        max_mode_frequency=self.max_mode_frequency,
+                                        max_internal_timestep=full_timestep,
+                                        full_timestep=max_internal_timestep)
+        self.simplified_solver_J1.solver.set_timesteps(full_timestep=full_timestep,
+                                                       max_internal_timestep=full_timestep)
+        self.linearised_sol.solver.set_timesteps(full_timestep=full_timestep,
+                                                 max_internal_timestep=max_internal_timestep)
     
     def get_profiles_values(self, profiles):
         #this allows to use the same instantiation of the time_evolution_class
@@ -337,13 +385,15 @@ class nl_solver:
     #     self.mapd[self.plasma_grids.idxs_mask[0], self.plasma_grids.idxs_mask[1]] = red_vec
     #     return self.mapd
 
+    def get_vessel_currents(self, eq):
+        eq_currents = eq.tokamak.getCurrents()
+        for i,labeli in enumerate(coils_order):
+            self.vessel_currents_vec[i] = eq_currents[labeli]
 
 
     def build_current_vec(self, eq, profile):
         #gets initial currents from ICs, note these are before mode truncation!
-        eq_currents = eq.tokamak.getCurrents()
-        for i,labeli in enumerate(coils_order):
-            self.vessel_currents_vec[i] = eq_currents[labeli]
+        self.get_vessel_currents(eq)
         
         # vector of currents on which non linear system is solved is self.currents_vec
         self.currents_vec[:self.n_metal_modes] = self.evol_metal_curr.IvesseltoId(Ivessel=self.vessel_currents_vec)
@@ -361,17 +411,26 @@ class nl_solver:
 
 
 
-    def assign_vessel_noise(self, eq, noise_level):
-        #uses currents_vec to assign currents to both plasma and tokamak in eq/profiles
+    def assign_vessel_noise(self, eq, noise_level, noise_vec=None):
+        # adds gaussian noise to vessel normal mode currents,
+        # and assigns to eq.tokamak
+        # rms is 'noise_level'
+        # active coil currents are not affected
+        # needs self.vessel_currents_vec
 
-        noise_vec = np.random.randn(self.n_metal_modes - machine_config.n_active_coils)
-        noise_vec *= noise_level
-        noise_vec = np.concatenate((np.zeros(machine_config.n_active_coils), noise_vec))
+        self.get_vessel_currents(eq)
+
+        if noise_vec is None:
+            noise_vec = np.random.randn(self.n_metal_modes - machine_config.n_active_coils)
+            noise_vec *= noise_level
+            noise_vec = np.concatenate((np.zeros(machine_config.n_active_coils), noise_vec))
+            self.noise_vec = noise_vec
         
         # calculate vessel currents from normal modes and assign
-        self.vessel_currents_vec = self.evol_metal_curr.IdtoIvessel(Id=noise_vec)
+        self.vessel_currents_vec += self.evol_metal_curr.IdtoIvessel(Id=noise_vec)
         for i,labeli in enumerate(coils_order[machine_config.n_active_coils:]):
-            eq.tokamak[labeli].current = self.vessel_currents_vec[i+machine_config.n_active_coils]
+            # runs on passive only
+            eq.tokamak[labeli].current = self.vessel_currents_vec[i + machine_config.n_active_coils]
         
 
 
@@ -379,7 +438,8 @@ class nl_solver:
                             eq, profile, 
                             rtol_NK=1e-8, 
                             noise_level=.01,
-                            new_seed=True,
+                            # new_seed=False,
+                            noise_vec=None,
                             dIydI=None,
                             update_linearization=True,
                             update_n_steps=10,
@@ -402,11 +462,15 @@ class nl_solver:
         self.profiles1 = deepcopy(profile)  
 
         # perturb passive structures
-        if noise_level>0 and new_seed:
-            self.assign_vessel_noise(self.eq1, noise_level)
+        if (noise_level>0) or (noise_vec is not None):
+            self.assign_vessel_noise(self.eq1, noise_level, noise_vec)
 
         #ensure it's a GS solution
         self.NK.solve(self.eq1, self.profiles1, target_relative_tolerance=rtol_NK)
+         # self.jtor_m1 = np.copy(self.profiles1.jtor)
+        self.Iy = self.plasma_grids.Iy_from_jtor(self.profiles1.jtor)
+        self.hatIy = self.plasma_grids.normalize_sum(self.Iy)
+        self.hatIy1 = np.copy(self.hatIy)
 
          
         self.eq2 = deepcopy(self.eq1)
@@ -416,26 +480,22 @@ class nl_solver:
         #prepare currents
         self.build_current_vec(self.eq1, self.profiles1)
         
-
-        # self.jtor_m1 = np.copy(self.profiles1.jtor)
-        self.Iy = self.plasma_grids.Iy_from_jtor(self.profiles1.jtor)
-        self.hatIy = self.plasma_grids.normalize_sum(self.Iy)
-        self.hatIy1 = np.copy(self.hatIy)
+       
 
         self.time = 0
         self.step_no = 0
 
-        if self.linearised_flag:
-            if dIydI is None:
-                if self.dIydI is None:
-                    self.build_linear_matrices(eq=eq, profile=profile, rtol_NK=rtol_NK,
-                                            target_dIy=20, starting_dI=5)
-            else:
-                self.dIydI = dIydI
-            self.broad_J0 = convolve2d(self.profiles1.jtor, self.ones_to_broaden, mode='same')
-            self.broad_J0 = self.plasma_grids.hat_Iy_from_jtor(self.broad_J0)
-            self.linearised_sol.set_linearization_point(dIydI=self.dIydI,
-                                                        hatIy0=self.broad_J0)
+        # if self.linearised_flag:
+        if dIydI is None:
+            if self.dIydI is None:
+                self.build_linear_matrices(eq=eq, profile=profile, rtol_NK=rtol_NK)
+        else:
+            self.dIydI = dIydI
+
+        self.broad_J0 = convolve2d(self.profiles1.jtor, self.ones_to_broaden, mode='same')
+        self.broad_J0 = self.plasma_grids.hat_Iy_from_jtor(self.broad_J0)
+        self.linearised_sol.set_linearization_point(dIydI=self.dIydI,
+                                                    hatIy0=self.broad_J0)
 
         if self.update_linearization:
             self.record_for_update()
@@ -445,6 +505,8 @@ class nl_solver:
             print('plasma in ICs is touching the wall!')
 
 
+
+
     def record_for_update(self,):
         id = self.step_no % self.update_n_steps
         self.current_record[id] = self.currents_vec
@@ -452,9 +514,14 @@ class nl_solver:
 
         
 
-    def step_complete_assign_simple(self, working_relative_tol_GS):
+    def step_complete_assign(self, working_relative_tol_GS,
+                                   from_linear=False):
+        # assigns self.trial_currents
+        # plasma_psi as self.trial_plasma_psi
 
         self.time += self.dt_step
+        self.step_no += 1
+
         self.currents_vec_m1 = np.copy(self.currents_vec)
         self.Iy_m1 = np.copy(self.Iy)
 
@@ -463,15 +530,20 @@ class nl_solver:
         # print(self.d_plasma_psi_step)
 
         self.currents_vec = np.copy(self.trial_currents)
+        self.assign_currents(self.currents_vec, self.eq1, self.profiles1)
         
-        self.eq1.plasma_psi = np.copy(self.eq2.plasma_psi)
-        self.profiles1.Ip = np.copy(self.profiles2.Ip)
-        self.profiles1.jtor = np.copy(self.profiles2.jtor)
+        self.eq1.plasma_psi = np.copy(self.trial_plasma_psi)
+        self.profiles1.Ip = self.trial_currents[-1]*self.plasma_norm_factor
+        if from_linear:
+            self.profiles1.jtor = np.copy(self.profiles2.jtor)
+        else:
+            # self.tokamak_psi = self.eq1.tokamak.calcPsiFromGreens(pgreen=self.eq1._pgreen)
+            self.profiles1.Jtor(self.eqR, self.eqZ, self.tokamak_psi + self.trial_plasma_psi)
 
-        self.Iy = 1.0*self.plasma_grids.Iy_from_jtor(self.profiles1.jtor)
+        self.Iy = self.plasma_grids.Iy_from_jtor(self.profiles1.jtor)
         self.hatIy = self.plasma_grids.normalize_sum(self.Iy)
-
-        self.step_no += 1
+        self.broad_J0 = convolve2d(self.profiles1.jtor, self.ones_to_broaden, mode='same')
+        self.broad_J0 = self.plasma_grids.hat_Iy_from_jtor(self.broad_J0)
 
         self.rtol_NK = working_relative_tol_GS*self.d_plasma_psi_step
 
@@ -481,43 +553,47 @@ class nl_solver:
                 self.delta_dIydI = self.linearised_sol.update_linearization(self.current_record[:self.update_n_steps],
                                                                             self.Iy_record[:self.update_n_steps],
                                                                             self.threshold_svd)
-                self.linearised_sol.set_linearization_point(dIydI=self.linearised_sol.dIydI+self.delta_dIydI, hatIy0=self.hatIy)
+                self.linearised_sol.set_linearization_point(dIydI=self.linearised_sol.dIydI+self.delta_dIydI, hatIy0=self.broad_J0)
 
 
 
 
-    def step_complete_assign(self, trial_currents, 
-                                   trial_plasma_psi,
-                                   working_relative_tol_GS):
+    # def step_complete_assign(self, trial_currents, 
+    #                                trial_plasma_psi,
+    #                                working_relative_tol_GS):
+    #     # assigns trial_currents
+    #     # and trial_plasma_psi, 
+    #     # recalculates jtor accordingly
 
-        self.time += self.dt_step
-        self.currents_vec_m1 = np.copy(self.currents_vec)
-        self.Iy_m1 = np.copy(self.Iy)
+    #     self.time += self.dt_step
+    #     self.currents_vec_m1 = np.copy(self.currents_vec)
+    #     self.Iy_m1 = np.copy(self.Iy)
 
-        self.currents_vec = np.copy(trial_currents)
-        self.assign_currents(self.currents_vec, self.eq1, self.profiles1)
-        self.tokamak_psi = self.eq1.tokamak.calcPsiFromGreens(pgreen=self.eq1._pgreen)
-        self.eq1.plasma_psi = np.copy(trial_plasma_psi)
-        self.profiles1.Jtor(self.eqR, self.eqZ, (self.tokamak_psi + trial_plasma_psi).reshape(self.nx, self.ny))
+    #     self.currents_vec = np.copy(trial_currents)
+    #     self.assign_currents(self.currents_vec, self.eq1, self.profiles1)
+    #     self.tokamak_psi = self.eq1.tokamak.calcPsiFromGreens(pgreen=self.eq1._pgreen)
+    #     self.eq1.plasma_psi = np.copy(trial_plasma_psi)
+    #     self.profiles1.Jtor(self.eqR, self.eqZ, (self.tokamak_psi + trial_plasma_psi).reshape(self.nx, self.ny))
 
         
-        self.Iy = 1.0*self.plasma_grids.Iy_from_jtor(self.profiles1.jtor)
-        self.hatIy = self.plasma_grids.normalize_sum(self.Iy)
+    #     self.Iy = 1.0*self.plasma_grids.Iy_from_jtor(self.profiles1.jtor)
+    #     self.hatIy = self.plasma_grids.normalize_sum(self.Iy)
 
-        self.step_no += 1
+    #     self.step_no += 1
 
-        self.rtol_NK = working_relative_tol_GS*self.d_plasma_psi_step
+    #     self.rtol_NK = working_relative_tol_GS*self.d_plasma_psi_step
 
-        if self.extrapolator_flag:
-            self.guess_currents_from_extrapolation()
+    #     # if self.extrapolator_flag:
+    #     #     self.guess_currents_from_extrapolation()
         
-        if self.linearised_flag and self.update_linearization:
-            self.record_for_update()
-            if self.step_no and (self.step_no%self.update_n_steps)==0:
-                delta = self.linearised_sol.update_linearization(self.current_record,
-                                                                 self.Iy_record)
-                self.dIydI += delta
-                self.linearised_sol.set_linearization_point(self, dIydI=self.dIydI, hatIy0=self.hatIy)
+    #     if self.update_linearization:
+    #         self.record_for_update()
+    #         if self.step_no and (self.step_no%self.update_n_steps)==0:
+    #             delta = self.linearised_sol.update_linearization(self.current_record,
+    #                                                              self.Iy_record,
+    #                                                              self.threshold_svd)
+    #             self.dIydI += delta
+    #             self.linearised_sol.set_linearization_point(dIydI=self.dIydI, hatIy0=self.hatIy)
                 
 
 
@@ -536,30 +612,30 @@ class nl_solver:
         eq._current = self.plasma_norm_factor*currents_vec[-1]
 
 
-    def guess_currents_from_extrapolation(self,):
-        # run after step is complete and assigned, prepares for next step
+    # def guess_currents_from_extrapolation(self,):
+    #     # run after step is complete and assigned, prepares for next step
 
-        if self.step_no >= self.extrapolator_input_size:
-            self.currents_guess = self.extrapolator.in_out(self.currents_vec)
+    #     if self.step_no >= self.extrapolator_input_size:
+    #         self.currents_guess = self.extrapolator.in_out(self.currents_vec)
 
-        else:
-            self.extrapolator.set_Y(self.step_no, self.currents_vec)
+    #     else:
+    #         self.extrapolator.set_Y(self.step_no, self.currents_vec)
 
 
 
-    def guess_J_from_extrapolation(self, alpha, rtol_NK):
-        # run after step is complete and assigned, prepares for next step
+    # def guess_J_from_extrapolation(self, alpha, rtol_NK):
+    #     # run after step is complete and assigned, prepares for next step
 
-        if self.step_no >= self.extrapolator_input_size:
-            currents_guess = self.extrapolator.in_out(self.currents_vec)
+    #     if self.step_no >= self.extrapolator_input_size:
+    #         currents_guess = self.extrapolator.in_out(self.currents_vec)
 
-            self.assign_currents(currents_vec=currents_guess, profile=self.profiles2, eq=self.eq2)
-            self.NK.solve(self.eq2, self.profiles2, target_relative_tolerance=rtol_NK)
+    #         self.assign_currents(currents_vec=currents_guess, profile=self.profiles2, eq=self.eq2)
+    #         self.NK.solve(self.eq2, self.profiles2, target_relative_tolerance=rtol_NK)
 
-            self.hatIy1 = (1-alpha)*self.hatIy1 + alpha*self.plasma_grids.hat_Iy_from_jtor(self.profiles2.jtor)
+    #         self.hatIy1 = (1-alpha)*self.hatIy1 + alpha*self.plasma_grids.hat_Iy_from_jtor(self.profiles2.jtor)
 
-        else:
-            self.extrapolator.set_Y(self.step_no, self.currents_vec)
+    #     else:
+    #         self.extrapolator.set_Y(self.step_no, self.currents_vec)
         
         
 
@@ -629,38 +705,37 @@ class nl_solver:
 
     
     def currents_from_hatIy(self, hatIy1,
-                                  active_voltage_vec,
-                                
-                                ):
+                                  active_voltage_vec):
         self.make_broad_hatIy(hatIy1)
-        simplified_c1 = 1.0*self.simplified_solver_J1.stepper(It=self.currents_vec,
-                                                                hatIy_left=self.broad_J0, 
-                                                                hatIy_0=self.hatIy, 
-                                                                hatIy_1=hatIy1, 
-                                                                active_voltage_vec=active_voltage_vec)
-        return simplified_c1
+        current_from_hatIy = self.simplified_solver_J1.stepper(It=self.currents_vec,
+                                                            hatIy_left=self.broad_J0, 
+                                                            hatIy_0=self.hatIy, 
+                                                            hatIy_1=hatIy1, 
+                                                            active_voltage_vec=active_voltage_vec)
+        return current_from_hatIy
 
 
     def hatIy1_iterative_cycle(self, hatIy1,
                                      active_voltage_vec,
                                      rtol_NK):
-        simplified_c1 = self.currents_from_hatIy(hatIy1,
+        current_from_hatIy = self.currents_from_hatIy(hatIy1,
                                                 active_voltage_vec)
-        self.assign_currents_solve_GS(trial_currents=simplified_c1, 
-                                        rtol_NK=rtol_NK)   
-        return simplified_c1
+        self.assign_currents_solve_GS(trial_currents=current_from_hatIy, 
+                                      rtol_NK=rtol_NK)   
+        # return current_from_hatIy
 
 
     
-    def calculate_hatIy(self, currents, plasma_psi):
-        self.assign_currents(currents, profile=self.profiles2, eq=self.eq2)
+    def calculate_hatIy(self, trial_currents, plasma_psi):
+        self.assign_currents(trial_currents, profile=self.profiles2, eq=self.eq2)
         self.tokamak_psi = (self.eq2.tokamak.calcPsiFromGreens(pgreen=self.eq2._pgreen))
         jtor_ = self.profiles2.Jtor(self.eqR, self.eqZ, self.tokamak_psi + plasma_psi)
         hat_Iy1 = self.plasma_grids.hat_Iy_from_jtor(jtor_)
         return hat_Iy1
 
     def F_function_curr(self, trial_currents, active_voltage_vec):
-        # this will not call NK, rtol not used 
+        # circuit eq as a root problem on the current values,
+        # assuming fixed self.trial_plasma_psi
         hatIy1 = self.calculate_hatIy(trial_currents, self.trial_plasma_psi)
         iterated_currs = self.currents_from_hatIy(hatIy1, active_voltage_vec)
         current_res = iterated_currs - trial_currents
@@ -684,9 +759,11 @@ class nl_solver:
 
 
     def F_function_psi(self, trial_plasma_psi, active_voltage_vec, rtol_NK):
+        # circuit eqs as a root problem in plasma_psi at fixed self.tokamak_psi
         jtor_ = self.profiles2.Jtor(self.eqR, self.eqZ, (self.tokamak_psi + trial_plasma_psi).reshape(self.nx, self.ny))
         hatIy1 = self.plasma_grids.hat_Iy_from_jtor(jtor_)
-        self.simplified_c = self.hatIy1_iterative_cycle(hatIy1=hatIy1,
+        # self.simplified_c = 
+        self.hatIy1_iterative_cycle(hatIy1=hatIy1,
                                                         active_voltage_vec=active_voltage_vec,
                                                         rtol_NK=rtol_NK)
         psi_residual = self.eq2.plasma_psi.reshape(-1) - trial_plasma_psi
@@ -696,6 +773,7 @@ class nl_solver:
 
 
     def calculate_rel_tolerance_currents(self, residual, curr_eps):
+        # uses self.trial_currents
         curr_step = abs(self.trial_currents - self.currents_vec_m1)
         self.curr_step = np.where(curr_step>curr_eps, curr_step, curr_eps)
         rel_curr_res = abs(residual / self.curr_step)
@@ -716,16 +794,16 @@ class nl_solver:
 
 
    
-    def linear_step(self, active_voltage_vec,
-                          working_relative_tol_GS):
+    # def linear_step(self, active_voltage_vec,
+    #                       working_relative_tol_GS):
         
-        self.set_initial_trial_solution(active_voltage_vec)
+    #     self.set_linear_solution(active_voltage_vec)
         
-        self.step_complete_assign_simple(working_relative_tol_GS)
+    #     self.step_complete_assign_simple(working_relative_tol_GS)
         
-        flag = self.plasma_grids.check_if_outside_domain(jtor=self.profiles2.jtor)
+    #     flag = self.plasma_grids.check_if_outside_domain(jtor=self.profiles2.jtor)
 
-        return flag
+    #     return flag
         
 
 
@@ -735,38 +813,41 @@ class nl_solver:
 
 
     def nl_step_nk_psi_curr(self, active_voltage_vec, 
-                                target_relative_tol_currents=.1,
-                                        target_relative_tol_GS=.1,
-                                        working_relative_tol_GS=.003,
+                                target_relative_tol_currents=.01,
+                                        target_relative_tol_GS=.01,
+                                        working_relative_tol_GS=.002,
                                         target_relative_unexplained_residual=.5,
-                                        max_n_directions=4,
-                                        max_Arnoldi_iterations=5,
+                                        max_n_directions=3,
+                                        max_Arnoldi_iterations=3,
                                         max_collinearity=.3,
-                                        step_size_psi=.35,
-                                        step_size_curr=1.,
+                                        step_size_psi=2.,
+                                        step_size_curr=.8,
                                         scaling_with_n=0,
-                                        relative_tol_for_nk_psi=.01,
-                                        blend_GS=.4,
-                                        curr_eps=1e-4,
-                                        max_no_NK_psi=5.,
-                                        clip=10,
-                                        threshold=2.,
-                                        clip_hard=3.,
-                                        verbose=False,
-                                        linear_only=False
-                                ):
+                                        relative_tol_for_nk_psi=.002,
+                                        blend_GS=.5,
+                                        blend_psi=1,
+                                        curr_eps=1e-5,
+                                        max_no_NK_psi=1.,
+                                        clip=5,
+                                        threshold=1.5,
+                                        clip_hard=1.5,
+                                        verbose=True,
+                                        linear_only=False)       :
 
-        self.set_initial_trial_solution(active_voltage_vec)
+        self.set_linear_solution(active_voltage_vec)
+        # finds linearised solution for the currents and solves GS in eq2 and profiles2
 
         if linear_only:
-            self.step_complete_assign_simple(working_relative_tol_GS)
+            self.step_complete_assign(working_relative_tol_GS, from_linear=True)
         else:
-
+            # this assigns to self.eq2 and self.profiles2 
+            # also records self.tokamak_psi corresponding to self.trial_currents in 2d
             res_curr = self.F_function_curr(self.trial_currents, active_voltage_vec)
-            # the above also calculates self.tokamak_psi in 2d
-
+            # uses self.trial_currents and self.currents_vec_m1 to relate res_curr above to step in the currents
             rel_curr_res = self.calculate_rel_tolerance_currents(res_curr, curr_eps=curr_eps)
             control = np.any(rel_curr_res > target_relative_tol_currents)
+            # pair self.trial_currents and self.trial_plasma_psi are a GS solution
+            control_GS = 0
             
             if verbose:
                 print('starting: curr residual', np.amax(rel_curr_res), np.mean(rel_curr_res))
@@ -774,7 +855,6 @@ class nl_solver:
 
             n_no_NK_psi = 0
             n_it = 0
-
 
             args_nk = [active_voltage_vec, self.rtol_NK]
 
@@ -785,12 +865,13 @@ class nl_solver:
                     
                 log = []
 
-                self.NK.solve(self.eq2, self.profiles2, self.rtol_NK)
-                self.trial_plasma_psi *= (1-blend_GS)
-                self.trial_plasma_psi += blend_GS*self.eq2.plasma_psi
+                if control_GS:
+                    self.NK.solve(self.eq2, self.profiles2, self.rtol_NK)
+                    self.trial_plasma_psi *= (1 - blend_GS)
+                    self.trial_plasma_psi += blend_GS * self.eq2.plasma_psi
 
-                self.assign_currents(self.trial_currents, self.eq2, self.profiles2)
-                self.tokamak_psi = self.eq2.tokamak.calcPsiFromGreens(pgreen=self.eq2._pgreen)
+                # self.assign_currents(self.trial_currents, self.eq2, self.profiles2)
+                # self.tokamak_psi = self.eq2.tokamak.calcPsiFromGreens(pgreen=self.eq2._pgreen)
                 
                 self.trial_plasma_psi = self.trial_plasma_psi.reshape(-1)
                 self.tokamak_psi = self.tokamak_psi.reshape(-1)
@@ -801,10 +882,10 @@ class nl_solver:
                                                 rtol_NK=self.rtol_NK)
                 del_res_psi = (np.amax(res_psi) - np.amin(res_psi))
 
-                log.append([n_it, 'psi_residual', del_res_psi])
+                log.append([n_it, 'psi cycle skipped', n_no_NK_psi, 'times, psi_residual', del_res_psi])
 
                 if (del_res_psi > self.rtol_NK/relative_tol_for_nk_psi)+(n_no_NK_psi > max_no_NK_psi):
-                    n_no_NK_psi -= 2
+                    n_no_NK_psi = 0
                     self.psi_nk_solver.Arnoldi_iteration(x0=self.trial_plasma_psi, #trial_current expansion point
                                                         dx=res_psi, #first vector for current basis
                                                         R0=res_psi, #circuit eq. residual at trial_current expansion point: F_function(trial_current)
@@ -820,17 +901,21 @@ class nl_solver:
                                                         threshold=threshold,
                                                         clip_hard=clip_hard)
                     log.append([n_it, 'psi_coeffs = ', self.psi_nk_solver.coeffs])
-                    self.trial_plasma_psi += self.psi_nk_solver.dx#*blend_psi
+                    self.trial_plasma_psi += self.psi_nk_solver.dx*blend_psi
+
                 else:
                     # print('n_no_NK_psi = ', n_no_NK_psi)
                     n_no_NK_psi += 1
 
 
                 self.trial_plasma_psi = self.trial_plasma_psi.reshape(self.nx, self.ny)
+                # assumes the just updated self.trial_plasma_psi
                 res_curr = self.F_function_curr(self.trial_currents, active_voltage_vec)
                 rel_curr_res = abs(res_curr / self.curr_step)
-                
                 log.append([n_it, 'intermediate curr residual', np.amax(rel_curr_res), np.mean(rel_curr_res)])
+
+                
+                
                 self.currents_nk_solver.Arnoldi_iteration( x0=self.trial_currents, #trial_current expansion point
                                                             dx=res_curr, #first vector for current basis
                                                             R0=res_curr, #circuit eq. residual at trial_current expansion point: F_function(trial_current)
@@ -852,17 +937,18 @@ class nl_solver:
                 rel_curr_res = self.calculate_rel_tolerance_currents(res_curr, curr_eps=curr_eps)
                 control = np.any(rel_curr_res > target_relative_tol_currents)
 
-                self.assign_currents(self.trial_currents, self.eq2, self.profiles2)
-                self.tokamak_psi = self.eq2.tokamak.calcPsiFromGreens(pgreen=self.eq2._pgreen)
+                # self.assign_currents(self.trial_currents, self.eq2, self.profiles2)
+                # self.tokamak_psi = self.eq2.tokamak.calcPsiFromGreens(pgreen=self.eq2._pgreen)
+                
                 r_res_GS = self.calculate_rel_tolerance_GS()
-                control += (r_res_GS > target_relative_tol_GS)
+                control_GS = (r_res_GS > target_relative_tol_GS)
+                control += control_GS
                 
                 log.append([n_it, 'curr_coeffs = ', self.currents_nk_solver.coeffs])
                 log.append([n_it, 'full cycle curr residual', np.amax(rel_curr_res), np.mean(rel_curr_res)])
                 log.append([n_it, 'GS residual: ',r_res_GS])
 
                 
-
                 n_it += 1
                 
 
@@ -887,8 +973,9 @@ class nl_solver:
             # plt.colorbar()
             # plt.show()
 
-
-            self.step_complete_assign(self.simplified_c, self.trial_plasma_psi, working_relative_tol_GS)
+            # print('im about to assign', np.shape(self.tokamak_psi), np.shape(self.trial_plasma_psi))
+            self.step_complete_assign(#self.simplified_c, self.trial_plasma_psi, 
+                                      working_relative_tol_GS)
         
 
         flag = self.plasma_grids.check_if_outside_domain(jtor=self.profiles2.jtor)

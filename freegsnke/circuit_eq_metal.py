@@ -49,6 +49,9 @@ class metal_currents:
     def initialize_for_eig(self, ):
         # from passive alone
         self.n_independent_vars = np.sum(normal_modes.w_passive < self.max_mode_frequency)
+        print('Input max_mode_frequency corresponds to', 
+               self.n_independent_vars, 'independent vessel normal modes',
+               'in addition to the', self.n_active_coils, 'active coils.')
         # include active
         self.n_independent_vars += self.n_active_coils
 

@@ -50,6 +50,8 @@ class linear_solver:
                                             Rmatrix=np.eye(self.n_independent_vars + 1), 
                                             max_internal_timestep=self.max_internal_timestep,
                                             full_timestep=self.full_timestep)
+        
+        self.growth_rates = np.sort(np.linalg.eig(self.Mmatrix)[0])
 
        
 
@@ -100,11 +102,9 @@ class linear_solver:
         return delta
 
 
-
-
-
-
-
-
-
+    def calculate_linear_growth_rate(self, ):
+        growth_rates = np.sort(np.linalg.eig(self.Mmatrix)[0])
+        mask = (growth_rates < 0)
+        self.growth_rates = growth_rates[mask]
+        
 

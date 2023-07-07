@@ -103,8 +103,8 @@ class linear_solver:
 
 
     def calculate_linear_growth_rate(self, ):
-        growth_rates = np.sort(np.linalg.eig(self.Mmatrix)[0])
-        mask = (growth_rates < 0)
-        self.growth_rates = growth_rates[mask]
+        self.all_timescales = np.sort(np.linalg.eig(self.Mmatrix)[0])
+        mask = (self.all_timescales < 0)
+        self.growth_rates = self.all_timescales[mask]
         
 

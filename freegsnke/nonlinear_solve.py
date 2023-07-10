@@ -442,8 +442,9 @@ class nl_solver:
                             noise_vec=None,
                             dIydI=None,
                             update_linearization=True,
-                            update_n_steps=10,
-                            threshold_svd=.1
+                            update_n_steps=16,
+                            threshold_svd=.1,
+                            max_relative_dIydI_update=.1
                             ): 
                             # eq for ICs, with all properties set up at time t=0, 
                             # ie with eq.tokamak.currents = I(t) and eq.plasmaCurrent = I_p(t) 
@@ -454,6 +455,7 @@ class nl_solver:
         self.update_n_steps = update_n_steps
         self.update_linearization = update_linearization
         self.threshold_svd = threshold_svd
+        self.max_relative_dIydI_update = max_relative_dIydI_update
 
         #get profile parametrization
         self.get_profiles_values(profile)
@@ -553,7 +555,9 @@ class nl_solver:
                 self.delta_dIydI = self.linearised_sol.update_linearization(self.current_record[:self.update_n_steps],
                                                                             self.Iy_record[:self.update_n_steps],
                                                                             self.threshold_svd)
-                self.linearised_sol.set_linearization_point(dIydI=self.linearised_sol.dIydI+self.delta_dIydI, hatIy0=self.broad_J0)
+                print('linearization update:', np.linalg.norm(self.delta_dIydI), np.linalg.norm(self.linearised_sol.dIydI))
+                if np.linalg.norm(self.delta_dIydI)<self.max_relative_dIydI_update*np.linalg.norm(self.linearised_sol.dIydI):
+                    self.linearised_sol.set_linearization_point(dIydI=self.linearised_sol.dIydI+self.delta_dIydI, hatIy0=self.broad_J0)
 
 
 

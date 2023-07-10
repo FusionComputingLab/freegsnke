@@ -88,17 +88,22 @@ class linear_solver:
         self.predicted_Iy = np.matmul(self.dIydI, current_dv.T)
         Iy_dv = Iy_dv - self.predicted_Iy
 
-        svd = np.linalg.svd(current_dv.T, full_matrices=False)
+        U,S,B = np.linalg.svd(current_dv.T, full_matrices=False)
 
-        mask = svd[1] > threshold_svd
+        # mask = svd[1] > threshold_svd
         
-        self.Iy_dv = (Iy_dv@(svd[-1].T)@np.diag(1/svd[1]))
+        # self.Iy_dv = (Iy_dv@(svd[-1].T)@np.diag(1/svd[1]))
 
-        self.current_dv = (svd[0].T)[np.newaxis]
-        delta = self.Iy_dv[:,:, np.newaxis]*self.current_dv/np.sum(self.current_dv**2, axis=-1, keepdims=True)
-        delta = delta[:,mask,:]
-        delta = np.sum(delta, axis=1)
+        # self.current_dv = (svd[0].T)[np.newaxis]
+        # delta = self.Iy_dv[:,:, np.newaxis]*self.current_dv/np.sum(self.current_dv**2, axis=-1, keepdims=True)
+        # delta = delta[:,mask,:]
+        # delta = np.sum(delta, axis=1)
         
+        mask = (S > threshold_svd)
+        S = S[mask]
+        U = U[:, mask]
+        B = B[mask, :]
+        delta = Iy_dv@(B.T)@np.diag(1/S)@(U.T)
         return delta
 
 

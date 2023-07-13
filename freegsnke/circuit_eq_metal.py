@@ -57,11 +57,14 @@ class metal_currents:
         
 
     def initialize_for_eig(self, selected_modes_mask):     
+        
+        self.selected_modes_mask = selected_modes_mask
+        self.n_independent_vars = np.sum(self.selected_modes_mask)
+
         # Id = Vm1 R**(1/2) I 
         # to change base to truncated modes
         # I = R**(-1/2) V Id 
-        self.selected_modes_mask = selected_modes_mask
-        self.Vm1 = ((normal_modes.Vmatrix).T)[selected_modes_mask]
+        self.Vm1 = ((normal_modes.Vmatrix).T)[selected_modes_mask, :]
         self.V = (normal_modes.Vmatrix)[:, selected_modes_mask]
 
         # self.Vm1 = ((normal_modes.Vmatrix).T)[:self.n_independent_vars]

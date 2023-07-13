@@ -44,7 +44,6 @@ class nl_solver:
                 #  extrapolator_input_size=4,
                 #  extrapolator_order=1,
                  dIydI=None,
-                 initialize=True,
                  automatic_timestep=False,
                  mode_removal=True,
                  min_dIy_dI=1):
@@ -256,39 +255,53 @@ class nl_solver:
         #     print('NK_on_currents_GS')
         #     print('linearised_only')
 
-        if initialize:
+        if automatic_timestep or mode_removal:
             self.initialize_from_ICs(eq, profiles, 
                                     rtol_NK=1e-8,
                                     noise_level=0, 
                                     dIydI=dIydI,
                                     mode_removal=mode_removal,
                                     min_dIy_dI=min_dIy_dI)
-            self.linearised_sol.calculate_linear_growth_rate()
-            if len(self.linearised_sol.growth_rates):
-                print('This equilibrium has a linear growth rate of 1/', abs(self.linearised_sol.growth_rates[0]), 's')
-                if automatic_timestep is None:
-                    print('The solver\'s timestep was set at', self.dt_step,
+            
+        if mode_removal:
+            self.selected_modes_mask = np.linalg.norm(self.dIydI, axis=0)>min_dIy_dI
+            self.dIydI = self.dIydI[:, self.selected_modes_mask]
+            self.selected_modes_mask = np.concatenate((np.ones(machine_config.n_active_coils),
+                                                       self.selected_modes_mask[machine_config.n_active_coils:-1],
+                                                       np.zeros(machine_config.n_coils-self.n_metal_modes))).astype(bool)
+            self.remove_modes(self.selected_modes_mask)
+
+        self.linearised_sol.calculate_linear_growth_rate()
+        if len(self.linearised_sol.growth_rates):
+            print('This equilibrium has a linear growth rate of 1/', abs(self.linearised_sol.growth_rates[0]), 's')
+        else: 
+            print('No unstable modes found.', 
+                    'Either plasma is stable or it is Alfven unstable.', 
+                    'Try adding more passive modes.')
+
+        if automatic_timestep is None:
+            print('The solver\'s timestep was set at', self.dt_step,
                         'If necessary, reset.')
-                else:
-                    dt_step = abs(self.linearised_sol.growth_rates[0]*automatic_timestep)
-                    self.reset_timestep(full_timestep=dt_step, 
-                                        max_internal_timestep=dt_step/10)
-                    print('The solver\'s timestep has been reset accordingly at ', self.dt_step)
-                
-            else: 
-                print('No unstable modes found.', 
-                      'Either plasma is stable or it is Alfven unstable.', 
-                      'Try adding more passive modes.')
-                if automatic_timestep:
-                    print('I could not adjust the solver\'s timestep!')
+        else:
+            if len(self.linearised_sol.growth_rates):
+                dt_step = abs(self.linearised_sol.growth_rates[0]*automatic_timestep)
+                self.reset_timestep(full_timestep=dt_step, 
+                                    max_internal_timestep=dt_step/10)
+                print('The solver\'s timestep has been reset at', self.dt_step)
+            else:
+                print('No unstable modes found. Impossible to automatically set timestep!')
+
 
 
     def remove_modes(self, selected_modes_mask):
-        print('The input min_dIy_dI corresponds to keeping', np.sum(selected_modes_mask)-1,
-              'out of the original', self.n_metal_modes, 'modes.')
+        print('The input min_dIy_dI corresponds to keeping', np.sum(selected_modes_mask),
+              'out of the original', self.n_metal_modes, 'metal modes.')
         self.evol_metal_curr.initialize_for_eig(selected_modes_mask)
         self.n_metal_modes = self.evol_metal_curr.n_independent_vars
         self.arange_currents = np.arange(self.n_metal_modes+1)
+        self.currents_vec = np.zeros(self.n_metal_modes + 1)
+        self.circuit_eq_residual = np.zeros(self.n_metal_modes + 1)
+        self.currents_nk_solver = nk_solver.nksolver(self.n_metal_modes + 1)
 
         self.evol_plasma_curr.reset_modes(V=self.evol_metal_curr.V)
 
@@ -311,10 +324,10 @@ class nl_solver:
                                             max_internal_timestep=self.max_internal_timestep,
                                             full_timestep=self.dt_step)
         
-        self.currents_nk_solver = nk_solver.nksolver(self.n_metal_modes + 1)
+        self.linearised_sol.set_linearization_point(dIydI=self.dIydI,
+                                                    hatIy0=self.broad_J0)
 
-        self.currents_vec = np.zeros(self.n_metal_modes + 1)
-        self.circuit_eq_residual = np.zeros(self.n_metal_modes + 1)
+       
 
 
 
@@ -575,16 +588,6 @@ class nl_solver:
                 self.build_dIydI_linearization(eq=eq, profile=profile, rtol_NK=rtol_NK)
         else:
             self.dIydI = dIydI
-
-        # if mode_removal:
-        #     self.selected_modes_mask = np.linalg.norm(self.dIydI, axis=0)>min_dIy_dI
-        #     self.selected_modes_mask[:self.evol_metal_curr.n_active_coils] = True
-        #     self.selected_modes_mask[-1] = True
-        #     self.selected_modes_mask = np.concatenate((self.selected_modes_mask,
-        #                                                np.zeros(machine_config.n_coils-len(self.selected_modes_mask)).astype(bool)))
-        #     self.remove_modes(self.selected_modes_mask)
-        #     self.build_current_vec(self.eq1, self.profiles1)
-        #     self.dIydI = self.dIydI[:, self.selected_modes_mask]
 
         self.linearised_sol.set_linearization_point(dIydI=self.dIydI,
                                                     hatIy0=self.broad_J0)

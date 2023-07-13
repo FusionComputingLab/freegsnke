@@ -29,7 +29,9 @@ class metal_currents:
         
         if flag_vessel_eig:
             self.max_mode_frequency = max_mode_frequency
-            self.initialize_for_eig()
+            self.make_selected_mode_mask_from_max_freq()
+            self.initialize_for_eig(self.selected_modes_mask)
+
         else:
             self.max_mode_frequency = 0
             self.initialize_for_no_eig()
@@ -44,22 +46,26 @@ class metal_currents:
         self.empty_U = np.zeros(self.n_coils)
         
 
-
-
-    def initialize_for_eig(self, ):
-        # from passive alone
-        self.n_independent_vars = np.sum(normal_modes.w_passive < self.max_mode_frequency)
+    def make_selected_mode_mask_from_max_freq(self, ):
+        selected_modes_mask = normal_modes.w_passive < self.max_mode_frequency
+        self.selected_modes_mask = np.concatenate((np.ones(self.n_active_coils).astype(bool),
+                                              selected_modes_mask))
+        self.n_independent_vars = np.sum(self.selected_modes_mask)
         print('Input max_mode_frequency corresponds to', 
-               self.n_independent_vars, 'independent vessel normal modes',
+               self.n_independent_vars-self.n_active_coils, 'independent vessel normal modes',
                'in addition to the', self.n_active_coils, 'active coils.')
-        # include active
-        self.n_independent_vars += self.n_active_coils
+        
 
+    def initialize_for_eig(self, selected_modes_mask):     
         # Id = Vm1 R**(1/2) I 
         # to change base to truncated modes
         # I = R**(-1/2) V Id 
-        self.Vm1 = ((normal_modes.Vmatrix).T)[:self.n_independent_vars]
-        self.V = (normal_modes.Vmatrix)[:, :self.n_independent_vars]
+        self.selected_modes_mask = selected_modes_mask
+        self.Vm1 = ((normal_modes.Vmatrix).T)[selected_modes_mask]
+        self.V = (normal_modes.Vmatrix)[:, selected_modes_mask]
+
+        # self.Vm1 = ((normal_modes.Vmatrix).T)[:self.n_independent_vars]
+        # self.V = (normal_modes.Vmatrix)[:, :self.n_independent_vars]
 
         # equation is Lambda**(-1)Iddot + I = F
         # where Lambda is such that R12@M-1@R12 = V Lambda V-1
@@ -137,7 +143,7 @@ class metal_currents:
             control += (max_mode_frequency != self.max_mode_frequency)
             self.max_mode_frequency = max_mode_frequency
         if control*flag_vessel_eig:
-            self.initialize_for_eig()
+            self.initialize_for_eig(self.selected_modes_mask)
         else:
             self.initialize_for_no_eig()
 

@@ -6,14 +6,14 @@ class plasma_current:
     # in projection on Iy.T:
     # Iy.T/Ip (Myy Iydot + Mye Iedot + Rp Iy) = 0
 
-    def __init__(self, plasma_grids, Rm12V, plasma_resistance_1d, Mye=None):
+    def __init__(self, plasma_grids, Rm12, V, plasma_resistance_1d, Mye):
 
         self.Myy = plasma_grids.Myy()
-        if Mye is None:
-            self.Mye = (plasma_grids.Mey()).T
-        else:
-            self.Mye = Mye
-        self.MyeRm12V = np.matmul(self.Mye, Rm12V)
+        self.Rm12 = Rm12
+        self.V = V
+        self.Rm12V = self.Rm12@V
+        self.Mye = Mye
+        self.MyeRm12V = np.matmul(Mye, self.Rm12V)
         self.Ryy = plasma_resistance_1d
     
     # def reduced_Iy(self, full_Iy):
@@ -25,6 +25,10 @@ class plasma_current:
     #     full_Iydot = (Iy1-Iy0)/dt
     #     Iydot = self.reduced_Iy(full_Iydot)
     #     return Iydot
+    def reset_modes(self, V):
+        self.V = V
+        self.Rm12V = self.Rm12@V
+        self.MyeRm12V = np.matmul(self.Mye, self.Rm12V)
 
 
     def current_residual(self,  red_Iy0, 

@@ -45,7 +45,9 @@ class nl_solver:
                 #  extrapolator_order=1,
                  dIydI=None,
                  initialize=True,
-                 automatic_timestep=False):
+                 automatic_timestep=False,
+                 mode_removal=True,
+                 min_dIy_dI=1):
 
         
 
@@ -121,11 +123,13 @@ class nl_solver:
                                                 full_timestep=self.dt_step)
         # this is the number of independent normal mode currents associated to max_mode_frequency
         self.n_metal_modes = self.evol_metal_curr.n_independent_vars
+        self.arange_currents = np.arange(self.n_metal_modes+1)
         
 
         # to calculate residual of plasma collapsed circuit eq
         self.evol_plasma_curr = plasma_current(plasma_grids=self.plasma_grids,
-                                               Rm12V=np.matmul(np.diag(self.evol_metal_curr.Rm12), self.evol_metal_curr.V),
+                                               Rm12=np.diag(self.evol_metal_curr.Rm12), 
+                                               V=self.evol_metal_curr.V,
                                                plasma_resistance_1d=self.plasma_resistance_1d,
                                                Mye=self.evol_metal_curr.Mey.T)
 
@@ -222,8 +226,8 @@ class nl_solver:
         # if update_linearization:
         self.step_no = 0
         # self.update_n_steps = update_n_steps
-        self.current_record = np.zeros((self.n_metal_modes, self.n_metal_modes+1))
-        self.Iy_record = np.zeros((self.n_metal_modes, self.plasma_domain_size))
+        # self.current_record = np.zeros((self.n_metal_modes, self.n_metal_modes+1))
+        # self.Iy_record = np.zeros((self.n_metal_modes, self.plasma_domain_size))
 
 
         # elif initial_guess=='extrapolated_solution':
@@ -256,7 +260,9 @@ class nl_solver:
             self.initialize_from_ICs(eq, profiles, 
                                     rtol_NK=1e-8,
                                     noise_level=0, 
-                                    dIydI=dIydI)
+                                    dIydI=dIydI,
+                                    mode_removal=mode_removal,
+                                    min_dIy_dI=min_dIy_dI)
             self.linearised_sol.calculate_linear_growth_rate()
             if len(self.linearised_sol.growth_rates):
                 print('This equilibrium has a linear growth rate of 1/', abs(self.linearised_sol.growth_rates[0]), 's')
@@ -275,6 +281,40 @@ class nl_solver:
                       'Try adding more passive modes.')
                 if automatic_timestep:
                     print('I could not adjust the solver\'s timestep!')
+
+
+    def remove_modes(self, selected_modes_mask):
+        print('The input min_dIy_dI corresponds to keeping', np.sum(selected_modes_mask)-1,
+              'out of the original', self.n_metal_modes, 'modes.')
+        self.evol_metal_curr.initialize_for_eig(selected_modes_mask)
+        self.n_metal_modes = self.evol_metal_curr.n_independent_vars
+        self.arange_currents = np.arange(self.n_metal_modes+1)
+
+        self.evol_plasma_curr.reset_modes(V=self.evol_metal_curr.V)
+
+        self.simplified_solver_J1 = simplified_solver_J1(Lambdam1=self.evol_metal_curr.Lambdam1, 
+                                                         Vm1Rm12=np.matmul(self.evol_metal_curr.Vm1, np.diag(self.evol_metal_curr.Rm12)), 
+                                                            Mey=self.evol_metal_curr.Mey, 
+                                                            Myy=self.evol_plasma_curr.Myy,
+                                                            plasma_norm_factor=self.plasma_norm_factor,
+                                                            plasma_resistance_1d=self.plasma_resistance_1d,
+                                                            # this is used with no internal step subdivision, to help nonlinear convergence 
+                                                            max_internal_timestep=self.dt_step,
+                                                            full_timestep=self.dt_step)
+
+        self.linearised_sol = linear_solver(Lambdam1=self.evol_metal_curr.Lambdam1, 
+                                            Vm1Rm12=self.simplified_solver_J1.Vm1Rm12, 
+                                            Mey=self.evol_metal_curr.Mey, 
+                                            Myy=self.evol_plasma_curr.Myy,
+                                            plasma_norm_factor=self.plasma_norm_factor,
+                                            plasma_resistance_1d=self.plasma_resistance_1d,
+                                            max_internal_timestep=self.max_internal_timestep,
+                                            full_timestep=self.dt_step)
+        
+        self.currents_nk_solver = nk_solver.nksolver(self.n_metal_modes + 1)
+
+        self.currents_vec = np.zeros(self.n_metal_modes + 1)
+        self.circuit_eq_residual = np.zeros(self.n_metal_modes + 1)
 
 
 
@@ -303,34 +343,72 @@ class nl_solver:
             
     #     self.trial_plasma_psi = np.copy(self.eq2.plasma_psi)    
         
+    def prepare_build_dIydI_j(self, j, rtol_NK, target_dIy, starting_dI, min_curr=1e-4, max_curr=10):
+        current_ = np.copy(self.currents_vec)
+        current_[j] += starting_dI
+        self.assign_currents_solve_GS(current_, rtol_NK)
+
+        dIy_0 = self.plasma_grids.Iy_from_jtor(self.profiles2.jtor) - self.Iy
+        final_dI = starting_dI*target_dIy/np.linalg.norm(dIy_0)
+        final_dI = np.clip(final_dI, min_curr, max_curr)
+        self.final_dI_record[j] = final_dI
 
 
+    def build_dIydI_j(self, j, rtol_NK):
+        # current_ = np.copy(self.currents_vec)
+        # current_[j] += starting_dI
+        # self.assign_currents_solve_GS(current_, rtol_NK)
 
+        # dIy_0 = self.plasma_grids.Iy_from_jtor(self.profiles2.jtor) - self.Iy
+        
+        # final_dI = starting_dI*target_dIy/np.linalg.norm(dIy_0)
+        
+        # final_dI = np.clip(final_dI, .001, max_curr)
+        final_dI = self.final_dI_record[j]
+        # final_dI = np.clip(final_dI, min_curr, max_curr)
 
+        current_ = np.copy(self.currents_vec)
+        current_[j] += final_dI
+        self.assign_currents_solve_GS(current_, rtol_NK)
 
-    def build_linear_matrices(self, eq, profile, rtol_NK, target_dIy=20, starting_dI=5):
+        dIy_1 = self.plasma_grids.Iy_from_jtor(self.profiles2.jtor) - self.Iy
+        dIydIj = dIy_1/final_dI
+        # self.dIydI[:,j] = dIydIj
+
+        # noise = noise_level*np.random.random(self.n_metal_modes+1)
+        # current_[j] += final_dI
+        # self.assign_currents_solve_GS(current_, rtol_NK)
+        # dIydIj_noise = (self.plasma_grids.Iy_from_jtor(self.profiles2.jtor) - self.Iy)/current_[j]
+
+        # self.ddIyddI[j] = np.linalg.norm(dIydIj - dIydIj_noise)/np.linalg.norm(final_dI)/np.linalg.norm(dIydIj)
+        
+        print(j, final_dI, 'dIy =', np.linalg.norm(dIy_1))
+        # print('ddIydI = ', self.ddIyddI[j])
+        return dIydIj
+    
+
+    def build_dIydI_linearization(self, eq, profile, rtol_NK, target_dIy=10, starting_dI=.5):
         print('I\'m building the linearization. This might take a minute or two.')
         self.NK.solve(eq, profile, target_relative_tolerance=rtol_NK)
         self.build_current_vec(eq, profile)
 
         self.Iy = self.plasma_grids.Iy_from_jtor(profile.jtor)
         self.dIydI = np.zeros((self.plasma_domain_size, self.n_metal_modes+1))
+        self.ddIyddI = np.zeros(self.n_metal_modes+1)
+        self.final_dI_record = np.zeros(self.n_metal_modes+1)
 
-        for i in np.arange(self.n_metal_modes+1):
-            current_ = np.copy(self.currents_vec)
-            current_[i] += starting_dI
-            self.assign_currents_solve_GS(current_, rtol_NK)
+        for j in self.arange_currents:
+            self.prepare_build_dIydI_j(j, rtol_NK, target_dIy, starting_dI)
             
-            final_dI = starting_dI*target_dIy/np.amax(np.abs(self.plasma_grids.Iy_from_jtor(self.profiles2.jtor)-self.Iy))
-            
-            current_ = np.copy(self.currents_vec)
-            current_[i] += final_dI
-            self.assign_currents_solve_GS(current_, rtol_NK)
-            self.dIydI[:,i] = (self.plasma_grids.Iy_from_jtor(self.profiles2.jtor)-self.Iy)/final_dI
+        for j in self.arange_currents:
+            self.dIydI[:,j] = self.build_dIydI_j(j, rtol_NK)
+        self.updated_dIydI = np.copy(self.dIydI)
+        self.norm_updated_dIydI = np.linalg.norm(self.updated_dIydI, axis=0)
+
         
 
     def calculate_linear_growth_rates(self, rtol=1e-8):
-        self.build_linear_matrices(self.eq1, self.profiles1, rtol)
+        self.build_dIydI_linearization(self.eq1, self.profiles1, rtol)
         growth_rates = np.sort(np.linalg.eig(self.linearised_sol.solver.Mmatrix)[0])
         self.growth_rates = growth_rates[growth_rates < 0]
         return self.growth_rates 
@@ -444,7 +522,9 @@ class nl_solver:
                             update_linearization=True,
                             update_n_steps=16,
                             threshold_svd=.1,
-                            max_relative_dIydI_update=.1
+                            max_dIy_update=.01,
+                            mode_removal=False,
+                            min_dIy_dI=0
                             ): 
                             # eq for ICs, with all properties set up at time t=0, 
                             # ie with eq.tokamak.currents = I(t) and eq.plasmaCurrent = I_p(t) 
@@ -455,7 +535,7 @@ class nl_solver:
         self.update_n_steps = update_n_steps
         self.update_linearization = update_linearization
         self.threshold_svd = threshold_svd
-        self.max_relative_dIydI_update = max_relative_dIydI_update
+        self.max_dIy_update = max_dIy_update
 
         #get profile parametrization
         self.get_profiles_values(profile)
@@ -473,6 +553,8 @@ class nl_solver:
         self.Iy = self.plasma_grids.Iy_from_jtor(self.profiles1.jtor)
         self.hatIy = self.plasma_grids.normalize_sum(self.Iy)
         self.hatIy1 = np.copy(self.hatIy)
+        self.broad_J0 = convolve2d(self.profiles1.jtor, self.ones_to_broaden, mode='same')
+        self.broad_J0 = self.plasma_grids.hat_Iy_from_jtor(self.broad_J0)
 
          
         self.eq2 = deepcopy(self.eq1)
@@ -485,22 +567,31 @@ class nl_solver:
        
 
         self.time = 0
-        self.step_no = 0
+        self.step_no = -1
 
         # if self.linearised_flag:
         if dIydI is None:
             if self.dIydI is None:
-                self.build_linear_matrices(eq=eq, profile=profile, rtol_NK=rtol_NK)
+                self.build_dIydI_linearization(eq=eq, profile=profile, rtol_NK=rtol_NK)
         else:
             self.dIydI = dIydI
 
-        self.broad_J0 = convolve2d(self.profiles1.jtor, self.ones_to_broaden, mode='same')
-        self.broad_J0 = self.plasma_grids.hat_Iy_from_jtor(self.broad_J0)
+        # if mode_removal:
+        #     self.selected_modes_mask = np.linalg.norm(self.dIydI, axis=0)>min_dIy_dI
+        #     self.selected_modes_mask[:self.evol_metal_curr.n_active_coils] = True
+        #     self.selected_modes_mask[-1] = True
+        #     self.selected_modes_mask = np.concatenate((self.selected_modes_mask,
+        #                                                np.zeros(machine_config.n_coils-len(self.selected_modes_mask)).astype(bool)))
+        #     self.remove_modes(self.selected_modes_mask)
+        #     self.build_current_vec(self.eq1, self.profiles1)
+        #     self.dIydI = self.dIydI[:, self.selected_modes_mask]
+
         self.linearised_sol.set_linearization_point(dIydI=self.dIydI,
                                                     hatIy0=self.broad_J0)
 
         if self.update_linearization:
-            self.record_for_update()
+            self.current_record = np.zeros((self.update_n_steps, self.n_metal_modes+1))
+            self.Iy_record = np.zeros((self.update_n_steps, self.plasma_domain_size))
 
         # check if against the wall
         if self.plasma_grids.check_if_outside_domain(jtor=self.profiles1.jtor):
@@ -509,10 +600,74 @@ class nl_solver:
 
 
 
-    def record_for_update(self,):
-        id = self.step_no % self.update_n_steps
-        self.current_record[id] = self.currents_vec
-        self.Iy_record[id] = self.Iy
+    def run_linearization_update(self, max_dIy_update, target_dIy=1, starting_dI=.5):
+
+        self.linearised_sol.prepare_min_update_linearization(self.current_record[:-1],
+                                                             self.Iy_record[:-1],
+                                                             self.threshold_svd)
+        delta_dIydI = self.linearised_sol.min_update_linearization()
+
+        # self.linearised_sol.set_linearization_point(dIydI=self.linearised_sol.dIydI+delta_dIydI,
+        #                                             hatIy0=self.broad_J0)
+
+        delta_dIy = delta_dIydI*self.linearised_sol.abs_current_dv[np.newaxis]
+            
+        # compare_ = np.linalg.norm(delta_dIydI, axis=0)/self.norm_updated_dIydI
+        compare_ = np.linalg.norm(delta_dIy, axis=0)
+        ids_to_update = self.arange_currents[compare_ > max_dIy_update]
+        control = len(ids_to_update)
+        print('starting update, ', ids_to_update, compare_)
+        
+
+        while control:
+            for j in ids_to_update:
+                self.updated_dIydI[:,j] = self.build_dIydI_j(j, rtol_NK=self.rtol_NK, 
+                                                             target_dIy=target_dIy, 
+                                                             starting_dI=starting_dI)
+            self.norm_updated_dIydI = np.linalg.norm(self.updated_dIydI, axis=0)
+            self.linearised_sol.set_linearization_point(dIydI=self.updated_dIydI,
+                                                        hatIy0=self.broad_J0)
+            
+            delta_dIydI = self.linearised_sol.min_update_linearization()
+
+            delta_dIy = delta_dIydI*self.linearised_sol.abs_current_dv[np.newaxis]
+            
+            # compare_ = np.linalg.norm(delta_dIydI, axis=0)/self.norm_updated_dIydI
+            compare_ = np.linalg.norm(delta_dIy, axis=0)
+
+            ids_to_update = self.arange_currents[compare_ > max_dIy_update]
+            control = len(ids_to_update)
+            print('iteration update, ', ids_to_update, compare_)
+            
+
+
+
+
+
+    
+        
+
+
+
+
+    def check_linearization_and_update(self, max_dIy_update):
+        if self.step_no / self.update_n_steps < 1:
+            id = self.step_no % self.update_n_steps
+            self.current_record[id] = self.currents_vec
+            self.Iy_record[id] = self.Iy
+        else:
+            self.current_record[-1] = self.currents_vec
+            self.Iy_record[-1] = self.Iy
+            self.current_record[:-1] = self.current_record[1:]
+            self.Iy_record[:-1] = self.Iy_record[1:] 
+
+            self.run_linearization_update(max_dIy_update)
+
+            # self.delta_dIydI = self.linearised_sol.min_update_linearization(self.current_record[:-1],
+            #                                                             self.Iy_record[:-1],
+            #                                                             self.threshold_svd)
+            
+
 
         
 
@@ -550,14 +705,14 @@ class nl_solver:
         self.rtol_NK = working_relative_tol_GS*self.d_plasma_psi_step
 
         if self.update_linearization:
-            self.record_for_update()
-            if self.step_no and (self.step_no%self.update_n_steps)==0:
-                self.delta_dIydI = self.linearised_sol.update_linearization(self.current_record[:self.update_n_steps],
-                                                                            self.Iy_record[:self.update_n_steps],
-                                                                            self.threshold_svd)
-                print('linearization update:', np.linalg.norm(self.delta_dIydI), np.linalg.norm(self.linearised_sol.dIydI))
-                if np.linalg.norm(self.delta_dIydI)<self.max_relative_dIydI_update*np.linalg.norm(self.linearised_sol.dIydI):
-                    self.linearised_sol.set_linearization_point(dIydI=self.linearised_sol.dIydI+self.delta_dIydI, hatIy0=self.broad_J0)
+            self.check_linearization_and_update(max_dIy_update=self.max_dIy_update)
+            # if self.step_no and (self.step_no%self.update_n_steps)==0:
+            #     self.delta_dIydI = self.linearised_sol.update_linearization(self.current_record[:self.update_n_steps],
+            #                                                                 self.Iy_record[:self.update_n_steps],
+            #                                                                 self.threshold_svd)
+            #     print('linearization update:', np.linalg.norm(self.delta_dIydI), np.linalg.norm(self.linearised_sol.dIydI))
+            #     if np.linalg.norm(self.delta_dIydI)<self.max_relative_dIydI_update*np.linalg.norm(self.linearised_sol.dIydI):
+            #         self.linearised_sol.set_linearization_point(dIydI=self.linearised_sol.dIydI+self.delta_dIydI, hatIy0=self.broad_J0)
 
 
 
@@ -591,7 +746,7 @@ class nl_solver:
     #     #     self.guess_currents_from_extrapolation()
         
     #     if self.update_linearization:
-    #         self.record_for_update()
+    #         self.check_linearization_and_update()
     #         if self.step_no and (self.step_no%self.update_n_steps)==0:
     #             delta = self.linearised_sol.update_linearization(self.current_record,
     #                                                              self.Iy_record,

@@ -81,29 +81,28 @@ class linear_solver:
         return Itpdt
     
 
-    def update_linearization(self, current_record, Iy_record, threshold_svd):
-        current_dv = ((current_record - current_record[-1:])[:-1])
+    def prepare_min_update_linearization(self, current_record, Iy_record, threshold_svd):
+        self.Iy_dv = ((Iy_record - Iy_record[-1:])[:-1]).T
 
-        Iy_dv = ((Iy_record - Iy_record[-1:])[:-1]).T
-        self.predicted_Iy = np.matmul(self.dIydI, current_dv.T)
-        Iy_dv = Iy_dv - self.predicted_Iy
+        self.current_dv = ((current_record - current_record[-1:])[:-1])
+        self.abs_current_dv = np.mean(abs(self.current_dv), axis=0)
 
-        U,S,B = np.linalg.svd(current_dv.T, full_matrices=False)
-
-        # mask = svd[1] > threshold_svd
-        
-        # self.Iy_dv = (Iy_dv@(svd[-1].T)@np.diag(1/svd[1]))
-
-        # self.current_dv = (svd[0].T)[np.newaxis]
-        # delta = self.Iy_dv[:,:, np.newaxis]*self.current_dv/np.sum(self.current_dv**2, axis=-1, keepdims=True)
-        # delta = delta[:,mask,:]
-        # delta = np.sum(delta, axis=1)
+        U,S,B = np.linalg.svd(self.current_dv.T, full_matrices=False)
         
         mask = (S > threshold_svd)
         S = S[mask]
         U = U[:, mask]
         B = B[mask, :]
-        delta = Iy_dv@(B.T)@np.diag(1/S)@(U.T)
+
+        # delta = Iy_dv@(B.T)@np.diag(1/S)@(U.T)
+        self.pseudo_inverse = (B.T)@np.diag(1/S)@(U.T)
+
+
+    def min_update_linearization(self, ):
+        self.predicted_Iy = np.matmul(self.dIydI, self.current_dv.T)
+        Iy_dv_d = self.Iy_dv - self.predicted_Iy
+
+        delta = Iy_dv_d@self.pseudo_inverse
         return delta
 
 

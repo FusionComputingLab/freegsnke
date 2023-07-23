@@ -26,9 +26,13 @@ class linear_solver:
         self.Vm1Rm12 = Vm1Rm12
         self.Vm1Rm12Mey = np.matmul(Vm1Rm12, Mey)
         self.Myy = Myy
-        
 
         self.n_active_coils = machine_config.n_active_coils
+
+        self.solver = implicit_euler_solver(Mmatrix=np.eye(self.n_independent_vars + 1), 
+                                            Rmatrix=np.eye(self.n_independent_vars + 1), 
+                                            max_internal_timestep=self.max_internal_timestep,
+                                            full_timestep=self.full_timestep)
 
         self.plasma_resistance_1d = plasma_resistance_1d
 
@@ -37,7 +41,17 @@ class linear_solver:
         # dummy voltage vec for eig modes
         self.forcing = np.zeros(self.n_independent_vars + 1)
 
+
+
+
+    def reset_timesteps(self, max_internal_timestep,
+                              full_timestep):
+        self.max_internal_timestep = max_internal_timestep
+        self.full_timestep = full_timestep
+        self.solver.set_timesteps(full_timestep=full_timestep,
+                                  max_internal_timestep=max_internal_timestep)
     
+
     
     def set_linearization_point(self, dIydI, hatIy0):
 
@@ -51,7 +65,11 @@ class linear_solver:
                                             max_internal_timestep=self.max_internal_timestep,
                                             full_timestep=self.full_timestep)
         
-        self.growth_rates = np.sort(np.linalg.eig(self.Mmatrix)[0])
+        # self.solver.set_Mmatrix(self.Mmatrix)
+        # self.solver.set_timesteps(full_timestep=self.full_timestep,
+        #                           max_internal_timestep=self.max_internal_timestep)
+
+        # self.growth_rates = np.sort(np.linalg.eig(self.Mmatrix)[0])
 
        
 
@@ -81,24 +99,28 @@ class linear_solver:
         return Itpdt
     
 
-    def update_linearization(self, current_record, Iy_record, threshold_svd):
-        current_dv = ((current_record - current_record[-1:])[:-1])
+    def prepare_min_update_linearization(self, current_record, Iy_record, threshold_svd):
+        self.Iy_dv = ((Iy_record - Iy_record[-1:])[:-1]).T
 
-        Iy_dv = ((Iy_record - Iy_record[-1:])[:-1]).T
-        self.predicted_Iy = np.matmul(self.dIydI, current_dv.T)
-        Iy_dv = Iy_dv - self.predicted_Iy
+        self.current_dv = ((current_record - current_record[-1:])[:-1])
+        self.abs_current_dv = np.mean(abs(self.current_dv), axis=0)
 
-        svd = np.linalg.svd(current_dv.T, full_matrices=False)
-
-        mask = svd[1] > threshold_svd
+        U,S,B = np.linalg.svd(self.current_dv.T, full_matrices=False)
         
-        self.Iy_dv = (Iy_dv@(svd[-1].T)@np.diag(1/svd[1]))
+        mask = (S > threshold_svd)
+        S = S[mask]
+        U = U[:, mask]
+        B = B[mask, :]
 
-        self.current_dv = (svd[0].T)[np.newaxis]
-        delta = self.Iy_dv[:,:, np.newaxis]*self.current_dv/np.sum(self.current_dv**2, axis=-1, keepdims=True)
-        delta = delta[:,mask,:]
-        delta = np.sum(delta, axis=1)
-        
+        # delta = Iy_dv@(B.T)@np.diag(1/S)@(U.T)
+        self.pseudo_inverse = (B.T)@np.diag(1/S)@(U.T)
+
+
+    def min_update_linearization(self, ):
+        self.predicted_Iy = np.matmul(self.dIydI, self.current_dv.T)
+        Iy_dv_d = self.Iy_dv - self.predicted_Iy
+
+        delta = Iy_dv_d@self.pseudo_inverse
         return delta
 
 

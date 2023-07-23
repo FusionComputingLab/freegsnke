@@ -241,7 +241,7 @@ class nl_solver:
         # if solution_method=='NK_on_psi_and_currents':
         self.psi_nk_solver = nk_solver.nksolver(self.nx * self.ny)
         self.currents_nk_solver = nk_solver.nksolver(self.n_metal_modes + 1)
-        self.stepper = self.nl_step_nk_psi_curr
+        # self.stepper = self.nl_step_nk_psi_curr
         # elif solution_method=='NK_on_currents_GS':
         #     self.currents_nk_solver = nk_solver.nksolver(self.n_metal_modes + 1)
         #     self.stepper = self.nl_step_nk_curr_GS
@@ -281,7 +281,7 @@ class nl_solver:
                     'Either plasma is stable or it is Alfven unstable.', 
                     'Try adding more passive modes.')
 
-        if automatic_timestep is None:
+        if automatic_timestep is None or automatic_timestep is False:
             print('The solver\'s timestep was set at', self.dt_step,
                         'If necessary, reset.')
         else:
@@ -382,14 +382,14 @@ class nl_solver:
         dIydIj = dIy_1/final_dI
 
         # noise = noise_level*np.random.random(self.n_metal_modes+1)
-        current_[j] += final_dI
-        self.assign_currents_solve_GS(current_, rtol_NK)
-        dIydIj_2 = (self.plasma_grids.Iy_from_jtor(self.profiles2.jtor) - dIy_1 - self.Iy)/final_dI
+        # current_[j] += final_dI
+        # self.assign_currents_solve_GS(current_, rtol_NK)
+        # dIydIj_2 = (self.plasma_grids.Iy_from_jtor(self.profiles2.jtor) - dIy_1 - self.Iy)/final_dI
 
-        self.ddIyddI[j] = np.linalg.norm(dIydIj_2 - dIydIj)/final_dI
+        # self.ddIyddI[j] = np.linalg.norm(dIydIj_2 - dIydIj)/final_dI
         
-        print(j, final_dI, 'dIy =', np.linalg.norm(dIy_1))
-        print('ddIydI = ', self.ddIyddI[j])
+        print(j, 'deltaI = ', final_dI, 'norm(deltaIy) =', np.linalg.norm(dIy_1))
+        # print('ddIydI = ', self.ddIyddI[j])
         return dIydIj
     
 
@@ -424,24 +424,30 @@ class nl_solver:
         plasma_resistance_matrix = eqR*(2*np.pi/self.dRdZ)*self.plasma_resistivity
         self.plasma_resistance_1d = plasma_resistance_matrix[self.plasma_domain_mask]
     
+
     def calc_lumped_plasma_resistance(self, norm_red_Iy0, norm_red_Iy1):
         lumped_plasma_resistance = np.sum(self.plasma_resistance_1d*norm_red_Iy0*norm_red_Iy1)
         return lumped_plasma_resistance
     
+
     def reset_timestep(self, full_timestep, max_internal_timestep):
         self.dt_step = full_timestep
         self.max_internal_timestep = max_internal_timestep
+       
         self.evol_metal_curr.reset_mode(flag_vessel_eig=1,
                                         flag_plasma=1,
                                         plasma_grids=self.plasma_grids,
                                         max_mode_frequency=self.max_mode_frequency,
-                                        max_internal_timestep=full_timestep,
-                                        full_timestep=max_internal_timestep)
-        self.simplified_solver_J1.solver.set_timesteps(full_timestep=full_timestep,
-                                                       max_internal_timestep=full_timestep)
-        self.linearised_sol.solver.set_timesteps(full_timestep=full_timestep,
-                                                 max_internal_timestep=max_internal_timestep)
+                                        max_internal_timestep=max_internal_timestep,
+                                        full_timestep=full_timestep)
+        
+        self.simplified_solver_J1.reset_timesteps(full_timestep=full_timestep,
+                                                  max_internal_timestep=full_timestep)
+        
+        self.linearised_sol.reset_timesteps(full_timestep=full_timestep,
+                                            max_internal_timestep=max_internal_timestep)
     
+
     def get_profiles_values(self, profiles):
         #this allows to use the same instantiation of the time_evolution_class
         #on ICs with different paxis, fvac and alpha values
@@ -520,11 +526,11 @@ class nl_solver:
     def initialize_from_ICs(self, 
                             eq, profile, 
                             rtol_NK=1e-8, 
-                            noise_level=.01,
+                            noise_level=.001,
                             # new_seed=False,
                             noise_vec=None,
                             dIydI=None,
-                            update_linearization=True,
+                            update_linearization=False,
                             update_n_steps=16,
                             threshold_svd=.1,
                             max_dIy_update=.01,
@@ -962,13 +968,13 @@ class nl_solver:
 
 
 
-    def nl_step_nk_psi_curr(self, active_voltage_vec, 
+    def nlstepper(self, active_voltage_vec, 
                                 target_relative_tol_currents=.01,
                                         target_relative_tol_GS=.01,
                                         working_relative_tol_GS=.002,
                                         target_relative_unexplained_residual=.5,
                                         max_n_directions=3,
-                                        max_Arnoldi_iterations=3,
+                                        max_Arnoldi_iterations=4,
                                         max_collinearity=.3,
                                         step_size_psi=2.,
                                         step_size_curr=.8,

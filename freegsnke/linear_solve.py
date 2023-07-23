@@ -26,9 +26,13 @@ class linear_solver:
         self.Vm1Rm12 = Vm1Rm12
         self.Vm1Rm12Mey = np.matmul(Vm1Rm12, Mey)
         self.Myy = Myy
-        
 
         self.n_active_coils = machine_config.n_active_coils
+
+        self.solver = implicit_euler_solver(Mmatrix=np.eye(self.n_independent_vars + 1), 
+                                            Rmatrix=np.eye(self.n_independent_vars + 1), 
+                                            max_internal_timestep=self.max_internal_timestep,
+                                            full_timestep=self.full_timestep)
 
         self.plasma_resistance_1d = plasma_resistance_1d
 
@@ -37,7 +41,17 @@ class linear_solver:
         # dummy voltage vec for eig modes
         self.forcing = np.zeros(self.n_independent_vars + 1)
 
+
+
+
+    def reset_timesteps(self, max_internal_timestep,
+                              full_timestep):
+        self.max_internal_timestep = max_internal_timestep
+        self.full_timestep = full_timestep
+        self.solver.set_timesteps(full_timestep=full_timestep,
+                                  max_internal_timestep=max_internal_timestep)
     
+
     
     def set_linearization_point(self, dIydI, hatIy0):
 
@@ -51,7 +65,11 @@ class linear_solver:
                                             max_internal_timestep=self.max_internal_timestep,
                                             full_timestep=self.full_timestep)
         
-        self.growth_rates = np.sort(np.linalg.eig(self.Mmatrix)[0])
+        # self.solver.set_Mmatrix(self.Mmatrix)
+        # self.solver.set_timesteps(full_timestep=self.full_timestep,
+        #                           max_internal_timestep=self.max_internal_timestep)
+
+        # self.growth_rates = np.sort(np.linalg.eig(self.Mmatrix)[0])
 
        
 

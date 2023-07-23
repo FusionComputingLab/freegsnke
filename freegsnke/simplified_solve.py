@@ -57,7 +57,12 @@ class simplified_solver_J1:
         # dummy voltage vec for eig modes
         self.forcing = np.zeros(self.n_independent_vars + 1)
         
-
+    def reset_timesteps(self, max_internal_timestep,
+                              full_timestep):
+        self.max_internal_timestep = max_internal_timestep
+        self.full_timestep = full_timestep
+        self.solver.set_timesteps(full_timestep=full_timestep,
+                                  max_internal_timestep=max_internal_timestep)
 
 
     def prepare_solver(self, hatIy_left, hatIy_0, hatIy_1, active_voltage_vec):
@@ -151,6 +156,13 @@ class simplified_solver_dJ:
         # dummy Sdiag for the ueler solver
         self.Sdiag = np.ones(self.n_independent_vars+1)
 
+
+    def reset_timesteps(self, max_internal_timestep,
+                              full_timestep):
+        self.max_internal_timestep = max_internal_timestep
+        self.full_timestep = full_timestep
+        self.solver.set_timesteps(full_timestep=full_timestep,
+                                  max_internal_timestep=full_timestep)
 
 
     def prepare_solver(self, norm_red_Iy0,

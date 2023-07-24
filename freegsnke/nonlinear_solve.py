@@ -286,9 +286,9 @@ class nl_solver:
                         'If necessary, reset.')
         else:
             if len(self.linearised_sol.growth_rates):
-                dt_step = abs(self.linearised_sol.growth_rates[0]*automatic_timestep)
+                dt_step = abs(self.linearised_sol.growth_rates[0]*automatic_timestep[0])
                 self.reset_timestep(full_timestep=dt_step, 
-                                    max_internal_timestep=dt_step/10)
+                                    max_internal_timestep=dt_step/automatic_timestep[1])
                 print('The solver\'s timestep has been reset at', self.dt_step)
             else:
                 print('No unstable modes found. Impossible to automatically set timestep!')

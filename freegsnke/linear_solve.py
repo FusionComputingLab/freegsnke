@@ -7,7 +7,7 @@ from . import machine_config
 
 class linear_solver:
     """Solver for the circuit equation, calling a general implicit-Euler for a first-order ODE.
-    It needs some matrix combinations as inputs, and a number to rescale the plasma-current to avoid numerical headaches.
+    It needs some matrix combinations as inputs, and a number to quantities related to the plasma current to avoid round-off issues.
     """
     def __init__(self, Lambdam1, Vm1Rm12, Mey, Myy,
                     #    dIydI, hatIy0,

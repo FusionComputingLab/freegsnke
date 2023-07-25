@@ -6,7 +6,7 @@ from . import machine_config
 
 
 class linear_solver:
-    """Solver for the circuit equation, calling a general implicit-Euler for a first-order ODE.
+    """Interface between the linearised system and an ODE solver, calling a general implicit-Euler for a first-order ODE.
     It needs some matrix combinations as inputs, and a number to quantities related to the plasma current to avoid round-off issues.
     """
     def __init__(self, Lambdam1, Vm1Rm12, Mey, Myy,
@@ -17,7 +17,7 @@ class linear_solver:
                        full_timestep=.0001,
                        ):
 
-        """Instantiates the linear_solver object.
+        """Instantiates the linear_solver object, with inputs computed mostly from circuit_equation_metals.py .
         Based on the input plasma properties and comupling matrices, it prepares:
             - an instance of the implicit Euler solver implicit_euler_solver()
             - internal time-stepper for the implicit-Euler
@@ -26,19 +26,24 @@ class linear_solver:
         Parameters
         ----------
         Lambdam1: np.array 
-            diagonal matrix, inverse of diagonal form of ...
+            diagonal matrix, inverse of diagonal form of
+            Lambdam1 = self.Vm1@normal_modes.rm1l@self.V, where rm1l= Rm12@machine_config.coil_self_ind@Rm12
+            V is the identity on the active coils and diagonalises only the passive coils (R^{-1/2}L_{passive}R^{-1/2})
         Vm1Rm12: np.array
-            matrix combination ..., where V is ...
+            matrix combination V^{-1}R^{-1/2}, where V is defined above
         Mey: np.array 
-            matrix of inductances between plasma domain cells and eigenmodes
+            matrix of inductances between the reduced plasma domain cells and all metal coils
+            (active coils and passive-structure filaments, self.Vm1Rm12Mey below is the one between plasma and modes)
+            calculated by plasma_grids.py
         Myy: np.array 
-            inductance matrix of plasma domain cells
+            inductance matrix of reduced plasma domain cells
+            calculated by plasma_grids.py
         plasma_norm_factor: float
-            an overall number to work with rescaled curretns that are within a comparable range
+            an overall number to work with rescaled currents that are within a comparable range
         max_internal_timestep: float
-            integration substep of the ciruit equation, calling an implicit-Euler solver
+            internal integration timestep of the implicit-Euler solver, to be used as substeps over the <<full_timestep>> interval
         full_timestep: float
-            integration timestep of the circuit equation
+            full timestep requested to the implicit-Euler solver
 
         """
         
@@ -88,16 +93,16 @@ class linear_solver:
 
     
     def set_linearization_point(self, dIydI, hatIy0):
-        """Initialises a implicit-Euler solver with the appropriate matrices for the linearised problem.
+        """Initialises an implicit-Euler solver with the appropriate matrices for the linearised problem.
 
         Parameters
         ----------
         dIydI = np.array
-            partial derivatives of plasma-cell currents with respect to all <<current>> parameters
-            (total plasma current, coil currents, vessel currents).
+            partial derivatives of plasma-cell currents on the reduced plasma domain with respect to all <<current>> parameters
+            (active coil currents, vessel normal modes, total plasma current divided by plasma_norm_factor).
             These would typically come from having solved the forward Grad-Shafranov problem for different combinations of current parameters.
-        hatIy0 = float
-            suitably rescaled plasma current
+        hatIy0 = np.array
+            plasma-cell currents normalised by the total current at the linearlisation-point (it sums to 1)
         """
 
         self.dIydI = dIydI
@@ -120,7 +125,7 @@ class linear_solver:
 
 
     def build_Mmatrix(self, ):
-        """Initialises the pseudo-inductance matrix of the problem M\dot(x)+Rx=u from the linearisation Jacobian.
+        """Initialises the pseudo-inductance matrix of the problem M\dot(x)+ Rx=forcing from the linearisation Jacobian.
 
         Parameters
         ----------
@@ -151,8 +156,9 @@ class linear_solver:
         Parameters
         ----------
         It = np.array
-            ...
-        active_voltge_vec = np.array 
+            vector of all independent currents that are solved for by the linearides problem
+            (active currents, vessel normal modes, total plasma current divided by normalisation factor)
+        active_voltage_vec = np.array 
             voltages applied to the active coils
         other parameters are passed in as object attributes
         """
@@ -163,14 +169,15 @@ class linear_solver:
     
 
     def prepare_min_update_linearization(self, current_record, Iy_record, threshold_svd):
-        """Computes quantities to update the linearisation matrices, using a record of recently computed Grad-Shafranov solutions
+        """Computes quantities to update the linearisation matrices, using a record of recently computed Grad-Shafranov solutions.
+        Not used at present.
 
         Parameters
         ----------
         current_record : np.array
-            <current> parameter values over a time-horizon
+            <<current>> parameter values over a time-horizon
         Iy_record : np.array 
-            plasma cell currents over a time-horizon
+            plasma cell currents (over the reduced domain) over a time-horizon
         threshold_svd : float
             discards singular values that are too small, to obtain a smoother pseudo-inverse
         other parameters are passed in as object attributes

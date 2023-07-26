@@ -33,6 +33,11 @@ ordw = np.argsort(w)
 w_passive = w[ordw]
 Vmatrix_passive = ((v.T)[ordw]).T
 
+# a sign convention for the normal modes is set, otherwise same mode could have opposite signs 
+# in repeat calculcations and across machines, which may hinder reproducibility
+# The way this is achieved is somewhat arbitrary: 
+Vmatrix_passive /= np.sign(np.sum(Vmatrix_passive, axis=0, keepdims=True))
+
 if np.any(w_active < 0):
     print('Negative eigenvalues in active coils! Please check coil sizes and coordinates.')
 if np.any(w_passive < 0):

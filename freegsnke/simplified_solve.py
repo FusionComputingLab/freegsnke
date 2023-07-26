@@ -28,8 +28,6 @@ class simplified_solver_J1:
             - internal time-stepper for the implicit-Euler
             - dummy vessel voltages (zeros) in terms of filaments and eigenmodes
 
-        The system of equations in the extensive currents is of the kind ...
-
         Parameters
         ----------
         Lambdam1: np.array
@@ -47,8 +45,9 @@ class simplified_solver_J1:
             calculated by plasma_grids.py
         plasma_norm_factor: float
             an overall number to work with rescaled currents that are within a comparable range
-        plasma_resistance_1d: float
-            one-dimensional plasma resistance obtained by integrating \hat{I_y}R_{yy}\hat{I_{y}}/I_{p}^2
+        plasma_resistance_1d: np.array 
+            plasma reistance in each (reduced domain) plasma cell, R_yy, raveled to be of the same shape as I_y,
+            the one-dimensional plasma resistance is obtained by integrating \hat{I_y}R_{yy}\hat{I_{y}}/I_{p}^2
         max_internal_timestep: float
             internal integration timestep of the implicit-Euler solver, to be used as substeps over the <<full_timestep>> interval
         full_timestep: float
@@ -197,11 +196,9 @@ class simplified_solver_dJ:
         I_y(t+dt)-I_y(t) = dJ*(I_p(t+dt)-I_p(t)) with given dJ (such that sum(dJ)=1).
 
         Based on the input plasma properties and coupling matrices, it prepares:
-            - an instance of the implicit Euler solver implicit_euler_solver()
+            - an instance of the implicit Euler solver implicit_euler_solver_d()
             - internal time-stepper for the implicit-Euler
             - dummy vessel voltages (zeros) in terms of filaments and eigenmodes
-
-        The system of equations in the extensive currents is of the kind ...
 
         Parameters
         ----------
@@ -220,8 +217,9 @@ class simplified_solver_dJ:
             calculated by plasma_grids.py
         plasma_norm_factor: float
             an overall number to work with rescaled currents that are within a comparable range
-        plasma_resistance_1d: float
-            one-dimensional plasma resistance obtained by integrating \hat{I_y}R_{yy}\hat{I_{y}}/I_{p}^2
+        plasma_resistance_1d: np.array 
+            plasma reistance in each (reduced domain) plasma cell, R_yy, raveled to be of the same shape as I_y,
+            the one-dimensional plasma resistance is obtained by integrating \hat{I_y}R_{yy}\hat{I_{y}}/I_{p}^2
         max_internal_timestep: float
             internal integration timestep of the implicit-Euler solver, to be used as substeps over the <<full_timestep>> interval
         full_timestep: float
@@ -265,7 +263,7 @@ class simplified_solver_dJ:
         # dummy voltage vec for eig modes
         self.forcing = np.zeros(self.n_independent_vars+1)
         
-        # dummy Sdiag for the ueler solver
+        # dummy Sdiag for the Euler solver
         self.Sdiag = np.ones(self.n_independent_vars+1)
 
 
@@ -301,16 +299,17 @@ class simplified_solver_dJ:
         Parameters
         ----------
         norm_red_Iy0: np.array
-             
+            normalised gridded plasma current, which sums to 1 over the plasma integration domain,
+            used to left-contract the plasma evolution equation
         norm_red_Iy_dot: np.array
-            
+            (guessed) normalised time-change of the gridded plasma current dJ,
+            which sums to 1 over the plasma integration domain
         active_voltage_vec: np.array
             voltages applied to the active coils
-        
         Rp: float
-            
+            one-dimensional plasma resistance computed by contracting I_y^2 with plasma_resistance_1d
         central_2: 
-            
+            central time-derivative of plasma current
         """
 
         Sp = np.sum(self.plasma_resistance_1d*norm_red_Iy0*norm_red_Iy_dot)/Rp
@@ -349,9 +348,10 @@ class simplified_solver_dJ:
         active_voltage_vec: np.array
             voltages applied to the active coils
         
-        Rp : float
-        
+        Rp: float
+            one-dimensional plasma resistance computed by contracting I_y^2 with plasma_resistance_1d
         central_2: 
+            central time-derivative of plasma current
 
 
         Returns

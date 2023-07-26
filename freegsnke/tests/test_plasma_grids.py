@@ -81,7 +81,7 @@ def test_Mey(eq, grids):
 
     Mey_ = grids.Mey()
 
-    assert Mey_.shape == (len(MASTU_coils.coils_dict.keys()), len(grids.plasma_pts)), f"Shape of Myy not correct, shape of Myy: {Mey_.shape}, number of plasma point: {len(eq.tokomak.coils.keys()), len(grids.plasma_pts)}"
+    assert Mey_.shape == (len(eq.tokamak.coils), len(grids.plasma_pts)), f"Shape of Myy not correct, shape of Myy: {Mey_.shape}, number of plasma point: {len(eq.tokomak.coils), len(grids.plasma_pts)}"
     
 @pytest.mark.skip(reason="Not implemented yet")
 def test_Iy_from_jtor():

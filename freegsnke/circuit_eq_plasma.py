@@ -14,16 +14,16 @@ class plasma_current:
 
         Parameters
         ----------
-        plasma_grids : Grids
+        plasma_grids : freegsnke.plasma_grids
             Grids object defining the reduced plasma domain.
         Rm12 : np.ndarray
-            The diagonal matrix of vessel resistances to the power of -1/2 ($R^{-1/2}$).
+            The diagonal matrix of all metal vessel resistances to the power of -1/2 ($R^{-1/2}$).
         V : np.ndarray
-            Vessel structure voltages.
+            Matrix used to change basis from vessel metal to normal modes. See normal_modes.py  
         plasma_resistance_1d : np.ndarray
-            Plasma resistivity ($R_p$) in the reduced plasma domain.
+            Vector on plasma resistance values for all grid points in the reduced plasma domain.
         Mye : np.ndarray
-            Natrix of mutual inductances between plasma grid points and all vessel coils
+            Matrix of mutual inductances between plasma grid points and all vessel coils.
 
         """
 
@@ -35,24 +35,16 @@ class plasma_current:
         self.MyeRm12V = np.matmul(Mye, self.Rm12V)
         self.Ryy = plasma_resistance_1d
     
-    # def reduced_Iy(self, full_Iy):
-    #     Iy = full_Iy[self.mask_inside_limiter]
-    #     return Iy
 
-
-    # def Iydot(self, Iy1, Iy0, dt):
-    #     full_Iydot = (Iy1-Iy0)/dt
-    #     Iydot = self.reduced_Iy(full_Iydot)
-    #     return Iydot
 
     def reset_modes(self, V):
-        """Recalculates the factors given a new coil voltage $V$
+        """Allows a reset of the attributes set up at initialization time following a change
+        in the properties of the selected normal modes for the passive structures.
 
         Parameters
         ----------
         V : np.ndarray
-            Vessel structure voltages.
-    
+            New change of basis matrix.
         """
         self.V = V
         self.Rm12V = self.Rm12@V
@@ -67,7 +59,7 @@ class plasma_current:
             Iddot
             ):
         """
-        Solves the circuit equation to get the residual current using: 
+        Calculates the residual of the circuit equation corresponding to the input currents and derivatives. 
 
         $$I_{\text{residual}} = \frac{I_{y,0}^T}{I_{p,0}} (M_{yy} \dot{I_y} + M_{ye} R^{-1/2} V \dot{I_e} + R_{yy} I_y)/R_{p,0},$$
         
@@ -78,18 +70,18 @@ class plasma_current:
         Parameters
         ----------
         red_Iy0 : np.ndarray
-            The current in the plasma at timestep $t$ on the reduced plasma grid 
+            The plasma current distribution at timestep $t$ on the reduced plasma grid, 1d.
         red_Iy1 : np.ndarray
-            The current in the plasma at timestep $t + \Delta t$ on the reduced plasma grid 
-        red_Iydot : _type_dI
+            The plasma current distribution at timestep $t + \delta t$ on the reduced plasma grid, 1d.
+        red_Iydot : np.ndarray
             The time derivative of the current in the plasma on the reduced plasma grid
-        Iddot : _type_ 
-            The time derivative of the current in the vessel modes
+        Iddot : np.ndarray
+            The time derivative of the current, in terms of the normal modes
 
         Returns
         -------
-        np.ndarray
-            Residual current for all vessel structure. 
+        float
+            $I_{\text{residual}}$, the residual of lumped circuit equation of the plasma, see above.
         """
         Ip0 = np.sum(red_Iy0)
         norm_red_Iy0 = red_Iy0/Ip0

@@ -211,7 +211,7 @@ class nl_solver:
         # no noise is added to normal modes 
         if automatic_timestep or mode_removal:
             self.initialize_from_ICs(eq, profiles, 
-                                     rtol_NK=1e-8,
+                                     rtol_NK=1e-9,
                                      noise_level=0, 
                                      dIydI=dIydI)
         

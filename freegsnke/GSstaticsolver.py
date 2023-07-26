@@ -292,6 +292,8 @@ class NKGSsolver:
         # record xpoints and opoints
         eq.xpt = np.copy(profiles.xpt)
         eq.opt = np.copy(profiles.opt)
+        eq.psi_axis = eq.opt[0,2]
+        eq.psi_bndry = eq.xpt[0,2]
 
         
         #if max_iter was hit, then message:

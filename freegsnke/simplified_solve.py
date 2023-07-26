@@ -193,10 +193,10 @@ class simplified_solver_dJ:
                        max_internal_timestep=.0001,
                        full_timestep=.0001):
         """Initialises the solver for the extensive currents that works with 
-        I_y(t+dt)-I_y(t) = dJ*(I_p(t+dt)-I_p(t)) with given dJ (such that sum(dJ)=1).
+        I_y(t+dt)-I_y(t) = dJ*(I_p(t+dt)-I_p(t)) = dJ*dIp with given dJ (such that sum(dJ)=1).
 
         Based on the input plasma properties and coupling matrices, it prepares:
-            - an instance of the implicit Euler solver implicit_euler_solver_d()
+            - an instance of the implicit Euler solver implicit_euler_solver_d() to solve in dIp and dI(metals)
             - internal time-stepper for the implicit-Euler
             - dummy vessel voltages (zeros) in terms of filaments and eigenmodes
 
@@ -340,11 +340,10 @@ class simplified_solver_dJ:
         Parameters
         ----------
         norm_red_Iy0 : np.array
-             
+            gridded plasma current distribution over the (reduced) plasma integration domain, sums to 1
         norm_red_Iy_dot : np.array
-             
-        hatIy_1 : np.array
-            (guessed) gridded plasma current to left-contract the plasma evolution equation at time t+dt
+            (guessed) gridded change dJ of plasma current distribution over the (reduced) plasma integration domain, sums to 1
+        
         active_voltage_vec: np.array
             voltages applied to the active coils
         

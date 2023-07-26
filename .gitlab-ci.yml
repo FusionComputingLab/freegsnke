@@ -1,0 +1,15 @@
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
+image: continuumio/miniconda3:latest
+
+before_script:
+  - export PIP_CACHE_DIR="/opt/cache/pip"
+  - conda env create -f environment.yml
+  - source activate freegsnke
+  - python -m pip install pytest
+
+tests:
+  stage: test
+  script:
+    - python -m pytest -v

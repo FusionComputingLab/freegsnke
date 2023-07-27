@@ -9,6 +9,8 @@ __pycache__
 examples/example_nonlinear_evolution_*
 examples/*.pdf
 examples/*.png
+examples/*.txt
+examples/test_dynamics_*
 examples/modes
 freegsnke/nonlinear_solve_*
 freegsnke/plasma_grids*

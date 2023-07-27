@@ -20,34 +20,36 @@ class simplified_solver_J1:
                        plasma_resistance_1d,
                        max_internal_timestep=.0001,
                        full_timestep=.0001):
-        """Initialises the solver for the extensive currents that works with I_y(t+dt) = \hat{I_y}*I_p(t+dt) with given \hat{I_y}.
-        \hat{I_y} is such that is must sum to 1 over the plasma integration domain.
+        """Initialises the solver for the extensive currents that works with 
+        I_y(t+dt) = \hat{I_y}*I_p(t+dt), with given \hat{I_y}.
+        \hat{I_y} is such that it must sum to 1 over the plasma integration domain.
 
         Based on the input plasma properties and coupling matrices, it prepares:
             - an instance of the implicit Euler solver implicit_euler_solver()
             - internal time-stepper for the implicit-Euler
-            - dummy vessel voltages (zeros) in terms of filaments and eigenmodes
 
         Parameters
         ----------
         Lambdam1: np.array
-            diagonal matrix, inverse of diagonal form of
+            State matrix of the metal circuit equations in terms of the normal modes for the passive structures.
             Lambdam1 = self.Vm1@normal_modes.rm1l@self.V, where rm1l= Rm12@machine_config.coil_self_ind@Rm12
             V is the identity on the active coils and diagonalises only the passive coils (R^{-1/2}L_{passive}R^{-1/2})
+            Note that Lambdam1 is not a diagonal matrix.
         Vm1Rm12: np.array
             matrix combination V^{-1}R^{-1/2}, where V is defined above
         Mey: np.array 
-            matrix of inductances between the reduced plasma domain cells and all metal coils
-            (active coils and passive-structure filaments, self.Vm1Rm12Mey below is the one between plasma and modes)
+            matrix of inductances between grid points in the reduced plasma domain and all metal coils
+            (active coils and passive-structure filaments, self.Vm1Rm12Mey below is the one between plasma and the normal modes)
             calculated by plasma_grids.py
         Myy: np.array 
-            inductance matrix of reduced plasma domain cells
+            inductance matrix of grid points in the reduced plasma domain
             calculated by plasma_grids.py
         plasma_norm_factor: float
-            an overall number to work with rescaled currents that are within a comparable range
+            an overall number to work with a rescaled plasma current, so that it's within a comparable range
         plasma_resistance_1d: np.array 
             plasma reistance in each (reduced domain) plasma cell, R_yy, raveled to be of the same shape as I_y,
-            the one-dimensional plasma resistance is obtained by integrating \hat{I_y}R_{yy}\hat{I_{y}}/I_{p}^2
+            the lumped total plasma resistance is obtained by contracting 
+            \hat{I_y}R_{yy}\hat{I_{y}} = I_y R_{yy}I_{y} / I_{p}^2
         max_internal_timestep: float
             internal integration timestep of the implicit-Euler solver, to be used as substeps over the <<full_timestep>> interval
         full_timestep: float
@@ -89,6 +91,7 @@ class simplified_solver_J1:
         # dummy voltage vec for eig modes
         self.forcing = np.zeros(self.n_independent_vars + 1)
         
+
     def reset_timesteps(self, max_internal_timestep,
                               full_timestep):
         """Resets the integration timesteps, calling self.solver.set_timesteps
@@ -147,7 +150,8 @@ class simplified_solver_J1:
 
         self.solver.set_Lmatrix(self.Lmatrix)
         self.solver.set_Mmatrix(self.Mmatrix)
-        self.solver.calc_inverse_operator() # recalculate the inverse operator1
+        # recalculate the inverse operator
+        self.solver.calc_inverse_operator() 
 
         self.empty_U[:self.n_active_coils] = active_voltage_vec
         self.forcing[:-1] = np.dot(self.Vm1Rm12, self.empty_U)

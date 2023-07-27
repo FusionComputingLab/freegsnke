@@ -793,12 +793,17 @@ class nl_solver:
         self.currents_vec = np.copy(self.trial_currents)
         self.assign_currents(self.currents_vec, self.eq1, self.profiles1)
         
-        self.eq1.plasma_psi = np.copy(self.trial_plasma_psi)
-        self.profiles1.Ip = self.trial_currents[-1]*self.plasma_norm_factor
+        # self.eq1.plasma_psi = np.copy(self.trial_plasma_psi)
+        # self.profiles1.Ip = self.trial_currents[-1]*self.plasma_norm_factor
         if from_linear:
-            self.profiles1.jtor = np.copy(self.profiles2.jtor)
+            self.profiles1 = deepcopy(self.profiles2)
+            self.eq1 = deepcopy(self.eq2)
+            # self.profiles1.jtor = np.copy(self.profiles2.jtor)
         else:
+            self.eq1.plasma_psi = np.copy(self.trial_plasma_psi)
+            self.profiles1.Ip = self.trial_currents[-1]*self.plasma_norm_factor
             self.profiles1.Jtor(self.eqR, self.eqZ, self.tokamak_psi + self.trial_plasma_psi)
+            self.NK.port_critical(self.eq1, self.profiles1)
 
         self.Iy = self.plasma_grids.Iy_from_jtor(self.profiles1.jtor)
         self.hatIy = self.plasma_grids.normalize_sum(self.Iy)

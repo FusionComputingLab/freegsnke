@@ -163,6 +163,21 @@ class NKGSsolver:
         return residual
     
 
+    def port_critical(self, eq, profiles):
+        """Transfers critical points info from profile to eq after GS solution or Jtor calculation
+
+        Parameters
+        ----------
+        eq : freeGS equilibrium object
+            Equilibrium on which to record values
+        profiles : freeGS profile object
+            Profiles object which has been used to calculate Jtor.
+        """
+        eq.xpt = np.copy(profiles.xpt)
+        eq.opt = np.copy(profiles.opt)
+        eq.psi_axis = eq.opt[0,2]
+        eq.psi_bndry = eq.xpt[0,2]
+
 
     
 
@@ -290,10 +305,11 @@ class NKGSsolver:
         eq._current = np.sum(profiles.jtor)*self.dRdZ
 
         # record xpoints and opoints
-        eq.xpt = np.copy(profiles.xpt)
-        eq.opt = np.copy(profiles.opt)
-        eq.psi_axis = eq.opt[0,2]
-        eq.psi_bndry = eq.xpt[0,2]
+        # eq.xpt = np.copy(profiles.xpt)
+        # eq.opt = np.copy(profiles.opt)
+        # eq.psi_axis = eq.opt[0,2]
+        # eq.psi_bndry = eq.xpt[0,2]
+        self.port_critical(eq=eq, profiles=profiles)
 
         
         #if max_iter was hit, then message:

@@ -12,6 +12,13 @@ from copy import deepcopy
 from IPython.display import display, clear_output
 import time
 
+import os
+
+os.environ["ACTIVE_COILS_PATH"] = "./machine_configs/MAST-U/active_coils.pickle"
+os.environ["PASSIVE_COILS_PATH"] = "./machine_configs/MAST-U/passive_coils.pickle"
+os.environ["WALL_PATH"] = "./machine_configs/MAST-U/wall.pickle"
+
+from freegsnke import build_machine
 
 @pytest.fixture()
 def create_machine():
@@ -22,8 +29,8 @@ def create_machine():
     #tokamak = freegs.machine.MASTU()
     # or
     # MASTU_coils.MASTU_wpass()
-    from freegsnke import MASTU_coils
-    tokamak = MASTU_coils.MASTU_wpass()
+    # from freegsnke import MASTU_coils
+    tokamak = build_machine.tokamak()
 
 
     # Creates equilibrium object and initializes it with 
@@ -97,10 +104,12 @@ def create_test_files_static_solve(create_machine):
         the equilibirum, profiles and constrain object to generate the test set from. 
     """
     eq, profiles, constrain = create_machine
+    
+    from freegsnke import GSstaticsolver
+    NK = GSstaticsolver.NKGSsolver(eq)
 
-
-    from freegsnke import newtonkrylov
-    NK = newtonkrylov.NewtonKrylov(eq)
+    # from freegsnke import newtonkrylov
+    # NK = newtonkrylov.NewtonKrylov(eq)
 
     eq.tokamak['P6'].current = 0
     eq.tokamak['P6'].control = False
@@ -117,7 +126,7 @@ def create_test_files_static_solve(create_machine):
     eq.tokamak.setControlCurrents(controlCurrents)
 
 
-    NK.solve(eq, profiles, rel_convergence=1e-8)
+    NK.solve(eq, profiles, 1e-8)
 
     test_psi = np.load("./freegsnke/tests/test_psi.npy")
 
@@ -131,10 +140,12 @@ def test_static_solve(create_machine):
         the equilibirum, profiles and constrain object to generate the test set from. 
     """
     eq, profiles, constrain = create_machine
+    
+    from freegsnke import GSstaticsolver
+    NK = GSstaticsolver.NKGSsolver(eq)
 
-
-    from freegsnke import newtonkrylov
-    NK = newtonkrylov.NewtonKrylov(eq)
+    # from freegsnke import newtonkrylov
+    # NK = newtonkrylov.NewtonKrylov(eq)
 
     eq.tokamak['P6'].current = 0
     eq.tokamak['P6'].control = False
@@ -151,7 +162,7 @@ def test_static_solve(create_machine):
     eq.tokamak.setControlCurrents(controlCurrents)
 
 
-    NK.solve(eq, profiles, rel_convergence=1e-8)
+    NK.solve(eq, profiles, 1e-8)
 
     test_psi = np.load("./freegsnke/tests/test_psi.npy")
 

@@ -1,12 +1,18 @@
+import os
 import pytest
 import freegs
 import numpy as np
-from freegsnke import MASTU_coils
-from freegsnke.plasma_grids import define_reduced_plasma_grid, make_layer_mask, Myy, Mey
+
+os.environ["ACTIVE_COILS_PATH"] = "./machine_configs/MAST-U/active_coils.pickle"
+os.environ["PASSIVE_COILS_PATH"] = "./machine_configs/MAST-U/passive_coils.pickle"
+os.environ["WALL_PATH"] = "./machine_configs/MAST-U/wall.pickle"
+
+from freegsnke import build_machine
+from freegsnke.plasma_grids import Grids
 
 @pytest.fixture
 def eq():
-    tokamak = MASTU_coils.MASTU_wpass()
+    tokamak = build_machine.tokamak()
 
 
     # Creates equilibrium object and initializes it with 
@@ -22,7 +28,13 @@ def eq():
                             )  
     return eq
 
-def test_define_reduced_plasma_grid(eq):
+
+@pytest.fixture
+def grids(eq):
+    return Grids(eq, None)
+
+
+def test_plasma_domain_mask(eq, grids):
     """Tests if the shape of the limiter mask is correct and if the points returned are unique
 
     Parameters
@@ -30,12 +42,10 @@ def test_define_reduced_plasma_grid(eq):
     eq : freegs.Equilibrium
         An equilbrium object
     """
-    plasma_pts, mask_inside_limiter = define_reduced_plasma_grid(eq.R, eq.Z)
+    assert grids.plasma_domain_mask.shape == eq.R.shape, "The shape of the limiter  mask is incorrect"
+    assert len(np.unique(grids.plasma_pts, axis=0)) == len(grids.plasma_pts), f"There are {len(np.nunique(grids.plasma_pts, axis=0))} unique points out of {len(grids.plasma_pts)}"
 
-    assert mask_inside_limiter.shape == eq.R.shape, "The shape of the limiter  mask is incorrect"
-    assert len(np.unique(plasma_pts, axis=0)) == len(plasma_pts), f"There are {len(np.nunique(plasma_pts, axis=0))} unique points out of {len(plasma_pts)}"
-
-def test_make_layer_mask(eq):
+def test_make_layer_mask(eq, grids):
     """Tests if the shape of the layer mask is the correct shape and does not overlap with the limiter mask
 
     Parameters
@@ -43,13 +53,10 @@ def test_make_layer_mask(eq):
     eq : freegs.Equilibrium
         An equilbrium object
     """
-    plasma_pts, mask_inside_limiter = define_reduced_plasma_grid(eq.R, eq.Z)
-    layer_mask = make_layer_mask(mask_inside_limiter)
+    assert grids.layer_mask.shape == grids.plasma_domain_mask.shape, "Layer mask is not the correct shape"
+    assert np.sum(grids.layer_mask*grids.plasma_domain_mask) == 0, "Layer mask and limiter mask are overlapping"
 
-    assert layer_mask.shape == mask_inside_limiter.shape, "Layer mask is not the correct shape"
-    assert np.sum(layer_mask*mask_inside_limiter) == 0, "Layer mask and limiter mask are overlapping"
-
-def test_Myy(eq):
+def test_Myy(grids):
     """Tests if the shape of the mutual inductance matrix is correct. The mutual inductance matrix of the plasma on itself should be symmetrical and postive definite.
 
     Parameters
@@ -57,15 +64,13 @@ def test_Myy(eq):
     eq : freegs.Equilibrium
         An equilbrium object
     """
-    plasma_pts, mask_inside_limiter = define_reduced_plasma_grid(eq.R, eq.Z)
+    Myy_ = grids.Myy()
 
-    Myy_ = Myy(plasma_pts)
-
-    assert Myy_.shape == (len(plasma_pts), len(plasma_pts)), f"Shape of Myy not correct, shape of Myy: {Myy_.shape}, number of plasma point: {len(plasma_pts)}"
+    assert Myy_.shape == (len(grids.plasma_pts), len(grids.plasma_pts)), f"Shape of Myy not correct, shape of Myy: {Myy_.shape}, number of plasma point: {len(grids.plasma_pts)}"
     assert np.all(Myy_ == Myy_.T), "Myy not symmetric"
     assert np.all(np.linalg.eigvals(Myy_ > 0)), "Myy not positive definite"
 
-def test_Mey(eq):
+def test_Mey(eq, grids):
     """Tests if the shape of the mutual inductance matrix of the plasma gridpoints and all vessel coils is correct. 
 
     Parameters
@@ -73,9 +78,23 @@ def test_Mey(eq):
     eq : freegs.Equilibrium
         An equilbrium object
     """
-    plasma_pts, mask_inside_limiter = define_reduced_plasma_grid(eq.R, eq.Z)
 
-    Mey_ = Mey(plasma_pts)
+    Mey_ = grids.Mey()
 
-    assert Mey_.shape == (len(MASTU_coils.coils_dict.keys()), len(plasma_pts)), f"Shape of Myy not correct, shape of Myy: {Mey_.shape}, number of plasma point: {len(MASTU_coils.coils_dict.keys()), len(plasma_pts)}"
+    assert Mey_.shape == (len(eq.tokamak.coils), len(grids.plasma_pts)), f"Shape of Myy not correct, shape of Myy: {Mey_.shape}, number of plasma point: {len(eq.tokomak.coils), len(grids.plasma_pts)}"
     
+@pytest.mark.skip(reason="Not implemented yet")
+def test_Iy_from_jtor():
+    raise NotImplementedError
+
+@pytest.mark.skip(reason="Not implemented yet")
+def test_normalise_sum():
+    raise NotImplementedError
+
+@pytest.mark.skip(reason="Not implemented yet")
+def test_hat_Iy_from_jtor():
+    raise NotImplementedError
+
+@pytest.mark.skip(reason="Not implemented yet")
+def test_rebuild_map2d():
+    raise NotImplementedError

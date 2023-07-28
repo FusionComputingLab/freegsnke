@@ -4,6 +4,11 @@ import freegs
 import numpy as np
 import freegsnke.jtor_update as jtor
 
+os.environ["ACTIVE_COILS_PATH"] = "./machine_configs/MAST-U/active_coils.pickle"
+os.environ["PASSIVE_COILS_PATH"] = "./machine_configs/MAST-U/passive_coils.pickle"
+os.environ["WALL_PATH"] = "./machine_configs/MAST-U/wall.pickle"
+from freegsnke import build_machine
+
 
 @pytest.fixture()
 def eq():
@@ -14,8 +19,7 @@ def eq():
     #tokamak = freegs.machine.MASTU()
     # or
     # MASTU_coils.MASTU_wpass()
-    from freegsnke import MASTU_coils
-    tokamak = MASTU_coils.MASTU_wpass()
+    tokamak = build_machine.tokamak()
 
 
     # Creates equilibrium object and initializes it with 

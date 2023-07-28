@@ -41,96 +41,53 @@ def create_machine():
                                 alpha_m = 1.8,
                                 alpha_n = 1.2)
 
-    # Sets some shape constraints (here very close to those used for initialization)
-    Rx = 0.6
-    Zx = 1.1
-
-    Rmid = 1.41   # Outboard midplane
-    Rin = 0.38  # Inboard midplane
-
-    xpoints = [(Rx, -Zx-.01),   # (R,Z) locations of X-points
-            (Rx,  Zx)]
-    isoflux = [
-            (Rx,Zx, Rx,-Zx),
-            (Rmid, 0, Rin, 0.0),
-            (Rmid,0, Rx,Zx),
-        
-            # Link inner and outer midplane locations
-            (Rx, Zx, .85, 1.7),
-            (Rx, Zx, .75, 1.6),
-            (Rx, Zx, Rin, 0.2),
-            (Rx, Zx, Rin, 0.1),
-            (Rx,-Zx, Rin, -0.1),
-            (Rx,-Zx, Rin, -0.2),
-            (Rx,-Zx, .85, -1.7),
-            (Rx,-Zx, .75, -1.6),
-
-            (Rx,-Zx, 0.45, -1.8),
-            (Rx, Zx, 0.45,  1.8),
-            ]
-
-    eq.tokamak['P6'].current = 0
-    eq.tokamak['P6'].control = False
-    eq.tokamak['Solenoid'].control = False
-
-    constrain = freegs.control.constrain(xpoints=xpoints, 
-                                        gamma=5e-6, 
-                                        isoflux=isoflux
-                                        )
-    constrain(eq)
-
     from freegsnke import GSstaticsolver
     NK = GSstaticsolver.NKGSsolver(eq)
-
-    eq.tokamak['P6'].current = 0
-    eq.tokamak['P6'].control = False
-    eq.tokamak['Solenoid'].control = False
-    eq.tokamak['Solenoid'].current = 15000
-    # Nonlinear solve
-    freegs.solve(eq,          # The equilibrium to adjust
-                profiles,    # The plasma profiles
-                constrain,   # Plasma control constraints
-                show=False,
-                rtol=3e-3)               
-    eq.tokamak['Solenoid'].current = 40000
-    freegs.solve(eq,          # The equilibrium to adjust
-                profiles,    # The plasma profiles
-                constrain,   # Plasma control constraints
-                show=False,
-                rtol=3e-3)  
+    currents = np.array([4.00000000e+04,  4.66888649e+03,  1.18887128e+04,  1.09099021e+04, 7.76454625e+03, -4.25085229e+03,  1.29072804e+03,  4.61377534e+02, 1.12340825e+01, -2.79838121e+03, -4.05265744e+03,  0.00000000e+00])
+    keys = list(eq.tokamak.getCurrents().keys())
+    for i in np.arange(12):
+        eq.tokamak[keys[i]].current = currents[i]
     NK.solve(eq, profiles, target_relative_tolerance=1e-8)
+    
 
     # Initialize the evolution object
     # This uses the starting equilibrium to get all the geometric constraints/grids etc
     from freegsnke import nonlinear_solve
     stepping = nonlinear_solve.nl_solver(profiles=profiles, eq=eq, 
                                             max_mode_frequency=10**2.5, 
-                                            full_timestep=2e-4, 
-                                            max_internal_timestep=1e-3,
+                                            full_timestep=3e-4, 
+                                            max_internal_timestep=3e-5,
                                             plasma_resistivity=5e-7,
                                             plasma_domain_mask=None,
-                                            automatic_timestep=(1/10, 1/10),
+                                            automatic_timestep=False,
                                             mode_removal=True,
                                             min_dIy_dI=1,
                                             )
-    return eq, profiles, constrain, stepping
+    return eq, profiles, stepping
 
 
 def test_linearised_growth_rate(create_machine):
-    eq, profiles, constrain, stepping = create_machine
+    eq, profiles, stepping = create_machine
                           
     # In absence of a policy, this calculates the active voltages U_active
     # to maintain the currents needed for the equilibrium statically
     U_active = (stepping.vessel_currents_vec*stepping.evol_metal_curr.R)[:stepping.evol_metal_curr.n_active_coils]
 
     # check that
-    assert abs((stepping.linearised_sol.growth_rates[0]+0.003112)/0.003111)<.01, f"Growth rate deviates { abs((stepping.linearised_sol.growth_rates[0]+0.003112)/0.003111)}% from baseline"
+    assert abs((stepping.linearised_sol.growth_rates[0]+0.00312225)/0.0031225)< 1e-4, f"Growth rate deviates { abs((stepping.linearised_sol.growth_rates[0]+0.00312225)/0.00312225)}% from baseline"
 
 
 def test_linearised_stepper(create_machine):
-    eq, profiles, constrain, stepping = create_machine
+    eq, profiles, stepping = create_machine
     U_active = (stepping.vessel_currents_vec*stepping.evol_metal_curr.R)[:stepping.evol_metal_curr.n_active_coils]
 
+    # vector of noise values
+    noise_vec = np.array([0.        ,  0.        ,  0.        ,  0.        ,  0.        ,
+            0.        ,  0.        ,  0.        ,  0.        ,  0.        ,
+            0.        ,  0.001        ,  0.00108136, -0.00068193,  0.00057806,
+        -0.00042085, -0.00064365,  0.00030653,  0.00081871, -0.00078934,
+            0.00026346,  0.00055102, -0.0003639 , -0.00059548,  0.00012328])
+    
     # Example of evolution with constant applied voltages
     t = 0
     flag = 0
@@ -138,6 +95,7 @@ def test_linearised_stepper(create_machine):
     t_per_step = []
     #use the following to reset stepping.eq1 to a new IC
     stepping.initialize_from_ICs(eq, profiles,
+                                 noise_vec=noise_vec
                                 )
                                 #  noise_level=.001, 
                                 #  noise_vec=None,
@@ -188,15 +146,26 @@ def test_linearised_stepper(create_machine):
     history_currents = np.array(history_currents)
     history_times = np.array(history_times)
     history_o_points = np.array(history_o_points)
-
-    assert abs((history_o_points[-1, 2]-0.1805)/0.1805)<.01, f"Flux deviates {abs((history_o_points[-1, 2]-0.1805)/0.1805)*100:.3f}% from baseline"
-    assert abs((history_o_points[-1, 0]-0.969)/0.969)<.01, f"R-Coordinate deviates {abs((history_o_points[-1, 0]-0.969)/0.969)*100:.3f}% from baseline."
-    assert abs((history_o_points[-1, 1]-0.000976)/0.000976)<.01, f"Z-coordinate deviates {abs((history_o_points[-1, 1]-0.000976)/0.000976)*100:.3f}% from baseline." ##TODO check this error percentage
+    
+    leeway = np.array([(stepping.eqR[-1,-1]-stepping.eqR[0,0])/stepping.nx, (stepping.eqZ[-1,-1]-stepping.eqZ[0,0])/stepping.ny])/10 # 1/10th of the pixel size
+    
+    true_o_point = np.array([9.69180105e-01, 8.26792234e-04])
+    true_x_point = np.array([0.60045696, 1.09597043])
+    
+    assert np.all(np.abs((history_o_points[-1, :2] - true_o_point)) < leeway), "O-point location deviates more than 1/10th of pixel size." 
+    assert np.all(np.abs((stepping.eq1.xpt[0, :2] - true_x_point)) < leeway), "X-point location deviates more than 1/10th of pixel size." 
 
 
 def test_non_linear_stepper(create_machine):
-    eq, profiles, constrain, stepping = create_machine
+    eq, profiles, stepping = create_machine
     U_active = (stepping.vessel_currents_vec*stepping.evol_metal_curr.R)[:stepping.evol_metal_curr.n_active_coils]
+
+    # vector of noise values
+    noise_vec = np.array([0.        ,  0.        ,  0.        ,  0.        ,  0.        ,
+            0.        ,  0.        ,  0.        ,  0.        ,  0.        ,
+            0.        ,  0.001        ,  0.00108136, -0.00068193,  0.00057806,
+        -0.00042085, -0.00064365,  0.00030653,  0.00081871, -0.00078934,
+            0.00026346,  0.00055102, -0.0003639 , -0.00059548,  0.00012328])
 
     # Example of evolution with constant applied voltages
     t = 0
@@ -205,7 +174,8 @@ def test_non_linear_stepper(create_machine):
     t_per_step = []
 
     #use the following to reset stepping.eq1 to a new IC
-    stepping.initialize_from_ICs(eq, profiles,)
+    stepping.initialize_from_ICs(eq, profiles,
+                                 noise_vec=noise_vec)
                                 # noise_vec=stepping.noise_vec,)
                                 #  update_linearization=False,
                                 #  update_n_steps=12,
@@ -236,7 +206,6 @@ def test_non_linear_stepper(create_machine):
                                             verbose=False,
                                             linear_only=False)       
 
-    
         t_end = time.time()
         t_per_step.append(t_end-t_start)
 
@@ -256,38 +225,9 @@ def test_non_linear_stepper(create_machine):
     history_times = np.array(history_times)
     history_o_points = np.array(history_o_points)
 
+    leeway = np.array([(stepping.eqR[-1,-1]-stepping.eqR[0,0])/stepping.nx, (stepping.eqZ[-1,-1]-stepping.eqZ[0,0])/stepping.ny])/10 # 1/10th of the pixel size
+    true_o_point = np.array([9.69102054e-01, 8.45405683e-04])
+    true_x_point = np.array([0.6004537 , 1.09587265])
 
-    # # Evolution of tracked values
-    # fig, axs = plt.subplots(2, 3, figsize=(10, 5), dpi=80, constrained_layout=True)
-    # axs_flat = axs.flat
-
-    # axs_flat[0].plot(history_times, history_o_points[:, 0],'k+')
-    # axs_flat[0].set_xlabel('Time')
-    # axs_flat[0].set_ylabel('O-point $R$')
-
-    # axs_flat[1].plot(history_times, history_o_points[:, 1],'k+')
-    # axs_flat[1].set_xlabel('Time')
-    # axs_flat[1].set_ylabel('O-point $Z$')
-
-    # axs_flat[2].plot(history_times, history_o_points[:, 2],'k+')
-    # axs_flat[2].set_xlabel('Time')
-    # axs_flat[2].set_ylabel('O-point $\Psi$')
-
-    # axs_flat[3].plot(history_times, history_currents[:,-1]*stepping.plasma_norm_factor,'k+')
-    # axs_flat[3].set_xlabel('Time')
-    # axs_flat[3].set_ylabel('Plasma current')
-
-    # axs_flat[4].plot(history_times, history_width,'k+')
-    # axs_flat[4].set_xlabel('Time')
-    # axs_flat[4].set_ylabel('Plasma width')
-
-    # axs_flat[5].plot(history_times, history_elongation,'k+')
-    # axs_flat[5].set_xlabel('Time')
-    # axs_flat[5].set_ylabel('Plasma elongation')
-
-    # check that 
-    assert abs((history_o_points[-1, 2]-0.1805)/0.1805)<.03, f"Flux deviates {abs((history_o_points[-1, 2]-0.1805)/0.1805)*100:.3f}% from baseline"
-    assert abs((history_o_points[-1, 0]-0.969)/0.969)<.03, f"R-coordinate deviates {abs((history_o_points[-1, 0]-0.969)/0.969)*100:.3f}% from baseline"
-    assert abs((history_o_points[-1, 1]-0.000976)/0.000976)<.03, f"Z-coordinate deviates {abs((history_o_points[-1, 1]-0.000976)/0.000976)*100:.3f}% from baseline" ##TODO check this error percentage
-
-
+    assert np.all(np.abs((history_o_points[-1, :2] - true_o_point)) < leeway), "O-point location deviates more than 1/10th of pixel size." 
+    assert np.all(np.abs((stepping.eq1.xpt[0, :2] - true_x_point)) < leeway), "X-point location deviates more than 1/10th of pixel size." 

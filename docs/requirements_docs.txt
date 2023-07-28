@@ -1,0 +1,4 @@
+sphinx-math-dollar
+sphinx-rtd-dark-mode
+sphinx-rtd-theme
+ipython

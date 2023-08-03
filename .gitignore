@@ -6,7 +6,6 @@
 .ipynb_checkpoints
 __pycache__
 .DS_Store
-examples/example_nonlinear_evolution_*
 examples/*.pdf
 examples/*.png
 examples/*.txt

@@ -176,7 +176,10 @@ class NKGSsolver:
         eq.xpt = np.copy(profiles.xpt)
         eq.opt = np.copy(profiles.opt)
         eq.psi_axis = eq.opt[0,2]
-        eq.psi_bndry = eq.xpt[0,2]
+
+        # eq.psi_bndry = eq.xpt[0,2]
+        eq.psi_bndry = profiles.psi_bndry
+        eq.flag_limiter = profiles.flag_limiter
 
 
     
@@ -303,6 +306,7 @@ class NKGSsolver:
 
         # update plasma current
         eq._current = np.sum(profiles.jtor)*self.dRdZ
+        eq._profiles = profiles
 
         # record xpoints and opoints
         # eq.xpt = np.copy(profiles.xpt)

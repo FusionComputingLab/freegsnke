@@ -1,6 +1,7 @@
 import os
 import pickle
-from freegs.machine import Machine, Circuit, Wall, Solenoid
+from freegs.machine import Circuit, Wall, Solenoid
+from .machine_update import Machine
 from freegs.coil import Coil
 from freegs.multi_coil import MultiCoil
 

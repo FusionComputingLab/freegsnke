@@ -945,3 +945,12 @@ for i in range(len(rwall)):
     wall.append({"R": rwall[i], "Z": zwall[i]})
 
 pickle.dump(wall, open("wall.pickle", "wb"))
+
+
+wall = np.concatenate((np.array(rwall)[:,np.newaxis],
+                       np.array(zwall)[:,np.newaxis]), axis=-1)
+limiter_pts = np.concatenate((wall[7:25], wall[48:58], wall[59:60], wall[62:63], wall[64:74], wall[7:8]), axis=0)
+limiter = []
+for i in range(len(limiter_pts)):
+    limiter.append({"R": limiter_pts[i,0], "Z": limiter_pts[i,1]})
+pickle.dump(limiter, open("limiter.pickle", "wb"))

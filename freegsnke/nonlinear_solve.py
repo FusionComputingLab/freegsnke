@@ -81,6 +81,8 @@ class nl_solver:
             mask of grid domain points to be included in the current circuit equation.
             This reduces the dimensionality of associated matrices. 
             Include all regions within the limiter, or where the plasma is expected to be.
+            If None, the mask of points within the limiter profiles.mask_inside_limiter
+            will be used.
         nbroad : int, optional, by default 3
             pixel size (as number of grid points) of (square) smoothing filter applied to 
             the instantaneous plasma current distribution, before contracting the plasma circuit equations
@@ -117,6 +119,8 @@ class nl_solver:
         self.NK = NKGSsolver(eq)
         
         # setting up domain for plasma circuit eq.: 
+        if plasma_domain_mask is None:
+            plasma_domain_mask = profiles.mask_inside_limiter
         self.plasma_grids = plasma_grids.Grids(eq, plasma_domain_mask)
         self.plasma_domain_mask = self.plasma_grids.plasma_domain_mask
         self.plasma_domain_size = np.sum(self.plasma_grids.plasma_domain_mask)

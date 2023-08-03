@@ -76,7 +76,7 @@ class ConstrainBetapIp(freegs.jtor.ConstrainBetapIp):
         """Used when FreeGSfast is available."""
         self.diverted_core_mask = super().Jtor_part1(R, Z, psi, psi_bndry)
         if self.diverted_core_mask is None:
-            print('no xpt')
+            # print('no xpt')
             self.psi_bndry, self.limiter_core_mask, self.flag_limiter = psi_bndry, None, False
         else: 
             self.psi_bndry, self.limiter_core_mask, self.flag_limiter = limiter.core_mask_limiter(psi,
@@ -134,7 +134,7 @@ class ConstrainPaxisIp(freegs.jtor.ConstrainPaxisIp):
         """Used when FreeGSfast is available."""
         self.diverted_core_mask = super().Jtor_part1(R, Z, psi, psi_bndry)
         if self.diverted_core_mask is None:
-            print('no xpt')
+            # print('no xpt')
             self.psi_bndry, self.limiter_core_mask, self.flag_limiter = psi_bndry, None, False
         else: 
             self.psi_bndry, self.limiter_core_mask, self.flag_limiter = limiter.core_mask_limiter(psi,

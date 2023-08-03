@@ -4,6 +4,35 @@ from freegs import critical
 from . import limiter
 from . import plasma_grids
 
+from matplotlib.path import Path
+
+
+
+def build_mask_inside_limiter(eq, limiter):
+    """Uses the coordinates of points along the edge of the limiter region
+    to generate the mask of contained domain points.
+
+    Parameters
+    ----------
+    eq : freeGS Equilibrium object
+        Specifies the domain properties
+    limiter : freeGS.machine.Wall object
+        Specifies the limiter contour points
+    Returns
+    -------
+    mask_inside_limiter : np.array
+        Mask over the full domain of grid points inside the limiter region.
+    """
+    verts = np.concatenate((np.array(limiter.R)[:,np.newaxis],
+                            np.array(limiter.Z)[:,np.newaxis]), axis=-1)
+    path = Path(verts)
+
+    points = np.concatenate((eq.R[:,:,np.newaxis], eq.Z[:,:,np.newaxis]), axis=-1)
+    
+    mask_inside_limiter = path.contains_points(points.reshape(-1,2))
+    mask_inside_limiter = mask_inside_limiter.reshape(np.shape(eq.R))
+    return mask_inside_limiter
+
 
 class ConstrainBetapIp(freegs.jtor.ConstrainBetapIp):
     """FreeGS profile class with a few modifications, to:
@@ -12,7 +41,7 @@ class ConstrainBetapIp(freegs.jtor.ConstrainBetapIp):
 
     """
 
-    def __init__(self, mask_inside_limiter, *args, **kwargs):
+    def __init__(self, eq, limiter, *args, **kwargs):
         """Instantiates the object.
 
         Parameters
@@ -21,9 +50,9 @@ class ConstrainBetapIp(freegs.jtor.ConstrainBetapIp):
             Boole mask, it is True inside the limiter. Same size as full domain grid: (eq.nx, eq.ny)
         """
         super().__init__(*args, **kwargs)
-        self.mask_inside_limiter = mask_inside_limiter
-        self.limiter_mask_out = plasma_grids.make_layer_mask(mask_inside_limiter, layer_size=1)
-        self.limiter_mask_in = plasma_grids.make_layer_mask(np.invert(mask_inside_limiter), layer_size=1)
+        self.mask_inside_limiter = build_mask_inside_limiter(eq, limiter)
+        self.limiter_mask_out = plasma_grids.make_layer_mask(self.mask_inside_limiter, layer_size=1)
+        self.limiter_mask_in = plasma_grids.make_layer_mask(np.invert(self.mask_inside_limiter), layer_size=1)
         if not hasattr(self, 'fast'):
             self.Jtor = self._Jtor
         else:
@@ -68,18 +97,20 @@ class ConstrainPaxisIp(freegs.jtor.ConstrainPaxisIp):
 
     """
 
-    def __init__(self, mask_inside_limiter, *args, **kwargs):
+    def __init__(self, eq, limiter, *args, **kwargs):
         """Instantiates the object.
 
         Parameters
         ----------
-        mask_inside_limiter : np.array
-            Boole mask, it is True inside the limiter. Same size as full domain grid: (eq.nx, eq.ny)
+        eq : freeGS Equilibrium object
+            Specifies the domain properties
+        limiter : freeGS.machine.Wall object
+            Specifies the limiter contour points
         """
-        super().__init__(*args, **kwargs)
-        self.mask_inside_limiter = mask_inside_limiter
-        self.limiter_mask_out = plasma_grids.make_layer_mask(mask_inside_limiter, layer_size=1)
-        self.limiter_mask_in = plasma_grids.make_layer_mask(np.invert(mask_inside_limiter), layer_size=1)
+        super().__init__(*args, **kwargs) 
+        self.mask_inside_limiter = build_mask_inside_limiter(eq, limiter)
+        self.limiter_mask_out = plasma_grids.make_layer_mask(self.mask_inside_limiter, layer_size=1)
+        self.limiter_mask_in = plasma_grids.make_layer_mask(np.invert(self.mask_inside_limiter), layer_size=1)
         if not hasattr(self, 'fast'):
             self.Jtor = self._Jtor
         else:

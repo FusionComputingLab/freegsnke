@@ -21,8 +21,8 @@ class NKGSsolver:
 
         """Instantiates the solver object.
         Based on the domain grid of the input equilibrium object, it prepares
-            - the linear solver 'self.linear_GS_solver'
-            - the response matrix of boundary grid points 'self.greens_boundary'
+        - the linear solver 'self.linear_GS_solver'
+        - the response matrix of boundary grid points 'self.greens_boundary'
 
 
         Parameters

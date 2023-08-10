@@ -114,6 +114,8 @@ html_css_files = [
     'css/custom_tabs.css',
 ]
 
-suppress_warnings = [ 'autosectionlabel.*', 'autodoc','autodoc.import_object']
+# suppress_warnings = [ 'autosectionlabel.*' ]
+
+autodoc_mock_imports = ["freegs"]
 
 # -- Extension configuration -------------------------------------------------

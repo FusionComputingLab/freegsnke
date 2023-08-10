@@ -1012,7 +1012,7 @@ class nl_solver:
         """Finds the normalised plasma current distribution corresponding
         to the combination of the input current values by solving the static GS problem.
         
-         Parameters
+        Parameters
         ----------
         trial_currents : np.array
             Vector of current values. Same format as self.currents_vec.

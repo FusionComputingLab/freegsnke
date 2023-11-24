@@ -23,7 +23,7 @@ class Limiter_handler:
         self.dR = self.eqR[1, 0] - self.eqR[0, 0]
         self.dZ = self.eqZ[0, 1] - self.eqZ[0, 0]
         self.dRdZ = self.dR*self.dZ
-        self.ker_signs = np.array([[1,-1],[-1,1]])[np.newaxis, :, :]
+        # self.ker_signs = np.array([[1,-1],[-1,1]])[np.newaxis, :, :]
         self.eq_shape = np.shape(eq.R)
         self.build_mask_inside_limiter()
         self.limiter_points()
@@ -84,9 +84,9 @@ class Limiter_handler:
         fine_points = np.concatenate(fine_points, axis=0)
 
         Rvals = self.eqR[:,0]
-        Ridxs = np.sum(Rvals[np.newaxis,:] < fine_points[:,:1], axis=1)
+        Ridxs = np.sum(Rvals[np.newaxis,:] < fine_points[:,:1], axis=1) - 1
         Zvals = self.eqZ[0,:]
-        Zidxs = np.sum(Zvals[np.newaxis,:] < fine_points[:,1:2], axis=1)
+        Zidxs = np.sum(Zvals[np.newaxis,:] < fine_points[:,1:2], axis=1) - 1
         self.grid_per_limiter_fine_point = np.concatenate((Ridxs[:,np.newaxis], Zidxs[:,np.newaxis]), axis=-1)
 
         self.fine_point_per_cell = {}
@@ -99,9 +99,9 @@ class Limiter_handler:
                 self.fine_point_per_cell_Z[Ridxs[i], Zidxs[i]] = []
             self.fine_point_per_cell[Ridxs[i], Zidxs[i]].append(i)
             self.fine_point_per_cell_R[Ridxs[i], Zidxs[i]].append([self.eqR[Ridxs[i]+1, Zidxs[i]] - fine_points[i,0],
-                                                                   self.eqR[Ridxs[i], Zidxs[i]] - fine_points[i,0]])
+                                                                 -(self.eqR[Ridxs[i], Zidxs[i]] - fine_points[i,0])])
             self.fine_point_per_cell_Z[Ridxs[i], Zidxs[i]].append([[self.eqZ[Ridxs[i], Zidxs[i]+1] - fine_points[i,1],
-                                                                   self.eqZ[Ridxs[i], Zidxs[i]] - fine_points[i,1]]])
+                                                                  -(self.eqZ[Ridxs[i], Zidxs[i]] - fine_points[i,1])]])
         for key in self.fine_point_per_cell.keys():
             self.fine_point_per_cell_R[key] = np.array(self.fine_point_per_cell_R[key])
             self.fine_point_per_cell_Z[key] = np.array(self.fine_point_per_cell_Z[key])
@@ -132,7 +132,7 @@ class Limiter_handler:
         """
         if (id_R, id_Z) in self.fine_point_per_cell_Z.keys():
             ker = psi[id_R:id_R+2, id_Z:id_Z+2][np.newaxis, :, :]
-            ker *= self.ker_signs
+            # ker *= self.ker_signs
             vals = np.sum(ker*self.fine_point_per_cell_Z[id_R, id_Z], axis=-1)
             vals = np.sum(vals*self.fine_point_per_cell_R[id_R, id_Z], axis=-1)
         else:
@@ -216,6 +216,7 @@ class Limiter_handler:
         """
 
         offending_mask = (core_mask * limiter_mask_out).astype(bool)
+        self.offending_mask = offending_mask
         flag_limiter = np.any(offending_mask)
 
         if flag_limiter:

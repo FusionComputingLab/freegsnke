@@ -507,10 +507,13 @@ class nl_solver:
         profiles : FreeGS profile Object
             Profile function of the initial equilibrium. 
         """
-        self.paxis = profiles.paxis
         self.fvac = profiles.fvac
         self.alpha_m = profiles.alpha_m
         self.alpha_n = profiles.alpha_n
+        if hasattr(profiles, 'paxis'):
+            self.profile_value = profiles.paxis
+        else:
+            self.profile_value = profiles.betap
 
 
     def get_vessel_currents(self, eq):

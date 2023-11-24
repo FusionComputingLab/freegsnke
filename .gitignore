@@ -14,4 +14,5 @@ examples/modes
 freegsnke/nonlinear_solve_*
 freegsnke/plasma_grids*
 freegsnke/newtonkrylov_*
+examples/example_nonlinear_evolution_diverted_*
 docs/_build

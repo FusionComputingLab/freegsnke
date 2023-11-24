@@ -511,9 +511,9 @@ class nl_solver:
         self.alpha_m = profiles.alpha_m
         self.alpha_n = profiles.alpha_n
         if hasattr(profiles, 'paxis'):
-            self.profile_value = profiles.paxis
+            self.profile_parameter = profiles.paxis
         else:
-            self.profile_value = profiles.betap
+            self.profile_parameter = profiles.betap
 
 
     def get_vessel_currents(self, eq):
@@ -1149,6 +1149,8 @@ class nl_solver:
 
 
     def nlstepper(self, active_voltage_vec, 
+                        profile_parameter=None,
+                        profile_coefficients=None,
                         target_relative_tol_currents=.01,
                         target_relative_tol_GS=.01,
                         working_relative_tol_GS=.002,
@@ -1195,6 +1197,12 @@ class nl_solver:
         ----------
         active_voltage_vec : np.array
             Vector of active voltages for the active coils, applied between t and t+dt.
+        profile_parameter : None or float for new paxis or betap
+            Set to None when the profile parameter (paxis or betap) is left unchanged
+            with respect to the previous timestep. Set here desired value otherwise.
+        profile_coefficients : None or tuple (alpha_m, alpha_n)  
+            Set to None when the profile coefficients alpha_m and alpha_n are left unchanged
+            with respect to the previous timestep. Set here desired values otherwise.
         target_relative_tol_currents : float, optional, by default .01
             Relative tolerance in the currents required for convergence.
         target_relative_tol_GS : float, optional, by default .01
@@ -1265,14 +1273,35 @@ class nl_solver:
 
         """
 
+        # check if profile parameter (betap or paxis) is being altered 
+        # and action the change where necessary
+        profile_change_flag = 0
+        if profile_parameter is not None:
+            if profile_parameter != self.profiles1.profile_parameter:
+                profile_change_flag += 1
+                self.profiles1.assign_profile_parameter(profile_parameter)
+                self.profiles2.assign_profile_parameter(profile_parameter)
+        if profile_coefficients is not None:
+            if profile_coefficients[0] != self.profiles1.alpha_m or profile_coefficients[1] != self.profiles1.alpha_n:
+                profile_change_flag += 1
+                self.profiles1.alpha_m = profile_coefficients[0]
+                self.profiles1.alpha_n = profile_coefficients[1]
+                self.profiles2.alpha_m = profile_coefficients[0]
+                self.profiles2.alpha_n = profile_coefficients[1]
+        
         # solves the linearised problem for the currents. 
         # Solution and GS equilibrium are assigned to self.trial_currents and self.trial_plasma_psi
         self.set_linear_solution(active_voltage_vec)
-        
 
         if linear_only:
             # assign currents and plasma flux to self.currents_vec, self.eq1 and self.profile1 and complete step
             self.step_complete_assign(working_relative_tol_GS, from_linear=True)
+            # linear solution as currently implemented does not account for profile changes. 
+            # can be implemented easily!
+            if profile_change_flag:
+                print('The profile has been changed but a linear analysis has been requested.')
+                print('These results do not account for the varying profile.')
+                print('Please use full non linear solver by setting linear_only=False.')
         else:
             # seek solution of the full nonlinear problem
             

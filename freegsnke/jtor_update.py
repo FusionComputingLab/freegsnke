@@ -21,6 +21,7 @@ class ConstrainBetapIp(freegs.jtor.ConstrainBetapIp):
             Boole mask, it is True inside the limiter. Same size as full domain grid: (eq.nx, eq.ny)
         """
         super().__init__(*args, **kwargs)
+        self.profile_parameter = self.betap
 
         self.limiter_handler = limiter_func.Limiter_handler(eq, limiter)
         self.limiter_mask_out = plasma_grids.make_layer_mask(self.limiter_handler.mask_inside_limiter, layer_size=1)
@@ -31,6 +32,16 @@ class ConstrainBetapIp(freegs.jtor.ConstrainBetapIp):
             self.Jtor = self._Jtor
         else:
             self.Jtor = self.Jtor_fast
+
+    def assign_profile_parameter(self, betap):
+        """Assigns to the profile object a new value of the profile parameter betap"""
+        self.betap = betap
+        self.profile_parameter = betap
+
+    def assign_profile_coefficients(self, alpha_m, alpha_n):
+        """Assigns to the profile object new value of the coefficients (alpha_m, alpha_n)"""
+        self.alpha_m = alpha_m
+        self.alpha_n = alpha_n
 
     def _Jtor(self, R, Z, psi, psi_bndry=None):
         """Replaces the original FreeGS Jtor method if FreeGSfast is not available."""
@@ -82,6 +93,7 @@ class ConstrainPaxisIp(freegs.jtor.ConstrainPaxisIp):
             Specifies the limiter contour points
         """
         super().__init__(*args, **kwargs) 
+        self.profile_parameter = self.paxis
         
         self.limiter_handler = limiter_func.Limiter_handler(eq, limiter)
         self.limiter_mask_out = plasma_grids.make_layer_mask(self.limiter_handler.mask_inside_limiter, layer_size=1)
@@ -91,6 +103,16 @@ class ConstrainPaxisIp(freegs.jtor.ConstrainPaxisIp):
             self.Jtor = self._Jtor
         else:
             self.Jtor = self.Jtor_fast
+
+    def assign_profile_parameter(self, paxis):
+        """Assigns to the profile object a new value of the profile parameter paxis"""
+        self.paxis = paxis
+        self.profile_parameter = paxis
+
+    def assign_profile_coefficients(self, alpha_m, alpha_n):
+        """Assigns to the profile object new value of the coefficients (alpha_m, alpha_n)"""
+        self.alpha_m = alpha_m
+        self.alpha_n = alpha_n
 
     def _Jtor(self, R, Z, psi, psi_bndry=None):
         """Replaces the original FreeGS Jtor method if FreeGSfast is not available."""

@@ -16,9 +16,9 @@ Building from source is currently the only supported installation method and req
 > If this environment setup step fails, try installing the dependencies with less restrictive version requirements. 
 3. Activate this environment with `conda activate freegsnke`.
 4. Clone [FreeGSFast](https://github.com/farscape-project/freegsfast) into a directory that is *not* within the FreeGSNKE repository and `cd` into it.
-5. Install FreeGSFast locally with `pip install -e .`.
+5. Install FreeGSFast locally with `pip install .`.
 > **Note**
-> The FreeGSFast dependencies have already been installed in step 2 so do not need to be installed again.
+> You don't need to follow the installation instructions in the FreeGSFast installation directory when installing FreeGSFast as a FreeGSNKE dependency. Simply run `pip install .` from the FreeGSFast repository with the `freegsnke` conda environment active to install it. Furthermore, the FreeGSFast dependencies have already been installed in step 2 so do not need to be installed again.
 6. `cd` back to the `freegsnke` repository directory and install this package by running `pip install .` from the respository home directory. If you plan on doing development, it is better to install with symlinks: `pip install -e .`.
 
 ## Usage

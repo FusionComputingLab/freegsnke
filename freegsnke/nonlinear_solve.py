@@ -515,7 +515,7 @@ class nl_solver:
         """
 
         if ((dIydI is None) and (self.dIydI is None)) or ((dIydpars is None) and (self.dIydpars is None)):
-            self.NK.solve(eq, profile, target_relative_tolerance=rtol_NK)
+            self.NK.forward_solve(eq, profile, target_relative_tolerance=rtol_NK)
             self.build_current_vec(eq, profile)
             self.Iy = self.plasma_grids.Iy_from_jtor(profile.jtor)
     
@@ -802,7 +802,7 @@ class nl_solver:
             self.assign_vessel_noise(self.eq1, noise_level, noise_vec)
 
         #ensure input equilibrium is a GS solution
-        self.NK.solve(self.eq1, self.profiles1, target_relative_tolerance=rtol_NK)
+        self.NK.forward_solve(self.eq1, self.profiles1, target_relative_tolerance=rtol_NK)
 
         # self.Iy is the istantaneous 1d vector representing the plasma current distribution
         # on the reduced plasma domain, as from plasma_domain_mask
@@ -1000,7 +1000,7 @@ class nl_solver:
             Relative tolerance to be used in the static GS problem.
         """
         self.assign_currents(currents_vec, profile=self.profiles2, eq=self.eq2)
-        self.NK.solve(self.eq2, self.profiles2, target_relative_tolerance=rtol_NK)
+        self.NK.forward_solve(self.eq2, self.profiles2, target_relative_tolerance=rtol_NK)
         self.trial_Iy1 = self.plasma_grids.Iy_from_jtor(self.profiles2.jtor)
         self.Iy_dot = (self.trial_Iy1 - self.Iy)/self.dt_step
         self.Id_dot = ((currents_vec - self.currents_vec)/self.dt_step)[:-1]
@@ -1498,7 +1498,7 @@ class nl_solver:
 
                 # update plasma flux if trial_currents and plasma_flux exceedingly far from GS solution
                 if control_GS:
-                    self.NK.solve(self.eq2, self.profiles2, self.rtol_NK)
+                    self.NK.forward_solve(self.eq2, self.profiles2, self.rtol_NK)
                     self.trial_plasma_psi *= (1 - blend_GS)
                     self.trial_plasma_psi += blend_GS * self.eq2.plasma_psi
 

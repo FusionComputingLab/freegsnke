@@ -3,6 +3,32 @@ from freegs.gradshafranov import Greens
 from . import machine_config
 
 
+def make_layer_mask(plasma_domain_mask, layer_size=3):
+    """Creates a mask for the points just outside the input plasma_domain_mask, with a width=`layer_size`
+
+    Parameters
+    ----------
+    layer_size : int, optional
+        Width of the layer outside the limiter, by default 3
+
+    Returns
+    -------
+    layer_mask : np.ndarray
+        Mask of the points outside the limiter within a distance of `layer_size` from the limiter
+    """
+    nx, ny = np.shape(plasma_domain_mask)
+    layer_mask = np.zeros(np.array([nx, ny]) + 2*np.array([layer_size, layer_size]))
+
+    for i in np.arange(-layer_size, layer_size+1)+layer_size:
+        for j in np.arange(-layer_size, layer_size+1)+layer_size:
+            layer_mask[i:i+nx, j:j+ny] += plasma_domain_mask
+    layer_mask = layer_mask[layer_size:layer_size+nx, layer_size:layer_size+ny]
+    layer_mask *= (1-plasma_domain_mask)
+    layer_mask = (layer_mask>0).astype(bool)
+    return layer_mask
+
+
+
 class Grids:
     """Generates the reduced domain grid on which the plasma is allowed to live.
     This allows for a significant reduction of the size of the matrices containing
@@ -36,13 +62,14 @@ class Grids:
 
 
         # the if statement should be eliminated in favour of actual input
-        if plasma_domain_mask is None:
-            plasma_domain_mask = np.ones_like(self.R)
-            plasma_domain_mask *= (self.R>0.265)*(self.R<1.582)
-            plasma_domain_mask *= (self.Z<.95+1*self.R)*(self.Z>-.95-1*self.R)
-            plasma_domain_mask *= (self.Z<-1.98+9.*self.R)*(self.Z>1.98-9.*self.R)
-            plasma_domain_mask *= (self.Z<2.26-1.1*self.R)*(self.Z>-2.26+1.1*self.R)
-            plasma_domain_mask = plasma_domain_mask.astype(bool)
+        # The one below is a 'MASTU by-eye'
+        # if plasma_domain_mask is None:
+        #     plasma_domain_mask = np.ones_like(self.R)
+        #     plasma_domain_mask *= (self.R>0.265)*(self.R<1.582)
+        #     plasma_domain_mask *= (self.Z<.95+1*self.R)*(self.Z>-.95-1*self.R)
+        #     plasma_domain_mask *= (self.Z<-1.98+9.*self.R)*(self.Z>1.98-9.*self.R)
+        #     plasma_domain_mask *= (self.Z<2.26-1.1*self.R)*(self.Z>-2.26+1.1*self.R)
+        #     plasma_domain_mask = plasma_domain_mask.astype(bool)
         self.plasma_domain_mask = plasma_domain_mask
         
 

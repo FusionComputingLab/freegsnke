@@ -176,12 +176,15 @@ class NKGSsolver:
         eq.xpt = np.copy(profiles.xpt)
         eq.opt = np.copy(profiles.opt)
         eq.psi_axis = eq.opt[0,2]
-        eq.psi_bndry = eq.xpt[0,2]
+
+        # eq.psi_bndry = eq.xpt[0,2]
+        eq.psi_bndry = profiles.psi_bndry
+        eq.flag_limiter = profiles.flag_limiter
 
 
     
 
-    def solve(self,     eq, 
+    def forward_solve(self,     eq, 
                         profiles,
                         target_relative_tolerance, 
                         max_solving_iterations=30,
@@ -194,11 +197,13 @@ class NKGSsolver:
                         max_collinearity=.99,
                         clip=10,
                         threshold=3,
-                        clip_hard=2
+                        clip_hard=2,
+                        verbose=True,
                         ):
         
-        """The method that actually solves the GS problem.
-        The problem is specified by the 2 freeGS objects eq and profiles.
+        """The method that actually solves the forward GS problem.
+        
+        A forward problem is specified by the 2 freeGS objects eq and profiles.
         The first specifies the metal currents (throught eq.tokamak)
         and the second specifies the desired plasma properties 
         (i.e. plasma current and profile functions).
@@ -246,6 +251,8 @@ class NKGSsolver:
             catches cases of untreated (partial) collinearity 
         clip_hard : float
             maximum step size for cases of untreated (partial) collinearity
+        verbose : bool
+            flag to allow warning message in case of failed convergence within requested max_solving_iterations
         
         """
         
@@ -259,16 +266,17 @@ class NKGSsolver:
 
         res0 = self.F_function(trial_plasma_psi, self.tokamak_psi, self.profiles)
         rel_change = np.amax(np.abs(res0))
-        rel_change /= (np.amax(trial_plasma_psi) - np.amin(trial_plasma_psi))
-            
+        del_psi = (np.amax(trial_plasma_psi) - np.amin(trial_plasma_psi))
+        rel_change /= del_psi
             
         iterations = 0
         while (rel_change > target_relative_tolerance)*(iterations < max_solving_iterations):
 
             if rel_change > Picard_handover:
                 # using Picard instead of NK
-                # print('Picard!')
-                trial_plasma_psi -= res0
+                del_res0 = (np.amax(res0) - np.amin(res0))
+                trial_plasma_psi -= res0#/max(4, del_psi/del_res0)
+                print('Picard!', trial_plasma_psi)
 
             else:
                 self.nksolver.Arnoldi_iteration(x0=trial_plasma_psi, #trial_current expansion point
@@ -287,11 +295,11 @@ class NKGSsolver:
                                                 clip_hard=clip_hard)
                 # print(self.nksolver.coeffs)
                 trial_plasma_psi += self.nksolver.dx
-
             
             res0 = self.F_function(trial_plasma_psi, self.tokamak_psi, self.profiles)
             rel_change = np.amax(np.abs(res0))
             rel_change /= (np.amax(trial_plasma_psi) - np.amin(trial_plasma_psi))
+            self.relative_change = 1.0*rel_change
 
             # print('rel_unexpl res = ', self.nksolver.relative_unexplained_residual)
             # print(iterations, rel_change)
@@ -303,6 +311,7 @@ class NKGSsolver:
 
         # update plasma current
         eq._current = np.sum(profiles.jtor)*self.dRdZ
+        eq._profiles = profiles
 
         # record xpoints and opoints
         # eq.xpt = np.copy(profiles.xpt)
@@ -313,10 +322,103 @@ class NKGSsolver:
 
         
         #if max_iter was hit, then message:
-        if not iterations < max_solving_iterations:
+        if (iterations >= max_solving_iterations) and verbose:
             print('failed to converge with less than {} iterations'.format(max_solving_iterations))
             print(f'last relative psi change = {rel_change}')
             
     
     
-    
+
+
+    def solve(self,     eq, 
+                        profiles,
+                        target_relative_tolerance, 
+                        constrain=None,
+                        max_solving_iterations=30,
+                        Picard_handover=.07,
+                        step_size=2.5,
+                        scaling_with_n=-1.2,
+                        target_relative_unexplained_residual=.25,  
+                        max_n_directions=8,
+                        max_Arnoldi_iterations=10,
+                        max_collinearity=.99,
+                        clip=10,
+                        threshold=3,
+                        clip_hard=2,
+                        verbose=True
+                        ):
+        
+        """The method to solve the GS problems, both forward and inverse.
+        Syntax is analogous to freeGS: 
+            - an inverse solve is specified by the 'constrain' input, 
+            which includes the desired constraints on the configuration of magnetic flux (xpoints and isoflux, as in FreeGS).
+            The optimization over the coil currents uses the freeGS implementation, as a simple regularised least square problem.
+            - a forward solve has constrain=None. Please see forward_solve for details.
+        
+
+        Parameters
+        ----------
+        eq : freeGS equilibrium object
+            Used to extract the assigned metal currents, which in turn are
+            used to calculate the according self.tokamak_psi
+        profiles : freeGS profile object
+            Specifies the target properties of the plasma.
+            These are used to calculate Jtor(psi)
+        target_relative_tolerance : float
+            NK iterations are interrupted when this criterion is 
+            satisfied. Relative convergence
+        constrain : freeGS constrain object
+            specifies the desired constraints on the configuration of magnetic flux (xpoints and isoflux, as in FreeGS)
+        max_solving_iterations : int
+            NK iterations are interrupted when this limit is surpassed
+        Picard_handover : float
+            Value of relative tolerance above which a Picard iteration
+            is performed instead of a full NK call
+        step_size : float
+            l2 norm of proposed step
+        scaling_with_n : float
+            allows to further scale dx candidate steps by factor
+            (1 + self.n_it)**scaling_with_n
+        target_relative_explained_residual : float between 0 and 1
+            terminates iteration when exploration can explain this 
+            fraction of the initial residual R0
+        max_n_directions : int
+            terminates iteration even though condition on 
+            explained residual is not met
+        max_Arnoldi_iterations : int
+            terminates iteration after attempting to explore
+            this number of directions
+        max_collinearity : float between 0 and 1
+            rejects a candidate direction if resulting residual 
+            is collinear to any of those stored previously
+        clip : float
+            maximum step size for each explored direction, in units 
+            of exploratory step dx_i
+        threshold : float 
+            catches cases of untreated (partial) collinearity 
+        clip_hard : float
+            maximum step size for cases of untreated (partial) collinearity
+        verbose : bool
+            flag to allow warning message in case of failed convergence within requested max_solving_iterations
+
+        """
+
+        if constrain is None:
+            self.forward_solve(eq, 
+                                profiles,
+                                target_relative_tolerance, 
+                                max_solving_iterations,
+                                Picard_handover,
+                                step_size,
+                                scaling_with_n,
+                                target_relative_unexplained_residual,  
+                                max_n_directions, 
+                                max_Arnoldi_iterations,
+                                max_collinearity,
+                                clip,
+                                threshold,
+                                clip_hard
+                                )
+        
+        else:
+            freegs.solve(eq, profiles, constrain, rtol=target_relative_tolerance, show=False)

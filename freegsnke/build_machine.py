@@ -1,6 +1,7 @@
 import os
 import pickle
-from freegs.machine import Machine, Circuit, Wall, Solenoid
+from freegs.machine import Circuit, Wall, Solenoid
+from .machine_update import Machine
 from freegs.coil import Coil
 from freegs.multi_coil import MultiCoil
 
@@ -17,6 +18,10 @@ wall_path = os.environ.get('WALL_PATH', None)
 if wall_path is None:
     raise ValueError('WALL_PATH environment variable not set.')
 
+limiter_path = os.environ.get('LIMITER_PATH', None)
+if limiter_path is None:
+    raise ValueError('LIMITER_PATH environment variable not set.')
+
 with open(passive_coils_path, 'rb') as f:
     passive_coils = pickle.load(f)
 
@@ -25,6 +30,9 @@ with open(active_coils_path, 'rb') as f:
 
 with open(wall_path, 'rb') as f:
     wall = pickle.load(f)
+
+with open(limiter_path, 'rb') as f:
+    limiter = pickle.load(f)
 
 if 'Solenoid' not in active_coils:
     raise ValueError('No Solenoid in active coils. Must be capitalised Solenoid.')
@@ -99,7 +107,11 @@ def tokamak():
     r_wall = [entry["R"] for entry in wall]
     z_wall = [entry["Z"] for entry in wall]
 
-    return Machine(coils, Wall(r_wall, z_wall))
+    # Add limiter
+    r_limiter = [entry["R"] for entry in limiter]
+    z_limiter = [entry["Z"] for entry in limiter]
+
+    return Machine(coils, wall=Wall(r_wall, z_wall), limiter=Wall(r_limiter, z_limiter))
 
 
 if __name__ == "__main__":

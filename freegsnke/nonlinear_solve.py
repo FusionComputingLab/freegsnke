@@ -38,6 +38,7 @@ class nl_solver:
                  plasma_domain_mask=None,
                  nbroad=3,
                  dIydI=None,
+                 dIydpars=None,
                  automatic_timestep=False,
                  mode_removal=True,
                  min_dIy_dI=1):
@@ -81,6 +82,8 @@ class nl_solver:
             mask of grid domain points to be included in the current circuit equation.
             This reduces the dimensionality of associated matrices. 
             Include all regions within the limiter, or where the plasma is expected to be.
+            If None, the mask of points within the limiter profiles.mask_inside_limiter
+            will be used.
         nbroad : int, optional, by default 3
             pixel size (as number of grid points) of (square) smoothing filter applied to 
             the instantaneous plasma current distribution, before contracting the plasma circuit equations
@@ -117,6 +120,8 @@ class nl_solver:
         self.NK = NKGSsolver(eq)
         
         # setting up domain for plasma circuit eq.: 
+        if plasma_domain_mask is None:
+            plasma_domain_mask = profiles.mask_inside_limiter
         self.plasma_grids = plasma_grids.Grids(eq, plasma_domain_mask)
         self.plasma_domain_mask = self.plasma_grids.plasma_domain_mask
         self.plasma_domain_size = np.sum(self.plasma_grids.plasma_domain_mask)
@@ -189,6 +194,10 @@ class nl_solver:
         # self.dIydI is the Jacobian of the plasma current distribution
         # with respect to the independent currents (as in self.currents_vec)
         self.dIydI = dIydI
+
+        # self.dIydpars is the Jacobian of the plasma current distribution
+        # with respect to the independent profile parameters (alpha_m, alpha_n, paxis OR betap)
+        self.dIydpars = dIydpars
         
         # self.linearised_sol handles the linearised dynamic problem
         self.linearised_sol = linear_solver(Lambdam1=self.evol_metal_curr.Lambdam1, 
@@ -296,10 +305,11 @@ class nl_solver:
                                             full_timestep=self.dt_step)
         
         self.linearised_sol.set_linearization_point(dIydI=self.dIydI,
+                                                    dIydpars=self.dIydpars,
                                                     hatIy0=self.broad_hatIy)
 
        
-    def set_linear_solution(self, active_voltage_vec):
+    def set_linear_solution(self, active_voltage_vec, d_profile_pars_dt=None):
         """Uses the solver of the linearised problem to set up an initial guess
         for the currents at time t+dt. Uses self.currents_vec as I(t). 
         Solves GS at time t+dt for the corresponding guessed currents.
@@ -311,9 +321,99 @@ class nl_solver:
         """
 
         self.trial_currents = self.linearised_sol.stepper(It=self.currents_vec, 
-                                                          active_voltage_vec=active_voltage_vec)
+                                                          active_voltage_vec=active_voltage_vec,
+                                                          d_profile_pars_dt=d_profile_pars_dt)
         self.assign_currents_solve_GS(self.trial_currents, self.rtol_NK)
         self.trial_plasma_psi = np.copy(self.eq2.plasma_psi)   
+
+
+    def prepare_build_dIydpars(self, profiles, rtol_NK, target_dIy, starting_dpars):
+        """Prepares to compute the term d(Iy)/d(alpha_m, alpha_n, profifile_par) 
+        where profile_par = paxis or betap. 
+        It infers the value of delta(indep_variable) corresponding to a change delta(I_y)
+        with norm(delta(I_y))=target_dIy.
+
+        Parameters
+        ----------
+        profiles : FreeGS profile object
+            The profile object of the initial condition equilibrium, i.e. the linearization point.
+        rtol_NK : float
+            Relative tolerance to be used in the static GS problems. 
+        target_dIy : float
+            Target value for the norm of delta(I_y), on which th finite difference derivative is calculated.
+        starting_dpars : tuple (d_alpha_m, d_alpha_n, relative_d_profile_par)
+            Initial value to be used as delta(indep_variable) to infer the slope of norm(delta(I_y))/delta(indep_variable).
+            Note that the first two values in the tuple are absolute deltas, 
+            while the third value is relative, d_profile_par = relative_d_profile_par * profile_par
+        """
+
+        current_ = np.copy(self.currents_vec)
+
+        # vary alpha_m
+        self.check_and_change_profiles(profile_coefficients=(profiles.alpha_m + starting_dpars[0],
+                                                             profiles.alpha_n))
+        self.assign_currents_solve_GS(current_, rtol_NK)
+        dIy_0 = self.plasma_grids.Iy_from_jtor(self.profiles2.jtor) - self.Iy
+        self.final_dpars_record[0] = starting_dpars[0]*target_dIy/np.linalg.norm(dIy_0)
+
+        # vary alpha_n
+        self.check_and_change_profiles(profile_coefficients=(profiles.alpha_m,
+                                                             profiles.alpha_n + starting_dpars[1]))
+        self.assign_currents_solve_GS(current_, rtol_NK)
+        dIy_0 = self.plasma_grids.Iy_from_jtor(self.profiles2.jtor) - self.Iy
+        self.final_dpars_record[1] = starting_dpars[1]*target_dIy/np.linalg.norm(dIy_0)
+
+        # vary paxis or betap
+        self.check_and_change_profiles(profile_coefficients=(profiles.alpha_m,
+                                                             profiles.alpha_n),
+                                       profile_parameter=(1+starting_dpars[2])*profiles.profile_parameter)
+        self.assign_currents_solve_GS(current_, rtol_NK)
+        dIy_0 = self.plasma_grids.Iy_from_jtor(self.profiles2.jtor) - self.Iy
+        self.final_dpars_record[2] = starting_dpars[2]*profiles.profile_parameter*target_dIy/np.linalg.norm(dIy_0)
+
+
+    def build_dIydIpars(self, profiles, rtol_NK):
+        """Compute the matrix d(Iy)/d(alpha_m, alpha_n, profifile_par) as a finite difference derivative, 
+        using the value of delta(indep_viriable) inferred earlier by self.prepare_build_dIypars.
+
+        Parameters
+        ----------
+        profiles : FreeGS profile object
+            The profile object of the initial condition equilibrium, i.e. the linearization point.
+        rtol_NK : float
+            Relative tolerance to be used in the static GS problems. 
+
+        """       
+
+        current_ = np.copy(self.currents_vec)
+        
+        # vary alpha_m
+        self.check_and_change_profiles(profile_coefficients=(profiles.alpha_m + self.final_dpars_record[0],
+                                                             profiles.alpha_n))
+        self.assign_currents_solve_GS(current_, rtol_NK)
+        dIy_1 = self.plasma_grids.Iy_from_jtor(self.profiles2.jtor) - self.Iy
+        self.dIydpars[:, 0] = dIy_1/self.final_dpars_record[0]
+        print('delta_alpha_m = ', self.final_dpars_record[0], 'norm(deltaIy) =', np.linalg.norm(dIy_1))
+
+        # vary alpha_n
+        self.check_and_change_profiles(profile_coefficients=(profiles.alpha_m,
+                                                             profiles.alpha_n + self.final_dpars_record[1]))
+        self.assign_currents_solve_GS(current_, rtol_NK)
+        dIy_1 = self.plasma_grids.Iy_from_jtor(self.profiles2.jtor) - self.Iy
+        self.dIydpars[:, 1] = dIy_1/self.final_dpars_record[1]
+        print('delta_alpha_n = ', self.final_dpars_record[1], 'norm(deltaIy) =', np.linalg.norm(dIy_1))
+
+        # vary paxis or betap
+        self.check_and_change_profiles(profile_coefficients=(profiles.alpha_m,
+                                                             profiles.alpha_n),
+                                       profile_parameter=profiles.profile_parameter + self.final_dpars_record[2])
+        self.assign_currents_solve_GS(current_, rtol_NK)
+        dIy_1 = self.plasma_grids.Iy_from_jtor(self.profiles2.jtor) - self.Iy
+        self.dIydpars[:, 2] = dIy_1/self.final_dpars_record[2]
+        print('delta_profile_pars = ', self.final_dpars_record[2], 'norm(deltaIy) =', np.linalg.norm(dIy_1))
+        
+        
+    
 
  
     def prepare_build_dIydI_j(self, j, rtol_NK, target_dIy, starting_dI, min_curr=1e-4, max_curr=10):
@@ -328,7 +428,7 @@ class nl_solver:
         rtol_NK : float
             Relative tolerance to be used in the static GS problems. 
         target_dIy : float
-            Target value for the norm of delta(I_y), on which the incremental derivative is calculated.
+            Target value for the norm of delta(I_y), on which th finite difference derivative is calculated.
         starting_dI : float
             Initial value to be used as delta(I_j) to infer the slope of norm(delta(I_y))/delta(I_j).
         min_curr : float, optional, by default 1e-4
@@ -347,7 +447,7 @@ class nl_solver:
 
 
     def build_dIydI_j(self, j, rtol_NK):
-        """Compute the term d(Iy)/dI_j of the Jacobian as an incremental derivative, 
+        """Compute the term d(Iy)/dI_j of the Jacobian as a finite difference derivative, 
         using the value of delta(I_j) inferred earlier by self.prepare_build_dIydI_j.
 
         Parameters
@@ -360,7 +460,7 @@ class nl_solver:
         Returns
         -------
         np.array
-            Incremental derivative d(Iy)/dI_j. 
+     finite difference derivative d(Iy)/dI_j. 
             This is a 1d vector including all grid points in reduced domain, as from plasma_domain_mask.
         """
        
@@ -386,7 +486,10 @@ class nl_solver:
         return dIydIj
     
 
-    def build_dIydI_linearization(self, eq, profile, rtol_NK, target_dIy=10., starting_dI=.5):
+    def build_linearization(self,   eq, profile, 
+                                    dIydI=None, dIydpars=None,
+                                    rtol_NK=1e-8, target_dIy=10., 
+                                    starting_dI=.5, starting_dpars=(.0002,.0002,.005)):
         """Builds the Jacobian d(Iy)/dI to set up the solver of the linearised problem.
 
         Parameters
@@ -395,29 +498,61 @@ class nl_solver:
             Equilibrium around which to linearise.
         profile : FreeGS profile Object
             Profile properties of the equilibrium around which to linearise.
+        dIydI : np.array
+            input Jacobian, enter where available, otherwise this will be calculated here
+        dIydpars : np.array
+            input Jacobian, enter where available, otherwise this will be calculated here
         rtol_NK : float
             Relative tolerance to be used in the static GS problems. 
         target_dIy : float, by default 10.
-            Target value for the norm of delta(I_y), on which the incremental derivative is calculated.
+            Target value for the norm of delta(I_y), on which th finite difference derivative is calculated.
         starting_dI : float, by default .5.
             Initial value to be used as delta(I_j) to infer the slope of norm(delta(I_y))/delta(I_j).
+        starting_dpars : tuple (d_alpha_m, d_alpha_n, relative_d_profile_par)
+            Initial value to be used as delta(indep_variable) to infer the slope of norm(delta(I_y))/delta(indep_variable).
+            Note that the first two values in the tuple are absolute deltas, 
+            while the third value is relative, d_profile_par = relative_d_profile_par * profile_par
         """
-        print('I\'m building the linearization. This might take a minute or two.')
-        self.NK.solve(eq, profile, target_relative_tolerance=rtol_NK)
-        self.build_current_vec(eq, profile)
 
-        self.Iy = self.plasma_grids.Iy_from_jtor(profile.jtor)
-        self.dIydI = np.zeros((self.plasma_domain_size, self.n_metal_modes+1))
-        self.ddIyddI = np.zeros(self.n_metal_modes+1)
-        self.final_dI_record = np.zeros(self.n_metal_modes+1)
+        if ((dIydI is None) and (self.dIydI is None)) or ((dIydpars is None) and (self.dIydpars is None)):
+            self.NK.forward_solve(eq, profile, target_relative_tolerance=rtol_NK)
+            self.build_current_vec(eq, profile)
+            self.Iy = self.plasma_grids.Iy_from_jtor(profile.jtor)
+    
+        # build/update dIydI
+        if dIydI is None:
+            if self.dIydI is None:
+                print('I\'m building the linearization wrt the currents. This may take a minute or two.')
+                self.dIydI = np.zeros((self.plasma_domain_size, self.n_metal_modes+1))
+                self.ddIyddI = np.zeros(self.n_metal_modes+1)
+                self.final_dI_record = np.zeros(self.n_metal_modes+1)
 
-        for j in self.arange_currents:
-            self.prepare_build_dIydI_j(j, rtol_NK, target_dIy, starting_dI)
+                for j in self.arange_currents:
+                    self.prepare_build_dIydI_j(j, rtol_NK, target_dIy, starting_dI)
             
-        for j in self.arange_currents:
-            self.dIydI[:,j] = self.build_dIydI_j(j, rtol_NK)
-        self.updated_dIydI = np.copy(self.dIydI)
-        self.norm_updated_dIydI = np.linalg.norm(self.updated_dIydI)
+                for j in self.arange_currents:
+                    self.dIydI[:,j] = self.build_dIydI_j(j, rtol_NK)
+                self.updated_dIydI = np.copy(self.dIydI)
+                self.norm_updated_dIydI = np.linalg.norm(self.updated_dIydI)
+
+        else:
+            self.dIydI = dIydI
+
+
+        # build/update dIydpars   
+        if dIydpars is None:
+            if self.dIydpars is None:
+                print('I\'m building the linearization wrt the profile parameters. This may take a minute or two.')
+                self.dIydpars = np.zeros((self.plasma_domain_size, 3))
+                self.final_dpars_record = np.zeros(3)
+
+                self.prepare_build_dIydpars(profile, rtol_NK, target_dIy, starting_dpars)
+                self.build_dIydIpars(profile, rtol_NK)
+        
+        else:
+            self.dIydpars = dIydpars
+
+        
 
         
     def reset_plasma_resistivity(self, plasma_resistivity):
@@ -503,10 +638,13 @@ class nl_solver:
         profiles : FreeGS profile Object
             Profile function of the initial equilibrium. 
         """
-        self.paxis = profiles.paxis
         self.fvac = profiles.fvac
         self.alpha_m = profiles.alpha_m
         self.alpha_n = profiles.alpha_n
+        if hasattr(profiles, 'paxis'):
+            self.profile_parameter = profiles.paxis
+        else:
+            self.profile_parameter = profiles.betap
 
 
     def get_vessel_currents(self, eq):
@@ -588,6 +726,7 @@ class nl_solver:
                             noise_level=.001,
                             noise_vec=None,
                             dIydI=None,
+                            dIydpars=None,
                             update_linearization=False,
                             update_n_steps=16,
                             threshold_svd=.1,
@@ -623,6 +762,8 @@ class nl_solver:
             This is the jacobian of the plasma current distribution with respect to all
             independent metal currents (both active and vessel modes) and to the total plasma current
             If not provided, this is calculated based on the properties of the provided equilibrium.
+
+            NOT USED AT THE MOMENT
         update_linearization : bool, optional, by default False
             Whether the linearization is updated as the dynamical evolution departs from the initial equilibrium.
         update_n_steps : int, optional, by default 16
@@ -661,7 +802,7 @@ class nl_solver:
             self.assign_vessel_noise(self.eq1, noise_level, noise_vec)
 
         #ensure input equilibrium is a GS solution
-        self.NK.solve(self.eq1, self.profiles1, target_relative_tolerance=rtol_NK)
+        self.NK.forward_solve(self.eq1, self.profiles1, target_relative_tolerance=rtol_NK)
 
         # self.Iy is the istantaneous 1d vector representing the plasma current distribution
         # on the reduced plasma domain, as from plasma_domain_mask
@@ -691,13 +832,17 @@ class nl_solver:
         self.step_no = -1
 
         # build the linearization if not provided
-        if dIydI is None:
-            if self.dIydI is None:
-                self.build_dIydI_linearization(eq=eq, profile=profile, rtol_NK=rtol_NK)
-        else:
-            self.dIydI = dIydI
+        self.build_linearization(eq, profile, 
+                                dIydI=dIydI, dIydpars=dIydpars,
+                                rtol_NK=rtol_NK, target_dIy=10., 
+                                starting_dI=.5, starting_dpars=(.0008,.0008,.002))
+
+        # transfer linearization to linear solver
         self.linearised_sol.set_linearization_point(dIydI=self.dIydI,
+                                                    dIydpars=self.dIydpars,
                                                     hatIy0=self.broad_hatIy)
+        
+        # NOT USED AT THE MOMENT
         if self.update_linearization:
             self.current_record = np.zeros((self.update_n_steps, self.n_metal_modes+1))
             self.Iy_record = np.zeros((self.update_n_steps, self.plasma_domain_size))
@@ -855,7 +1000,7 @@ class nl_solver:
             Relative tolerance to be used in the static GS problem.
         """
         self.assign_currents(currents_vec, profile=self.profiles2, eq=self.eq2)
-        self.NK.solve(self.eq2, self.profiles2, target_relative_tolerance=rtol_NK)
+        self.NK.forward_solve(self.eq2, self.profiles2, target_relative_tolerance=rtol_NK)
         self.trial_Iy1 = self.plasma_grids.Iy_from_jtor(self.profiles2.jtor)
         self.Iy_dot = (self.trial_Iy1 - self.Iy)/self.dt_step
         self.Id_dot = ((currents_vec - self.currents_vec)/self.dt_step)[:-1]
@@ -1141,7 +1286,42 @@ class nl_solver:
         return r_res_GS
 
 
+    def check_and_change_profiles(self, profile_parameter=None,
+                                        profile_coefficients=None):
+        """Checks if new input parameters are different from those presently in place.
+        If so, it actions the necessary changes.
+
+        Parameters
+        ----------
+        profile_parameter : None or float for new paxis or betap
+            Set to None when the profile parameter (paxis or betap) is left unchanged
+            with respect to the previous timestep. Set here desired value otherwise.
+        profile_coefficients : None or tuple (alpha_m, alpha_n)  
+            Set to None when the profile coefficients alpha_m and alpha_n are left unchanged
+            with respect to the previous timestep. Set here desired values otherwise.
+        """
+        self.profile_change_flag = 0
+        self.d_profile_pars = np.zeros(3)
+        if profile_parameter is not None:
+            if profile_parameter != self.profiles1.profile_parameter:
+                self.profile_change_flag += 1
+                self.d_profile_pars[2] = profile_parameter - self.profiles1.profile_parameter
+                self.profiles1.assign_profile_parameter(profile_parameter)
+                self.profiles2.assign_profile_parameter(profile_parameter)
+        if profile_coefficients is not None:
+            if profile_coefficients[0] != self.profiles1.alpha_m or profile_coefficients[1] != self.profiles1.alpha_n:
+                self.profile_change_flag += 1
+                self.d_profile_pars[0] = profile_coefficients[0] - self.profiles1.alpha_m
+                self.d_profile_pars[1] = profile_coefficients[1] - self.profiles1.alpha_n
+                self.profiles1.alpha_m = profile_coefficients[0]
+                self.profiles1.alpha_n = profile_coefficients[1]
+                self.profiles2.alpha_m = profile_coefficients[0]
+                self.profiles2.alpha_n = profile_coefficients[1]
+
+
     def nlstepper(self, active_voltage_vec, 
+                        profile_parameter=None,
+                        profile_coefficients=None,
                         target_relative_tol_currents=.01,
                         target_relative_tol_GS=.01,
                         working_relative_tol_GS=.002,
@@ -1188,6 +1368,12 @@ class nl_solver:
         ----------
         active_voltage_vec : np.array
             Vector of active voltages for the active coils, applied between t and t+dt.
+        profile_parameter : None or float for new paxis or betap
+            Set to None when the profile parameter (paxis or betap) is left unchanged
+            with respect to the previous timestep. Set here desired value otherwise.
+        profile_coefficients : None or tuple (alpha_m, alpha_n)  
+            Set to None when the profile coefficients alpha_m and alpha_n are left unchanged
+            with respect to the previous timestep. Set here desired values otherwise.
         target_relative_tol_currents : float, optional, by default .01
             Relative tolerance in the currents required for convergence.
         target_relative_tol_GS : float, optional, by default .01
@@ -1258,14 +1444,25 @@ class nl_solver:
 
         """
 
-        # solves the linearised problem for the currents. 
-        # Solution and GS equilibrium are assigned to self.trial_currents and self.trial_plasma_psi
-        self.set_linear_solution(active_voltage_vec)
+        # check if profile parameter (betap or paxis) is being altered 
+        # and action the change where necessary
+        self.check_and_change_profiles(profile_parameter=profile_parameter,
+                                       profile_coefficients=profile_coefficients)
         
+        # solves the linearised problem for the currents. 
+        # needs to use the time derivativive of the profile parameters, if they have been changed
+        if self.profile_change_flag:
+            self.d_profile_pars_dt = self.d_profile_pars/self.dt_step
+        else:
+            self.d_profile_pars_dt = None
+        self.set_linear_solution(active_voltage_vec, self.d_profile_pars_dt)
+        # Solution and GS equilibrium are assigned to self.trial_currents and self.trial_plasma_psi
+
 
         if linear_only:
             # assign currents and plasma flux to self.currents_vec, self.eq1 and self.profile1 and complete step
             self.step_complete_assign(working_relative_tol_GS, from_linear=True)
+            
         else:
             # seek solution of the full nonlinear problem
             
@@ -1301,7 +1498,7 @@ class nl_solver:
 
                 # update plasma flux if trial_currents and plasma_flux exceedingly far from GS solution
                 if control_GS:
-                    self.NK.solve(self.eq2, self.profiles2, self.rtol_NK)
+                    self.NK.forward_solve(self.eq2, self.profiles2, self.rtol_NK)
                     self.trial_plasma_psi *= (1 - blend_GS)
                     self.trial_plasma_psi += blend_GS * self.eq2.plasma_psi
 

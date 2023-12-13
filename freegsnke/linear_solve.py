@@ -17,8 +17,8 @@ class linear_solver:
                        ):
         """Instantiates the linear_solver object, with inputs computed mostly from circuit_equation_metals.py .
         Based on the input plasma properties and coupling matrices, it prepares:
-            - an instance of the implicit Euler solver implicit_euler_solver()
-            - internal time-stepper for the implicit-Euler
+        - an instance of the implicit Euler solver implicit_euler_solver()
+        - internal time-stepper for the implicit-Euler
 
         Parameters
         ----------

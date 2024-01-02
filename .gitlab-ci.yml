@@ -1,17 +1,56 @@
-workflow:
-  rules:
-    - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
-image: continuumio/miniconda3:latest
+image: condaforge/mambaforge
+stages:
+  - test
+  - build
+  - deploy
 
-before_script:
-  - export PIP_CACHE_DIR="/opt/cache/pip"
-  - conda env create -f environment.yml
-  - source activate freegsnke
-  - pip install git+https://${FREEGSFAST_CI_TOKEN}@github.com/farscape-project/freegsfast@7ee11d8a93d32f5e729e2bbb2af48bfc70d18124
-  - pip install -e .
-  - python -m pip install pytest
-
-tests:
+Tests + Documentation:
   stage: test
+  only:
+    - main
+    - development
+    - merge_requests
+  before_script:
+    - export PIP_CACHE_DIR="/opt/cache/pip"
+    - mamba env create -f environment.yml
+    - source activate  
+    - conda activate freegsnke
+    - pip install git+https://${FREEGSFAST_CI_TOKEN}@github.com/farscape-project/freegsfast
+    - pip install -e .
+    - python -m pip install pytest
   script:
+    # TESTS
     - python -m pytest -v
+    # DOCUMENTATION
+    - cd docs/
+    - pip install -r requirements_docs.txt
+    - sphinx-apidoc -e -f --no-toc -o ./api/ ../freegsnke/ 
+    - sphinx-build -b html ./ ./_build/html
+  artifacts:
+    paths:
+      - docs/_build/html
+    expire_in: 1 hour
+
+Deploy docs STFC cloud:
+  image: kroniak/ssh-client
+  dependencies:
+    - "Tests + Documentation"
+  stage: deploy
+  before_script:
+    - mkdir -p ~/.ssh
+    - echo "$ID_RSA_FREEGSNKE" | base64 -d > ~/.ssh/id_rsa
+    - chmod 700 ~/.ssh    
+    - chmod 600 ~/.ssh/id_rsa    
+    - eval "$(ssh-agent -s)"    
+    - ssh-add ~/.ssh/id_rsa
+  script:    
+    - scp -o StrictHostKeyChecking=no -Cr docs/_build/html $STFC_CLOUD_USERNAME@172.16.110.116:./
+  artifacts:
+    expose_as: "docs_html"
+    paths:
+      - docs/_build/html/
+    expire_in: never
+
+  only:
+    - main
+    - development

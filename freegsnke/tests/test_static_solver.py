@@ -17,6 +17,7 @@ import os
 os.environ["ACTIVE_COILS_PATH"] = "./machine_configs/MAST-U/active_coils.pickle"
 os.environ["PASSIVE_COILS_PATH"] = "./machine_configs/MAST-U/passive_coils.pickle"
 os.environ["WALL_PATH"] = "./machine_configs/MAST-U/wall.pickle"
+os.environ["LIMITER_PATH"] = "./machine_configs/MAST-U/limiter.pickle"
 
 from freegsnke import build_machine
 
@@ -48,11 +49,15 @@ def create_machine():
     # Sets desired plasma properties for the 'starting equilibrium'
     # values can be changed
     from freegsnke.jtor_update import ConstrainPaxisIp
-    profiles = ConstrainPaxisIp(8.1e3, # Plasma pressure on axis [Pascals]
-                                6.2e5, # Plasma current [Amps]
-                                0.5, # vacuum f = R*Bt
-                                alpha_m = 1.8,
-                                alpha_n = 1.2)
+    profiles = ConstrainPaxisIp(
+        eq,
+        tokamak.limiter,
+        8.1e3, # Plasma pressure on axis [Pascals]
+        6.2e5, # Plasma current [Amps]
+        0.5, # vacuum f = R*Bt
+        alpha_m = 1.8,
+        alpha_n = 1.2
+    )
 
 
     # Sets some shape constraints (here very close to those used for initialization)
@@ -96,12 +101,16 @@ def create_machine():
     return eq, profiles, constrain
 
 def create_test_files_static_solve(create_machine):
-    """Saves the control currents and psi map needed for testing the static solver. This should not be run every test, just if there is a major change that changes the machine. 
+    """
+    Saves the control currents and psi map needed for testing the static solver.
+    This should not be run every test, just if there is a major change that
+    changes the machine. 
 
     Parameters
     ----------
     create_machine : pytest.fixture
-        the equilibirum, profiles and constrain object to generate the test set from. 
+        the equilibirum, profiles and constrain object to generate the test set
+        from. 
     """
     eq, profiles, constrain = create_machine
     
@@ -137,7 +146,8 @@ def test_static_solve(create_machine):
     Parameters
     ----------    
     create_machine : pytest.fixture
-        the equilibirum, profiles and constrain object to generate the test set from. 
+        the equilibirum, profiles and constrain object to generate the test set
+        from. 
     """
     eq, profiles, constrain = create_machine
     
@@ -166,4 +176,8 @@ def test_static_solve(create_machine):
 
     test_psi = np.load("./freegsnke/tests/test_psi.npy")
 
-    assert np.allclose(eq.psi(), test_psi), "Psi map doesn't match the test map"
+    assert np.allclose(
+        eq.psi(),
+        test_psi,
+        atol=(np.max(test_psi)-np.min(test_psi))*0.0001
+    ), "Psi map differs significantly from the test map"

@@ -57,9 +57,8 @@ class plasma_current:
             red_Iy1,
             red_Iydot,
             Iddot
-            ):
-        """
-        Calculates the residual of the circuit equation corresponding to the input currents and derivatives. 
+            ):        
+        """Calculates the residual of the circuit equation corresponding to the input currents and derivatives. 
 
         $$I_{\text{residual}} = \frac{I_{y,0}^T}{I_{p,0}} (M_{yy} \dot{I_y} + M_{ye} R^{-1/2} V \dot{I_e} + R_{yy} I_y)/R_{p,0},$$
         
@@ -67,6 +66,8 @@ class plasma_current:
         
         $$R_{p,0} =  I_{y,0}^T/I{p,0} R_{yy} I_{y,0}/I_{p,0}$$
 
+        .
+        
         Parameters
         ----------
         red_Iy0 : np.ndarray

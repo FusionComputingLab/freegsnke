@@ -41,7 +41,8 @@ class nl_solver:
                  dIydpars=None,
                  automatic_timestep=False,
                  mode_removal=True,
-                 min_dIy_dI=1):
+                 min_dIy_dI=1,
+                 verbose=False):
         """Initializes the time-evolution Object.
 
         Parameters
@@ -92,7 +93,8 @@ class nl_solver:
             This is the jacobian of the plasma current distribution with respect to all
             independent metal currents (both active and vessel modes) and to the total plasma current
         automatic_timestep : (float, float) or False, optional, by default False
-            If not False, the timescales of the linearised problem are used to set the size of the timestep.
+            If not False, this overrides inputs full_timestep and max_internal_timestep:
+            the timescales of the linearised problem are used to set the size of the timestep.
             The input eq and profile are used to calculate the fastest growthrate, t_growthrate, henceforth,
             full_timestep = automatic_timestep[0]*t_growthrate
             max_internal_timestep = automatic_timestep[1]*full_timestep
@@ -222,7 +224,8 @@ class nl_solver:
             self.initialize_from_ICs(eq, profiles, 
                                      rtol_NK=1e-9,
                                      noise_level=0, 
-                                     dIydI=dIydI)
+                                     dIydI=dIydI,
+                                     verbose=verbose)
         
         # remove passive normal modes that do not affect the plasma
         if mode_removal:
@@ -242,23 +245,23 @@ class nl_solver:
         if len(self.linearised_sol.growth_rates):
             print('This equilibrium has a linear growth rate of 1/', abs(self.linearised_sol.growth_rates[0]), 's')
         else: 
-            print('No unstable modes found.', 
-                    'Either plasma is stable or it is Alfven unstable.', 
-                    'Try adding more passive modes.')
+            print(  'No unstable modes found.', 
+                    'Either plasma is stable or, more likely, it is Alfven unstable (i.e. not enough stabilization from any metal structures).', 
+                    'Try adding more passive modes by resetting the input values of max_mode_frequency and/or min_dIy_dI.')
 
         # if automatic_timestep, reset the timestep accordingly, 
         # note that this requires having found an instability
         if automatic_timestep is None or automatic_timestep is False:
             print('The solver\'s timestep was set at', self.dt_step,
-                        'If necessary, reset.')
+                  ' as explicitly requested. Please compare this with the linear growth rate above and, if necessary, reset.')
         else:
             if len(self.linearised_sol.growth_rates):
                 dt_step = abs(self.linearised_sol.growth_rates[0]*automatic_timestep[0])
                 self.reset_timestep(full_timestep=dt_step, 
                                     max_internal_timestep=dt_step/automatic_timestep[1])
-                print('The solver\'s timestep has been reset at', self.dt_step)
+                print('The solver\'s timestep has been reset at', self.dt_step, 'using the calculated linear growth rate and the provided values for the input automatic_timestep.')
             else:
-                print('No unstable modes found. Impossible to automatically set timestep!')
+                print('No unstable modes found. It is impossible to automatically set timestep!, please do so manually.')
 
 
 
@@ -372,7 +375,7 @@ class nl_solver:
         self.final_dpars_record[2] = starting_dpars[2]*profiles.profile_parameter*target_dIy/np.linalg.norm(dIy_0)
 
 
-    def build_dIydIpars(self, profiles, rtol_NK):
+    def build_dIydIpars(self, profiles, rtol_NK, verbose=False):
         """Compute the matrix d(Iy)/d(alpha_m, alpha_n, profifile_par) as a finite difference derivative, 
         using the value of delta(indep_viriable) inferred earlier by self.prepare_build_dIypars.
 
@@ -393,7 +396,9 @@ class nl_solver:
         self.assign_currents_solve_GS(current_, rtol_NK)
         dIy_1 = self.plasma_grids.Iy_from_jtor(self.profiles2.jtor) - self.Iy
         self.dIydpars[:, 0] = dIy_1/self.final_dpars_record[0]
-        print('delta_alpha_m = ', self.final_dpars_record[0], 'norm(deltaIy) =', np.linalg.norm(dIy_1))
+        if verbose:
+            print('alpha_m gradient calculated on the finite difference: delta_alpha_m =', 
+                  self.final_dpars_record[0], ', norm(deltaIy) =', np.linalg.norm(dIy_1))
 
         # vary alpha_n
         self.check_and_change_profiles(profile_coefficients=(profiles.alpha_m,
@@ -401,7 +406,9 @@ class nl_solver:
         self.assign_currents_solve_GS(current_, rtol_NK)
         dIy_1 = self.plasma_grids.Iy_from_jtor(self.profiles2.jtor) - self.Iy
         self.dIydpars[:, 1] = dIy_1/self.final_dpars_record[1]
-        print('delta_alpha_n = ', self.final_dpars_record[1], 'norm(deltaIy) =', np.linalg.norm(dIy_1))
+        if verbose:
+            print('alpha_n gradient calculated on the finite difference: delta_alpha_n =', 
+                  self.final_dpars_record[1], ', norm(deltaIy) =', np.linalg.norm(dIy_1))
 
         # vary paxis or betap
         self.check_and_change_profiles(profile_coefficients=(profiles.alpha_m,
@@ -410,7 +417,9 @@ class nl_solver:
         self.assign_currents_solve_GS(current_, rtol_NK)
         dIy_1 = self.plasma_grids.Iy_from_jtor(self.profiles2.jtor) - self.Iy
         self.dIydpars[:, 2] = dIy_1/self.final_dpars_record[2]
-        print('delta_profile_pars = ', self.final_dpars_record[2], 'norm(deltaIy) =', np.linalg.norm(dIy_1))
+        if verbose:
+            print('profile_par gradient calculated on the finite difference: delta_profile_par =', 
+                  self.final_dpars_record[2], ', norm(deltaIy) =', np.linalg.norm(dIy_1))
         
         
     
@@ -446,7 +455,7 @@ class nl_solver:
         self.final_dI_record[j] = final_dI
 
 
-    def build_dIydI_j(self, j, rtol_NK):
+    def build_dIydI_j(self, j, rtol_NK, verbose=False):
         """Compute the term d(Iy)/dI_j of the Jacobian as a finite difference derivative, 
         using the value of delta(I_j) inferred earlier by self.prepare_build_dIydI_j.
 
@@ -459,8 +468,7 @@ class nl_solver:
 
         Returns
         -------
-        np.array
-     finite difference derivative d(Iy)/dI_j. 
+        dIydIj : np.array finite difference derivative d(Iy)/dI_j. 
             This is a 1d vector including all grid points in reduced domain, as from plasma_domain_mask.
         """
        
@@ -480,16 +488,18 @@ class nl_solver:
         # dIydIj_2 = (self.plasma_grids.Iy_from_jtor(self.profiles2.jtor) - dIy_1 - self.Iy)/final_dI
 
         # self.ddIyddI[j] = np.linalg.norm(dIydIj_2 - dIydIj)/final_dI
+
+        if verbose:
+            print('dimension', j, 'in the vector of metal currents,', 'gradient calculated on the finite difference: norm(deltaI) = ', final_dI, ', norm(deltaIy) =', np.linalg.norm(dIy_1))
         
-        print(j, 'deltaI = ', final_dI, 'norm(deltaIy) =', np.linalg.norm(dIy_1))
-        # print('ddIydI = ', self.ddIyddI[j])
         return dIydIj
     
 
     def build_linearization(self,   eq, profile, 
                                     dIydI=None, dIydpars=None,
                                     rtol_NK=1e-8, target_dIy=10., 
-                                    starting_dI=.5, starting_dpars=(.0002,.0002,.005)):
+                                    starting_dI=.5, starting_dpars=(.0002,.0002,.005),
+                                    verbose=False):
         """Builds the Jacobian d(Iy)/dI to set up the solver of the linearised problem.
 
         Parameters
@@ -531,7 +541,7 @@ class nl_solver:
                     self.prepare_build_dIydI_j(j, rtol_NK, target_dIy, starting_dI)
             
                 for j in self.arange_currents:
-                    self.dIydI[:,j] = self.build_dIydI_j(j, rtol_NK)
+                    self.dIydI[:,j] = self.build_dIydI_j(j, rtol_NK, verbose)
                 self.updated_dIydI = np.copy(self.dIydI)
                 self.norm_updated_dIydI = np.linalg.norm(self.updated_dIydI)
 
@@ -542,12 +552,12 @@ class nl_solver:
         # build/update dIydpars   
         if dIydpars is None:
             if self.dIydpars is None:
-                print('I\'m building the linearization wrt the profile parameters. This may take a minute or two.')
+                print('I\'m building the linearization wrt the profile parameters.')
                 self.dIydpars = np.zeros((self.plasma_domain_size, 3))
                 self.final_dpars_record = np.zeros(3)
 
                 self.prepare_build_dIydpars(profile, rtol_NK, target_dIy, starting_dpars)
-                self.build_dIydIpars(profile, rtol_NK)
+                self.build_dIydIpars(profile, rtol_NK, verbose)
         
         else:
             self.dIydpars = dIydpars
@@ -731,7 +741,8 @@ class nl_solver:
                             update_n_steps=16,
                             threshold_svd=.1,
                             max_dIy_update=.01,
-                            max_updates=6
+                            max_updates=6,
+                            verbose=False
                             ): 
         """Uses the input equilibrium as initial conditions and prepares to solve for its dynamics.
         If needed, sets the the linearised solver by calculating the Jacobian dIy/dI.
@@ -835,7 +846,8 @@ class nl_solver:
         self.build_linearization(eq, profile, 
                                 dIydI=dIydI, dIydpars=dIydpars,
                                 rtol_NK=rtol_NK, target_dIy=10., 
-                                starting_dI=.5, starting_dpars=(.0008,.0008,.002))
+                                starting_dI=.5, starting_dpars=(.0008,.0008,.002),
+                                verbose=verbose)
 
         # transfer linearization to linear solver
         self.linearised_sol.set_linearization_point(dIydI=self.dIydI,
@@ -854,56 +866,56 @@ class nl_solver:
 
 
 
-
-    def run_linearization_update(self, max_dIy_update):
-        """To be revised.
-        """
+    # NOT CURRENTLY USED
+    # def run_linearization_update(self, max_dIy_update):
+    #     """To be revised.
+    #     """
                 
-        self.linearised_sol.prepare_min_update_linearization(self.current_record[:-1],
-                                                             self.Iy_record[:-1],
-                                                             self.threshold_svd)
-        delta_dIydI = self.linearised_sol.min_update_linearization()
+    #     self.linearised_sol.prepare_min_update_linearization(self.current_record[:-1],
+    #                                                          self.Iy_record[:-1],
+    #                                                          self.threshold_svd)
+    #     delta_dIydI = self.linearised_sol.min_update_linearization()
 
-        compare_ = np.linalg.norm(delta_dIydI)/self.norm_updated_dIydI
-        print('relative_d_dIydI', compare_)
-        control = (compare_>max_dIy_update)
+    #     compare_ = np.linalg.norm(delta_dIydI)/self.norm_updated_dIydI
+    #     print('relative_d_dIydI', compare_)
+    #     control = (compare_>max_dIy_update)
         
-        if control:
-            print('Need linearization update: starting...')
-            i = 0
-            urgency = abs((self.current_at_last_linearization - self.currents_vec)/(self.norm_updated_dIydI/self.ddIyddI))
-            urgency = np.argsort(-urgency)  
+    #     if control:
+    #         print('Need linearization update: starting...')
+    #         i = 0
+    #         urgency = abs((self.current_at_last_linearization - self.currents_vec)/(self.norm_updated_dIydI/self.ddIyddI))
+    #         urgency = np.argsort(-urgency)  
 
-            while control:
-                j = urgency[i]
-                self.updated_dIydI[:,j] = self.build_dIydI_j(j, rtol_NK=self.rtol_NK)
-                self.norm_updated_dIydI = np.linalg.norm(self.updated_dIydI)
-                self.linearised_sol.set_linearization_point(dIydI=self.updated_dIydI,
-                                                            hatIy0=self.broad_hatIy)
+    #         while control:
+    #             j = urgency[i]
+    #             self.updated_dIydI[:,j] = self.build_dIydI_j(j, rtol_NK=self.rtol_NK)
+    #             self.norm_updated_dIydI = np.linalg.norm(self.updated_dIydI)
+    #             self.linearised_sol.set_linearization_point(dIydI=self.updated_dIydI,
+    #                                                         hatIy0=self.broad_hatIy)
                 
-                delta_dIydI = self.linearised_sol.min_update_linearization()
+    #             delta_dIydI = self.linearised_sol.min_update_linearization()
 
-                compare_ = np.linalg.norm(delta_dIydI)/self.norm_updated_dIydI
-                print('relative_d_dIydI', compare_)
-                control = (compare_>max_dIy_update)*(i<self.max_updates)
+    #             compare_ = np.linalg.norm(delta_dIydI)/self.norm_updated_dIydI
+    #             print('relative_d_dIydI', compare_)
+    #             control = (compare_>max_dIy_update)*(i<self.max_updates)
 
-                i += 1
+    #             i += 1
 
     
-    def check_linearization_and_update(self, max_dIy_update, max_updates):
-        """To be revised.
-        """
-        if self.step_no / self.update_n_steps < 1:
-            id = self.step_no % self.update_n_steps
-            self.current_record[id] = self.currents_vec
-            self.Iy_record[id] = self.Iy
-        else:
-            self.current_record[-1] = self.currents_vec
-            self.Iy_record[-1] = self.Iy
-            self.current_record[:-1] = self.current_record[1:]
-            self.Iy_record[:-1] = self.Iy_record[1:] 
+    # def check_linearization_and_update(self, max_dIy_update, max_updates):
+    #     """To be revised.
+    #     """
+    #     if self.step_no / self.update_n_steps < 1:
+    #         id = self.step_no % self.update_n_steps
+    #         self.current_record[id] = self.currents_vec
+    #         self.Iy_record[id] = self.Iy
+    #     else:
+    #         self.current_record[-1] = self.currents_vec
+    #         self.Iy_record[-1] = self.Iy
+    #         self.current_record[:-1] = self.current_record[1:]
+    #         self.Iy_record[:-1] = self.Iy_record[1:] 
 
-            self.run_linearization_update(max_dIy_update, max_updates)
+    #         self.run_linearization_update(max_dIy_update, max_updates)
         
 
     def step_complete_assign(self, working_relative_tol_GS,
@@ -1319,6 +1331,8 @@ class nl_solver:
                 self.profiles2.alpha_n = profile_coefficients[1]
 
 
+    
+
     def nlstepper(self, active_voltage_vec, 
                         profile_parameter=None,
                         profile_coefficients=None,
@@ -1340,7 +1354,7 @@ class nl_solver:
                         clip=5,
                         threshold=1.5,
                         clip_hard=1.5,
-                        verbose=True,
+                        verbose=0,
                         linear_only=False):
         """The main stepper function. 
         If linear_only = True, this advances the linearised problem.
@@ -1427,8 +1441,10 @@ class nl_solver:
         clip_hard : float, optional, by default 1.5
              Used in the NK solvers. Maximum step size for each accepted basis vector, in units 
             of the exploratory step, for cases of partial collinearity.
-        verbose : bool, optional, by default True
+        verbose : int, optional, by default T
             Printouts of convergence process. 
+            Use 1 for printouts with details on each NK cycle.
+            Use 2 for printouts with deeper intermediate details.
         linear_only : bool, optional, by default False
             If linear_only = True the solution of the linearised problem is accepted.
             If linear_only = False, the convergence criteria are used and a solution of 
@@ -1443,6 +1459,11 @@ class nl_solver:
 
 
         """
+
+
+        self.text_nk_cycle = 'This is NK cycle no {nkcycle}.'
+        self.text_psi_0 = 'NK on psi has been skipped {skippedno} times. The residual on psi is {psi_res:.8f}.'
+        self.text_psi_1 = 'The coefficients applied to psi are'
 
         # check if profile parameter (betap or paxis) is being altered 
         # and action the change where necessary
@@ -1478,7 +1499,8 @@ class nl_solver:
             control_GS = 0
             
             if verbose:
-                print('starting: curr residual', np.amax(rel_curr_res), np.mean(rel_curr_res))
+                print('starting numerical solve:')
+                print('max(residual on current eqs) =', np.amax(rel_curr_res), 'mean(residual on current eqs) =', np.mean(rel_curr_res))
             log = []
 
             # counter for instances in which the NK solver in psi has been shortcutted
@@ -1494,7 +1516,8 @@ class nl_solver:
                     for _ in log:
                         print(_)
                     
-                log = []
+                log = [self.text_nk_cycle.format(nkcycle = n_it)]
+
 
                 # update plasma flux if trial_currents and plasma_flux exceedingly far from GS solution
                 if control_GS:
@@ -1512,7 +1535,7 @@ class nl_solver:
                                                 rtol_NK=self.rtol_NK)
                 del_res_psi = (np.amax(res_psi) - np.amin(res_psi))
 
-                log.append([n_it, 'psi cycle skipped', n_no_NK_psi, 'times, psi_residual', del_res_psi])
+
 
                 if (del_res_psi > self.rtol_NK/relative_tol_for_nk_psi)+(n_no_NK_psi > max_no_NK_psi):
                     n_no_NK_psi = 0
@@ -1531,13 +1554,16 @@ class nl_solver:
                                                         clip=clip,
                                                         threshold=threshold,
                                                         clip_hard=clip_hard)
-                    log.append([n_it, 'psi_coeffs = ', self.psi_nk_solver.coeffs])
+                    
                     # update trial_plasma_psi according to NK solution
                     self.trial_plasma_psi += self.psi_nk_solver.dx*blend_psi
+                    psi_text = [[self.text_psi_1, self.psi_nk_solver.coeffs]]
 
                 else:
                     # NK algorithm has been shortcutted, keep count
                     n_no_NK_psi += 1
+                    psi_text = [self.text_psi_0.format(skippedno = n_no_NK_psi, psi_res = del_res_psi)]
+
 
                 # prepare for NK solver on the currents, 2d plasma flux needed
                 self.trial_plasma_psi = self.trial_plasma_psi.reshape(self.nx, self.ny)
@@ -1546,7 +1572,11 @@ class nl_solver:
                 # assumes the just updated self.trial_plasma_psi
                 res_curr = self.F_function_curr(self.trial_currents, active_voltage_vec)
                 rel_curr_res = abs(res_curr / self.curr_step)
-                log.append([n_it, 'intermediate curr residual', np.amax(rel_curr_res), np.mean(rel_curr_res)])
+                interm_text = ['The intermediate residuals on the current: max =', np.amax(rel_curr_res), 'mean =', np.mean(rel_curr_res)]
+                
+                if verbose-1:
+                    log.append(psi_text)
+                    log.append(interm_text)
                 
                 # NK algorithm to solve the root problem in the currents
                 self.currents_nk_solver.Arnoldi_iteration(  x0=self.trial_currents, 
@@ -1576,9 +1606,9 @@ class nl_solver:
                 control_GS = (r_res_GS > target_relative_tol_GS)
                 control += control_GS
                 
-                log.append([n_it, 'curr_coeffs = ', self.currents_nk_solver.coeffs])
-                log.append([n_it, 'full cycle curr residual', np.amax(rel_curr_res), np.mean(rel_curr_res)])
-                log.append([n_it, 'GS residual: ',r_res_GS])
+                log.append(['The coeffs applied to the current vec = ', self.currents_nk_solver.coeffs])
+                log.append(['The final residual on the current (relative): max =', np.amax(rel_curr_res), 'mean =', np.mean(rel_curr_res)])
+                log.append(['Residuals on GS eq (relative): ', r_res_GS])
 
                 # one full cycle completed
                 n_it += 1

@@ -15,7 +15,7 @@ Tests + Documentation:
     - mamba env create -f environment.yml
     - source activate  
     - conda activate freegsnke
-    - pip install git+https://${FREEGSFAST_CI_TOKEN}@github.com/farscape-project/freegsfast@7ee11d8a93d32f5e729e2bbb2af48bfc70d18124
+    - pip install git+https://${FREEGSFAST_CI_TOKEN}@github.com/farscape-project/freegsfast
     - pip install -e .
     - python -m pip install pytest
   script:

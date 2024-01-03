@@ -171,7 +171,7 @@ def test_linearised_stepper(create_machine):
 
     counter = 0
     max_count = 20
-    while flag < 1 and counter < max_count:
+    while counter < max_count:
         clear_output(wait=True)
         display(f"Step: {counter}/{max_count-1}")
         display(f"current time t = {t}")
@@ -179,7 +179,7 @@ def test_linearised_stepper(create_machine):
 
         t_start = time.time()
 
-        flag = stepping.nlstepper(
+        stepping.nlstepper(
             active_voltage_vec=U_active,
             target_relative_tol_currents=0.01,
             target_relative_tol_GS=0.01,
@@ -288,7 +288,7 @@ def test_non_linear_stepper(create_machine):
 
     counter = 0
     max_count = 20
-    while flag < 1 and counter < max_count:
+    while counter < max_count:
         clear_output(wait=True)
         display(f"Step: {counter}/{max_count-1}")
         display(f"current time t = {t}")
@@ -296,7 +296,7 @@ def test_non_linear_stepper(create_machine):
 
         t_start = time.time()
 
-        flag = stepping.nlstepper(
+        stepping.nlstepper(
             active_voltage_vec=U_active,
             target_relative_tol_currents=0.01,
             target_relative_tol_GS=0.01,

@@ -198,7 +198,7 @@ class NKGSsolver:
                         clip=10,
                         threshold=3,
                         clip_hard=2,
-                        verbose=True,
+                        verbose=False,
                         ):
         
         """The method that actually solves the forward GS problem.
@@ -252,12 +252,12 @@ class NKGSsolver:
         clip_hard : float
             maximum step size for cases of untreated (partial) collinearity
         verbose : bool
-            flag to allow warning message in case of failed convergence within requested max_solving_iterations
+            flag to allow warning messages when Picard is used instead of NK
         
         """
         
 
-        
+        picard_flag = 0
         self.profiles = profiles
         trial_plasma_psi = np.copy(eq.plasma_psi).reshape(-1)
         self.tokamak_psi = (eq.tokamak.calcPsiFromGreens(pgreen=eq._pgreen)).reshape(-1)
@@ -274,9 +274,10 @@ class NKGSsolver:
 
             if rel_change > Picard_handover:
                 # using Picard instead of NK
-                del_res0 = (np.amax(res0) - np.amin(res0))
+                # del_res0 = (np.amax(res0) - np.amin(res0))
                 trial_plasma_psi -= res0#/max(4, del_psi/del_res0)
-                print('Picard!', trial_plasma_psi)
+                picard_flag = 1
+                
 
             else:
                 self.nksolver.Arnoldi_iteration(x0=trial_plasma_psi, #trial_current expansion point
@@ -320,9 +321,11 @@ class NKGSsolver:
         # eq.psi_bndry = eq.xpt[0,2]
         self.port_critical(eq=eq, profiles=profiles)
 
-        
+        if picard_flag and verbose:
+            print('Picard was used instead of NK in at least 1 cycle.')
+
         #if max_iter was hit, then message:
-        if (iterations >= max_solving_iterations) and verbose:
+        if (iterations >= max_solving_iterations):
             print('failed to converge with less than {} iterations'.format(max_solving_iterations))
             print(f'last relative psi change = {rel_change}')
             
@@ -345,7 +348,7 @@ class NKGSsolver:
                         clip=10,
                         threshold=3,
                         clip_hard=2,
-                        verbose=True
+                        verbose=False
                         ):
         
         """The method to solve the GS problems, both forward and inverse.
@@ -417,7 +420,8 @@ class NKGSsolver:
                                 max_collinearity,
                                 clip,
                                 threshold,
-                                clip_hard
+                                clip_hard,
+                                verbose
                                 )
         
         else:

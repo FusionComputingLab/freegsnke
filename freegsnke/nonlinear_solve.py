@@ -30,7 +30,7 @@ class nl_solver:
     
     
     def __init__(self, profiles, eq, 
-                 max_mode_frequency, 
+                 max_mode_frequency=10**2.7, 
                  full_timestep=.0001,
                  max_internal_timestep=.0001, 
                  plasma_resistivity=1e-6,
@@ -61,6 +61,7 @@ class nl_solver:
         max_mode_frequency : float
             Threshold value used to include/exclude vessel normal modes.
             Only modes with smaller characteristic frequencies (larger timescales) are retained.
+            If None, max_mode_frequency is set based on the input timestep: max_mode_frequency = 1/(5*full_timestep)
         full_timestep : float, optional, by default .0001
             The stepper advances the dynamics by a time interval dt=full_timestep.
             Applies to both linear and non-linear stepper.
@@ -107,7 +108,7 @@ class nl_solver:
         """
 
         
-
+        
         self.nx = np.shape(eq.R)[0]
         self.ny = np.shape(eq.R)[1]
         self.eqR = eq.R
@@ -127,18 +128,21 @@ class nl_solver:
         self.plasma_grids = plasma_grids.Grids(eq, plasma_domain_mask)
         self.plasma_domain_mask = self.plasma_grids.plasma_domain_mask
         self.plasma_domain_size = np.sum(self.plasma_grids.plasma_domain_mask)
-        self.plasma_against_wall = 0
+        # self.plasma_against_wall = 0
         
-        # profiles are kept constant during evolution
-        # paxis, fvac and alpha values are taken from ICs and kept fixed thereafter
-        # note that this will need change to enable use of ConstrainbetaIp profile types!
+        # Extract relevant information on the type of profile function used and on the actual value of associated parameters
         self.get_profiles_values(profiles)
         
         self.plasma_norm_factor = plasma_norm_factor
         self.dt_step = full_timestep
         self.max_internal_timestep = max_internal_timestep
-        self.max_mode_frequency = max_mode_frequency
-        self.reset_plasma_resistivity(plasma_resistivity)
+        self.set_plasma_resistivity(plasma_resistivity)
+
+        if max_mode_frequency is None:
+            self.max_mode_frequency = 1/(5*full_timestep)
+            print('Value of max_mode_frequency has not been provided. Set to', self.max_mode_frequency, 'based on value of full_timestep as provided.')
+        else:
+            self.max_mode_frequency = max_mode_frequency    
 
         # handles the metal circuit eq, mode properties, and can calculate residual of metal circuit eq
         self.evol_metal_curr = metal_currents(flag_vessel_eig=1,
@@ -180,26 +184,14 @@ class nl_solver:
             vessel_currents_vec[i] = eq_currents[labeli]
         self.vessel_currents_vec = 1.0*vessel_currents_vec
         
-        # self.currents_vec is the vector of current values in which the dynamics is actually solved
+        # self.currents_vec is the vector of current values in which the dynamics is actually solved for
         # it includes: active coils, vessel normal modes, total plasma current
-        # total plasma current is divided by plasma_norm_factor to improve homogeneity of values
+        # total plasma current is divided by plasma_norm_factor to improve homogeneity of float values
         self.currents_vec = np.zeros(self.n_metal_modes + 1)
         self.circuit_eq_residual = np.zeros(self.n_metal_modes + 1)
         
-        # step advancement of the dynamics
-        self.step_no = 0
-
-        # this is the filter used to broaden the normalised plasma current distribution
-        # used to contract the system of plasma circuit equations
-        self.ones_to_broaden = np.ones((nbroad, nbroad))
-
-        # self.dIydI is the Jacobian of the plasma current distribution
-        # with respect to the independent currents (as in self.currents_vec)
-        self.dIydI = dIydI
-
-        # self.dIydpars is the Jacobian of the plasma current distribution
-        # with respect to the independent profile parameters (alpha_m, alpha_n, paxis OR betap)
-        self.dIydpars = dIydpars
+        
+        
         
         # self.linearised_sol handles the linearised dynamic problem
         self.linearised_sol = linear_solver(Lambdam1=self.evol_metal_curr.Lambdam1, 
@@ -216,6 +208,25 @@ class nl_solver:
 
         # set up NK solver for the currents
         self.currents_nk_solver = nk_solver.nksolver(self.n_metal_modes + 1)
+
+        
+        
+        # step advancement of the dynamics
+        self.step_no = 0
+
+        # this is the filter used to broaden the normalised plasma current distribution
+        # used to contract the system of plasma circuit equations
+        self.ones_to_broaden = np.ones((nbroad, nbroad))
+
+        # self.dIydI is the Jacobian of the plasma current distribution
+        # with respect to the independent currents (as in self.currents_vec)
+        self.dIydI = dIydI
+
+        # self.dIydpars is the Jacobian of the plasma current distribution
+        # with respect to the independent profile parameters (alpha_m, alpha_n, paxis OR betap)
+        self.dIydpars = dIydpars
+
+
 
         # initialize and set up the linearization
         # input value for dIydI is used when available
@@ -277,7 +288,7 @@ class nl_solver:
             shape(selected_modes_mask) = shape(self.currents_vec) at the time of calling the function
             indexes corresponding to True are kept, indexes corresponding to False are dropped
         """
-        print('The input min_dIy_dI corresponds to keeping', np.sum(selected_modes_mask),
+        print('Mode removal is ON: the input min_dIy_dI corresponds to keeping', np.sum(selected_modes_mask),
               'out of the original', self.n_metal_modes, 'metal modes.')
         self.evol_metal_curr.initialize_for_eig(selected_modes_mask)
         self.n_metal_modes = self.evol_metal_curr.n_independent_vars
@@ -565,10 +576,11 @@ class nl_solver:
         
 
         
-    def reset_plasma_resistivity(self, plasma_resistivity):
-        """Function to reset the resistivity of the plasma.
+    def set_plasma_resistivity(self, plasma_resistivity):
+        """Function to set the resistivity of the plasma.
         self.plasma_resistance_1d is the diagonal of the matrix R_yy, the plasma resistance matrix.
         Note that it only spans the grid points in the reduced domain, as from plasma_domain_mask.
+        Changes to the plasma sensitivity require changes to all objects that require a plasma_resistance_1d input!
 
         Parameters
         ----------
@@ -638,15 +650,12 @@ class nl_solver:
 
     def get_profiles_values(self, profiles):
         """Extracts profile properties. 
-        Not currently used, but will be if 'perturbations' or 
-        time evolution of the profile properties is introduced. 
-        Needs updating to be compatible with different profile classes.
-        At the moment ConstrainPaxisIp only.
-
+        
         Parameters
         ----------
         profiles : FreeGS profile Object
             Profile function of the initial equilibrium. 
+            Can handle both freeGS profile types ConstrainPaxisIp and ConstrainBetapIp.
         """
         self.fvac = profiles.fvac
         self.alpha_m = profiles.alpha_m
@@ -861,8 +870,8 @@ class nl_solver:
             self.current_at_last_linearization = np.copy(self.currents_vec)
 
         # check if initial equilibrium contacts the wall
-        if self.plasma_grids.check_if_outside_domain(jtor=self.profiles1.jtor):
-            print('plasma in ICs is touching the wall!')
+        # if self.plasma_grids.check_if_outside_domain(jtor=self.profiles1.jtor):
+        #     print('plasma in ICs is touching the wall!')
 
 
 
@@ -1616,10 +1625,10 @@ class nl_solver:
             # convergence checks succeeded, complete step
             self.step_complete_assign(working_relative_tol_GS)
         
-        # check plasma is still fully contained in the plasma reduced domain 
-        flag = self.plasma_grids.check_if_outside_domain(jtor=self.profiles2.jtor)
+        # # check plasma is still fully contained in the plasma reduced domain 
+        # flag = self.plasma_grids.check_if_outside_domain(jtor=self.profiles2.jtor)
 
-        return flag
+        # return flag
 
 
 

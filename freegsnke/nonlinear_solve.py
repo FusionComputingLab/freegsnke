@@ -37,6 +37,7 @@ class nl_solver:
                  plasma_norm_factor=1000,
                  plasma_domain_mask=None,
                  nbroad=3,
+                 blend_hatJ=0,
                  dIydI=None,
                  dIydpars=None,
                  automatic_timestep=False,
@@ -89,6 +90,10 @@ class nl_solver:
         nbroad : int, optional, by default 3
             pixel size (as number of grid points) of (square) smoothing filter applied to 
             the instantaneous plasma current distribution, before contracting the plasma circuit equations
+        blend_hatJ : float, optional, by default 0
+            optional coefficient to use a blended version of the normalised plasma current distribution
+            when contracting the plasma lumped circuit eq. from the left. The blend combines the 
+            current distribution at time t with (a guess for) the one at time t+dt.
         dIydI : np.array of size (np.sum(plasma_domain_mask), n_metal_modes+1), optional
             dIydI_(i,j) = d(Iy_i)/d(I_j)
             This is the jacobian of the plasma current distribution with respect to all
@@ -217,6 +222,11 @@ class nl_solver:
         # this is the filter used to broaden the normalised plasma current distribution
         # used to contract the system of plasma circuit equations
         self.ones_to_broaden = np.ones((nbroad, nbroad))
+        # use convolution if nbroad>1
+        if nbroad>1:    
+            self.make_broad_hatIy = (lambda hatIy : self.make_broad_hatIy_conv(hatIy, blend=blend_hatJ))
+        else:
+            self.make_broad_hatIy = (lambda hatIy : self.make_broad_hatIy_noconv(hatIy, blend=blend_hatJ))
 
         # self.dIydI is the Jacobian of the plasma current distribution
         # with respect to the independent currents (as in self.currents_vec)
@@ -1027,10 +1037,30 @@ class nl_solver:
         self.Id_dot = ((currents_vec - self.currents_vec)/self.dt_step)[:-1]
 
 
-    def make_broad_hatIy(self, hatIy1):
+    def make_broad_hatIy_conv(self, hatIy1, blend=0):
         """Averages the normalised plasma current distributions at time t and 
         (a guess for the one at) at time t+dt to better contract the system of 
-        plasma circuit eqs.  
+        plasma circuit eqs. Applies some 'smoothing' though convolution, when
+        setting is nbroad>1.
+
+        Parameters
+        ----------
+        hatIy1 : np.array
+            Guess for the normalised plasma current distributions at time t+dt.
+            Should be a vector that sums to 1. Reduced plasma domain only.
+        blend : float between 0 and 1
+            Option to combine the normalised plasma current distributions at time t 
+            with (a guess for) the one at time t+dt before contraction of the plasma
+            lumped circuit eq.
+        """
+        self.broad_hatIy = self.plasma_grids.rebuild_map2d(hatIy1 + blend*self.hatIy)
+        self.broad_hatIy = convolve2d(self.broad_hatIy, self.ones_to_broaden, mode='same')
+        self.broad_hatIy = self.plasma_grids.hat_Iy_from_jtor(self.broad_hatIy)
+
+    def make_broad_hatIy_noconv(self, hatIy1, blend=0):
+        """Averages the normalised plasma current distributions at time t and 
+        (a guess for the one at) at time t+dt to better contract the system of 
+        plasma circuit eqs. Does not apply convolution: nbroad==1.
 
         Parameters
         ----------
@@ -1038,8 +1068,8 @@ class nl_solver:
             Guess for the normalised plasma current distributions at time t+dt.
             Should be a vector that sums to 1. Reduced plasma domain only.
         """
-        self.broad_hatIy = self.plasma_grids.rebuild_map2d(self.hatIy + hatIy1)
-        self.broad_hatIy = convolve2d(self.broad_hatIy, self.ones_to_broaden, mode='same')
+        self.broad_hatIy = self.plasma_grids.rebuild_map2d(hatIy1 + blend*self.hatIy)
+        # self.broad_hatIy = convolve2d(self.broad_hatIy, self.ones_to_broaden, mode='same')
         self.broad_hatIy = self.plasma_grids.hat_Iy_from_jtor(self.broad_hatIy)
 
 
@@ -1722,7 +1752,7 @@ class nl_solver:
                 
             log = []
 
-            self.currents_nk_solver.Arnoldi_iteration( x0=self.trial_currents, #trial_current expansion point
+            self.currents_nk_solver.Arnoldi_iteration(  x0=self.trial_currents, #trial_current expansion point
                                                         dx=res_curr, #first vector for current basis
                                                         R0=res_curr, #circuit eq. residual at trial_current expansion point: F_function(trial_current)
                                                         F_function=self.F_function_curr_GS,

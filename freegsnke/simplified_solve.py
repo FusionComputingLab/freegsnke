@@ -64,6 +64,7 @@ class simplified_solver_J1:
         self.n_independent_vars = np.shape(Lambdam1)[0]
         self.Mmatrix = np.eye(self.n_independent_vars + 1)
         self.Mmatrix[:-1,:-1] = Lambdam1
+        self.Lambdam1 = Lambdam1
 
         self.Lmatrix = np.copy(self.Mmatrix)
 
@@ -90,6 +91,8 @@ class simplified_solver_J1:
         self.empty_U = np.zeros(np.shape(Vm1Rm12)[1])
         # dummy voltage vec for eig modes
         self.forcing = np.zeros(self.n_independent_vars + 1)
+        # dummy voltage vec for residuals
+        self.residuals = np.zeros(self.n_independent_vars + 1)
         
 
     def reset_timesteps(self, max_internal_timestep,
@@ -130,6 +133,7 @@ class simplified_solver_J1:
         """
 
         Rp = np.sum(self.plasma_resistance_1d*hatIy_left*hatIy_1)
+        self.Rp = Rp
 
         simplified_mutual_left = np.dot(self.Vm1Rm12Mey, hatIy_left)
         simplified_mutual_1 = np.dot(self.Vm1Rm12Mey, hatIy_1)
@@ -163,13 +167,18 @@ class simplified_solver_J1:
 
         Parameters
         ----------
+        It: np.array
+            vector of all extensive currents at time t: It = (all metals, plasma)
+            with dimension self.n_independent_vars + 1. Metal currents expressed in 
+            terms of normal modes.
         hatIy_left: np.array
-            guess for gridded plasma current to left-contract the plasma evolution equation
+            normalised plasma current distribution on the reduced domain. 
+            This is used to left-contract the plasma evolution equation
             (e.g. at time t, or t+dt, or a combination)
         hatIy_0: np.array
-            gridded plasma current to left-contract the plasma evolution equation at time t
+            normalised plasma current distribution on the reduced domain at time t
         hatIy_1: np.array
-            (guessed) gridded plasma current to left-contract the plasma evolution equation at time t+dt
+            normalised plasma current distribution on the reduced domain at time t+dt
         active_voltage_vec: np.array
             voltages applied to the active coils
         
@@ -181,6 +190,64 @@ class simplified_solver_J1:
         self.prepare_solver(hatIy_left, hatIy_0, hatIy_1, active_voltage_vec)
         Itpdt = self.solver.full_stepper(It, self.forcing)
         return Itpdt
+
+
+
+    def ceq_residuals(self, I_0, I_1, hatIy_left, hatIy_0, hatIy_1, active_voltage_vec):
+        """Computes and returns the set of residual for the full lumped circuit equations
+        (all metals in normal modes plus contracted plasma eq.) given extensive currents and
+        normalised plasma distributions at both times t and t+dt. Uses
+
+        Parameters
+        ----------
+        I_0: np.array
+            vector of all extensive currents at time t: It = (all metals, plasma)
+            with dimension self.n_independent_vars + 1. Metal currents expressed in 
+            terms of normal modes.
+        I_1: np.array
+            as above at time t+dt.
+        hatIy_left: np.array
+            normalised plasma current distribution on the reduced domain. 
+            This is used to left-contract the plasma evolution equation
+            (e.g. at time t, or t+dt, or a combination)
+        hatIy_0: np.array
+            normalised plasma current distribution on the reduced domain at time t
+        hatIy_1: np.array
+            normalised plasma current distribution on the reduced domain at time t+dt
+        active_voltage_vec: np.array
+            voltages applied to the active coils
+
+        Returns
+        -------
+        np.array
+            Residual of the circuit eq, lumped for the plasma: dimensions are self.n_independent_vars + 1.
+        """
+        # prepare time derivatives
+        Id_dot = (I_1 - I_0)[:-1]/self.full_timestep
+        Iy_dot = (hatIy_1*I_1[-1] - hatIy_0*I_0[-1])/self.full_timestep
+        # prepare forcing term
+        self.empty_U[:self.n_active_coils] = active_voltage_vec
+        self.forcing[:-1] = np.dot(self.Vm1Rm12, self.empty_U)
+        # prepare the lumped plasma resistance
+        Rp = np.sum(self.plasma_resistance_1d*hatIy_left*hatIy_1)
+
+
+        # metal dimensions
+        res_met = np.dot(self.Lambdam1, Id_dot) 
+        res_met += np.dot(self.Vm1Rm12Mey, Iy_dot)*self.plasma_norm_factor
+        # plasma lump
+        res_pl = np.dot(self.Myy, Iy_dot)
+        res_pl += np.dot(self.Vm1Rm12Mey, Id_dot)/self.plasma_norm_factor
+        res_pl /= Rp
+        res_pl = np.dot(res_pl, hatIy_left)
+        # build residual ved
+        self.residuals[:-1] = res_met
+        self.residuals[-1] = res_pl
+
+        # add resistive and forcing terms
+        self.residuals += (I_1 - self.forcing)
+
+        return self.residuals
 
 
 

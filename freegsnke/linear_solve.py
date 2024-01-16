@@ -68,6 +68,7 @@ class linear_solver:
         self.empty_U = np.zeros(np.shape(Vm1Rm12)[1])
         # dummy voltage vec for eig modes
         self.forcing = np.zeros(self.n_independent_vars + 1)
+        self.profile_forcing = np.zeros(self.n_independent_vars + 1)
 
 
     def reset_timesteps(self, max_internal_timestep,
@@ -87,7 +88,7 @@ class linear_solver:
                                   max_internal_timestep=max_internal_timestep)
     
 
-    def set_linearization_point(self, dIydI, hatIy0):
+    def set_linearization_point(self, dIydI, dIydpars, hatIy0):
         """Initialises an implicit-Euler solver with the appropriate matrices for the linearised problem.
 
         Parameters
@@ -95,12 +96,16 @@ class linear_solver:
         dIydI = np.array
             partial derivatives of plasma-cell currents on the reduced plasma domain with respect to all intependent <<current>> parameters
             (active coil currents, vessel normal modes, total plasma current divided by plasma_norm_factor).
-            These would typically come from having solved the forward Grad-Shafranov problem for different combinations of current parameters.
+            These would typically come from having solved the forward Grad-Shafranov problem. Finite difference Jacobian.
+        dIydI = np.array
+            partial derivatives of plasma-cell currents on the reduced plasma domain with respect to all intependent profile parameters,
+            i.e. (alpha_m, alpha_n, paxis OR betap)
         hatIy0 = np.array
             Normalised plasma current distribution on the reduced plasma domain (1d) at the equilibrium of the linearization. 
             This vector sums to 1.
         """
         self.dIydI = dIydI
+        self.dIydpars = dIydpars
         self.hatIy0 = hatIy0
 
         self.build_Mmatrix()
@@ -112,7 +117,8 @@ class linear_solver:
 
        
     def build_Mmatrix(self, ):
-        """Initialises the pseudo-inductance matrix of the problem M\dot(x)+ Rx=forcing from the linearisation Jacobian.
+        """Initialises the pseudo-inductance matrix of the problem 
+        M\dot(x)+ Rx=forcing from the linearisation Jacobian.
 
         Parameters
         ----------
@@ -121,6 +127,7 @@ class linear_solver:
         """
         nRp = np.sum(self.plasma_resistance_1d * self.hatIy0 * self.hatIy0)*self.plasma_norm_factor
 
+        # build the state matrix M (MIdot + RI = V) so that R=Id
         self.Mmatrix[:self.n_independent_vars, :self.n_independent_vars] = np.copy(self.Lambdam1)
         self.Mmatrix[:self.n_independent_vars, :self.n_independent_vars] += np.matmul(self.Vm1Rm12Mey, self.dIydI[:,:-1])
 
@@ -130,12 +137,19 @@ class linear_solver:
         mat += self.Vm1Rm12Mey
         self.Mmatrix[-1, :-1] = np.dot(mat, self.hatIy0)
 
-        self.Mmatrix[-1,-1] = np.dot(self.hatIy0, np.dot(self.Myy, self.dIydI[:,-1]))
+        JMyy = np.dot(self.Myy, self.hatIy0)
+        self.Mmatrix[-1,-1] = np.dot(self.dIydI[:,-1], JMyy)
 
         self.Mmatrix[-1, :] /= nRp
 
+        # build necessary terms to incorporate forcing term from variations of the profile parameters
+        # MIdot + RI = V - self.Vm1Rm12Mey_plus@self.dIydpars@d_profile_pars_dt
+        Vm1Rm12Mey_plus = np.concatenate((self.Vm1Rm12Mey, JMyy[np.newaxis]/nRp), axis=0)
+        self.forcing_pars_matrix = np.matmul(Vm1Rm12Mey_plus, self.dIydpars)
 
-    def stepper(self, It, active_voltage_vec):
+
+
+    def stepper(self, It, active_voltage_vec, d_profile_pars_dt=None):
         """Executes the time advancement. Uses the implicit_euler instance. 
 
         Parameters
@@ -145,10 +159,17 @@ class linear_solver:
             (active currents, vessel normal modes, total plasma current divided by normalisation factor)
         active_voltage_vec = np.array 
             voltages applied to the active coils
+        d_profile_pars_dt = np.array
+            time derivative of the profile parameters, in the order (alpha_m, alpha_n, paxis OR betap)
         other parameters are passed in as object attributes
         """
         self.empty_U[:self.n_active_coils] = active_voltage_vec
         self.forcing[:-1] = np.dot(self.Vm1Rm12, self.empty_U)
+        
+        # add forcing term from time derivative of profile parameters 
+        if d_profile_pars_dt is not None:
+            self.forcing -= np.dot(self.forcing_pars_matrix, d_profile_pars_dt)
+
         Itpdt = self.solver.full_stepper(It, self.forcing)
         return Itpdt
     

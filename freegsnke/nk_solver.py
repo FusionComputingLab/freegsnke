@@ -66,9 +66,9 @@ class nksolver:
 
 
     
-    def Arnoldi_unit(self,  x0, #trial_current expansion point
+    def Arnoldi_unit(self,  x0, #trial expansion point
                             dx, #first vector for current basis
-                            R0, #circuit eq. residual at trial_current expansion point: Fresidual(trial_current)
+                            R0, #residual at trial_current expansion point: Fresidual(trial_current)
                             F_function,
                             args,
                             step_size):
@@ -94,7 +94,7 @@ class nksolver:
 
         Returns
         -------
-        candidate_step : 1d np.array, np.shape(dx_new) = self.problem_dimension
+        new_candidate_step : 1d np.array, np.shape(dx_new) = self.problem_dimension
             The direction to be explored next
         
         """
@@ -103,7 +103,7 @@ class nksolver:
         candidate_x = x0 + candidate_step
         R_dx = F_function(candidate_x, *args)
         useful_residual = R_dx - R0
-        # print('useful_residual ',np.linalg.norm(useful_residual))
+        # print('useful_residual ', np.linalg.norm(useful_residual))
 
         self.Q[:, self.n_it] = candidate_step
         self.Qn[:, self.n_it] = self.Q[:, self.n_it] / np.linalg.norm(self.Q[:, self.n_it])
@@ -120,7 +120,7 @@ class nksolver:
 
     def Arnoldi_iteration(self, x0, #trial_current expansion point
                                 dx, #first vector for current basis
-                                R0, #circuit eq. residual at trial_current expansion point: Fresidual(trial_current)
+                                R0, #circuit eq. residual at trial_current expansion point: F_function(x0)
                                 F_function,
                                 args,
                                 step_size,

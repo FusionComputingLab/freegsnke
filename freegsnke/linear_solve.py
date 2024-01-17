@@ -165,6 +165,7 @@ class linear_solver:
         """
         self.empty_U[:self.n_active_coils] = active_voltage_vec
         self.forcing[:-1] = np.dot(self.Vm1Rm12, self.empty_U)
+        self.forcing[-1] = 0.0
         
         # add forcing term from time derivative of profile parameters 
         if d_profile_pars_dt is not None:

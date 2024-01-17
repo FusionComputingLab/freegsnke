@@ -223,8 +223,8 @@ class simplified_solver_J1:
             Residual of the circuit eq, lumped for the plasma: dimensions are self.n_independent_vars + 1.
         """
         # prepare time derivatives
-        Id_dot = (I_1 - I_0)[:-1]/self.full_timestep
-        Iy_dot = (hatIy_1*I_1[-1] - hatIy_0*I_0[-1])/self.full_timestep
+        Id_dot = (I_1 - I_0)[:-1]
+        Iy_dot = (hatIy_1*I_1[-1] - hatIy_0*I_0[-1])
         # prepare forcing term
         self.empty_U[:self.n_active_coils] = active_voltage_vec
         self.forcing[:-1] = np.dot(self.Vm1Rm12, self.empty_U)
@@ -237,7 +237,7 @@ class simplified_solver_J1:
         res_met += np.dot(self.Vm1Rm12Mey, Iy_dot)*self.plasma_norm_factor
         # plasma lump
         res_pl = np.dot(self.Myy, Iy_dot)
-        res_pl += np.dot(self.Vm1Rm12Mey, Id_dot)/self.plasma_norm_factor
+        res_pl += np.dot(self.Vm1Rm12Mey.T, Id_dot)/self.plasma_norm_factor
         res_pl /= Rp
         res_pl = np.dot(res_pl, hatIy_left)
         # build residual ved
@@ -245,12 +245,14 @@ class simplified_solver_J1:
         self.residuals[-1] = res_pl
 
         # add resistive and forcing terms
-        self.residuals += (I_1 - self.forcing)
+        self.residuals += (I_1 - self.forcing)*self.full_timestep
 
         return self.residuals
 
 
 
+
+# BELOW is not used and probably outdated
 
 class simplified_solver_dJ:
     """Implements a solver of the circuit equations, including the plasma,

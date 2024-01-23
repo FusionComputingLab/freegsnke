@@ -119,12 +119,20 @@ class nksolver:
         # self.last_useful_residual = 1.0*useful_residual
         # print('candidate_x ', candidate_x)
 
+        
+
+
         self.Q[:, self.n_it] = candidate_step
         self.Qn[:, self.n_it] = self.Q[:, self.n_it] / np.linalg.norm(self.Q[:, self.n_it])
         
         self.G[:, self.n_it] = useful_residual
         self.Gn[:, self.n_it] = self.G[:,self.n_it]/np.linalg.norm(self.G[:,self.n_it])
 
+        # self.Hm[:self.n_it+1, self.n_it] = np.sum(self.Qn[:,:self.n_it+1] * useful_residual[:,np.newaxis], axis=0)
+
+        # next_candidate = useful_residual - np.sum(self.Qn[:,:self.n_it+1] * self.Hm[:self.n_it+1, self.n_it][:, np.newaxis])
+
+        
 
         # if self.verbose:
         #     print(self.n_it)
@@ -214,6 +222,11 @@ class nksolver:
         self.G = np.zeros((self.problem_dimension, max_n_directions+1))
         #orthonormal basis in residual space
         self.Gn = np.zeros((self.problem_dimension, max_n_directions+1))
+
+
+        # self.Hm = np.zeros((self.problem_dimension+1, max_n_directions+1))
+        
+
         
         self.n_it = 0
         self.n_it_tot = 0

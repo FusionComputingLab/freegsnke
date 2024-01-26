@@ -103,13 +103,19 @@ class nksolver:
         candidate_x = x0 + candidate_step
         R_dx = F_function(candidate_x, *args)
         useful_residual = R_dx - R0
-        # print('useful_residual ', np.linalg.norm(useful_residual))
+        # print('R_dx ', R_dx, R0)
+
+        self.last_candidate_step = 1.0*candidate_step
+        self.last_useful_residual = 1.0*useful_residual
+        # print('candidate_x ', candidate_x)
 
         self.Q[:, self.n_it] = candidate_step
         self.Qn[:, self.n_it] = self.Q[:, self.n_it] / np.linalg.norm(self.Q[:, self.n_it])
         
         self.G[:, self.n_it] = useful_residual
         self.Gn[:, self.n_it] = self.G[:,self.n_it]/np.linalg.norm(self.G[:,self.n_it])
+
+        # print(self.n_it, self.G[:,:self.n_it+1])
 
         #orthogonalize with respect to previously attemped directions 
         useful_residual -= np.sum(np.sum(self.Qn[:,:self.n_it+1]*useful_residual[:,np.newaxis], axis=0, keepdims=True)*self.Qn[:,:self.n_it+1], axis=1)
@@ -206,16 +212,18 @@ class nksolver:
                                     F_function,
                                     args,
                                     this_step_size)
+            
             not_collinear_check = 1 - np.any(np.sum(self.Gn[:,:self.n_it]*self.Gn[:,self.n_it:self.n_it+1], axis=0) > max_collinearity)
             self.n_it_tot += 1
             if not_collinear_check:
                 self.n_it += 1
+                # print(self.n_it, self.G[:,:self.n_it])
                 self.least_square_problem(R0, nR0, G=self.G[:,:self.n_it], Q=self.Q[:,:self.n_it], 
                                           clip=clip, threshold=threshold, clip_hard=clip_hard)
                 # print('rel_unexpl_res', rel_unexpl_res)
                 explained_residual_check = (self.relative_unexplained_residual > target_relative_unexplained_residual)
             # else:
-                # print('collinear!', self.n_it)
+            #     print('collinear!', self.n_it)
 
             explore = explained_residual_check * (self.n_it_tot < max_Arnoldi_iterations)
             explore *= (self.n_it < max_n_directions)

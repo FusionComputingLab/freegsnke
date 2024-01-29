@@ -30,7 +30,9 @@ class nksolver:
         """
 
         self.problem_dimension = problem_dimension
-        # self.verbose=verbose
+        self.dummy_hessenberg_residual = np.zeros(problem_dimension)
+        self.dummy_hessenberg_residual[0] = 1.
+        self.verbose = verbose
         
     
     def least_square_problem(self, R0, nR0, G, Q, clip, threshold, clip_hard):
@@ -57,8 +59,43 @@ class nksolver:
         clip_hard : float
             maximum step size for cases of untreated (partial) collinearity 
         """
-        # print('initial residual', nR0)
+
         self.coeffs = np.matmul( np.matmul( np.linalg.inv( np.matmul(G.T, G)), G.T), -R0)                            
+        self.coeffs = np.clip(self.coeffs, -clip, clip)
+        self.explained_residual = np.sum(G*self.coeffs[np.newaxis,:], axis=1) 
+        self.relative_unexplained_residual = np.linalg.norm(self.explained_residual + R0)/nR0
+        if self.relative_unexplained_residual > threshold:
+            self.coeffs = np.clip(self.coeffs, -clip_hard, clip_hard)
+        self.dx = np.sum(Q*self.coeffs[np.newaxis,:], axis=1)
+
+
+    def least_square_problem_hessenberg(self, R0, nR0, G, Q, Hm, clip, threshold, clip_hard):
+        """Solves the following least square problem  
+        min || G*coeffs + R0 ||^2
+        in the coefficients coeffs, and calculates the corresponding best step 
+        dx = coeffs * Q
+
+        Parameters
+        ----------
+        R0 : 1d np.array, np.shape(R0) = self.problem_dimension
+            Residual at expansion point x_0
+        nR0 : float
+            l2 norm of R0
+        G : 2d np.array, np.shape(G) = [variable, self.problem_dimension]
+            Collection of values F(x_0 + dx_i) - R_0
+        Q : 2d np.array, np.shape(Q) = [variable, self.problem_dimension]
+            Collection of values dx_i
+        clip : float
+            maximum step size for each explored direction, in units 
+            of exploratory step dx_i
+        threshold : float 
+            catches cases of untreated (partial) collinearity 
+        clip_hard : float
+            maximum step size for cases of untreated (partial) collinearity 
+        """
+        # print('initial residual', nR0)
+        self.coeffs = np.matmul( np.matmul( np.linalg.inv( np.matmul(Hm.T, Hm)), Hm.T), 
+                                -nR0*self.dummy_hessenberg_residual[:self.n_it+1])                            
         self.coeffs = np.clip(self.coeffs, -clip, clip)
         self.explained_residual = np.sum(G*self.coeffs[np.newaxis,:], axis=1) 
         self.relative_unexplained_residual = np.linalg.norm(self.explained_residual + R0)/nR0
@@ -69,11 +106,13 @@ class nksolver:
 
     
     def Arnoldi_unit(self,  x0, #trial expansion point
-                            dx, #first vector for current basis
+                            dx, #norm 1
+                            # ndx,
                             R0, #residual at trial_current expansion point: Fresidual(trial_current)
                             F_function,
                             args,
-                            step_size):
+                            # step_size
+                            ):
         
         """Explores direction dx by calculating and storing residual F(x_0 + dx)
 
@@ -100,54 +139,25 @@ class nksolver:
             The direction to be explored next
         
         """
-        # if self.verbose:    
-        #     print('0 - R0', R0)
-        # print('initial residual', R0)
-        candidate_step = step_size*dx/np.linalg.norm(dx)
-        candidate_x = x0 + candidate_step
-        # print('candidate_step ', candidate_step)
-        # if self.verbose:    
-        #     print('1 - R0', R0)
-        # R00 = 1.0*R0
-        R_dx = F_function(candidate_x, *args)
-        # if self.verbose:    
-        #     print('2 - R0', R0)
-            # print('2 - R00', R00)
+        
+        candidate_x = x0 + dx
+        R_dx = np.copy(F_function(candidate_x, *args))
         useful_residual = R_dx - R0
         # print('useful_residual ', R_dx)
 
-        # self.last_candidate_step = 1.0*candidate_step
-        # self.last_useful_residual = 1.0*useful_residual
-        # print('candidate_x ', candidate_x)
-
-        
-
-
-        self.Q[:, self.n_it] = candidate_step.copy()
-        self.Qn[:, self.n_it] = self.Q[:, self.n_it] / np.linalg.norm(self.Q[:, self.n_it])
-        
         self.G[:, self.n_it] = useful_residual.copy()
         self.Gn[:, self.n_it] = self.G[:,self.n_it]/np.linalg.norm(self.G[:,self.n_it])
+        # if np.any(np.sum(self.Gn[:, self.n_it:self.n_it+1]*self.Gn[:, :self.n_it], axis=0)>.7) and self.verbose:
+        #     print("collinearity detected")
 
-        # self.Hm[:self.n_it+1, self.n_it] = np.sum(self.Qn[:,:self.n_it+1] * useful_residual[:,np.newaxis], axis=0)
+        self.Hm[:self.n_it+1, self.n_it] = np.sum(self.Qn[:,:self.n_it+1] * useful_residual[:,np.newaxis], axis=0)
 
-        # next_candidate = useful_residual - np.sum(self.Qn[:,:self.n_it+1] * self.Hm[:self.n_it+1, self.n_it][:, np.newaxis])
+        next_candidate = useful_residual - np.sum(self.Qn[:,:self.n_it+1] * self.Hm[:self.n_it+1, self.n_it][np.newaxis], axis=1)
 
-        
+        self.Hm[self.n_it+1, self.n_it] = np.linalg.norm(next_candidate)
+        next_candidate /= self.Hm[self.n_it+1, self.n_it]
 
-        # if self.verbose:
-        #     print(self.n_it)
-        #     print('x0', x0)
-        #     print('candidate_x', candidate_x)
-        #     # print('last_candidate_step', self.last_candidate_step)
-        #     print('R_dx', R_dx)
-        #     print('R0', R0)
-        #     print(self.n_it, self.G[:,:self.n_it+1])
-
-        #orthogonalize with respect to previously attemped directions 
-        useful_residual -= np.sum(np.sum(self.Qn[:,:self.n_it+1]*useful_residual[:,np.newaxis], axis=0, keepdims=True)*self.Qn[:,:self.n_it+1], axis=1)
-
-        return useful_residual
+        return next_candidate #this is norm 1
     
 
 
@@ -214,50 +224,78 @@ class nksolver:
         """
         
         nR0 = np.linalg.norm(R0)
-        
-        #basis in x space
+
+        # orthogonal basis in x space
         self.Q = np.zeros((self.problem_dimension, max_n_directions+1))
-        #orthonormal basis in x space
+        # orthonormal basis in x space
         self.Qn = np.zeros((self.problem_dimension, max_n_directions+1))
-        #basis in residual space
+        
+        # basis in residual space
         self.G = np.zeros((self.problem_dimension, max_n_directions+1))
-        #orthonormal basis in residual space
+        # orthonormal basis in residual space
         self.Gn = np.zeros((self.problem_dimension, max_n_directions+1))
 
-
-        # self.Hm = np.zeros((self.problem_dimension+1, max_n_directions+1))
+        # Hessenberg matrix
+        self.Hm = np.zeros((self.problem_dimension+1, max_n_directions+1))
         
+        # resize step based on residual
+        adjusted_step_size = step_size*nR0
+        # print('initial residual 0', R0)
 
-        
+
+        # prepare for first direction exploration
         self.n_it = 0
         self.n_it_tot = 0
-        adjusted_step_size = step_size*nR0
-
-        # print('norm trial_sol', np.linalg.norm(trial_sol))
+        this_step_size = adjusted_step_size*((1 + self.n_it)**scaling_with_n)
+        dx /= np.linalg.norm(dx)
+        self.Qn[:, self.n_it] = np.copy(dx)
+        dx *= this_step_size
+        self.Q[:, self.n_it] = np.copy(dx)
+        
+        # print('initial residual 2', R0)
 
         explore = 1
         while explore:
-            this_step_size = adjusted_step_size*((1 + self.n_it)**scaling_with_n)
+            
             dx = self.Arnoldi_unit(x0, 
                                     dx,
                                     R0, 
                                     F_function,
-                                    args,
-                                    this_step_size)
+                                    args)
             
+            # prepare for next direction
+            # self.n_it += 1
+            # self.Qn[:, self.n_it] = np.copy(dx)
+            # this_step_size = adjusted_step_size*((1 + self.n_it)**scaling_with_n)
+            # dx *= this_step_size
+            # self.Q[:, self.n_it] = np.copy(dx)
+
+            # self.least_square_problem_hessenberg(R0, nR0, G=self.G[:,:self.n_it], Q=self.Q[:,:self.n_it], Hm=self.Hm[:self.n_it+1,:self.n_it],
+            #                                      clip=clip, threshold=threshold, clip_hard=clip_hard)
+            
+
             not_collinear_check = 1 - np.any(np.sum(self.Gn[:,:self.n_it]*self.Gn[:,self.n_it:self.n_it+1], axis=0) > max_collinearity)
             self.n_it_tot += 1
             if not_collinear_check:
                 self.n_it += 1
-                # print(self.n_it, self.G[:,:self.n_it])
-                self.least_square_problem(R0, nR0, G=self.G[:,:self.n_it], Q=self.Q[:,:self.n_it], 
-                                          clip=clip, threshold=threshold, clip_hard=clip_hard)
-                # if self.verbose:
-                #     print('rel_unexpl_res', self.relative_unexplained_residual)
+                self.least_square_problem_hessenberg(R0, nR0, G=self.G[:,:self.n_it], Q=self.Q[:,:self.n_it], Hm=self.Hm[:self.n_it+1,:self.n_it],
+                                                     clip=clip, threshold=threshold, clip_hard=clip_hard)
                 explained_residual_check = (self.relative_unexplained_residual > target_relative_unexplained_residual)
-            # else:
-            #     print('collinear!, rejected', self.n_it)
-
+            self.Qn[:, self.n_it] = np.copy(dx)
+            this_step_size = adjusted_step_size*((1 + self.n_it)**scaling_with_n)
+            dx *= this_step_size
+            self.Q[:, self.n_it] = np.copy(dx)    
+            
+            
+            #     # print(self.n_it, self.G[:,:self.n_it])
+            #     self.least_square_problem(R0, nR0, G=self.G[:,:self.n_it], Q=self.Q[:,:self.n_it], 
+            #                               clip=clip, threshold=threshold, clip_hard=clip_hard)
+            #     # if self.verbose:
+            #     #     print('rel_unexpl_res', self.relative_unexplained_residual)
+            #     explained_residual_check = (self.relative_unexplained_residual > target_relative_unexplained_residual)
+            # # else:
+            # #     print('collinear!', self.n_it)
+            
             explore = explained_residual_check * (self.n_it_tot < max_Arnoldi_iterations)
             explore *= (self.n_it < max_n_directions)
 

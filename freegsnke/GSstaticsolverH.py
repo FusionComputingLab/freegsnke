@@ -1,7 +1,7 @@
 import numpy as np
 import freegs
 from freegs.gradshafranov import Greens
-from . import nk_solver as nk_solver
+from . import nk_solver_Hessenberg as nk_solver
 
 class NKGSsolver:
 
@@ -97,7 +97,7 @@ class NKGSsolver:
                 
         
             
-    def freeboundary(self, plasma_psi, tokamak_psi, profiles, rel_psi_error):
+    def freeboundary(self, plasma_psi, tokamak_psi, profiles):
         """Imposes boundary conditions on set of boundary points. 
 
         Parameters
@@ -116,9 +116,7 @@ class NKGSsolver:
         #tokamak_psi = eq.tokamak.calcPsiFromGreens(pgreen=eq._pgreen)
         
         #jtor and RHS given tokamak_psi above and the input plasma_psi
-        self.jtor = profiles.Jtor(self.R, self.Z, 
-                                  (tokamak_psi+plasma_psi).reshape(self.nx, self.ny), 
-                                  rel_psi_error=rel_psi_error)
+        self.jtor = profiles.Jtor(self.R, self.Z, (tokamak_psi+plasma_psi).reshape(self.nx, self.ny))
         self.rhs = self.rhs_before_jtor*self.jtor
         
         #calculates and assignes boundary conditions
@@ -136,7 +134,7 @@ class NKGSsolver:
         self.rhs[:, -1] = self.psi_boundary[:, -1]
          
         
-    def F_function(self, plasma_psi, tokamak_psi, profiles, rel_psi_error=0): 
+    def F_function(self, plasma_psi, tokamak_psi, profiles): 
         """Nonlinear Grad Shafranov equation written as a root problem
         F(plasma_psi) \equiv [\delta* - J](plasma_psi)
         The plasma_psi that solves the Grad Shafranov problem satisfies
@@ -160,7 +158,7 @@ class NKGSsolver:
             residual of the GS equation
         """ 
        
-        self.freeboundary(plasma_psi, tokamak_psi, profiles, rel_psi_error)
+        self.freeboundary(plasma_psi, tokamak_psi, profiles)
         residual = plasma_psi - (self.linear_GS_solver(self.psi_boundary, self.rhs)).reshape(-1)
         return residual
     
@@ -186,7 +184,8 @@ class NKGSsolver:
 
     
 
-    def forward_solve(self,     eq, 
+    def forward_solve(self,     
+                        eq, 
                         profiles,
                         target_relative_tolerance, 
                         max_solving_iterations=30,
@@ -264,15 +263,13 @@ class NKGSsolver:
         trial_plasma_psi = np.copy(eq.plasma_psi).reshape(-1)
         self.tokamak_psi = (eq.tokamak.calcPsiFromGreens(pgreen=eq._pgreen)).reshape(-1)
         
-        # args = [self.tokamak_psi, self.profiles]
+        args = [self.tokamak_psi, self.profiles]
 
         res0 = self.F_function(trial_plasma_psi, self.tokamak_psi, self.profiles)
         # print('initial residual', res0)
         rel_change = np.amax(np.abs(res0))
         del_psi = (np.amax(trial_plasma_psi) - np.amin(trial_plasma_psi))
         rel_change /= del_psi
-
-        args = [self.tokamak_psi, self.profiles, rel_change]
             
         iterations = 0
         while (rel_change > target_relative_tolerance)*(iterations < max_solving_iterations):
@@ -286,7 +283,7 @@ class NKGSsolver:
 
             else:
                 self.nksolver.Arnoldi_iteration(x0=trial_plasma_psi, #trial_current expansion point
-                                                dx=res0, #first vector for current basis
+                                                dx=res0.copy(), #first vector for current basis
                                                 R0=res0, #circuit eq. residual at trial_current expansion point: Fresidual(trial_current)
                                                 F_function=self.F_function,
                                                 args=args,
@@ -306,7 +303,6 @@ class NKGSsolver:
             rel_change = np.amax(np.abs(res0))
             rel_change /= (np.amax(trial_plasma_psi) - np.amin(trial_plasma_psi))
             self.relative_change = 1.0*rel_change
-            args[2] = rel_change
 
             # print('rel_unexpl res = ', self.nksolver.relative_unexplained_residual)
             # print(iterations, rel_change)

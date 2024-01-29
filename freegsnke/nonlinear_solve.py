@@ -8,7 +8,7 @@ from copy import deepcopy
 from .circuit_eq_metal import metal_currents
 from .circuit_eq_plasma import plasma_current
 
-from . import nk_solver
+from . import nk_solver as nk_solver
 from .simplified_solve import simplified_solver_J1
 from .linear_solve import linear_solver
 from . import plasma_grids
@@ -210,13 +210,13 @@ class nl_solver:
                                             full_timestep=self.dt_step)
         
         # set up NK solver on the full grid, to be used when solving for the plasma flux
-        self.psi_nk_solver = nk_solver.nksolver(self.nxny)
+        self.psi_nk_solver = nk_solver.nksolver(self.nxny, verbose=True)
 
         # set up NK solver for the currents
-        self.currents_nk_solver = nk_solver.nksolver(self.extensive_currents_dim)#, verbose=True)
+        self.currents_nk_solver = nk_solver.nksolver(self.extensive_currents_dim, verbose=True)#, verbose=True)
 
         # set up unique NK solver for the full vector of unknowns
-        self.full_nk_solver = nk_solver.nksolver(self.extensive_currents_dim + self.nxny)
+        self.full_nk_solver = nk_solver.nksolver(self.extensive_currents_dim + self.nxny, verbose=True)
         
         # step advancement of the dynamics
         self.step_no = 0
@@ -1263,7 +1263,7 @@ class nl_solver:
 
         trial_currents = trial_sol[:self.extensive_currents_dim]*self.current_norm
         trial_plasma_psi = trial_sol[self.extensive_currents_dim:]*self.psi_norm
-        self.trial_plasma_psi = 1.0*trial_plasma_psi.reshape(self.nx, self.ny)
+        self.trial_plasma_psi = np.copy(trial_plasma_psi).reshape(self.nx, self.ny)
 
         # trial_hatIy1 = self.calculate_hatIy(trial_currents, trial_plasma_psi.reshape(self.nx, self.ny))
         # self.make_broad_hatIy(trial_hatIy1)
@@ -1618,8 +1618,6 @@ class nl_solver:
             Number of grid points NOT in the reduced plasma domain that have some plasma in them (Jtor>0).
             Depending on the definition of the reduced plasma domain through plasma_domain_mask, 
             this may mean the plasma contacted the wall. This will stop the dynamics.
-
-
         """
 
 
@@ -1974,19 +1972,19 @@ class nl_solver:
                 log = [self.text_nk_cycle.format(nkcycle = n_it)]
 
                 self.full_nk_solver.Arnoldi_iteration(  x0=self.trial_curr_plasmapsi, #trial_current expansion point
-                                                            dx=all_res, #first vector for current basis
-                                                            R0=all_res, #circuit eq. residual at trial_current expansion point: F_function(trial_current)
-                                                            F_function=F_function,
-                                                            args=[active_voltage_vec],
-                                                            step_size=step_size,
-                                                            scaling_with_n=scaling_with_n,
-                                                            target_relative_unexplained_residual=target_relative_unexplained_residual,   #add basis vector 
-                                                            max_n_directions=max_n_directions, # max number of basis vectors (must be less than number of modes + 1)
-                                                            max_Arnoldi_iterations=max_Arnoldi_iterations,
-                                                            max_collinearity=max_collinearity,
-                                                            clip=clip,
-                                                            threshold=threshold,
-                                                            clip_hard=clip_hard)
+                                                        dx=all_res, #first vector for current basis
+                                                        R0=all_res, #circuit eq. residual at trial_current expansion point: F_function(trial_current)
+                                                        F_function=F_function,
+                                                        args=[active_voltage_vec],
+                                                        step_size=step_size,
+                                                        scaling_with_n=scaling_with_n,
+                                                        target_relative_unexplained_residual=target_relative_unexplained_residual,   #add basis vector 
+                                                        max_n_directions=max_n_directions, # max number of basis vectors (must be less than number of modes + 1)
+                                                        max_Arnoldi_iterations=max_Arnoldi_iterations,
+                                                        max_collinearity=max_collinearity,
+                                                        clip=clip,
+                                                        threshold=threshold,
+                                                        clip_hard=clip_hard)
                 
                 self.trial_curr_plasmapsi += self.full_nk_solver.dx
                 self.trial_currents = self.trial_curr_plasmapsi[:self.extensive_currents_dim]*self.current_norm

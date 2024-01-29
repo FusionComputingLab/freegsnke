@@ -53,7 +53,8 @@ def tokamak():
                         MultiCoil(
                             active_coils['Solenoid']['R'],
                             active_coils['Solenoid']['Z']),
-                            active_coils['Solenoid']['polarity']
+                            float(active_coils['Solenoid']['polarity']) * \
+                            float(active_coils['Solenoid']['multiplier']),
                     ),
                 ]
             ),

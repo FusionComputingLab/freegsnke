@@ -55,7 +55,7 @@ def tokamak():
                             active_coils['Solenoid']['Z']),
                             float(active_coils['Solenoid']['polarity']) * \
                             float(active_coils['Solenoid']['multiplier']),
-                    ),
+                            ),
                 ]
             ),
         ),

@@ -211,7 +211,7 @@ class nl_solver:
         self.psi_nk_solver = nk_solver.nksolver(self.nx * self.ny)
 
         # set up NK solver for the currents
-        self.currents_nk_solver = nk_solver.nksolver(self.n_metal_modes + 1)
+        self.currents_nk_solver = nk_solver.nksolver(self.n_metal_modes + 1)#, verbose=True)
 
         
         
@@ -223,9 +223,9 @@ class nl_solver:
         self.ones_to_broaden = np.ones((nbroad, nbroad))
         # use convolution if nbroad>1
         if nbroad>1:    
-            self.make_broad_hatIy = (lambda hatIy : self.make_broad_hatIy_conv(hatIy, blend=blend_hatJ))
+            self.make_broad_hatIy = (lambda x : self.make_broad_hatIy_conv(x, blend=blend_hatJ))
         else:
-            self.make_broad_hatIy = (lambda hatIy : self.make_broad_hatIy_noconv(hatIy, blend=blend_hatJ))
+            self.make_broad_hatIy = (lambda x : self.make_broad_hatIy_noconv(x, blend=blend_hatJ))
 
         # self.dIydI is the Jacobian of the plasma current distribution
         # with respect to the independent currents (as in self.currents_vec)
@@ -973,6 +973,7 @@ class nl_solver:
         self.currents_vec = np.copy(self.trial_currents)
         self.assign_currents(self.currents_vec, self.eq1, self.profiles1)
         
+        
         # self.eq1.plasma_psi = np.copy(self.trial_plasma_psi)
         # self.profiles1.Ip = self.trial_currents[-1]*self.plasma_norm_factor
         if from_linear:
@@ -982,6 +983,7 @@ class nl_solver:
         else:
             self.eq1.plasma_psi = np.copy(self.trial_plasma_psi)
             self.profiles1.Ip = self.trial_currents[-1]*self.plasma_norm_factor
+            self.tokamak_psi = (self.eq1.tokamak.calcPsiFromGreens(pgreen=self.eq1._pgreen))
             self.profiles1.Jtor(self.eqR, self.eqZ, self.tokamak_psi + self.trial_plasma_psi)
             self.NK.port_critical(self.eq1, self.profiles1)
 
@@ -1036,9 +1038,9 @@ class nl_solver:
         """
         self.assign_currents(currents_vec, profile=self.profiles2, eq=self.eq2)
         self.NK.forward_solve(self.eq2, self.profiles2, target_relative_tolerance=rtol_NK)
-        self.trial_Iy1 = self.plasma_grids.Iy_from_jtor(self.profiles2.jtor)
-        self.Iy_dot = (self.trial_Iy1 - self.Iy)/self.dt_step
-        self.Id_dot = ((currents_vec - self.currents_vec)/self.dt_step)[:-1]
+        # self.trial_Iy1 = self.plasma_grids.Iy_from_jtor(self.profiles2.jtor)
+        # self.Iy_dot = (self.trial_Iy1 - self.Iy)/self.dt_step
+        # self.Id_dot = ((currents_vec - self.currents_vec)/self.dt_step)[:-1]
 
 
     def make_broad_hatIy_conv(self, hatIy1, blend=0):
@@ -1288,6 +1290,11 @@ class nl_solver:
         """
         hatIy1 = self.calculate_hatIy_GS(trial_currents, rtol_NK=rtol_NK)
         self.make_broad_hatIy(hatIy1)
+        # print('self.currents_vec', self.currents_vec)
+        # print('trial_currents', trial_currents)
+        # print('hatIy_1', np.sum(hatIy1**2))
+        # print('hatIy_0', np.sum(self.hatIy**2))
+        # print('active_voltage_vec',active_voltage_vec)
         ceq_residuals = self.simplified_solver_J1.ceq_residuals(I_0=self.currents_vec,
                                                                 I_1=trial_currents,
                                                                 hatIy_left=self.broad_hatIy, 
@@ -1567,9 +1574,9 @@ class nl_solver:
             # this assigns to self.eq2 and self.profiles2 
             # also records self.tokamak_psi corresponding to self.trial_currents in 2d
             res_curr = self.F_function_curr(self.trial_currents, active_voltage_vec).copy()
-            
+
             # uses self.trial_currents and self.currents_vec_m1 to relate res_curr above to step in the currents
-            rel_curr_res = self.calculate_rel_tolerance_currents(res_curr, curr_eps=curr_eps)
+            rel_curr_res = 1.0*self.calculate_rel_tolerance_currents(res_curr, curr_eps=curr_eps)
             control = np.any(rel_curr_res > target_relative_tol_currents)
 
             # pair self.trial_currents and self.trial_plasma_psi are a GS solution
@@ -1608,7 +1615,7 @@ class nl_solver:
                 self.tokamak_psi = self.tokamak_psi.reshape(-1)
 
                 # calculate initial residual for the root problem in psi
-                res_psi = self.F_function_psi(trial_plasma_psi=self.trial_plasma_psi,
+                res_psi = 1.0*self.F_function_psi(trial_plasma_psi=self.trial_plasma_psi,
                                                 active_voltage_vec=active_voltage_vec, 
                                                 rtol_NK=self.rtol_NK).copy()
                 del_res_psi = (np.amax(res_psi) - np.amin(res_psi))
@@ -1680,14 +1687,14 @@ class nl_solver:
                 rel_curr_res = self.calculate_rel_tolerance_currents(res_curr, curr_eps=curr_eps)
                 control = np.any(rel_curr_res > target_relative_tol_currents)
                 # relative convergence on the GS problem
-                r_res_GS = self.calculate_rel_tolerance_GS()
+                r_res_GS = 1.0*self.calculate_rel_tolerance_GS()
                 control_GS = (r_res_GS > target_relative_tol_GS)
                 control += control_GS
                 
                 log.append(['The coeffs applied to the current vec = ', self.currents_nk_solver.coeffs])
                 log.append(['The final residual on the current (relative): max =', np.amax(rel_curr_res), 'mean =', np.mean(rel_curr_res)])
-                # self.ceq_res = self.F_function_ceq_GS(self.trial_currents, *args_nk)
-                # log.append([self.ceq_res])
+                self.ceq_res = 1.0*self.F_function_ceq_GS(self.trial_currents, *args_nk)
+                log.append(['The final residual on the current (relative): max =', np.amax(self.ceq_res), 'mean =', np.mean(self.ceq_res)])
                 log.append(['Residuals on GS eq (relative): ', r_res_GS])
 
                 # one full cycle completed
@@ -1746,17 +1753,17 @@ class nl_solver:
 
             # this assigns to self.eq2 and self.profiles2 
             # also records self.tokamak_psi corresponding to self.trial_currents in 2d
-            res_curr = self.F_function_ceq_GS(self.trial_currents, *args_nk)
+            res_curr = 1.0*self.F_function_ceq_GS(self.trial_currents, *args_nk)
             
             # uses self.trial_currents and self.currents_vec_m1 to relate res_curr above to step in the currents
-            rel_curr_res = self.calculate_rel_tolerance_currents(res_curr, curr_eps=curr_eps)
+            rel_curr_res = 1.0*self.calculate_rel_tolerance_currents(res_curr, curr_eps=curr_eps)
             control = np.any(rel_curr_res > target_relative_tol_currents)
 
             
             if verbose:
                 print('starting numerical solve:')
                 print('max(residual on current eqs) =', np.amax(rel_curr_res), 'mean(residual on current eqs) =', np.mean(rel_curr_res))
-                print(res_curr, res_curr)
+                # print('res_curr', res_curr)
             log = []
 
 
@@ -1771,7 +1778,8 @@ class nl_solver:
                     for _ in log:
                         print(_)
                     
-                log = []
+                log = [self.text_nk_cycle.format(nkcycle = n_it)]
+
                 self.currents_nk_solver.Arnoldi_iteration(  x0=self.trial_currents, #trial_current expansion point
                                                             dx=res_curr, #first vector for current basis
                                                             R0=res_curr, #circuit eq. residual at trial_current expansion point: F_function(trial_current)
@@ -1789,11 +1797,16 @@ class nl_solver:
 
                 self.trial_currents += self.currents_nk_solver.dx
 
-                res_curr = self.F_function_ceq_GS(self.trial_currents, *args_nk)
-                rel_curr_res = self.calculate_rel_tolerance_currents(res_curr, curr_eps=curr_eps)
+                res_curr = 1.0*self.F_function_ceq_GS(self.trial_currents, *args_nk)
+                rel_curr_res = 1.0*self.calculate_rel_tolerance_currents(res_curr, curr_eps=curr_eps)
                 control = np.any(rel_curr_res > target_relative_tol_currents)
+
+                log.append(['The coeffs applied to the current vec = ', self.currents_nk_solver.coeffs])
+                log.append(['The final residual on the current (relative): max =', np.amax(rel_curr_res), 'mean =', np.mean(rel_curr_res)])
                 
-                log.append([n_it, 'full cycle curr residual', np.amax(rel_curr_res), np.mean(rel_curr_res)])
+                
+                # print(n_it, 'full cycle curr residual', np.amax(rel_curr_res), np.mean(rel_curr_res))
+                # print('res_curr', res_curr)
 
                 n_it += 1
                 # print('cycle:', np.amax(rel_res0), np.mean(rel_res0))

@@ -14,7 +14,9 @@ class nksolver:
     F(x_0 + dx) is minimum.
     """
      
-    def __init__(self, problem_dimension):
+    def __init__(self, problem_dimension, 
+                #  verbose=False
+                 ):
 
         """Instantiates the class.
         
@@ -28,7 +30,7 @@ class nksolver:
         """
 
         self.problem_dimension = problem_dimension
-        
+        # self.verbose=verbose
         
     
     def least_square_problem(self, R0, nR0, G, Q, clip, threshold, clip_hard):
@@ -98,15 +100,23 @@ class nksolver:
             The direction to be explored next
         
         """
+        # if self.verbose:    
+        #     print('0 - R0', R0)
 
         candidate_step = step_size*dx/np.linalg.norm(dx)
         candidate_x = x0 + candidate_step
+        # if self.verbose:    
+        #     print('1 - R0', R0)
+        # R00 = 1.0*R0
         R_dx = F_function(candidate_x, *args)
+        # if self.verbose:    
+        #     print('2 - R0', R0)
+            # print('2 - R00', R00)
         useful_residual = R_dx - R0
         # print('R_dx ', R_dx, R0)
 
-        self.last_candidate_step = 1.0*candidate_step
-        self.last_useful_residual = 1.0*useful_residual
+        # self.last_candidate_step = 1.0*candidate_step
+        # self.last_useful_residual = 1.0*useful_residual
         # print('candidate_x ', candidate_x)
 
         self.Q[:, self.n_it] = candidate_step
@@ -115,7 +125,15 @@ class nksolver:
         self.G[:, self.n_it] = useful_residual
         self.Gn[:, self.n_it] = self.G[:,self.n_it]/np.linalg.norm(self.G[:,self.n_it])
 
-        # print(self.n_it, self.G[:,:self.n_it+1])
+
+        # if self.verbose:
+        #     print(self.n_it)
+        #     print('x0', x0)
+        #     print('candidate_x', candidate_x)
+        #     # print('last_candidate_step', self.last_candidate_step)
+        #     print('R_dx', R_dx)
+        #     print('R0', R0)
+        #     print(self.n_it, self.G[:,:self.n_it+1])
 
         #orthogonalize with respect to previously attemped directions 
         useful_residual -= np.sum(np.sum(self.Qn[:,:self.n_it+1]*useful_residual[:,np.newaxis], axis=0, keepdims=True)*self.Qn[:,:self.n_it+1], axis=1)
@@ -220,7 +238,8 @@ class nksolver:
                 # print(self.n_it, self.G[:,:self.n_it])
                 self.least_square_problem(R0, nR0, G=self.G[:,:self.n_it], Q=self.Q[:,:self.n_it], 
                                           clip=clip, threshold=threshold, clip_hard=clip_hard)
-                # print('rel_unexpl_res', rel_unexpl_res)
+                # if self.verbose:
+                #     print('rel_unexpl_res', self.relative_unexplained_residual)
                 explained_residual_check = (self.relative_unexplained_residual > target_relative_unexplained_residual)
             # else:
             #     print('collinear!', self.n_it)

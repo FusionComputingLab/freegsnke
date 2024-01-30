@@ -141,7 +141,7 @@ for i, coil in enumerate(passive_coils):
     coils_dict[tkey]['polarity'] = np.array([1])
     coils_dict[tkey]['multiplier'] = np.array([1])
     # this is resistivity divided by area
-    coils_dict[tkey]['resistivity'] = coil["resistivity"] #/ (coil["dR"] * coil["dZ"])
+    coils_dict[tkey]['resistivity'] = coil["resistivity"] / (coil["dR"] * coil["dZ"])
 
 
 

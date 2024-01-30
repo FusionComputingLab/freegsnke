@@ -43,7 +43,7 @@ class ConstrainBetapIp(freegs.jtor.ConstrainBetapIp):
         self.alpha_m = alpha_m
         self.alpha_n = alpha_n
 
-    def _Jtor(self, R, Z, psi, psi_bndry=None):
+    def _Jtor(self, R, Z, psi, psi_bndry=None, rel_psi_error=0):
         """Replaces the original FreeGS Jtor method if FreeGSfast is not available."""
         self.jtor = super().Jtor(R, Z, psi, psi_bndry)
         self.opt, self.xpt = critical.find_critical(R, Z, psi)
@@ -57,18 +57,20 @@ class ConstrainBetapIp(freegs.jtor.ConstrainBetapIp):
         self.jtor = super().Jtor(R, Z, psi, self.psi_bndry)
         return self.jtor
 
-    def Jtor_fast(self, R, Z, psi, psi_bndry=None):
+    def Jtor_fast(self, R, Z, psi, psi_bndry=None, rel_psi_error=0):
         """Used when FreeGSfast is available."""
         self.diverted_core_mask = super().Jtor_part1(R, Z, psi, psi_bndry)
         if self.diverted_core_mask is None:
             # print('no xpt')
             self.psi_bndry, self.limiter_core_mask, self.flag_limiter = psi_bndry, None, False
-        else: 
+        elif rel_psi_error<.02: 
             self.psi_bndry, self.limiter_core_mask, self.flag_limiter = self.limiter_handler.core_mask_limiter(psi,
                                                                                                                 self.psi_bndry,
                                                                                                                 self.diverted_core_mask,
                                                                                                                 self.limiter_mask_out,
                                                                                                                 )
+        else:
+            self.limiter_core_mask = self.diverted_core_mask.copy()
         self.jtor = super().Jtor_part2(R, Z, psi, self.psi_bndry, self.limiter_core_mask)
         return self.jtor
     
@@ -114,7 +116,7 @@ class ConstrainPaxisIp(freegs.jtor.ConstrainPaxisIp):
         self.alpha_m = alpha_m
         self.alpha_n = alpha_n
 
-    def _Jtor(self, R, Z, psi, psi_bndry=None):
+    def _Jtor(self, R, Z, psi, psi_bndry=None, rel_psi_error=0):
         """Replaces the original FreeGS Jtor method if FreeGSfast is not available."""
         self.jtor = super().Jtor(R, Z, psi, psi_bndry)
         self.opt, self.xpt = critical.find_critical(R, Z, psi)
@@ -128,17 +130,20 @@ class ConstrainPaxisIp(freegs.jtor.ConstrainPaxisIp):
         self.jtor = super().Jtor(R, Z, psi, self.psi_bndry)
         return self.jtor
 
-    def Jtor_fast(self, R, Z, psi, psi_bndry=None):
+    def Jtor_fast(self, R, Z, psi, psi_bndry=None, rel_psi_error=0):
         """Used when FreeGSfast is available."""
         self.diverted_core_mask = super().Jtor_part1(R, Z, psi, psi_bndry)
         if self.diverted_core_mask is None:
             # print('no xpt')
             self.psi_bndry, self.limiter_core_mask, self.flag_limiter = psi_bndry, None, False
-        else: 
+        elif rel_psi_error<.02:
             self.psi_bndry, self.limiter_core_mask, self.flag_limiter = self.limiter_handler.core_mask_limiter(psi,
                                                                                                                 self.psi_bndry,
                                                                                                                 self.diverted_core_mask,
                                                                                                                 self.limiter_mask_out,
                                                                                                                 )
+        else:                                                                                                    
+            self.limiter_core_mask = self.diverted_core_mask.copy()
+        
         self.jtor = super().Jtor_part2(R, Z, psi, self.psi_bndry, self.limiter_core_mask)
         return self.jtor

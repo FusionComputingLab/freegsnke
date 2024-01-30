@@ -30,13 +30,13 @@ class nl_solver:
     
     
     def __init__(self, profiles, eq, 
-                 max_mode_frequency=10**2.7, 
+                 max_mode_frequency=10**2.5, 
                  full_timestep=.0001,
                  max_internal_timestep=.0001, 
                  plasma_resistivity=1e-6,
                  plasma_norm_factor=1000,
                  plasma_domain_mask=None,
-                 nbroad=3,
+                 nbroad=1,
                  blend_hatJ=0,
                  dIydI=None,
                  dIydpars=None,
@@ -756,7 +756,7 @@ class nl_solver:
     def initialize_from_ICs(self, 
                             eq, profile, 
                             rtol_NK=1e-8, 
-                            noise_level=.001,
+                            noise_level=.0,
                             noise_vec=None,
                             dIydI=None,
                             dIydpars=None,
@@ -1415,9 +1415,9 @@ class nl_solver:
     def nlstepper(self, active_voltage_vec, 
                         profile_parameter=None,
                         profile_coefficients=None,
-                        target_relative_tol_currents=.01,
-                        target_relative_tol_GS=.01,
-                        working_relative_tol_GS=.002,
+                        target_relative_tol_currents=.005,
+                        target_relative_tol_GS=.002,
+                        working_relative_tol_GS=.0005,
                         target_relative_unexplained_residual=.5,
                         max_n_directions=3,
                         max_Arnoldi_iterations=4,
@@ -1566,7 +1566,7 @@ class nl_solver:
             
             # this assigns to self.eq2 and self.profiles2 
             # also records self.tokamak_psi corresponding to self.trial_currents in 2d
-            res_curr = self.F_function_curr(self.trial_currents, active_voltage_vec)
+            res_curr = self.F_function_curr(self.trial_currents, active_voltage_vec).copy()
             
             # uses self.trial_currents and self.currents_vec_m1 to relate res_curr above to step in the currents
             rel_curr_res = self.calculate_rel_tolerance_currents(res_curr, curr_eps=curr_eps)
@@ -1610,7 +1610,7 @@ class nl_solver:
                 # calculate initial residual for the root problem in psi
                 res_psi = self.F_function_psi(trial_plasma_psi=self.trial_plasma_psi,
                                                 active_voltage_vec=active_voltage_vec, 
-                                                rtol_NK=self.rtol_NK)
+                                                rtol_NK=self.rtol_NK).copy()
                 del_res_psi = (np.amax(res_psi) - np.amin(res_psi))
 
 
@@ -1619,7 +1619,7 @@ class nl_solver:
                     n_no_NK_psi = 0
                     # NK algorithm to solve the root problem in psi
                     self.psi_nk_solver.Arnoldi_iteration(x0=self.trial_plasma_psi, #trial_current expansion point
-                                                        dx=res_psi, #first vector for current basis
+                                                        dx=res_psi.copy(), #first vector for current basis
                                                         R0=res_psi, #circuit eq. residual at trial_current expansion point: F_function(trial_current)
                                                         F_function=self.F_function_psi,
                                                         args=args_nk,
@@ -1648,7 +1648,7 @@ class nl_solver:
 
                 # calculates initial residual for the root problem in the currents
                 # assumes the just updated self.trial_plasma_psi
-                res_curr = self.F_function_curr(self.trial_currents, active_voltage_vec)
+                res_curr = self.F_function_curr(self.trial_currents, active_voltage_vec).copy()
                 rel_curr_res = abs(res_curr / self.curr_step)
                 interm_text = ['The intermediate residuals on the current: max =', np.amax(rel_curr_res), 'mean =', np.mean(rel_curr_res)]
                 
@@ -1658,7 +1658,7 @@ class nl_solver:
                 
                 # NK algorithm to solve the root problem in the currents
                 self.currents_nk_solver.Arnoldi_iteration(  x0=self.trial_currents, 
-                                                            dx=res_curr, 
+                                                            dx=res_curr.copy(), 
                                                             R0=res_curr, 
                                                             F_function=self.F_function_curr,
                                                             args=[active_voltage_vec],
@@ -1676,7 +1676,7 @@ class nl_solver:
 
                 # check convergence properties of the pair [trial_currents, trial_plasma_psi]:
                 # relative convergence on the currents:
-                res_curr = self.F_function_curr(self.trial_currents, active_voltage_vec)
+                res_curr = self.F_function_curr(self.trial_currents, active_voltage_vec).copy()
                 rel_curr_res = self.calculate_rel_tolerance_currents(res_curr, curr_eps=curr_eps)
                 control = np.any(rel_curr_res > target_relative_tol_currents)
                 # relative convergence on the GS problem

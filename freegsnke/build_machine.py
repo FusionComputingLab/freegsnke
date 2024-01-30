@@ -55,11 +55,7 @@ def tokamak():
                             active_coils['Solenoid']['Z']),
                             float(active_coils['Solenoid']['polarity']) * \
                             float(active_coils['Solenoid']['multiplier']),
-<<<<<<< HEAD
-=======
-
->>>>>>> 4f9a4a6 (restistance correction, limiter off initially, mastu coils)
-                    ),
+                            ),
                 ]
             ),
         ),

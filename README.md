@@ -21,23 +21,21 @@ requires a working conda installation (for example, through
 2. Set up the conda environment with the command `conda env create -f
    environment.yml`. This creates a conda environment called `freegsnke` with
    the dependencies of FreeGSFast and FreeGSNKE.
-> **Note** If this environment setup step fails, try installing the dependencies
-> with less restrictive version requirements. 
 3. Activate this environment with `conda activate freegsnke`.
 4. Clone [FreeGSFast](https://github.com/farscape-project/freegsfast) into a
-   directory that is *not* within the FreeGSNKE repository and `cd` into it.
-5. Install FreeGSFast locally with `pip install .`.
-> **Note** You don't need to follow the installation instructions in the
-> FreeGSFast installation directory when installing FreeGSFast as a FreeGSNKE
-> dependency. Simply run `pip install .` from the FreeGSFast repository with the
-> `freegsnke` conda environment active to install it. Furthermore, the
-> FreeGSFast dependencies have already been installed in step 2 so do not need
-> to be installed again.
-6. `cd` back to the `freegsnke` repository directory and install this package by
+   directory that is not within the FreeGSNKE repository and `cd` into it.
+5. Install FreeGSFast locally with `pip install .`.  
+**Note** You don't need to follow the installation instructions in the
+FreeGSFast installation directory when installing FreeGSFast as a FreeGSNKE
+dependency. Simply run `pip install .` from the FreeGSFast repository with the
+`freegsnke` conda environment active to install it. Furthermore, the
+FreeGSFast dependencies have already been installed in step 2 so do not need
+to be installed again.
+1. `cd` back to the `freegsnke` repository directory and install this package by
    running `pip install .` from the repository home directory.
 
-If you are planning to develop FreeGSNKE, see the section on
-[contributing code](#contributing-code).
+If you are planning to develop FreeGSNKE, see the below section on contributing
+code.
 
 ## Usage
 

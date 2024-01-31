@@ -24,3 +24,4 @@ machine_configs/_*
 examples/example_nonlinear_evolution_diverted_*
 docs/_build
 docs/api
+docs/notebooks

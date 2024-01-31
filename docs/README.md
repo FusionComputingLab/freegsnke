@@ -25,7 +25,7 @@ After building, open the `docs/_build/html/index.html` file in a browser to view
 
 ## Manual documentation
 
-Additionally, documentation can be added manually. See the examples under `docs/installation_guide/index.rst`, `docs/user_guide/index.rst`, and `docs/user_guide/guide_1.rst`
+Additionally, documentation can be added manually. See, for example, `docs/user_guide/index.rst`.
 
 ## TODOs
 - [ ] add general documentation and examples/guides

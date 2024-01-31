@@ -1,5 +1,0 @@
-Example Documentation
-=====================
-
-
-Lorem ipsum

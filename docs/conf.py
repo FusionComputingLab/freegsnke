@@ -36,6 +36,8 @@ extensions = [
     # 'sphinxcontrib.texfigure',
     'sphinx.ext.autosectionlabel',
     'sphinx_math_dollar',
+    'm2r2',
+    'myst_nb'
 ]
 
 bibtex_bibfiles = ['assets/refs.bib']
@@ -60,7 +62,6 @@ templates_path = ['_templates']
 # You can specify multiple suffix as a list of string:
 #
 source_suffix = ['.rst', '.md']
-# source_suffix = ['.rst', '.ipynb']
 
 # The master toctree document.
 master_doc = 'index'

@@ -51,16 +51,8 @@ documentation and notebook examples.
 ### Documentation
 
 FreeGSNKE documentation is available using
-[Sphinx](https://www.sphinx-doc.org/en/master/). To build the documentation,
-execute the following commands:
-```bash
-cd docs
-pip install -r requirements_docs.txt
-sphinx-apidoc -e -f --no-toc -o ./api/ ../freegsnke/ 
-sphinx-build -b html ./ ./_build/html
-```
-
-Open the resulting `index.html` file in a web browser to view the documentation.
+[Sphinx](https://www.sphinx-doc.org/en/master/). Documentation build
+instructions are in the `docs/README.md` document.
 
 ### Examples
 

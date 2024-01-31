@@ -18,14 +18,15 @@ Tests + Documentation:
     - pip install git+https://${FREEGSFAST_CI_TOKEN}@github.com/farscape-project/freegsfast
     - pip install -e .
     - python -m pip install -r requirements-dev.txt
+    - apt-get update
+    - apt-get -y install build-essential
   script:
     # TESTS
     - python -m pytest -v
     # DOCUMENTATION
     - cd docs/
     - pip install -r requirements_docs.txt
-    - sphinx-apidoc -e -f --no-toc -o ./api/ ../freegsnke/ 
-    - sphinx-build -b html ./ ./_build/html
+    - bash build_documentation.sh
   artifacts:
     paths:
       - docs/_build/html

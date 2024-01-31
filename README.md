@@ -105,7 +105,11 @@ If the issue is a feature improvement request:
 
 ### Contributing code
 
-To make code contributions, please open a merge request.
+To make code contributions, please do so via merge request.
+
+Development dependencies are located in `requirements-dev.txt` and can be
+installed into the `freegsnke` conda environment with `python -m pip install -r
+requirements-dev.txt`.
 
 Several tests are implemented with [pytest](https://docs.pytest.org/en), which
 are run as part of the GitLab CI/CD pipelines, but you can run these locally

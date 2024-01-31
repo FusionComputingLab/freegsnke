@@ -18,6 +18,7 @@ Tests + Documentation:
     - pip install git+https://${FREEGSFAST_CI_TOKEN}@github.com/farscape-project/freegsfast
     - pip install -e .
     - python -m pip install -r requirements-dev.txt
+    - apt-get -y install make
   script:
     # TESTS
     - python -m pytest -v

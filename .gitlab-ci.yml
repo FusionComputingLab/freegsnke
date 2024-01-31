@@ -17,7 +17,7 @@ Tests + Documentation:
     - conda activate freegsnke
     - pip install git+https://${FREEGSFAST_CI_TOKEN}@github.com/farscape-project/freegsfast
     - pip install -e .
-    - python -m pip install pytest
+    - python -m pip install -r requirements-dev.txt
   script:
     # TESTS
     - python -m pytest -v

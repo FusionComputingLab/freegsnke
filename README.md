@@ -34,8 +34,10 @@ requires a working conda installation (for example, through
 > FreeGSFast dependencies have already been installed in step 2 so do not need
 > to be installed again.
 6. `cd` back to the `freegsnke` repository directory and install this package by
-   running `pip install .` from the repository home directory. If you plan on
-   doing development, it is better to install with symlinks: `pip install -e .`.
+   running `pip install .` from the repository home directory.
+
+If you are planning to develop FreeGSNKE, see the section on
+[contributing code](#contributing-code).
 
 ## Usage
 
@@ -105,7 +107,14 @@ If the issue is a feature improvement request:
 
 ### Contributing code
 
-To make code contributions, please open a merge request.
+To make code contributions, please do so via merge request.
+
+In place of the final step in [installation](#installation), run `pip install -e
+.` from the FreeGSNKE root directory to install FreeGSNKE in editable mode.
+
+Development dependencies are located in `requirements-dev.txt` and can be
+installed into the `freegsnke` conda environment with `python -m pip install -r
+requirements-dev.txt`.
 
 Several tests are implemented with [pytest](https://docs.pytest.org/en), which
 are run as part of the GitLab CI/CD pipelines, but you can run these locally

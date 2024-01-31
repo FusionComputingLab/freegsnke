@@ -1,11 +1,13 @@
 # Documentation guide
 
-The documentation is provided by SPHINX and is partially automatically generated from the code. The configuration of the webpage can be changed in `conf.py`. This includes: title, copyright, authors, release, extensions, theme, css, etc..  
+The documentation is provided by Sphinx and is partially automatically generated from the code.
 
 
 ## API documentation
 
-The requirements for building the documentation kept separate from the FreeGSNKE requirements. To build the documentation, you also have to have inttalled FreeGSNKE and it's dependencies. To install the documentation requirements, run the following command from the docs directory.
+The requirements for building the documentation are kept separate from the FreeGSNKE requirements. FreeGSNKE and its dependencies are required to be installed to build the docs (see the README in the repository root directory for instructions).
+
+To install the documentation requirements, run the following command from the `docs` directory. Ensure that the active programming environment has FreeGSNKE installed.
 
 ```bash
 pip install -r requirements_docs.txt
@@ -19,11 +21,11 @@ bash build_documentation.sh
 
 ## Viewing the documentation
 
-After building you can look at `docs/_build/html/index.html` in the browser to view the documentation webpage.
+After building, open the `docs/_build/html/index.html` file in a browser to view the documentation landing page.
 
 ## Manual documentation
 
-Additionally you can add documentation manually. For this see the examples under `docs/installation_guide/index.rst`, `docs/user_guide/index.rst`, and `docs/user_guide/guide_1.rst`
+Additionally, documentation can be added manually. See the examples under `docs/installation_guide/index.rst`, `docs/user_guide/index.rst`, and `docs/user_guide/guide_1.rst`
 
 ## TODOs
 - [ ] add general documentation and examples/guides

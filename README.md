@@ -64,10 +64,8 @@ Open the resulting `index.html` file in a web browser to view the documentation.
 
 ### Examples
 
-Jupyter notebooks with example usage are in the `examples/` directory. They
-require the `notebook` Python package, which is not listed as a requirement of
-FreeGSNKE so must be installed separately. The README in the `examples/`
-directory has more information on the examples.
+Jupyter notebooks with example usage are in the `examples/` directory. The
+README in the `examples/` directory has more information on the examples.
 
 ### Questions
 

@@ -1,5 +1,5 @@
 import setuptools
-from freegsnke import __version__, __author__
+from .freegsnke.__init__ import __version__, __author__
 
 with open("README.md", "r") as f:
     long_description = f.read()

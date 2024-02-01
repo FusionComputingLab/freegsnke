@@ -25,6 +25,10 @@ Tests + Documentation:
     - python -m pytest -v
     # EXAMPLES
     - jupyter nbconvert --execute --to notebook --inplace examples/machine_config.ipynb
+    - jupyter nbconvert --execute --to notebook --inplace examples/basic_dynamical_evolution.ipynb
+    - jupyter nbconvert --execute --to notebook --inplace examples/equilibrium_examples.ipynb
+    - jupyter nbconvert --execute --to notebook --inplace examples/example_nonlinear_evolution_diverted.ipynb
+    - jupyter nbconvert --execute --to notebook --inplace examples/example_nonlinear_evolution_limiter.ipynb
     # DOCUMENTATION
     - cd docs/
     - pip install -r requirements_docs.txt

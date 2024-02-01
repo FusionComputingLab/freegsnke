@@ -10,10 +10,13 @@ sys.path.append("../")
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
+from freegsnke import __version__, __author__
+
 project = 'FreeGSNKE'
 copyright = '2023, authors'
-author = 'authors'
-release = '0.4.0'
+author = __author__
+release = __version__
+version = __version__
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration

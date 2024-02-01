@@ -1,3 +1,2 @@
-__version__ = "0.0.1"
-
-# from .evolve_plasma_NK import evolve_plasma_NK
+__version__ = "0.3.0"
+__author__ = "Nicola C. Amorisco, George Holt, Adriano Agnello, Matthijs Mars"

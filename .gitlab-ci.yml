@@ -23,6 +23,8 @@ Tests + Documentation:
   script:
     # TESTS
     - python -m pytest -v
+    # EXAMPLES
+    - jupyter nbconvert --execute --to notebook --inplace examples/machine_config.ipynb
     # DOCUMENTATION
     - cd docs/
     - pip install -r requirements_docs.txt

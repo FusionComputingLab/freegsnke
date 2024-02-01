@@ -97,7 +97,7 @@ class NKGSsolver:
                 
         
             
-    def freeboundary(self, plasma_psi, tokamak_psi, profiles):
+    def freeboundary(self, plasma_psi, tokamak_psi, profiles, rel_psi_error):
         """Imposes boundary conditions on set of boundary points. 
 
         Parameters
@@ -116,7 +116,9 @@ class NKGSsolver:
         #tokamak_psi = eq.tokamak.calcPsiFromGreens(pgreen=eq._pgreen)
         
         #jtor and RHS given tokamak_psi above and the input plasma_psi
-        self.jtor = profiles.Jtor(self.R, self.Z, (tokamak_psi+plasma_psi).reshape(self.nx, self.ny))
+        self.jtor = profiles.Jtor(self.R, self.Z, 
+                                  (tokamak_psi+plasma_psi).reshape(self.nx, self.ny),
+                                  rel_psi_error=rel_psi_error)
         self.rhs = self.rhs_before_jtor*self.jtor
         
         #calculates and assignes boundary conditions
@@ -134,7 +136,7 @@ class NKGSsolver:
         self.rhs[:, -1] = self.psi_boundary[:, -1]
          
         
-    def F_function(self, plasma_psi, tokamak_psi, profiles): 
+    def F_function(self, plasma_psi, tokamak_psi, profiles, rel_psi_error=0):  
         """Nonlinear Grad Shafranov equation written as a root problem
         F(plasma_psi) \equiv [\delta* - J](plasma_psi)
         The plasma_psi that solves the Grad Shafranov problem satisfies
@@ -158,7 +160,7 @@ class NKGSsolver:
             residual of the GS equation
         """ 
        
-        self.freeboundary(plasma_psi, tokamak_psi, profiles)
+        self.freeboundary(plasma_psi, tokamak_psi, profiles, rel_psi_error)
         residual = plasma_psi - (self.linear_GS_solver(self.psi_boundary, self.rhs)).reshape(-1)
         return residual
     

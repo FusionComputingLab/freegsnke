@@ -1446,9 +1446,9 @@ class nl_solver:
         self.hatIy1_iterative_cycle(hatIy1=hatIy1,
                                                         active_voltage_vec=active_voltage_vec,
                                                         rtol_NK=rtol_NK)
-        psi_residual = self.eq2.plasma_psi.reshape(-1) - trial_plasma_psi
+        psi_residual = self.psi_gs_alpha[0]*(self.eq2.plasma_psi.reshape(-1) - trial_plasma_psi)
 
-        psi_residual += self.NK.F_function(trial_plasma_psi.reshape(-1),
+        psi_residual += self.psi_gs_alpha[1]*self.NK.F_function(trial_plasma_psi.reshape(-1),
                                         self.tokamak_psi.reshape(-1),
                                         self.profiles2)
 
@@ -2335,8 +2335,8 @@ class nl_solver:
                         target_relative_tol_GS=.002,
                         working_relative_tol_GS=.0005,
                         target_relative_unexplained_residual=.5,
-                        max_n_directions=3,
-                        max_Arnoldi_iterations=4,
+                        max_n_directions=5,
+                        max_Arnoldi_iterations=6,
                         max_collinearity=.3,
                         step_size_psi=2.,
                         step_size_curr=.8,
@@ -2484,16 +2484,21 @@ class nl_solver:
 
             # uses self.trial_currents and self.currents_vec_m1 to relate res_curr above to step in the currents
             rel_curr_res = 1.0*self.calculate_rel_tolerance_currents(res_curr, curr_eps=curr_eps)
-            control = np.any(rel_curr_res > target_relative_tol_currents)
+            max_rel_curr_res = np.amax(rel_curr_res)
+            control = max_rel_curr_res > target_relative_tol_currents
 
             # pair self.trial_currents and self.trial_plasma_psi are a GS solution
+            r_res_GS = 0
             control_GS = 0
+
+            max_rel_res = np.array([max_rel_curr_res, r_res_GS])
+            target_tolerances = np.array([target_relative_tol_currents, target_relative_tol_GS])
 
             args_nk = [active_voltage_vec, self.rtol_NK]
             
             if verbose:
                 print('starting numerical solve:')
-                print('max(residual on current eqs) =', np.amax(rel_curr_res), 'mean(residual on current eqs) =', np.mean(rel_curr_res))
+                print('max(relative residual on current eqs) =', max_rel_curr_res, 'mean(residual on current eqs) =', np.mean(rel_curr_res))
                 # print(self.F_function_ceq_GS(self.trial_currents, *args_nk))
             log = []
 
@@ -2509,7 +2514,13 @@ class nl_solver:
                         print(_)
                     
                 log = [self.text_nk_cycle.format(nkcycle = n_it)]
-
+                
+                max_rel_res /= target_tolerances
+                max_rel_res = np.where(max_rel_res<10, max_rel_res, 10)
+                self.psi_gs_alpha = np.exp(max_rel_res)
+                self.psi_gs_alpha /= np.sum(self.psi_gs_alpha)
+                self.psi_gs_alpha = [0,1]
+                print(max_rel_res/target_tolerances, self.psi_gs_alpha)
 
                 # update plasma flux if trial_currents and plasma_flux exceedingly far from GS solution
                 # if control_GS:
@@ -2522,11 +2533,11 @@ class nl_solver:
                 self.tokamak_psi = self.tokamak_psi.reshape(-1)
 
                 # calculate initial residual for the root problem in psi
-                res_psi = 1.0*self.F_function_psi_GS(trial_plasma_psi=self.trial_plasma_psi,
+                res_psi = self.F_function_psi_GS(trial_plasma_psi=self.trial_plasma_psi,
                                                 active_voltage_vec=active_voltage_vec, 
                                                 rtol_NK=self.rtol_NK).copy()
                 del_res_psi = (np.amax(res_psi) - np.amin(res_psi))
-
+                # print('del_res_psi', del_res_psi)
 
 
                 if (del_res_psi > self.rtol_NK/relative_tol_for_nk_psi)+(n_no_NK_psi > max_no_NK_psi):
@@ -2550,6 +2561,13 @@ class nl_solver:
                     # update trial_plasma_psi according to NK solution
                     self.trial_plasma_psi += self.psi_nk_solver.dx*blend_psi
                     psi_text = [[self.text_psi_1, self.psi_nk_solver.coeffs]]
+
+                    res_psi = self.F_function_psi_GS(trial_plasma_psi=self.trial_plasma_psi,
+                                                active_voltage_vec=active_voltage_vec, 
+                                                rtol_NK=self.rtol_NK).copy()
+                    del_res_psi = (np.amax(res_psi) - np.amin(res_psi))
+                    # print('del_res_psi', del_res_psi)
+
 
                 else:
                     # NK algorithm has been shortcutted, keep count
@@ -2592,12 +2610,348 @@ class nl_solver:
                 # relative convergence on the currents:
                 res_curr = self.F_function_curr(self.trial_currents, active_voltage_vec).copy()
                 rel_curr_res = self.calculate_rel_tolerance_currents(res_curr, curr_eps=curr_eps)
-                control = np.any(rel_curr_res > target_relative_tol_currents)
+                max_rel_curr_res = np.amax(rel_curr_res)
+                control = max_rel_curr_res > target_relative_tol_currents
+                # control = np.any(rel_curr_res > target_relative_tol_currents)
                 # relative convergence on the GS problem
                 r_res_GS = 1.0*self.calculate_rel_tolerance_GS(self.trial_plasma_psi)
                 control_GS = (r_res_GS > target_relative_tol_GS)
                 control += control_GS
+                max_rel_res = np.array([max_rel_curr_res, r_res_GS])
+
+                log.append(['The coeffs applied to the current vec = ', self.currents_nk_solver.coeffs])
+                log.append(['The final residual on the current (relative): max =', np.amax(rel_curr_res), 'mean =', np.mean(rel_curr_res)])
+                self.ceq_res = 1.0*self.F_function_ceq_GS(self.trial_currents, *args_nk)
+                log.append(['The final residual on the current (relative): max =', np.amax(self.ceq_res), 'mean =', np.mean(self.ceq_res)])
+                log.append(['Residuals on GS eq (relative): ', r_res_GS])
+
+                # one full cycle completed
+                n_it += 1
                 
+            # convergence checks succeeded, complete step
+            self.step_complete_assign(working_relative_tol_GS)
+        
+        # # check plasma is still fully contained in the plasma reduced domain 
+        # flag = self.plasma_grids.check_if_outside_domain(jtor=self.profiles2.jtor)
+
+        # return flag
+            
+
+
+
+    def nlstepper3(self, active_voltage_vec, 
+                        profile_parameter=None,
+                        profile_coefficients=None,
+                        target_relative_tol_currents=.005,
+                        target_relative_tol_GS=.002,
+                        working_relative_tol_GS=.0005,
+                        target_relative_unexplained_residual=.5,
+                        max_n_directions=5,
+                        max_Arnoldi_iterations=6,
+                        max_collinearity=.3,
+                        step_size_psi=2.,
+                        step_size_curr=.8,
+                        scaling_with_n=0,
+                        relative_tol_for_nk_psi=.002,
+                        blend_GS=.5,
+                        blend_psi=1,
+                        curr_eps=1e-5,
+                        max_no_NK_psi=1.,
+                        clip=5,
+                        threshold=1.5,
+                        clip_hard=1.5,
+                        verbose=0,
+                        linear_only=False):
+        """The main stepper function. 
+        If linear_only = True, this advances the linearised problem.
+        If linear_only = False, a solution of the full non-linear problem is seeked using 
+        a combination of NK methods. 
+        When a solution has been found, time is advanced by self.dt_step, 
+        currents are recorded in self.currents_vec and profile properties 
+        in self.eq1 and self.profiles1.
+        The solver's algorithm proceeds like below:
+        1) solve linearised problem for initial guess of the currents and solve associated GS,
+        assign trial_plasma_psi and trial_currents (and consequent tokamak_psi);
+        2) if pair [trial_plasma_psi, tokamak_psi] fails static GS check (control_GS), 
+        update trial_plasma_psi using GS solution;
+        3) at fixed trial_currents (and consequent tokamak_psi) update trial_plasma_psi 
+        using NK solver for the associated root problem;
+        4) at fixed trial_plasma_psi, update trial_currents (and consequent tokamak_psi) 
+        using NK solver for the associated root problem;
+        5) if convergence on the current residuals is not achieved or static GS check
+        fails, restart from point 2;
+        6) the pair [trial_currents, trial_plasma_psi] solves the nonlinear dynamic problem,
+        assign values to self.currents_vec, self.eq1 and self.profiles1.
+        
+
+        Parameters
+        ----------
+        active_voltage_vec : np.array
+            Vector of active voltages for the active coils, applied between t and t+dt.
+        profile_parameter : None or float for new paxis or betap
+            Set to None when the profile parameter (paxis or betap) is left unchanged
+            with respect to the previous timestep. Set here desired value otherwise.
+        profile_coefficients : None or tuple (alpha_m, alpha_n)  
+            Set to None when the profile coefficients alpha_m and alpha_n are left unchanged
+            with respect to the previous timestep. Set here desired values otherwise.
+        target_relative_tol_currents : float, optional, by default .01
+            Relative tolerance in the currents required for convergence.
+        target_relative_tol_GS : float, optional, by default .01
+            Relative tolerance in the plasma flux required for convergence.
+        working_relative_tol_GS : float, optional, by default .002
+            Tolerance used when solving all static GS problems, expressed in 
+            terms of the change in the plasma flux due to 1 timestep of evolution.
+        target_relative_unexplained_residual : float, optional, by default .5
+            Used in the NK solvers. Inclusion of additional basis vectors is
+            stopped if the fraction of unexplained_residual is < target_relative_unexplained_residual.
+        max_n_directions : int, optional, by default 3
+            Used in the NK solvers. Inclusion of additional basis vectors is
+            stopped if max_n_directions have already been included.
+        max_Arnoldi_iterations : int, optional, by default 4
+            Used in the NK solvers. Inclusion of additional basis vectors is
+            stopped if max_n_directions have already been considered for inclusion,
+            though not necessarily included.
+        max_collinearity : float, optional, by default .3
+            Used in the NK solvers. The basis vector being considered is rejected
+            if scalar product with any of the previously included is larger than max_collinearity.
+        step_size_psi : float, optional, by default 2.
+            Used by the NK solver applied to the root problem in the plasma flux.
+            l2 norm of proposed step.
+        step_size_curr : float, optional, by default .8
+            Used by the NK solver applied to the root problem in the currents.
+            l2 norm of proposed step.
+        scaling_with_n : int, optional, by default 0
+            Used in the NK solvers. Allows to further scale dx candidate steps by factor
+            (1 + self.n_it)**scaling_with_n
+        relative_tol_for_nk_psi : float, optional, by default .002
+            NK solver for the root problem in the plasma flux is not used if 
+            the associated residual is < self.rtol_NK/relative_tol_for_nk_psi
+        max_no_NK_psi : float, optional, by default 1.
+            Maximum number of consecutive times the NK solver for the root problem in the plasma flux 
+            can be shortcutted. 
+        blend_GS : float, optional, by default .5
+            Blend coefficient used in trial_plasma_psi updates at step 2 of the algorithm above.
+            Should be between 0 and 1.
+        blend_psi : float, optional, by default 1.
+            Blend coefficient used in trial_plasma_psi updates at step 3 of the algorithm above.
+            Should be between 0 and 1.
+        curr_eps : float, optional, by default 1e-5
+            Used in calculating the relative convergence on the currents. Min value of the current 
+            step. Avoids divergence when dividing by the step in the currents.
+        clip : float, optional, by default 5
+            Used in the NK solvers. Maximum step size for each accepted basis vector, in units 
+            of the exploratory step.
+        threshold : float, optional, by default 1.5 
+            Used in the NK solvers to catch cases of untreated (partial) collinearity. 
+            If relative_unexplained_residual>threshold, clip_hard is applied instead of clip.
+        clip_hard : float, optional, by default 1.5
+             Used in the NK solvers. Maximum step size for each accepted basis vector, in units 
+            of the exploratory step, for cases of partial collinearity.
+        verbose : int, optional, by default T
+            Printouts of convergence process. 
+            Use 1 for printouts with details on each NK cycle.
+            Use 2 for printouts with deeper intermediate details.
+        linear_only : bool, optional, by default False
+            If linear_only = True the solution of the linearised problem is accepted.
+            If linear_only = False, the convergence criteria are used and a solution of 
+            the full nonlinear problem is seeked.
+
+        Returns
+        -------
+        int
+            Number of grid points NOT in the reduced plasma domain that have some plasma in them (Jtor>0).
+            Depending on the definition of the reduced plasma domain through plasma_domain_mask, 
+            this may mean the plasma contacted the wall. This will stop the dynamics.
+        """
+
+
+        self.psi_gs_alpha = [0,1]
+
+        # check if profile parameter (betap or paxis) is being altered 
+        # and action the change where necessary
+        self.check_and_change_profiles(profile_parameter=profile_parameter,
+                                       profile_coefficients=profile_coefficients)
+        
+        # solves the linearised problem for the currents. 
+        # needs to use the time derivativive of the profile parameters, if they have been changed
+        if self.profile_change_flag:
+            self.d_profile_pars_dt = self.d_profile_pars/self.dt_step
+        else:
+            self.d_profile_pars_dt = None
+        self.set_linear_solution(active_voltage_vec, self.d_profile_pars_dt)
+        # Solution and GS equilibrium are assigned to self.trial_currents and self.trial_plasma_psi
+
+
+        if linear_only:
+            # assign currents and plasma flux to self.currents_vec, self.eq1 and self.profile1 and complete step
+            self.step_complete_assign(working_relative_tol_GS, from_linear=True)
+            
+        else:
+            # seek solution of the full nonlinear problem
+            
+            # this assigns to self.eq2 and self.profiles2 
+            # also records self.tokamak_psi corresponding to self.trial_currents in 2d
+            res_curr = self.F_function_curr(self.trial_currents, active_voltage_vec).copy()
+
+            # uses self.trial_currents and self.currents_vec_m1 to relate res_curr above to step in the currents
+            rel_curr_res = 1.0*self.calculate_rel_tolerance_currents(res_curr, curr_eps=curr_eps)
+            max_rel_curr_res = np.amax(rel_curr_res)
+            control = max_rel_curr_res > target_relative_tol_currents
+
+            # pair self.trial_currents and self.trial_plasma_psi are a GS solution
+            r_res_GS = 0
+            control_GS = 0
+
+            
+            target_tolerances = np.array([target_relative_tol_currents, target_relative_tol_GS])
+
+            args_nk = [active_voltage_vec, self.rtol_NK]
+            
+            if verbose:
+                print('starting numerical solve:')
+                print('max(relative residual on current eqs) =', max_rel_curr_res, 'mean(residual on current eqs) =', np.mean(rel_curr_res))
+                # print(self.F_function_ceq_GS(self.trial_currents, *args_nk))
+            log = []
+
+            # counter for instances in which the NK solver in psi has been shortcutted
+            n_no_NK_psi = 0
+
+            # counter for number of solution cycles
+            n_it = 0
+
+            while control:
+                if verbose:
+                    for _ in log:
+                        print(_)
+                    
+                log = [self.text_nk_cycle.format(nkcycle = n_it)]
+
+                self.currents_nk_solver.Arnoldi_iteration(  x0=self.trial_currents, 
+                                                            dx=res_curr.copy(), 
+                                                            R0=res_curr, 
+                                                            F_function=self.F_function_curr,
+                                                            args=[active_voltage_vec],
+                                                            step_size=step_size_curr,
+                                                            scaling_with_n=scaling_with_n,
+                                                            target_relative_unexplained_residual=target_relative_unexplained_residual,  
+                                                            max_n_directions=max_n_directions, 
+                                                            max_Arnoldi_iterations=max_Arnoldi_iterations,
+                                                            max_collinearity=max_collinearity,
+                                                            clip=clip,
+                                                            threshold=threshold,
+                                                            clip_hard=clip_hard)
+                # update trial_currents according to NK solution
+                self.trial_currents += self.currents_nk_solver.dx
+
+                res_curr = self.F_function_curr(self.trial_currents, active_voltage_vec).copy()
+
+                # uses self.trial_currents and self.currents_vec_m1 to relate res_curr above to step in the currents
+                rel_curr_res = 1.0*self.calculate_rel_tolerance_currents(res_curr, curr_eps=curr_eps)
+                max_rel_curr_res = np.amax(rel_curr_res)
+
+
+                r_res_GS = 1.0*self.calculate_rel_tolerance_GS(self.trial_plasma_psi)
+                max_rel_res = np.array([max_rel_curr_res, r_res_GS])
+
+                max_rel_res /= target_tolerances
+                max_rel_res = np.where(max_rel_res<10, max_rel_res, 10)
+                self.psi_gs_alpha = np.exp(max_rel_res)
+                self.psi_gs_alpha /= np.sum(self.psi_gs_alpha)
+                
+                print(max_rel_res/target_tolerances, self.psi_gs_alpha)
+
+       
+                # prepare for NK algorithms: 1d vectors needed for independent variable
+                # self.trial_plasma_psi = self.trial_plasma_psi.reshape(-1)
+                # self.tokamak_psi = self.tokamak_psi.reshape(-1)
+
+                # calculate initial residual for the root problem in psi
+                res_psi = self.F_function_psi_GS(trial_plasma_psi=self.trial_plasma_psi,
+                                                 active_voltage_vec=active_voltage_vec, 
+                                                 rtol_NK=self.rtol_NK).copy()
+                del_res_psi = (np.amax(res_psi) - np.amin(res_psi))
+                # print('del_res_psi', del_res_psi)
+
+
+                if (del_res_psi > self.rtol_NK/relative_tol_for_nk_psi)+(n_no_NK_psi > max_no_NK_psi):
+                    n_no_NK_psi = 0
+                    # NK algorithm to solve the root problem in psi
+                    self.psi_nk_solver.Arnoldi_iteration(x0=self.trial_plasma_psi, #trial_current expansion point
+                                                        dx=res_psi.copy(), #first vector for current basis
+                                                        R0=res_psi, #circuit eq. residual at trial_current expansion point: F_function(trial_current)
+                                                        F_function=self.F_function_psi_GS,
+                                                        args=args_nk,
+                                                        step_size=step_size_psi,
+                                                        scaling_with_n=scaling_with_n,
+                                                        target_relative_unexplained_residual=target_relative_unexplained_residual,   #add basis vector 
+                                                        max_n_directions=max_n_directions, # max number of basis vectors (must be less than number of modes + 1)
+                                                        max_Arnoldi_iterations=max_Arnoldi_iterations,
+                                                        max_collinearity=max_collinearity,
+                                                        clip=clip,
+                                                        threshold=threshold,
+                                                        clip_hard=clip_hard)
+                    
+                    # update trial_plasma_psi according to NK solution
+                    self.trial_plasma_psi += self.psi_nk_solver.dx*blend_psi
+                    psi_text = [[self.text_psi_1, self.psi_nk_solver.coeffs]]
+
+                    res_psi = self.F_function_psi_GS(trial_plasma_psi=self.trial_plasma_psi,
+                                                active_voltage_vec=active_voltage_vec, 
+                                                rtol_NK=self.rtol_NK).copy()
+                    del_res_psi = (np.amax(res_psi) - np.amin(res_psi))
+                    # print('del_res_psi', del_res_psi)
+
+
+                else:
+                    # NK algorithm has been shortcutted, keep count
+                    n_no_NK_psi += 1
+                    psi_text = [self.text_psi_0.format(skippedno = n_no_NK_psi, psi_res = del_res_psi)]
+
+
+                # prepare for NK solver on the currents, 2d plasma flux needed
+                self.trial_plasma_psi = self.trial_plasma_psi.reshape(self.nx, self.ny)
+
+                # # calculates initial residual for the root problem in the currents
+                # # assumes the just updated self.trial_plasma_psi
+                # res_curr = self.F_function_curr(self.trial_currents, active_voltage_vec).copy()
+                # rel_curr_res = abs(res_curr / self.curr_step)
+                # interm_text = ['The intermediate residuals on the current: max =', np.amax(rel_curr_res), 'mean =', np.mean(rel_curr_res)]
+                
+                # if verbose-1:
+                #     log.append(psi_text)
+                #     log.append(interm_text)
+                
+                # # NK algorithm to solve the root problem in the currents
+                # self.currents_nk_solver.Arnoldi_iteration(  x0=self.trial_currents, 
+                #                                             dx=res_curr.copy(), 
+                #                                             R0=res_curr, 
+                #                                             F_function=self.F_function_curr,
+                #                                             args=[active_voltage_vec],
+                #                                             step_size=step_size_curr,
+                #                                             scaling_with_n=scaling_with_n,
+                #                                             target_relative_unexplained_residual=target_relative_unexplained_residual,  
+                #                                             max_n_directions=max_n_directions, 
+                #                                             max_Arnoldi_iterations=max_Arnoldi_iterations,
+                #                                             max_collinearity=max_collinearity,
+                #                                             clip=clip,
+                #                                             threshold=threshold,
+                #                                             clip_hard=clip_hard)
+                # # update trial_currents according to NK solution
+                # self.trial_currents += self.currents_nk_solver.dx
+
+                # check convergence properties of the pair [trial_currents, trial_plasma_psi]:
+                # relative convergence on the currents:
+                res_curr = self.F_function_curr(self.trial_currents, active_voltage_vec).copy()
+                rel_curr_res = self.calculate_rel_tolerance_currents(res_curr, curr_eps=curr_eps)
+                max_rel_curr_res = np.amax(rel_curr_res)
+                control = max_rel_curr_res > target_relative_tol_currents
+                # control = np.any(rel_curr_res > target_relative_tol_currents)
+                # relative convergence on the GS problem
+                r_res_GS = 1.0*self.calculate_rel_tolerance_GS(self.trial_plasma_psi)
+                control_GS = (r_res_GS > target_relative_tol_GS)
+                control += control_GS
+               
+
                 log.append(['The coeffs applied to the current vec = ', self.currents_nk_solver.coeffs])
                 log.append(['The final residual on the current (relative): max =', np.amax(rel_curr_res), 'mean =', np.mean(rel_curr_res)])
                 self.ceq_res = 1.0*self.F_function_ceq_GS(self.trial_currents, *args_nk)

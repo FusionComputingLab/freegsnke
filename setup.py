@@ -1,11 +1,13 @@
 import setuptools
+from freegsnke import __version__, __author__
 
 with open("README.md", "r") as f:
     long_description = f.read()
 
 setuptools.setup(
     name="freegsnke",
-    version="0.3.0",
+    version=__version__,
+    author=__author__,
     description="An extension of FreeGSFast with a Newton-Krylov Grad-Shafranov solver and evolutive capabilities.",
     long_description=long_description,
     url="https://github.com/farscape-project/freegsnke",

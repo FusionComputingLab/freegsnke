@@ -2,7 +2,8 @@
 
 .. toctree::
     :maxdepth: 1
-    :caption: FreeGSNKE
+    :caption: Contents
     
+    Home <self>
     user_guide/index
-    api/freegsnke
+    API <api/freegsnke>

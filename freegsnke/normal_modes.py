@@ -1,4 +1,5 @@
 import numpy as np
+
 from . import machine_config
 
 """This calculates matrix data needed for normal mode decomposition of the vessel.

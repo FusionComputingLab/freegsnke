@@ -1,7 +1,7 @@
 import numpy as np
 
-from .implicit_euler import implicit_euler_solver
 from . import machine_config
+from .implicit_euler import implicit_euler_solver
 
 
 class linear_solver:

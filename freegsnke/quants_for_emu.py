@@ -1,11 +1,12 @@
 import profile
-from freegs.gradshafranov import Greens
+
 import numpy as np
+from freegs.gradshafranov import Greens
+
+from freegsnke.faster_shape import calculate_width, geometricElongation
 
 from . import machine_config
 from .machine_config import coils_dict
-from freegsnke.faster_shape import calculate_width
-from freegsnke.faster_shape import geometricElongation
 
 
 class quants_for_emulation:

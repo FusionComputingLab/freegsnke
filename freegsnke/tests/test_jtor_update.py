@@ -1,7 +1,8 @@
 import os
-import pytest
+
 import freegs
 import numpy as np
+import pytest
 
 os.environ["ACTIVE_COILS_PATH"] = "./machine_configs/MAST-U/active_coils.pickle"
 os.environ["PASSIVE_COILS_PATH"] = "./machine_configs/MAST-U/passive_coils.pickle"

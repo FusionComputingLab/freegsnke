@@ -1,22 +1,22 @@
-from scipy import interpolate
-from numpy import zeros
-from numpy.linalg import inv
+import numpy as np
 from numpy import (
-    dot,
-    linspace,
-    argmax,
-    argmin,
     abs,
-    clip,
-    sin,
-    cos,
-    pi,
     amax,
     arctan2,
+    argmax,
+    argmin,
+    clip,
+    cos,
+    dot,
+    linspace,
+    pi,
+    sin,
     sqrt,
     sum,
+    zeros,
 )
-import numpy as np
+from numpy.linalg import inv
+from scipy import interpolate
 
 
 def innerOuterSeparatrix(eq, profiles, Z=0.0):

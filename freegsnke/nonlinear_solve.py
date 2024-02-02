@@ -1,25 +1,20 @@
-import numpy as np
-
-from . import machine_config
-from .machine_config import coils_order
-
 from copy import deepcopy
 
+import matplotlib.pyplot as plt
+import numpy as np
+from scipy.signal import convolve2d
+
+from . import machine_config
+from . import nk_solver as nk_solver
+from . import plasma_grids
 from .circuit_eq_metal import metal_currents
 from .circuit_eq_plasma import plasma_current
-
-from . import nk_solver as nk_solver
-from .simplified_solve import simplified_solver_J1
+from .GSstaticsolverH import NKGSsolver
 from .linear_solve import linear_solver
-from . import plasma_grids
+from .machine_config import coils_order
+from .simplified_solve import simplified_solver_J1
 
 # from . import extrapolate
-
-from .GSstaticsolverH import NKGSsolver
-
-import matplotlib.pyplot as plt
-
-from scipy.signal import convolve2d
 
 
 class nl_solver:

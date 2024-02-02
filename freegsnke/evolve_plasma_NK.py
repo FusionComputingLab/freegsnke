@@ -1,19 +1,15 @@
+import copy
+
+import freegs
 import numpy as np
 from numpy.linalg import inv
 
-import freegs
-
-from . import machine_config
+from . import evolve_currents, machine_config, quants_for_emu
+from .jtor_update import ConstrainPaxisIp
 from .machine_config import coils_dict
-
-import copy
-
-from . import quants_for_emu
-from . import evolve_currents
 
 # from picardfast import fast_solve
 from .newtonkrylov import NewtonKrylov
-from .jtor_update import ConstrainPaxisIp
 
 
 class evolve_plasma_NK:

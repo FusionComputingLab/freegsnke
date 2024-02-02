@@ -1,4 +1,5 @@
 import numpy as np
+
 from freegsnke.implicit_euler import implicit_euler_solver, implicit_euler_solver_d
 
 

@@ -1,8 +1,8 @@
 import freegs
 import numpy as np
 from freegs import critical
-from . import limiter_func
-from . import plasma_grids
+
+from . import limiter_func, plasma_grids
 
 
 class ConstrainBetapIp(freegs.jtor.ConstrainBetapIp):

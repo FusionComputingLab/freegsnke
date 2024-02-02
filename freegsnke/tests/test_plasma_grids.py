@@ -1,16 +1,16 @@
 import os
-import pytest
+
 import freegs
 import numpy as np
+import pytest
 
 os.environ["ACTIVE_COILS_PATH"] = "./machine_configs/MAST-U/active_coils.pickle"
 os.environ["PASSIVE_COILS_PATH"] = "./machine_configs/MAST-U/passive_coils.pickle"
 os.environ["WALL_PATH"] = "./machine_configs/MAST-U/wall.pickle"
 os.environ["LIMITER_PATH"] = "./machine_configs/MAST-U/limiter.pickle"
 
-from freegsnke import build_machine
+from freegsnke import build_machine, limiter_func
 from freegsnke.plasma_grids import Grids
-from freegsnke import limiter_func
 
 
 @pytest.fixture

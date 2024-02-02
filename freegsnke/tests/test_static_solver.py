@@ -1,18 +1,16 @@
-import pytest
-
-import numpy as np
-import freegs
-from freegs.plotting import plotConstraints
-from freegs.critical import find_critical
-import matplotlib.pyplot as plt
-from matplotlib.widgets import Slider
-import sys
-import matplotlib.pyplot as plt
-from copy import deepcopy
-from IPython.display import display, clear_output
-import time
-
 import os
+import sys
+import time
+from copy import deepcopy
+
+import freegs
+import matplotlib.pyplot as plt
+import numpy as np
+import pytest
+from freegs.critical import find_critical
+from freegs.plotting import plotConstraints
+from IPython.display import clear_output, display
+from matplotlib.widgets import Slider
 
 os.environ["ACTIVE_COILS_PATH"] = "./machine_configs/MAST-U/active_coils.pickle"
 os.environ["PASSIVE_COILS_PATH"] = "./machine_configs/MAST-U/passive_coils.pickle"

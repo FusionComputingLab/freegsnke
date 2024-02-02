@@ -1,7 +1,8 @@
 import os
-from copy import deepcopy
-import numpy as np
 import pickle
+from copy import deepcopy
+
+import numpy as np
 from freegs.gradshafranov import Greens
 
 

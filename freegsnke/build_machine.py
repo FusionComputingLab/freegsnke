@@ -1,10 +1,11 @@
 import os
 import pickle
-from freegs.machine import Circuit, Wall, Solenoid
-from .machine_update import Machine
+
 from freegs.coil import Coil
+from freegs.machine import Circuit, Solenoid, Wall
 from freegs.multi_coil import MultiCoil
 
+from .machine_update import Machine
 
 passive_coils_path = os.environ.get("PASSIVE_COILS_PATH", None)
 if passive_coils_path is None:

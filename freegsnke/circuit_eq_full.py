@@ -1,8 +1,8 @@
-import numpy as np
 import copy
 
-from . import implicit_euler
-from . import machine_config
+import numpy as np
+
+from . import implicit_euler, machine_config
 
 
 class full_circuit_eqs:

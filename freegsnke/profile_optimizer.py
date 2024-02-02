@@ -1,8 +1,7 @@
-import numpy as np
-from . import newtonkrylov
-from . import plasma_grids
-
 import matplotlib.pyplot as plt
+import numpy as np
+
+from . import newtonkrylov, plasma_grids
 
 
 class optimize_profile:

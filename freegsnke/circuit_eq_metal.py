@@ -1,7 +1,6 @@
 import numpy as np
 
-from . import machine_config
-from . import normal_modes
+from . import machine_config, normal_modes
 from .implicit_euler import implicit_euler_solver
 
 

@@ -23,6 +23,9 @@ Tests + Documentation:
   script:
     # TESTS
     - python -m pytest -v
+    # Formatting
+    - black --check freegsnke/
+    - isort --check --diff freegsnke/
     # EXAMPLES
     - jupyter nbconvert --execute --to notebook --inplace examples/machine_config.ipynb
     - jupyter nbconvert --execute --to notebook --inplace examples/basic_dynamical_evolution.ipynb

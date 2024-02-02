@@ -113,6 +113,9 @@ fundamentally works or a change to the API, be sure to document this
 appropriately in the user documentation, API documentation, and by writing or
 changing examples, where appropriate.
 
+[Black](https://github.com/psf/black) and
+[isort](https://pycqa.github.io/isort/) are used for code formatting. Pre-commit
+hooks are implemented with these formatting steps.
 
 ## Reference
 

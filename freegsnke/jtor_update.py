@@ -1,8 +1,8 @@
 import freegs
 import numpy as np
 from freegs import critical
-from . import limiter_func
-from . import plasma_grids
+
+from . import limiter_func, plasma_grids
 
 
 class ConstrainBetapIp(freegs.jtor.ConstrainBetapIp):
@@ -24,11 +24,12 @@ class ConstrainBetapIp(freegs.jtor.ConstrainBetapIp):
         self.profile_parameter = self.betap
 
         self.limiter_handler = limiter_func.Limiter_handler(eq, limiter)
-        self.limiter_mask_out = plasma_grids.make_layer_mask(self.limiter_handler.mask_inside_limiter, layer_size=1)
+        self.limiter_mask_out = plasma_grids.make_layer_mask(
+            self.limiter_handler.mask_inside_limiter, layer_size=1
+        )
         self.mask_inside_limiter = self.limiter_handler.mask_inside_limiter
 
-        
-        if not hasattr(self, 'fast'):
+        if not hasattr(self, "fast"):
             self.Jtor = self._Jtor
         else:
             self.Jtor = self.Jtor_fast
@@ -48,12 +49,15 @@ class ConstrainBetapIp(freegs.jtor.ConstrainBetapIp):
         self.jtor = super().Jtor(R, Z, psi, psi_bndry)
         self.opt, self.xpt = critical.find_critical(R, Z, psi)
 
-        self.diverted_core_mask = self.jtor>0
-        self.psi_bndry, mask, self.limiter_flag = self.limiter_handler.core_mask_limiter(psi,
-                                                                                        self.xpt[0][2],
-                                                                                        self.diverted_core_mask,
-                                                                                        self.limiter_mask_out,
-                                                                                        )
+        self.diverted_core_mask = self.jtor > 0
+        self.psi_bndry, mask, self.limiter_flag = (
+            self.limiter_handler.core_mask_limiter(
+                psi,
+                self.xpt[0][2],
+                self.diverted_core_mask,
+                self.limiter_mask_out,
+            )
+        )
         self.jtor = super().Jtor(R, Z, psi, self.psi_bndry)
         return self.jtor
 
@@ -62,20 +66,27 @@ class ConstrainBetapIp(freegs.jtor.ConstrainBetapIp):
         self.diverted_core_mask = super().Jtor_part1(R, Z, psi, psi_bndry)
         if self.diverted_core_mask is None:
             # print('no xpt')
-            self.psi_bndry, self.limiter_core_mask, self.flag_limiter = psi_bndry, None, False
-        elif rel_psi_error<.02: 
-            self.psi_bndry, self.limiter_core_mask, self.flag_limiter = self.limiter_handler.core_mask_limiter(psi,
-                                                                                                                self.psi_bndry,
-                                                                                                                self.diverted_core_mask,
-                                                                                                                self.limiter_mask_out,
-                                                                                                                )
+            self.psi_bndry, self.limiter_core_mask, self.flag_limiter = (
+                psi_bndry,
+                None,
+                False,
+            )
+        elif rel_psi_error < 0.02:
+            self.psi_bndry, self.limiter_core_mask, self.flag_limiter = (
+                self.limiter_handler.core_mask_limiter(
+                    psi,
+                    self.psi_bndry,
+                    self.diverted_core_mask,
+                    self.limiter_mask_out,
+                )
+            )
         else:
             self.limiter_core_mask = self.diverted_core_mask.copy()
-        self.jtor = super().Jtor_part2(R, Z, psi, self.psi_bndry, self.limiter_core_mask)
+        self.jtor = super().Jtor_part2(
+            R, Z, psi, self.psi_bndry, self.limiter_core_mask
+        )
         return self.jtor
-    
-    
-    
+
 
 class ConstrainPaxisIp(freegs.jtor.ConstrainPaxisIp):
     """FreeGS profile class with a few modifications, to:
@@ -94,14 +105,16 @@ class ConstrainPaxisIp(freegs.jtor.ConstrainPaxisIp):
         limiter : freeGS.machine.Wall object
             Specifies the limiter contour points
         """
-        super().__init__(*args, **kwargs) 
+        super().__init__(*args, **kwargs)
         self.profile_parameter = self.paxis
-        
+
         self.limiter_handler = limiter_func.Limiter_handler(eq, limiter)
-        self.limiter_mask_out = plasma_grids.make_layer_mask(self.limiter_handler.mask_inside_limiter, layer_size=1)
+        self.limiter_mask_out = plasma_grids.make_layer_mask(
+            self.limiter_handler.mask_inside_limiter, layer_size=1
+        )
         self.mask_inside_limiter = self.limiter_handler.mask_inside_limiter
-        
-        if not hasattr(self, 'fast'):
+
+        if not hasattr(self, "fast"):
             self.Jtor = self._Jtor
         else:
             self.Jtor = self.Jtor_fast
@@ -121,12 +134,15 @@ class ConstrainPaxisIp(freegs.jtor.ConstrainPaxisIp):
         self.jtor = super().Jtor(R, Z, psi, psi_bndry)
         self.opt, self.xpt = critical.find_critical(R, Z, psi)
 
-        self.diverted_core_mask = self.jtor>0
-        self.psi_bndry, mask, self.limiter_flag = self.limiter_handler.core_mask_limiter(psi,
-                                                                                        self.xpt[0][2],
-                                                                                        self.diverted_core_mask,
-                                                                                        self.limiter_mask_out,
-                                                                                        )
+        self.diverted_core_mask = self.jtor > 0
+        self.psi_bndry, mask, self.limiter_flag = (
+            self.limiter_handler.core_mask_limiter(
+                psi,
+                self.xpt[0][2],
+                self.diverted_core_mask,
+                self.limiter_mask_out,
+            )
+        )
         self.jtor = super().Jtor(R, Z, psi, self.psi_bndry)
         return self.jtor
 
@@ -135,15 +151,24 @@ class ConstrainPaxisIp(freegs.jtor.ConstrainPaxisIp):
         self.diverted_core_mask = super().Jtor_part1(R, Z, psi, psi_bndry)
         if self.diverted_core_mask is None:
             # print('no xpt')
-            self.psi_bndry, self.limiter_core_mask, self.flag_limiter = psi_bndry, None, False
-        elif rel_psi_error<.02:
-            self.psi_bndry, self.limiter_core_mask, self.flag_limiter = self.limiter_handler.core_mask_limiter(psi,
-                                                                                                                self.psi_bndry,
-                                                                                                                self.diverted_core_mask,
-                                                                                                                self.limiter_mask_out,
-                                                                                                                )
-        else:                                                                                                    
+            self.psi_bndry, self.limiter_core_mask, self.flag_limiter = (
+                psi_bndry,
+                None,
+                False,
+            )
+        elif rel_psi_error < 0.02:
+            self.psi_bndry, self.limiter_core_mask, self.flag_limiter = (
+                self.limiter_handler.core_mask_limiter(
+                    psi,
+                    self.psi_bndry,
+                    self.diverted_core_mask,
+                    self.limiter_mask_out,
+                )
+            )
+        else:
             self.limiter_core_mask = self.diverted_core_mask.copy()
-        
-        self.jtor = super().Jtor_part2(R, Z, psi, self.psi_bndry, self.limiter_core_mask)
+
+        self.jtor = super().Jtor_part2(
+            R, Z, psi, self.psi_bndry, self.limiter_core_mask
+        )
         return self.jtor

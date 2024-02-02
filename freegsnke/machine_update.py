@@ -2,9 +2,10 @@ import freegs
 
 
 class Machine(freegs.machine.Machine):
-    """Same as freegs.machine.Machine. 
+    """Same as freegs.machine.Machine.
     It can have an additional freegs.machine.Wall object which specifies the limiter's properties.
     """
+
     def __init__(self, coils, wall=None, limiter=None):
         """Instantiates the Machine, same as freegs.machine.Machine.
 

@@ -1,7 +1,8 @@
 import numpy as np
 import math
 
-class implicit_euler_solver():
+
+class implicit_euler_solver:
     """An implicit Euler time stepper for the linearized circuit equation. Solves an equation of type
 
     $$M\dot{I} + RI = F$$,
@@ -14,6 +15,7 @@ class implicit_euler_solver():
 
     $$I(t+dt) = (M + Rdt)^{-1} (Fdt + LI(t))$$.
     """
+
     def __init__(self, Mmatrix, Rmatrix, full_timestep, max_internal_timestep):
         """Sets up the implicit euler solver
 
@@ -33,7 +35,7 @@ class implicit_euler_solver():
         self.Rmatrix = Rmatrix
         self.dims = np.shape(Mmatrix)[0]
         self.set_timesteps(full_timestep, max_internal_timestep)
-        self.empty_U = np.zeros(self.dims) # dummy voltage vector
+        self.empty_U = np.zeros(self.dims)  # dummy voltage vector
 
     def set_Mmatrix(self, Mmatrix):
         """Updates the mutual inductance matrix. If the mutual inductance matrix and/or the resistance matrix is updated, the inverse operator needs to be recalculated using `self.calc_inverse_operator()`.
@@ -44,7 +46,7 @@ class implicit_euler_solver():
             (NxN) Mutual inductance matrix
         """
         self.Mmatrix = Mmatrix
-    
+
     def set_Lmatrix(self, Lmatrix):
         """Set a separate mutual inductance matrix L != M.
 
@@ -57,18 +59,19 @@ class implicit_euler_solver():
 
     def set_Rmatrix(self, Rmatrix):
         """Updates the resistance matrix. If the mutual inductance matrix and/or the resistance matrix is updated, the inverse operator needs to be recalculated using `self.calc_inverse_operator()`.
-        
+
         Parameters
         ----------
         Rmatrix : np.ndarray
             (NxN) Diagonal resistance matrix
         """
         self.Rmatrix = Rmatrix
-    
+
     def calc_inverse_operator(self):
-        """Calculates the inverse operator (M + Rdt)^-1
-        """
-        self.inverse_operator = np.linalg.inv(self.Mmatrix + self.internal_timestep*self.Rmatrix)
+        """Calculates the inverse operator (M + Rdt)^-1"""
+        self.inverse_operator = np.linalg.inv(
+            self.Mmatrix + self.internal_timestep * self.Rmatrix
+        )
 
     def set_timesteps(self, full_timestep, max_internal_timestep):
         """Sets the timesteps for the stepper and (re)calculate the inverse operator
@@ -84,12 +87,12 @@ class implicit_euler_solver():
         self.max_internal_timestep = max_internal_timestep
         self.n_steps = math.ceil(full_timestep / max_internal_timestep)
         # self.intermediate_results = np.zeros((self.dims, self.n_steps))
-        self.internal_timestep = self.full_timestep/self.n_steps 
+        self.internal_timestep = self.full_timestep / self.n_steps
         self.calc_inverse_operator()
 
     def internal_stepper(self, It, dtforcing):
         """Calculates the next internal timestep I(t + internal_timestep)
-        
+
         Parameters
         ----------
         It : np.ndarray
@@ -97,7 +100,7 @@ class implicit_euler_solver():
         dtforcing : np.ndarray
             Lenght N vector of the forcing, F,  at time t
             multiplied by self.internal_timestep
-        """       
+        """
         Itpdt = np.dot(self.inverse_operator, dtforcing + np.dot(self.Lmatrix, It))
         return Itpdt
 
@@ -111,16 +114,16 @@ class implicit_euler_solver():
         forcing : np.ndarray
             Lenght N vector of the forcing, F,  at time t
         """
-        dtforcing = forcing*self.internal_timestep
+        dtforcing = forcing * self.internal_timestep
 
         for _ in range(self.n_steps):
             It = self.internal_stepper(It, dtforcing)
             # self.intermediate_results[:, i] = It
-        
+
         return It
 
 
-class implicit_euler_solver_d():
+class implicit_euler_solver_d:
     """An implicit Euler time stepper for the linearized circuit equation. Solves an equation of type
 
     $$M\dot{I} + RI = F$$,
@@ -130,9 +133,10 @@ class implicit_euler_solver_d():
     $$\delta I(t+dt) = dt (M + Rdt)^{-1} (F - RI(t))$$.
 
     It allows for the possibility of setting a different resistance matrix S in the inverse operator such that the inverse operator is (M + Sdt)^-1 instead of (M + Rdt)^-1.
-    
-    By default S = R. 
+
+    By default S = R.
     """
+
     def __init__(self, Mmatrix, Rmatrix, full_timestep, max_internal_timestep):
         """Sets up the implicit euler solver
 
@@ -153,7 +157,7 @@ class implicit_euler_solver_d():
         self.Smatrix = Rmatrix
         self.dims = np.shape(Mmatrix)[0]
         self.set_timesteps(full_timestep, max_internal_timestep)
-        self.empty_U = np.zeros(self.dims) # dummy voltage vector
+        self.empty_U = np.zeros(self.dims)  # dummy voltage vector
 
     def set_Mmatrix(self, Mmatrix):
         """Updates the mutual inductance matrix M. If the mutual inductance matrix and/or the different resistance matrix, S, is updated, the inverse operator needs to be recalculated using `self.calc_inverse_operator()`.
@@ -173,7 +177,7 @@ class implicit_euler_solver_d():
             (NxN) Diagonal resistance matrix
         """
         self.Rmatrix = Rmatrix
-        
+
     def set_Smatrix(self, Sdiag):
         """Sets the different resistance matrix, S, to be used for the stepper. If the mutual inductance matrix and/or this resistance matrix is updated, the inverse operator needs to be recalculated using `self.calc_inverse_operator()`.
 
@@ -183,11 +187,12 @@ class implicit_euler_solver_d():
             Lenght N vector of the resistances for each of the components.
         """
         self.Smatrix = np.diag(Sdiag)
-    
+
     def calc_inverse_operator(self):
-        """Calculates the inverse operator (M + Sdt)^{-1}.
-        """
-        self.inverse_operator = np.linalg.inv(self.Mmatrix + self.internal_timestep*self.Smatrix)
+        """Calculates the inverse operator (M + Sdt)^{-1}."""
+        self.inverse_operator = np.linalg.inv(
+            self.Mmatrix + self.internal_timestep * self.Smatrix
+        )
 
     def set_timesteps(self, full_timestep, max_internal_timestep):
         """sets the timesteps for the stepper and (re)calculate the inverse operator
@@ -203,12 +208,12 @@ class implicit_euler_solver_d():
         self.max_internal_timestep = max_internal_timestep
         self.n_steps = math.ceil(full_timestep / max_internal_timestep)
         self.intermediate_results = np.zeros((self.dims, self.n_steps))
-        self.internal_timestep = self.full_timestep/self.n_steps 
+        self.internal_timestep = self.full_timestep / self.n_steps
         self.calc_inverse_operator()
 
     def internal_stepper(self, It, forcing):
         """Calculates the next internal timestep $\delta I(t + `self.internal_timestep`) = dt  (M + Sdt)^{-1} . (F - RI(t))$
-        
+
         Parameters
         ----------
         It : np.ndarray
@@ -216,12 +221,14 @@ class implicit_euler_solver_d():
         forcing : np.ndarray
             Lenght N vector of the forcing, F,  at time t
         """
-        dI = self.internal_timestep*np.dot(self.inverse_operator, forcing - np.dot(self.Rmatrix, It))
+        dI = self.internal_timestep * np.dot(
+            self.inverse_operator, forcing - np.dot(self.Rmatrix, It)
+        )
         return dI
-    
+
     def full_stepper(self, It, forcing):
         """Calculates the next full timestep $\delta I(t + dt) = dt  (M + Sdt)^{-1} . (F - RI(t))$, where dt = `self.full_timestep`, by repeatedly solving for the internal timestep I(t + `self.internal_timestep`) for `self.n_steps` steps
-        
+
         Parameters
         ----------
         It : np.ndarray
@@ -230,8 +237,8 @@ class implicit_euler_solver_d():
             Lenght N vector of the forcing, F,  at time t
         """
         for i in range(self.n_steps):
-            dI = 1.0*self.internal_stepper(It, forcing)
-            self.intermediate_results[:, i] = 1.0*dI
+            dI = 1.0 * self.internal_stepper(It, forcing)
+            self.intermediate_results[:, i] = 1.0 * dI
             It = It + dI
-        
-        return np.sum(self.intermediate_results, axis=-1) # only return dI
+
+        return np.sum(self.intermediate_results, axis=-1)  # only return dI

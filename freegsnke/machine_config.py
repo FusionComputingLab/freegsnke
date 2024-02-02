@@ -5,39 +5,39 @@ import pickle
 from freegs.gradshafranov import Greens
 
 
-def Greens_with_depth(Rc,Zc, R,Z, dR, dZ, tol=1e-6):
-    mask = (np.abs(R-Rc)<tol)
-    mask *= (np.abs(Z-Zc)<tol)
-    small_r = np.sqrt(dR*dZ/np.pi)
-    Rc = np.where(mask, Rc-small_r/2, Rc)
-    greens = Greens(Rc,Zc, R,Z)
+def Greens_with_depth(Rc, Zc, R, Z, dR, dZ, tol=1e-6):
+    mask = np.abs(R - Rc) < tol
+    mask *= np.abs(Z - Zc) < tol
+    small_r = np.sqrt(dR * dZ / np.pi)
+    Rc = np.where(mask, Rc - small_r / 2, Rc)
+    greens = Greens(Rc, Zc, R, Z)
     return greens
 
 
-eta_copper = 1.55e-8 # Resistivity in Ohm*m, for active coils 
-eta_steel = 5.5e-7 # In Ohm*m, for passive structures
+eta_copper = 1.55e-8  # Resistivity in Ohm*m, for active coils
+eta_steel = 5.5e-7  # In Ohm*m, for passive structures
 
 
 # Load active and passive structures and wall location
-passive_coils_path = os.environ.get('PASSIVE_COILS_PATH', None)
+passive_coils_path = os.environ.get("PASSIVE_COILS_PATH", None)
 if passive_coils_path is None:
-    raise ValueError('PASSIVE_COILS_PATH environment variable not set.')
+    raise ValueError("PASSIVE_COILS_PATH environment variable not set.")
 
-active_coils_path = os.environ.get('ACTIVE_COILS_PATH', None)
+active_coils_path = os.environ.get("ACTIVE_COILS_PATH", None)
 if active_coils_path is None:
-    raise ValueError('ACTIVE_COILS_PATH environment variable not set.')
+    raise ValueError("ACTIVE_COILS_PATH environment variable not set.")
 
-wall_path = os.environ.get('WALL_PATH', None)
+wall_path = os.environ.get("WALL_PATH", None)
 if wall_path is None:
-    raise ValueError('WALL_PATH environment variable not set.')
+    raise ValueError("WALL_PATH environment variable not set.")
 
-with open(passive_coils_path, 'rb') as f:
+with open(passive_coils_path, "rb") as f:
     passive_coils = pickle.load(f)
 
-with open(active_coils_path, 'rb') as f:
+with open(active_coils_path, "rb") as f:
     active_coils = pickle.load(f)
 
-with open(wall_path, 'rb') as f:
+with open(wall_path, "rb") as f:
     wall = pickle.load(f)
 
 
@@ -48,62 +48,73 @@ n_active_coils = len(active_coils)
 n_coils = n_active_coils + len(passive_coils)
 
 
-# Check for existence of resistance matrix, self inductance matrix 
+# Check for existence of resistance matrix, self inductance matrix
 # and coil order data files. Calculates and saves them if they don't exist.
 calculate_self_inductance_and_resistance = False
 
-self_inductance_path = os.environ.get('SELF_INDUCTANCE_PATH', None)
+self_inductance_path = os.environ.get("SELF_INDUCTANCE_PATH", None)
 if self_inductance_path is None:
-    self_inductance_path = os.path.join(os.path.split(active_coils_path)[0],
-                                        'self_inductance.pickle')
+    self_inductance_path = os.path.join(
+        os.path.split(active_coils_path)[0], "self_inductance.pickle"
+    )
     if not os.path.exists(self_inductance_path):
         calculate_self_inductance_and_resistance = True
     else:
-        with open(self_inductance_path, 'rb') as f:
+        with open(self_inductance_path, "rb") as f:
             coil_self_ind = pickle.load(f)
 else:
-    with open(self_inductance_path, 'rb') as f:
+    with open(self_inductance_path, "rb") as f:
         coil_self_ind = pickle.load(f)
 
-resistance_path = os.environ.get('RESISTANCE_PATH', None)
+resistance_path = os.environ.get("RESISTANCE_PATH", None)
 if resistance_path is None:
-    resistance_path = os.path.join(os.path.split(active_coils_path)[0],
-                                   'resistance.pickle')
+    resistance_path = os.path.join(
+        os.path.split(active_coils_path)[0], "resistance.pickle"
+    )
     if not os.path.exists(resistance_path):
         calculate_self_inductance_and_resistance = True
     else:
-        with open(resistance_path, 'rb') as f:
+        with open(resistance_path, "rb") as f:
             coil_resist = pickle.load(f)
 else:
-    with open(resistance_path, 'rb') as f:
+    with open(resistance_path, "rb") as f:
         coil_resist = pickle.load(f)
 
-coils_order_path = os.environ.get('COILS_ORDER_PATH', None)
+coils_order_path = os.environ.get("COILS_ORDER_PATH", None)
 if coils_order_path is None:
-    coils_order_path = os.path.join(os.path.split(active_coils_path)[0],
-                                   'coils_order.pickle')
+    coils_order_path = os.path.join(
+        os.path.split(active_coils_path)[0], "coils_order.pickle"
+    )
     if not os.path.exists(coils_order_path):
         calculate_self_inductance_and_resistance = True
     else:
-        with open(coils_order_path, 'rb') as f:
+        with open(coils_order_path, "rb") as f:
             coils_order = pickle.load(f)
 else:
-    with open(coils_order_path, 'rb') as f:
+    with open(coils_order_path, "rb") as f:
         coils_order = pickle.load(f)
 
 
 # Create dictionary of coils
 coils_dict = {}
 for i, coil_name in enumerate(active_coils):
-    if coil_name == 'Solenoid':
+    if coil_name == "Solenoid":
         coils_dict[coil_name] = {}
-        coils_dict[coil_name]['coords'] = np.array([active_coils[coil_name]["R"], active_coils[coil_name]["Z"]])
-        coils_dict[coil_name]['polarity'] = np.array([active_coils[coil_name]["polarity"]] * len(active_coils[coil_name]["R"]))
-        coils_dict[coil_name]['dR'] = active_coils[coil_name]["dR"]
-        coils_dict[coil_name]['dZ'] = active_coils[coil_name]["dZ"]
+        coils_dict[coil_name]["coords"] = np.array(
+            [active_coils[coil_name]["R"], active_coils[coil_name]["Z"]]
+        )
+        coils_dict[coil_name]["polarity"] = np.array(
+            [active_coils[coil_name]["polarity"]] * len(active_coils[coil_name]["R"])
+        )
+        coils_dict[coil_name]["dR"] = active_coils[coil_name]["dR"]
+        coils_dict[coil_name]["dZ"] = active_coils[coil_name]["dZ"]
         # this is resistivity divided by area
-        coils_dict[coil_name]['resistivity'] = active_coils[coil_name]["resistivity"]/(active_coils[coil_name]["dR"]*active_coils[coil_name]["dZ"])
-        coils_dict[coil_name]['multiplier'] = np.array([active_coils[coil_name]["multiplier"]] * len(active_coils[coil_name]["R"]))
+        coils_dict[coil_name]["resistivity"] = active_coils[coil_name][
+            "resistivity"
+        ] / (active_coils[coil_name]["dR"] * active_coils[coil_name]["dZ"])
+        coils_dict[coil_name]["multiplier"] = np.array(
+            [active_coils[coil_name]["multiplier"]] * len(active_coils[coil_name]["R"])
+        )
         continue
     coils_dict[coil_name] = {}
 
@@ -114,35 +125,46 @@ for i, coil_name in enumerate(active_coils):
     coords_Z = []
     for ind in active_coils[coil_name].keys():
         coords_Z.extend(active_coils[coil_name][ind]["Z"])
-    coils_dict[coil_name]['coords'] = np.array([coords_R, coords_Z])
+    coils_dict[coil_name]["coords"] = np.array([coords_R, coords_Z])
 
     polarity = []
     for ind in active_coils[coil_name].keys():
-        polarity.extend([active_coils[coil_name][ind]["polarity"]] * len(active_coils[coil_name][ind]["R"]))
-    coils_dict[coil_name]['polarity'] = np.array(polarity)
+        polarity.extend(
+            [active_coils[coil_name][ind]["polarity"]]
+            * len(active_coils[coil_name][ind]["R"])
+        )
+    coils_dict[coil_name]["polarity"] = np.array(polarity)
 
     multiplier = []
     for ind in active_coils[coil_name].keys():
-        multiplier.extend([active_coils[coil_name][ind]["multiplier"]] * len(active_coils[coil_name][ind]["R"]))
-    coils_dict[coil_name]['multiplier'] = np.array(multiplier)
+        multiplier.extend(
+            [active_coils[coil_name][ind]["multiplier"]]
+            * len(active_coils[coil_name][ind]["R"])
+        )
+    coils_dict[coil_name]["multiplier"] = np.array(multiplier)
 
-    coils_dict[coil_name]['dR'] = active_coils[coil_name][list(active_coils[coil_name].keys())[0]]["dR"]
-    coils_dict[coil_name]['dZ'] = active_coils[coil_name][list(active_coils[coil_name].keys())[0]]["dZ"]
+    coils_dict[coil_name]["dR"] = active_coils[coil_name][
+        list(active_coils[coil_name].keys())[0]
+    ]["dR"]
+    coils_dict[coil_name]["dZ"] = active_coils[coil_name][
+        list(active_coils[coil_name].keys())[0]
+    ]["dZ"]
 
     # this is resistivity divided by area
-    coils_dict[coil_name]['resistivity'] = active_coils[coil_name][list(active_coils[coil_name].keys())[0]]["resistivity"] / (coils_dict[coil_name]['dR'] * coils_dict[coil_name]['dZ'])
+    coils_dict[coil_name]["resistivity"] = active_coils[coil_name][
+        list(active_coils[coil_name].keys())[0]
+    ]["resistivity"] / (coils_dict[coil_name]["dR"] * coils_dict[coil_name]["dZ"])
 
 for i, coil in enumerate(passive_coils):
-    tkey = 'passive_' + str(i)
+    tkey = "passive_" + str(i)
     coils_dict[tkey] = {}
-    coils_dict[tkey]['coords'] = np.array((coil["R"], coil["Z"]))[:, np.newaxis]
-    coils_dict[tkey]['dR'] = coil["dR"]
+    coils_dict[tkey]["coords"] = np.array((coil["R"], coil["Z"]))[:, np.newaxis]
+    coils_dict[tkey]["dR"] = coil["dR"]
     coils_dict[tkey]["dZ"] = coil["dZ"]
-    coils_dict[tkey]['polarity'] = np.array([1])
-    coils_dict[tkey]['multiplier'] = np.array([1])
+    coils_dict[tkey]["polarity"] = np.array([1])
+    coils_dict[tkey]["multiplier"] = np.array([1])
     # this is resistivity divided by area
-    coils_dict[tkey]['resistivity'] = coil["resistivity"] / (coil["dR"] * coil["dZ"])
-
+    coils_dict[tkey]["resistivity"] = coil["resistivity"] / (coil["dR"] * coil["dZ"])
 
 
 if calculate_self_inductance_and_resistance:
@@ -150,43 +172,46 @@ if calculate_self_inductance_and_resistance:
         "At least one of the self inductance and resistance data files does"
         " not exist. Calculating them now."
     )
-    
+
     coil_resist = np.zeros(n_coils)
     coil_self_ind = np.zeros((n_coils, n_coils))
 
     coils_order = []
-    for i,labeli in enumerate(coils_dict.keys()):
+    for i, labeli in enumerate(coils_dict.keys()):
         coils_order.append(labeli)
 
-    for i,labeli in enumerate(coils_order):
-        #for coil-coil flux
+    for i, labeli in enumerate(coils_order):
+        # for coil-coil flux
         # mutual inductance = 2pi * (sum of all Greens(R_i,Z_i, R_j,Z_j) on n_i*n_j terms, where n is the number of windings)
-        for j,labelj in enumerate(coils_order):
-            greenm = Greens_with_depth( coils_dict[labeli]['coords'][0][np.newaxis,:],
-                                        coils_dict[labeli]['coords'][1][np.newaxis,:],
-                                        coils_dict[labelj]['coords'][0][:,np.newaxis],
-                                        coils_dict[labelj]['coords'][1][:,np.newaxis],
-                                        np.array([coils_dict[labeli]['dR']])[:,np.newaxis],
-                                        np.array([coils_dict[labeli]['dZ']])[:,np.newaxis])
-                                        
-            
-            greenm *= coils_dict[labelj]['polarity'][:,np.newaxis]
-            greenm *= coils_dict[labelj]['multiplier'][:,np.newaxis]
-            greenm *= coils_dict[labeli]['polarity'][np.newaxis,:]
-            greenm *= coils_dict[labeli]['multiplier'][np.newaxis,:]
-            coil_self_ind[i,j] = np.sum(greenm)
+        for j, labelj in enumerate(coils_order):
+            greenm = Greens_with_depth(
+                coils_dict[labeli]["coords"][0][np.newaxis, :],
+                coils_dict[labeli]["coords"][1][np.newaxis, :],
+                coils_dict[labelj]["coords"][0][:, np.newaxis],
+                coils_dict[labelj]["coords"][1][:, np.newaxis],
+                np.array([coils_dict[labeli]["dR"]])[:, np.newaxis],
+                np.array([coils_dict[labeli]["dZ"]])[:, np.newaxis],
+            )
+
+            greenm *= coils_dict[labelj]["polarity"][:, np.newaxis]
+            greenm *= coils_dict[labelj]["multiplier"][:, np.newaxis]
+            greenm *= coils_dict[labeli]["polarity"][np.newaxis, :]
+            greenm *= coils_dict[labeli]["multiplier"][np.newaxis, :]
+            coil_self_ind[i, j] = np.sum(greenm)
         # resistance = 2pi * (resistivity/area) * (number of loops * mean_radius)
         # voltages in terms of total applied voltage
-        coil_resist[i] = coils_dict[labeli]['resistivity'] * np.sum(coils_dict[labeli]['coords'][0])
-    coil_self_ind *= 2*np.pi
-    coil_resist *= 2*np.pi
+        coil_resist[i] = coils_dict[labeli]["resistivity"] * np.sum(
+            coils_dict[labeli]["coords"][0]
+        )
+    coil_self_ind *= 2 * np.pi
+    coil_resist *= 2 * np.pi
 
     # Save self inductance and resistance matrices, plus list of ordered coils
-    with open(self_inductance_path, 'wb') as f:
+    with open(self_inductance_path, "wb") as f:
         pickle.dump(coil_self_ind, f)
-    with open(resistance_path, 'wb') as f:
+    with open(resistance_path, "wb") as f:
         pickle.dump(coil_resist, f)
-    with open(coils_order_path, 'wb') as f:
+    with open(coils_order_path, "wb") as f:
         pickle.dump(coils_order, f)
 
 
@@ -214,7 +239,7 @@ if calculate_self_inductance_and_resistance:
 # w_passive = w[ordw]
 # Vmatrix_passive = ((v.T)[ordw]).T
 
-# # compose full 
+# # compose full
 # Vmatrix = np.zeros((n_coils, n_coils))
 # # Vmatrix[:n_active_coils, :n_active_coils] = 1.0*Vmatrix_active
 # Vmatrix[:n_active_coils, :n_active_coils] = np.eye(n_active_coils)

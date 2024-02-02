@@ -9,46 +9,62 @@ primarily in circuit_eq_metal.py
 """
 
 # active + passive
-R12 = np.diag(machine_config.coil_resist**.5)
-Rm12 = np.diag(machine_config.coil_resist**-.5)
+R12 = np.diag(machine_config.coil_resist**0.5)
+Rm12 = np.diag(machine_config.coil_resist**-0.5)
 Mm1 = np.linalg.inv(machine_config.coil_self_ind)
-lm1r = R12@Mm1@R12
-rm1l = Rm12@machine_config.coil_self_ind@Rm12
+lm1r = R12 @ Mm1 @ R12
+rm1l = Rm12 @ machine_config.coil_self_ind @ Rm12
 
 # 1. active coils
-# normal modes are not used for the active coils, 
+# normal modes are not used for the active coils,
 # but they're calculated here in case needed
-mm1 = np.linalg.inv(machine_config.coil_self_ind[:machine_config.n_active_coils, :machine_config.n_active_coils])
-r12 = np.diag(machine_config.coil_resist[:machine_config.n_active_coils]**.5)
-w,v = np.linalg.eig(r12 @ mm1 @ r12)
+mm1 = np.linalg.inv(
+    machine_config.coil_self_ind[
+        : machine_config.n_active_coils, : machine_config.n_active_coils
+    ]
+)
+r12 = np.diag(machine_config.coil_resist[: machine_config.n_active_coils] ** 0.5)
+w, v = np.linalg.eig(r12 @ mm1 @ r12)
 ordw = np.argsort(w)
 w_active = w[ordw]
 Vmatrix_active = ((v.T)[ordw]).T
 
 # 2. passive structures
-r12 = np.diag(machine_config.coil_resist[machine_config.n_active_coils:]**.5)
-mm1 = np.linalg.inv(machine_config.coil_self_ind[machine_config.n_active_coils:, machine_config.n_active_coils:])
-w,v = np.linalg.eig(r12 @ mm1 @ r12)
+r12 = np.diag(machine_config.coil_resist[machine_config.n_active_coils :] ** 0.5)
+mm1 = np.linalg.inv(
+    machine_config.coil_self_ind[
+        machine_config.n_active_coils :, machine_config.n_active_coils :
+    ]
+)
+w, v = np.linalg.eig(r12 @ mm1 @ r12)
 ordw = np.argsort(w)
 w_passive = w[ordw]
 Vmatrix_passive = ((v.T)[ordw]).T
 
-# a sign convention for the normal modes is set, otherwise same mode could have opposite signs 
+# a sign convention for the normal modes is set, otherwise same mode could have opposite signs
 # in repeat calculcations and across machines, which may hinder reproducibility
-# The way this is achieved is somewhat arbitrary: 
+# The way this is achieved is somewhat arbitrary:
 Vmatrix_passive /= np.sign(np.sum(Vmatrix_passive, axis=0, keepdims=True))
 
 if np.any(w_active < 0):
-    print('Negative eigenvalues in active coils! Please check coil sizes and coordinates.')
+    print(
+        "Negative eigenvalues in active coils! Please check coil sizes and coordinates."
+    )
 if np.any(w_passive < 0):
-    print('Negative eigenvalues in passive vessel! Please check coil sizes and coordinates.')
+    print(
+        "Negative eigenvalues in passive vessel! Please check coil sizes and coordinates."
+    )
 
 
-# compose full 
+# compose full
 Vmatrix = np.zeros((machine_config.n_coils, machine_config.n_coils))
 # Vmatrix[:n_active_coils, :n_active_coils] = 1.0*Vmatrix_active
-Vmatrix[:machine_config.n_active_coils, :machine_config.n_active_coils] = np.eye(machine_config.n_active_coils)
-Vmatrix[machine_config.n_active_coils:, machine_config.n_active_coils:] = 1.0*Vmatrix_passive
+Vmatrix[: machine_config.n_active_coils, : machine_config.n_active_coils] = np.eye(
+    machine_config.n_active_coils
+)
+Vmatrix[machine_config.n_active_coils :, machine_config.n_active_coils :] = (
+    1.0 * Vmatrix_passive
+)
 
 
 # TODO: Unit tests

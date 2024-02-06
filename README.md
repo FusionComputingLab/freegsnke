@@ -121,6 +121,11 @@ isort formatting. The [pre-commit](https://pre-commit.com/) library is included
 in `requirements-dev.txt`. To install the pre-commit hooks, run `pre-commit
 install` from the root FreeGSNKE directory.
 
+Any Jupyter notebooks tracked by the repository should not include cell outputs.
+This is to keep the size of the repository reasonable. These can be cleared
+manually in the notebook or `nbconvert` can be used (which is also implemented
+as pre-commit hook).
+
 ## Reference
 
 A paper describing FreeGSNKE is currently in review.

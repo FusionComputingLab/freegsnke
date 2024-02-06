@@ -4,12 +4,7 @@ stages:
   - build
   - deploy
 
-Tests + Documentation:
-  stage: test
-  only:
-    - main
-    - development
-    - merge_requests
+.before_script_tests:
   before_script:
     - export PIP_CACHE_DIR="/opt/cache/pip"
     - mamba env create -f environment.yml
@@ -20,18 +15,20 @@ Tests + Documentation:
     - python -m pip install -r requirements-dev.txt
     - apt-get update
     - apt-get -y install build-essential
+
+Core tests:
+  stage: test
+  only:
+    - main
+    - development
+    - merge_requests
+  extends: .before_script_tests
   script:
     # TESTS
     - python -m pytest -v
     # Formatting
     - black --check freegsnke/
     - isort --check --diff freegsnke/
-    # EXAMPLES
-    - jupyter nbconvert --execute --to notebook --inplace examples/machine_config.ipynb
-    - jupyter nbconvert --execute --to notebook --inplace examples/basic_dynamical_evolution.ipynb
-    - jupyter nbconvert --execute --to notebook --inplace examples/equilibrium_examples.ipynb
-    - jupyter nbconvert --execute --to notebook --inplace examples/example_nonlinear_evolution_diverted.ipynb
-    - jupyter nbconvert --execute --to notebook --inplace examples/example_nonlinear_evolution_limiter.ipynb
     # DOCUMENTATION
     - cd docs/
     - pip install -r requirements_docs.txt
@@ -41,10 +38,28 @@ Tests + Documentation:
       - docs/_build/html
     expire_in: 1 hour
 
+Notebook tests:
+  stage: test
+  extends: .before_script_tests
+  script:
+    # EXAMPLES
+    - jupyter nbconvert --execute --to notebook --inplace examples/machine_config.ipynb
+    - jupyter nbconvert --execute --to notebook --inplace examples/basic_dynamical_evolution.ipynb
+    - jupyter nbconvert --execute --to notebook --inplace examples/equilibrium_examples.ipynb
+    - jupyter nbconvert --execute --to notebook --inplace examples/example_nonlinear_evolution_diverted.ipynb
+    - jupyter nbconvert --execute --to notebook --inplace examples/example_nonlinear_evolution_limiter.ipynb
+  rules:
+    # Only run when pushing or merging to main
+    - if: '$CI_COMMIT_BRANCH == "main" && $CI_PIPELINE_SOURCE == "merge_request_event"'
+      when: always
+    - if: '$CI_COMMIT_BRANCH == "main" && $CI_PIPELINE_SOURCE == "push"'
+      when: always
+    - when: never
+
 Deploy docs STFC cloud:
   image: kroniak/ssh-client
   dependencies:
-    - "Tests + Documentation"
+    - "Core tests"
   stage: deploy
   before_script:
     - mkdir -p ~/.ssh

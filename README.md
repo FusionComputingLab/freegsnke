@@ -114,8 +114,12 @@ appropriately in the user documentation, API documentation, and by writing or
 changing examples, where appropriate.
 
 [Black](https://github.com/psf/black) and
-[isort](https://pycqa.github.io/isort/) are used for code formatting. Pre-commit
-hooks are implemented with these formatting steps.
+[isort](https://pycqa.github.io/isort/) are used for code formatting.
+
+Pre-commit hooks are available in `.pre-commit-config.yaml`, including Black and
+isort formatting. The [pre-commit](https://pre-commit.com/) library is included
+in `requirements-dev.txt`. To install the pre-commit hooks, run `pre-commit
+install` from the root FreeGSNKE directory.
 
 ## Reference
 

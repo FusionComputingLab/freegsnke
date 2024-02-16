@@ -1,6 +1,7 @@
 import freegs
 import numpy as np
 from freegs.gradshafranov import Greens
+from copy import deepcopy
 
 from . import nk_solver as nk_solver
 
@@ -317,7 +318,7 @@ class NKGSsolver:
 
         # update plasma current
         eq._current = np.sum(profiles.jtor) * self.dRdZ
-        eq._profiles = profiles
+        eq._profiles = deepcopy(profiles)
 
         self.port_critical(eq=eq, profiles=profiles)
 

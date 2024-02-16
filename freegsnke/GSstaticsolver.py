@@ -193,7 +193,7 @@ class NKGSsolver:
         eq,
         profiles,
         target_relative_tolerance,
-        max_solving_iterations=30,
+        max_solving_iterations=50,
         Picard_handover=0.07,
         step_size=2.5,
         scaling_with_n=-1.2,
@@ -266,8 +266,6 @@ class NKGSsolver:
         trial_plasma_psi = np.copy(eq.plasma_psi).reshape(-1)
         self.tokamak_psi = (eq.tokamak.calcPsiFromGreens(pgreen=eq._pgreen)).reshape(-1)
 
-        # args = [self.tokamak_psi, self.profiles]
-
         res0 = self.F_function(trial_plasma_psi, self.tokamak_psi, self.profiles)
         # print('initial residual', res0)
         rel_change = np.amax(np.abs(res0))
@@ -283,8 +281,7 @@ class NKGSsolver:
 
             if rel_change > Picard_handover:
                 # using Picard instead of NK
-                # del_res0 = (np.amax(res0) - np.amin(res0))
-                trial_plasma_psi -= res0  # /max(4, del_psi/del_res0)
+                trial_plasma_psi -= res0
                 picard_flag = 1
 
             else:
@@ -313,23 +310,15 @@ class NKGSsolver:
             self.relative_change = 1.0 * rel_change
             args[2] = rel_change
 
-            # print('rel_unexpl res = ', self.nksolver.relative_unexplained_residual)
-            # print(iterations, rel_change)
-
             iterations += 1
 
         # update eq with new solution
-        eq.plasma_psi = trial_plasma_psi.reshape(self.nx, self.ny)
+        eq.plasma_psi = trial_plasma_psi.reshape(self.nx, self.ny).copy()
 
         # update plasma current
         eq._current = np.sum(profiles.jtor) * self.dRdZ
         eq._profiles = profiles
 
-        # record xpoints and opoints
-        # eq.xpt = np.copy(profiles.xpt)
-        # eq.opt = np.copy(profiles.opt)
-        # eq.psi_axis = eq.opt[0,2]
-        # eq.psi_bndry = eq.xpt[0,2]
         self.port_critical(eq=eq, profiles=profiles)
 
         if picard_flag and verbose:
@@ -338,11 +327,160 @@ class NKGSsolver:
         # if max_iter was hit, then message:
         if iterations >= max_solving_iterations:
             print(
-                "failed to converge with less than {} iterations".format(
-                    max_solving_iterations
+                "failed to converge to the requested relative tolerance of {} with less than {} iterations".format(
+                    target_relative_tolerance, max_solving_iterations
                 )
             )
             print(f"last relative psi change = {rel_change}")
+
+    # def inverse_solve(
+    #     self,
+    #     eq,
+    #     profiles,
+    #     target_relative_tolerance,
+    #     constrain,
+    #     max_solving_iterations=30,
+    #     Picard_handover=0.07,
+    #     blend=.5,
+    #     step_size=2.5,
+    #     scaling_with_n=-1.2,
+    #     target_relative_unexplained_residual=0.25,
+    #     max_n_directions=8,
+    #     max_Arnoldi_iterations=10,
+    #     max_collinearity=0.99,
+    #     clip=10,
+    #     threshold=3,
+    #     clip_hard=2,
+    #     verbose=False,
+    # ):
+    #     """The method to solve the inverse GS problems, therefore a constrain object is required.
+
+    #     Parameters
+    #     ----------
+    #     eq : freeGS equilibrium object
+    #         Used to extract the assigned metal currents, which in turn are
+    #         used to calculate the according self.tokamak_psi
+    #     profiles : freeGS profile object
+    #         Specifies the target properties of the plasma.
+    #         These are used to calculate Jtor(psi)
+    #     target_relative_tolerance : float
+    #         NK iterations are interrupted when this criterion is
+    #         satisfied. Relative convergence
+    #     constrain : freeGS constrain object
+    #         specifies the desired constraints on the configuration of magnetic flux (xpoints and isoflux, as in FreeGS)
+    #     max_solving_iterations : int
+    #         NK iterations are interrupted when this limit is surpassed
+    #     Picard_handover : float
+    #         Value of relative tolerance above which a Picard iteration
+    #         is performed instead of a full NK call
+    #     step_size : float
+    #         l2 norm of proposed step
+    #     scaling_with_n : float
+    #         allows to further scale dx candidate steps by factor
+    #         (1 + self.n_it)**scaling_with_n
+    #     target_relative_explained_residual : float between 0 and 1
+    #         terminates iteration when exploration can explain this
+    #         fraction of the initial residual R0
+    #     max_n_directions : int
+    #         terminates iteration even though condition on
+    #         explained residual is not met
+    #     max_Arnoldi_iterations : int
+    #         terminates iteration after attempting to explore
+    #         this number of directions
+    #     max_collinearity : float between 0 and 1
+    #         rejects a candidate direction if resulting residual
+    #         is collinear to any of those stored previously
+    #     clip : float
+    #         maximum step size for each explored direction, in units
+    #         of exploratory step dx_i
+    #     threshold : float
+    #         catches cases of untreated (partial) collinearity
+    #     clip_hard : float
+    #         maximum step size for cases of untreated (partial) collinearity
+    #     verbose : bool
+    #         flag to allow warning message in case of failed convergence within requested max_solving_iterations
+
+    #     """
+
+    #     picard_flag = 0
+    #     self.profiles = profiles
+    #     trial_plasma_psi = np.copy(eq.plasma_psi).reshape(-1)
+    #     self.tokamak_psi = (eq.tokamak.calcPsiFromGreens(pgreen=eq._pgreen)).reshape(-1)
+
+    #     res0 = self.F_function(trial_plasma_psi, self.tokamak_psi, self.profiles)
+    #     # print('initial residual', res0)
+    #     rel_change = np.amax(np.abs(res0))
+    #     del_psi = np.amax(trial_plasma_psi) - np.amin(trial_plasma_psi)
+    #     rel_change /= del_psi
+
+    #     args = [self.tokamak_psi, self.profiles, rel_change]
+
+    #     iterations = 0
+    #     while (rel_change > target_relative_tolerance) * (
+    #         iterations < max_solving_iterations
+    #     ):
+
+    #         if rel_change > Picard_handover:
+    #             # using Picard instead of NK
+    #             trial_plasma_psi -= res0
+    #             picard_flag = 1
+
+    #         else:
+    #             self.nksolver.Arnoldi_iteration(
+    #                 x0=trial_plasma_psi,  # trial_current expansion point
+    #                 dx=res0,  # first vector for current basis
+    #                 R0=res0,  # circuit eq. residual at trial_current expansion point: Fresidual(trial_current)
+    #                 F_function=self.F_function,
+    #                 args=args,
+    #                 step_size=step_size,
+    #                 scaling_with_n=scaling_with_n,
+    #                 target_relative_unexplained_residual=target_relative_unexplained_residual,
+    #                 max_n_directions=max_n_directions,  # max number of basis vectors (must be less than number of modes + 1)
+    #                 max_Arnoldi_iterations=max_Arnoldi_iterations,
+    #                 max_collinearity=max_collinearity,
+    #                 clip=clip,
+    #                 threshold=threshold,
+    #                 clip_hard=clip_hard,
+    #             )
+    #             # print(self.nksolver.coeffs)
+    #             trial_plasma_psi += self.nksolver.dx
+
+    #         # update eq with new solution
+    #         eq.plasma_psi = trial_plasma_psi.reshape(self.nx, self.ny).copy()
+    #         # adjust coil currents, using freeGS leastsquares
+    #         constrain(eq)
+    #         # update tokamak_psi accordingly
+    #         self.tokamak_psi = (eq.tokamak.calcPsiFromGreens(pgreen=eq._pgreen)).reshape(-1)
+
+    #         res0 = self.F_function(trial_plasma_psi, self.tokamak_psi, self.profiles)
+    #         rel_change = np.amax(np.abs(res0))
+    #         rel_change /= np.amax(trial_plasma_psi) - np.amin(trial_plasma_psi)
+    #         self.relative_change = 1.0 * rel_change
+    #         args[2] = rel_change
+
+    #         iterations += 1
+
+    #     # # update eq with new solution
+    #     # eq.plasma_psi = trial_plasma_psi.reshape(self.nx, self.ny).copy()
+
+    #     # update plasma current
+    #     eq._current = np.sum(profiles.jtor) * self.dRdZ
+    #     eq._profiles = profiles
+
+    #     self.port_critical(eq=eq, profiles=profiles)
+
+    #     if picard_flag and verbose:
+    #         print("Picard was used instead of NK in at least 1 cycle.")
+
+    #     # if max_iter was hit, then message:
+    #     if iterations >= max_solving_iterations:
+    #         print(
+    #             "failed to converge to the requested relative tolerance of {} with less than {} iterations".format(
+    #                 target_relative_tolerance,
+    #                 max_solving_iterations
+    #             )
+    #         )
+    #         print(f"last relative psi change = {rel_change}")
 
     def solve(
         self,

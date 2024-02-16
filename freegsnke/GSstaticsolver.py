@@ -281,7 +281,7 @@ class NKGSsolver:
 
             if rel_change > Picard_handover:
                 # using Picard instead of NK
-                trial_plasma_psi -= res0  
+                trial_plasma_psi -= res0
                 picard_flag = 1
 
             else:
@@ -328,8 +328,7 @@ class NKGSsolver:
         if iterations >= max_solving_iterations:
             print(
                 "failed to converge to the requested relative tolerance of {} with less than {} iterations".format(
-                    target_relative_tolerance,
-                    max_solving_iterations
+                    target_relative_tolerance, max_solving_iterations
                 )
             )
             print(f"last relative psi change = {rel_change}")
@@ -423,7 +422,7 @@ class NKGSsolver:
 
     #         if rel_change > Picard_handover:
     #             # using Picard instead of NK
-    #             trial_plasma_psi -= res0  
+    #             trial_plasma_psi -= res0
     #             picard_flag = 1
 
     #         else:
@@ -482,8 +481,6 @@ class NKGSsolver:
     #             )
     #         )
     #         print(f"last relative psi change = {rel_change}")
-    
-
 
     def solve(
         self,

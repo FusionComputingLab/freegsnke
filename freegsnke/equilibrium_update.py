@@ -1,6 +1,8 @@
 import freegs
 import numpy as np
 import pickle
+import os
+from scipy import interpolate
 
 
 class Equilibrium(freegs.equilibrium.Equilibrium):
@@ -10,155 +12,73 @@ class Equilibrium(freegs.equilibrium.Equilibrium):
         """Instantiates the object."""
         super().__init__(*args, **kwargs)
 
-        equilibrium_path = os.environ.get("EQUILIBRIUM_PATH", None)
-        if equilibrium_path is not None:
+        self.equilibrium_path = os.environ.get("EQUILIBRIUM_PATH", None)
+        self.reinitialize_from_file()
+
+    def reinitialize_from_file(self,):
+        """Initializes the equilibrium with data from file."""
+        if self.equilibrium_path is not None:
             self.initialize_from_equilibrium()
+        else:
+            print('Equilibrium data was not provided. Proceeded with default initialization.')
 
     def initialize_from_equilibrium(
         self,
     ):
-        """Initilizes the equilibrium with data from file"""
-        with open(equilibrium_path, "rb") as f:
+        """Executes the initialization if data from file is available"""
+
+        with open(self.equilibrium_path, "rb") as f:
             equilibrium_data = pickle.load(f)
 
-    def assign_profile_parameter(self, betap):
-        """Assigns to the profile object a new value of the profile parameter betap"""
-        self.betap = betap
-        self.profile_parameter = betap
+        coil_currents = equilibrium_data['coil_currents']
+        plasma_psi = equilibrium_data['plasma_psi']
+        
+        # check that machine descriptions correspond
+        # on file first
+        coils_on_file = list(coil_currents.keys())
+        # select active coils only
+        active_coils_on_file = [coil for coil in coils_on_file if coil[:7]!='passive']
+        # in tokamak
+        coils_in_tokamak = list((self.tokamak.getCurrents()).keys())
+        # select active coils only
+        active_coils_in_tokamak = [coil for coil in coils_in_tokamak if coil[:7]!='passive']
+        if active_coils_on_file == active_coils_in_tokamak:
+            # assign coil current values
+            for coil in active_coils_in_tokamak:
+                self.tokamak[coil].current = coil_currents[coil]
 
-    def assign_profile_coefficients(self, alpha_m, alpha_n):
-        """Assigns to the profile object new value of the coefficients (alpha_m, alpha_n)"""
-        self.alpha_m = alpha_m
-        self.alpha_n = alpha_n
+            # assign plasma_psi
+            self.initialize_plasma_psi(plasma_psi)
 
-    def _Jtor(self, R, Z, psi, psi_bndry=None, rel_psi_error=0):
-        """Replaces the original FreeGS Jtor method if FreeGSfast is not available."""
-        self.jtor = super().Jtor(R, Z, psi, psi_bndry)
-        self.opt, self.xpt = critical.find_critical(R, Z, psi)
-
-        self.diverted_core_mask = self.jtor > 0
-        self.psi_bndry, mask, self.limiter_flag = (
-            self.limiter_handler.core_mask_limiter(
-                psi,
-                self.xpt[0][2],
-                self.diverted_core_mask,
-                self.limiter_mask_out,
-            )
-        )
-        self.jtor = super().Jtor(R, Z, psi, self.psi_bndry)
-        return self.jtor
-
-    def Jtor_fast(self, R, Z, psi, psi_bndry=None, rel_psi_error=0):
-        """Used when FreeGSfast is available."""
-        self.diverted_core_mask = super().Jtor_part1(R, Z, psi, psi_bndry)
-        if self.diverted_core_mask is None:
-            # print('no xpt')
-            self.psi_bndry, self.limiter_core_mask, self.flag_limiter = (
-                psi_bndry,
-                None,
-                False,
-            )
-        elif rel_psi_error < 0.02:
-            self.psi_bndry, self.limiter_core_mask, self.flag_limiter = (
-                self.limiter_handler.core_mask_limiter(
-                    psi,
-                    self.psi_bndry,
-                    self.diverted_core_mask,
-                    self.limiter_mask_out,
-                )
-            )
+            print('Equilibrium initialised using file provided as part of the machine description.')
+            
         else:
-            self.limiter_core_mask = self.diverted_core_mask.copy()
-        self.jtor = super().Jtor_part2(
-            R, Z, psi, self.psi_bndry, self.limiter_core_mask
-        )
-        return self.jtor
-
-
-class ConstrainPaxisIp(freegs.jtor.ConstrainPaxisIp):
-    """FreeGS profile class with a few modifications, to:
-    - retain memory of critical point calculation;
-    - deal with limiter plasma configurations
-
-    """
-
-    def __init__(self, eq, limiter, *args, **kwargs):
-        """Instantiates the object.
+            print('Although the machine description was provided with an equilibrium for initialization, this was not used as the coil set does not correspond.')
+        
+    def initialize_plasma_psi(self, plasma_psi):
+        """Assigns the input plasma_psi to the equilibrium being instantiated.
+        Checks and corrects any disagreements in the grid sizes. 
 
         Parameters
         ----------
-        eq : freeGS Equilibrium object
-            Specifies the domain properties
-        limiter : freeGS.machine.Wall object
-            Specifies the limiter contour points
+        plasma_psi : np.array
+            plasma flux function to be used for the initialization
         """
-        super().__init__(*args, **kwargs)
-        self.profile_parameter = self.paxis
 
-        self.limiter_handler = limiter_func.Limiter_handler(eq, limiter)
-        self.limiter_mask_out = plasma_grids.make_layer_mask(
-            self.limiter_handler.mask_inside_limiter, layer_size=1
-        )
-        self.mask_inside_limiter = self.limiter_handler.mask_inside_limiter
-        self.limiter_mask_for_plotting = (
-            self.mask_inside_limiter + self.limiter_mask_out
-        ) > 0
+        nx, ny = np.shape(self.plasma_psi)
+        nx_file, ny_file = np.shape(plasma_psi)
 
-        if not hasattr(self, "fast"):
-            self.Jtor = self._Jtor
-        else:
-            self.Jtor = self.Jtor_fast
-
-    def assign_profile_parameter(self, paxis):
-        """Assigns to the profile object a new value of the profile parameter paxis"""
-        self.paxis = paxis
-        self.profile_parameter = paxis
-
-    def assign_profile_coefficients(self, alpha_m, alpha_n):
-        """Assigns to the profile object new value of the coefficients (alpha_m, alpha_n)"""
-        self.alpha_m = alpha_m
-        self.alpha_n = alpha_n
-
-    def _Jtor(self, R, Z, psi, psi_bndry=None, rel_psi_error=0):
-        """Replaces the original FreeGS Jtor method if FreeGSfast is not available."""
-        self.jtor = super().Jtor(R, Z, psi, psi_bndry)
-        self.opt, self.xpt = critical.find_critical(R, Z, psi)
-
-        self.diverted_core_mask = self.jtor > 0
-        self.psi_bndry, mask, self.limiter_flag = (
-            self.limiter_handler.core_mask_limiter(
-                psi,
-                self.xpt[0][2],
-                self.diverted_core_mask,
-                self.limiter_mask_out,
-            )
-        )
-        self.jtor = super().Jtor(R, Z, psi, self.psi_bndry)
-        return self.jtor
-
-    def Jtor_fast(self, R, Z, psi, psi_bndry=None, rel_psi_error=0):
-        """Used when FreeGSfast is available."""
-        self.diverted_core_mask = super().Jtor_part1(R, Z, psi, psi_bndry)
-        if self.diverted_core_mask is None:
-            # print('no xpt')
-            self.psi_bndry, self.limiter_core_mask, self.flag_limiter = (
-                psi_bndry,
-                None,
-                False,
-            )
-        elif rel_psi_error < 0.02:
-            self.psi_bndry, self.limiter_core_mask, self.flag_limiter = (
-                self.limiter_handler.core_mask_limiter(
-                    psi,
-                    self.psi_bndry,
-                    self.diverted_core_mask,
-                    self.limiter_mask_out,
-                )
-            )
-        else:
-            self.limiter_core_mask = self.diverted_core_mask.copy()
-
-        self.jtor = super().Jtor_part2(
-            R, Z, psi, self.psi_bndry, self.limiter_core_mask
-        )
-        return self.jtor
+        if (nx, ny) != (nx_file, ny_file):
+            
+            # assume solving domain was as in current equilibrium
+            psi_func = interpolate.RectBivariateSpline(
+                            np.linspace(self.Rmin, self.Rmax, nx_file),
+                            np.linspace(self.Zmin, self.Zmax, ny_file),
+                            plasma_psi
+                        )
+            
+            plasma_psi = psi_func(self.R, self.Z, grid=False)
+        
+        # note the factor 2 here. This moves the initialization away from being a GS solution
+        # but this shift is helpful when performing glitch-y inverse solves 
+        self.plasma_psi = 2*plasma_psi

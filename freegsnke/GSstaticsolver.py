@@ -489,7 +489,7 @@ class NKGSsolver:
         profiles,
         target_relative_tolerance,
         constrain=None,
-        max_solving_iterations=30,
+        max_solving_iterations=50,
         Picard_handover=0.07,
         step_size=2.5,
         scaling_with_n=-1.2,

@@ -28,7 +28,9 @@ class ConstrainBetapIp(freegs.jtor.ConstrainBetapIp):
             self.limiter_handler.mask_inside_limiter, layer_size=1
         )
         self.mask_inside_limiter = self.limiter_handler.mask_inside_limiter
-        self.limiter_mask_for_plotting = (self.mask_inside_limiter + self.limiter_mask_out) > 0
+        self.limiter_mask_for_plotting = (
+            self.mask_inside_limiter + self.limiter_mask_out
+        ) > 0
 
         if not hasattr(self, "fast"):
             self.Jtor = self._Jtor
@@ -114,7 +116,9 @@ class ConstrainPaxisIp(freegs.jtor.ConstrainPaxisIp):
             self.limiter_handler.mask_inside_limiter, layer_size=1
         )
         self.mask_inside_limiter = self.limiter_handler.mask_inside_limiter
-        self.limiter_mask_for_plotting = (self.mask_inside_limiter + self.limiter_mask_out) > 0
+        self.limiter_mask_for_plotting = (
+            self.mask_inside_limiter + self.limiter_mask_out
+        ) > 0
 
         if not hasattr(self, "fast"):
             self.Jtor = self._Jtor

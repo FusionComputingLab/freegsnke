@@ -2,7 +2,6 @@ import freegs
 import numpy as np
 from freegs.gradshafranov import Greens
 from copy import deepcopy
-
 from . import nk_solver as nk_solver
 
 

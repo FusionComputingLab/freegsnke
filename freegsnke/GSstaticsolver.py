@@ -1,7 +1,7 @@
-import freegs
-import numpy as np
 from copy import deepcopy
 
+import freegs
+import numpy as np
 from freegs.gradshafranov import Greens
 
 from . import nk_solver as nk_solver
@@ -580,5 +580,10 @@ class NKGSsolver:
 
         else:
             freegs.solve(
-                eq, profiles, constrain, rtol=target_relative_tolerance, show=False, blend=blend
+                eq,
+                profiles,
+                constrain,
+                rtol=target_relative_tolerance,
+                show=False,
+                blend=blend,
             )

@@ -2,33 +2,24 @@ import freegs
 import numpy as np
 import pickle
 
+
 class Equilibrium(freegs.equilibrium.Equilibrium):
-    """FreeGS equilibrium class with optional initialization.
-    """
+    """FreeGS equilibrium class with optional initialization."""
 
     def __init__(self, *args, **kwargs):
-        """Instantiates the object.
-
-        """
+        """Instantiates the object."""
         super().__init__(*args, **kwargs)
 
         equilibrium_path = os.environ.get("EQUILIBRIUM_PATH", None)
         if equilibrium_path is not None:
             self.initialize_from_equilibrium()
 
-    def initialize_from_equilibrium(self,):
-        """Initilizes the equilibrium with data from file
-
-        """
+    def initialize_from_equilibrium(
+        self,
+    ):
+        """Initilizes the equilibrium with data from file"""
         with open(equilibrium_path, "rb") as f:
             equilibrium_data = pickle.load(f)
-        
-        
-
-        
-        
-
-
 
     def assign_profile_parameter(self, betap):
         """Assigns to the profile object a new value of the profile parameter betap"""

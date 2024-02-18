@@ -1,3 +1,5 @@
+from copy import deepcopy
+
 import freegs
 import numpy as np
 from freegs.gradshafranov import Greens
@@ -317,7 +319,7 @@ class NKGSsolver:
 
         # update plasma current
         eq._current = np.sum(profiles.jtor) * self.dRdZ
-        eq._profiles = profiles
+        eq._profiles = deepcopy(profiles)
 
         self.port_critical(eq=eq, profiles=profiles)
 
@@ -488,8 +490,9 @@ class NKGSsolver:
         profiles,
         target_relative_tolerance,
         constrain=None,
-        max_solving_iterations=30,
+        max_solving_iterations=50,
         Picard_handover=0.07,
+        blend=0.0,
         step_size=2.5,
         scaling_with_n=-1.2,
         target_relative_unexplained_residual=0.25,
@@ -577,5 +580,10 @@ class NKGSsolver:
 
         else:
             freegs.solve(
-                eq, profiles, constrain, rtol=target_relative_tolerance, show=False
+                eq,
+                profiles,
+                constrain,
+                rtol=target_relative_tolerance,
+                show=False,
+                blend=blend,
             )

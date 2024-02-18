@@ -1,7 +1,8 @@
+import os
+import pickle
+
 import freegs
 import numpy as np
-import pickle
-import os
 from scipy import interpolate
 
 

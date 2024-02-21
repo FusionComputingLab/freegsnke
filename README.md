@@ -4,10 +4,9 @@ FreeGSNKE (pronounced "free-gee-snake") is an evolutive tokamak plasma
 equilibrium simulator. It builds on
 [FreeGS](https://github.com/bendudson/freegs) and adds new capabilities. In
 particular, FreeGSNKE includes:
-- Temporal evolution of plasma equilibria using the linearised circuit equation
-  with implicit Euler solver.
 - A Newton-Krylov method to replace the Picard method in the Grad-Shafranov
   solver.
+- Temporal evolution of plasma equilibria coupled with active coils and passive metal structures.
 
 It is recommended to read this page in its entirety before attempting to install
 or run FreeGSNKE.

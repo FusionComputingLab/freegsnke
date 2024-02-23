@@ -1,5 +1,14 @@
+
+""" 
+File to replace probes_floops_pickups.py
+Aim to modify/generalise so that a general probe dictionary can be read in, as with active_coils, passive_coils etc.
+Currently new probe dict consists of floops and pickups, but more could be added later. (Rogowskii coils, Mirnov Coils)
+"""
+
+#copying/modifying the old file "probes_floops_pickups.py"
 import os
 this_dir , this_filename = os.path.split(__file__)
+
 
 try:
     from freegs import critical
@@ -15,27 +24,34 @@ import pickle
 import MASTU_coils
 from MASTU_coils import coils_dict
 
-#pickles with the flux-loop and pickup-coil dictionaries
-#these files are specific to MAST-U
-floops_fh='floops.pk'
-pickups_fh='pickups.pk'
-floops_path=os.path.join(this_dir,floops_fh)
-pickups_path=os.path.join(this_dir,pickups_fh)
-tfile=open(floops_path,'rb')
-floops=pickle.load(tfile)
-tfile.close()
-tfile=open(pickups_path,'rb')
-pccoils=pickle.load(tfile)
-tfile.close()
+
+# Get magnetic probes pickle file.
+# os.environ["PROBE_PATH"] = "../machine_configs/MAST-U/magnetic_probes.pickle"  
+#do i need this here or is it meant ot be in the setup file when creating equilbiria etc.?
+
+
+probe_path = os.environ.get("PROBE_PATH",None)
+if probe_path is None:
+    raise ValueError("PROBE_PATH environment variable not set.")
+
+# open probe dictionary
+with open(probe_path, 'rb') as file:
+    probe_dict = pickle.load(file)
+
+
 
 class quants_for_emulation:
     #needs coil_dict from MASTU_coils.py
     
-    def __init__(self, eq , floops=floops, pccoils=pccoils):
-        #pre-builds matrices for inductance calculations on new equilibria
-        #eq need not be the actual one, only has to have same grid properties 
-        #as those on which calculations will be made by calling other methods
-        
+    def __init__(self, eq , probe_dict = probe_dict):
+        """ 
+        pre-builds matrices for inductance calculations on new equilibria.
+        eq need not be the actual one, only has to have same grid properties.
+        as those on which calculations will be made by calling other methods.
+        """
+      
+        # leave the following as is...
+
         dR_dZ = (eq.R[0,0]-eq.R[1,0])*(eq.Z[0,0]-eq.Z[0,1])
         two_pi_dR_dZ = 2*np.pi*dR_dZ
         
@@ -88,13 +104,25 @@ class quants_for_emulation:
         self.Rmin , self.Rmax = Rmin , Rmax
         self.Zmin , self.Zmax = Zmin , Zmax
         
-        # fill in the dictionary of coordinates for each pickup coil 
-        self.pccoils=pccoils
-        self.floops=floops
-        self.discpos={};
+
+        # Now modify things to do differentlyf or each probe type
+
+        # extract pickup coils and flux loops. Add here if new probes are added.
+        pccoils = probe_dict["pickups"]
+        floops = probe_dict["flux_loops"]
+        self.floops  = floops
+        self.pccoils = pccoils
+        
+        self.get_pickups()
+
+    # Methods...
+    def get_floops(self):
+        pass
+
+    def get_pickups(self):
+        self.discpos = {}
         for coil in self.pccoils:
             #discpos[coil['name']]
-            tpos=coil['position']
             tpos=coil['position']
             tpR=tpos[0]
             tpZ=tpos[2]
@@ -102,28 +130,27 @@ class quants_for_emulation:
             tZi = int((NY-1)*(tpZ-Zmin)/(Zmax-Zmin))
             tvec=coil['orientation_vector']
             #
-
             # Dealing with edge cases where coil is on boundary of grid??
             if (tRi<NX-1 and tRi>0):
-                tRp=(tRi+1)*((NX-1)*(tpR-Rmin)/(Rmax-Rmin)>tRi+0.5)+tRi*((NX-1)*(tpR-Rmin)/(Rmax-Rmin)<=tRi+0.5);
-                tRm=(tRi)*((NX-1)*(tpR-Rmin)/(Rmax-Rmin)>tRi+0.5)+(tRi-1)*((NX-1)*(tpR-Rmin)/(Rmax-Rmin)<=tRi+0.5);
+                tRp=(tRi+1)*((NX-1)*(tpR-Rmin)/(Rmax-Rmin)>tRi+0.5)+tRi*((NX-1)*(tpR-Rmin)/(Rmax-Rmin)<=tRi+0.5)
+                tRm=(tRi)*((NX-1)*(tpR-Rmin)/(Rmax-Rmin)>tRi+0.5)+(tRi-1)*((NX-1)*(tpR-Rmin)/(Rmax-Rmin)<=tRi+0.5)
             elif tRi<NX-1:
-                tRp= tRi;
+                tRp= tRi
                 tRm=0
             else:
-                tRm= tRi-1;
+                tRm= tRi-1
                 tRp=tRi
             dR=1.0#*(tRi<NX-1)+1.0*(tRi>0)
-            dR=dR*(Rmax-Rmin)/NX;
+            dR=dR*(Rmax-Rmin)/NX
             #
             if (tZi<NY-1 and tZi>0):
-                tZp=(tZi+1)*((NY-1)*(tpZ-Zmin)/(Zmax-Zmin)>tZi+0.5)+tZi*((NY-1)*(tpZ-Zmin)/(Zmax-Zmin)<=tZi+0.5);
-                tZm=(tZi)*((NY-1)*(tpZ-Zmin)/(Zmax-Zmin)>tZi+0.5)+(tZi-1)*((NY-1)*(tpZ-Zmin)/(Zmax-Zmin)<=tZi+0.5);
+                tZp=(tZi+1)*((NY-1)*(tpZ-Zmin)/(Zmax-Zmin)>tZi+0.5)+tZi*((NY-1)*(tpZ-Zmin)/(Zmax-Zmin)<=tZi+0.5)
+                tZm=(tZi)*((NY-1)*(tpZ-Zmin)/(Zmax-Zmin)>tZi+0.5)+(tZi-1)*((NY-1)*(tpZ-Zmin)/(Zmax-Zmin)<=tZi+0.5)
             elif tZi<NY-1:
-                tZp= tZi;
+                tZp= tZi
                 tZm=0
             else:
-                tZm= tZi-1;
+                tZm= tZi-1
                 tZp=tZi
             dZ=1.0#*(tRi<NX-1)+1.0*(tRi>0)
         #         if tZi<NY-1: tZp=tZi+1;
@@ -131,10 +158,81 @@ class quants_for_emulation:
         #         if tZi>0: tZm=tZi-1;
         #         else: tZm= tZi;
         #         dZ=1.0*(tZi<NX-1)+1.0*(tZi>0)
-            dZ=dZ*(Zmax-Zmin)/NY;
+            dZ=dZ*(Zmax-Zmin)/NY
             #
             self.discpos[coil['name']]={'Ri':tRi, 'Zi':tZi ,'Rp':tRp,'Rm':tRm,'Zp':tZp,'Zm':tZm,'dR':dR,'dZ':dZ}
+
+    """ 
+    NEW Modifications
+    
+    modifying now the methods to interact with new larger dictionary format. the maths inside kept the same.
+    """
+    def getpsis(self, eq):
+        """ 
+        Flux loops measure the magntetic flux funcition psi(R,Z)
+        """
+        #this one is easy, just get psi(R,Z) at the flux-loop positions
+        #you can also run it with a different dictionary of flux-loop positions
+        Psilist=[]
+        for floop in self.floops:
+            tpos=floop['position']
+            tpR=tpos[0]
+            tpZ=tpos[1]
+            tRi = int((self.NX-1)*(tpR-self.Rmin)/(self.Rmax-self.Rmin))
+            tZi = int((self.NY-1)*(tpZ-self.Zmin)/(self.Zmax-self.Zmin))
+            tpsiRZ=eq.psi()[tRi,tZi]
+            Psilist.append(tpsiRZ)
+        return Psilist
+
+
+    def getBs_disc(self, eq):
+        """ 
+        NB: if you change eq object or the pickup-coils, you'll need to re-init the quants_for_emu so that the probe radii in self.discpos fall in the correct cells.
+        the derivative estimation below uses D(sinh(arcsinh)) to that it's better behaved over a large value of psi's (e.g. close to the coils)
+        """
+        fvac=self.fvac
+        Blist=[]
+        for coil in self.pccoils:
+            discs=self.discpos[coil['name']]
+            tpos=coil['position']
+            tpR=tpos[0]
+            tpZ=tpos[2]
+            tvec=coil['orientation_vector']
+            #
+            tRi=discs['Ri'] ; tZi = discs['Zi']
+            tRp=discs['Rp'] ; tRm=discs['Rm'] ; tZp=discs['Zp'] ; tZm=discs['Zm'] ; dR=discs['dR'] ; dZ=discs['dZ']
+            tB=0.0
+            #
+            if tvec[0]!=0.0:
+                fm=eq.psi()[tRi,tZi] # 0.5*(eq.psi()[tRi,tZp]+eq.psi()[tRi,tZm])
+                fm=np.sqrt(1.0+fm**2)
+                df=fm*(np.arcsinh(eq.psi()[tRi,tZp])-np.arcsinh(eq.psi()[tRi,tZm]))/dZ
+                ## or uncomment this and comment the above uncomment this if you prefer the old-school finite difference derivative, way faster but less accurate
+                #df=(eq.psi()[tRi,tZp]-eq.psi()[tRi,tZm])/dZ
+                tBr=-(1./tpR)*df
+                tB+=tvec[0]*tBr; # eq.Br(tpR,tpZ);
+            if tvec[1]!=0.0:
+                tB+=tvec[1]*fvac/tpR; #eq.Btor(tpR,tpZ)
+            if tvec[2]!=0.0:
+                fm=eq.psi()[tRi,tZi] # 0.5*(eq.psi()[tRp,tZi]+eq.psi()[tRm,tZi])
+                fm=np.sqrt(1.0+fm**2)
+                df=fm*(np.arcsinh(eq.psi()[tRp,tZi])-np.arcsinh(eq.psi()[tRm,tZi]))/dR
+                ## or uncomment this and comment the above if you prefer the old-school finite difference derivative, way faster but less accurate
+                #df=(eq.psi()[tRp,tZi]-eq.psi()[tRm,tZi])/dR
+                tBz=(1./tpR)*df
+                tB+=tvec[2]*tBz; # eq.Bz(tpR,tpZ);
+            ## the above replaces the slow spline-based sub below:
+            #tB=eq.Br(tpR,tpZ)*tvec[0]+eq.Btor(tpR,tpZ)*tvec[1]+eq.Bz(tpR,tpZ)*tvec[2]
+            Blist.append(tB)
+        return Blist
+
         
+
+
+    """ 
+    The following methods (jtor_and_mask, fluxes and quants_out) are copied from old file
+    I think nico said they're not important/needed now?
+    """  
     def jtor_and_mask(self, eq, profiles):
         # eq is the actual one on which to calculate quantities
         # profiles is the associated ConstrainPaxisIp or ConstrainBetapIp obj
@@ -177,7 +275,8 @@ class quants_for_emulation:
         plasma_coil_ind = np.sum(plasma_coil_ind, axis=(1,2))
         self.plasma_coil_ind = plasma_coil_ind
         
-        
+
+   
     def quants_out(self, eq, profiles):
         #calls all that's needed on eq, in order, and returns results
         self.jtor_and_mask(eq, profiles)
@@ -203,63 +302,4 @@ class quants_for_emulation:
         
         return results
     
-    def getpsis(self, eq,floops=floops):
-        #this one is easy, just get psi(R,Z) at the flux-loop positions
-        #you can also run it with a different dictionary of flux-loop positions
-        Psilist=[];
-        for floop in floops:
-            tpos=floop['position']
-            tpR=tpos[0]
-            tpZ=tpos[1]
-            tRi = int((self.NX-1)*(tpR-self.Rmin)/(self.Rmax-self.Rmin))
-            tZi = int((self.NY-1)*(tpZ-self.Zmin)/(self.Zmax-self.Zmin))
-            tpsiRZ=eq.psi()[tRi,tZi]
-            Psilist.append(tpsiRZ)
-        return Psilist
-    
-    def getBs_disc(self, eq):
-        # NB: if you change eq object or the pickup-coils, you'll need to re-init the quants_for_emu so that the probe radii in self.discpos fall in the correct cells
-        # the derivative estimation below uses D(sinh(arcsinh)) to that it's better behaved over a large value of psi's (e.g. close to the coils)
-        fvac=self.fvac;
-        Blist=[];
-        for coil in self.pccoils:
-            discs=self.discpos[coil['name']]
-            tpos=coil['position']
-            tpR=tpos[0]
-            tpZ=tpos[2]
-            tvec=coil['orientation_vector']
-            #
-            tRi=discs['Ri'] ; tZi = discs['Zi']
-            tRp=discs['Rp'] ; tRm=discs['Rm'] ; tZp=discs['Zp'] ; tZm=discs['Zm'] ; dR=discs['dR'] ; dZ=discs['dZ']
-            tB=0.0
-            #
-            if tvec[0]!=0.0:
-                fm=eq.psi()[tRi,tZi] # 0.5*(eq.psi()[tRi,tZp]+eq.psi()[tRi,tZm])
-                fm=np.sqrt(1.0+fm**2)
-                df=fm*(np.arcsinh(eq.psi()[tRi,tZp])-np.arcsinh(eq.psi()[tRi,tZm]))/dZ
-                ## or uncomment this and comment the above uncomment this if you prefer the old-school finite difference derivative, way faster but less accurate
-                #df=(eq.psi()[tRi,tZp]-eq.psi()[tRi,tZm])/dZ
-                tBr=-(1./tpR)*df
-                tB+=tvec[0]*tBr; # eq.Br(tpR,tpZ);
-            if tvec[1]!=0.0:
-                tB+=tvec[1]*fvac/tpR; #eq.Btor(tpR,tpZ)
-            if tvec[2]!=0.0:
-                fm=eq.psi()[tRi,tZi] # 0.5*(eq.psi()[tRp,tZi]+eq.psi()[tRm,tZi])
-                fm=np.sqrt(1.0+fm**2)
-                df=fm*(np.arcsinh(eq.psi()[tRp,tZi])-np.arcsinh(eq.psi()[tRm,tZi]))/dR
-                ## or uncomment this and comment the above if you prefer the old-school finite difference derivative, way faster but less accurate
-                #df=(eq.psi()[tRp,tZi]-eq.psi()[tRm,tZi])/dR
-                tBz=(1./tpR)*df
-                tB+=tvec[2]*tBz; # eq.Bz(tpR,tpZ);
-            ## the above replaces the slow spline-based sub below:
-            #tB=eq.Br(tpR,tpZ)*tvec[0]+eq.Btor(tpR,tpZ)*tvec[1]+eq.Bz(tpR,tpZ)*tvec[2]
-            Blist.append(tB)
-        return Blist
 
-        
- 
-
-        
-        
-        
-    

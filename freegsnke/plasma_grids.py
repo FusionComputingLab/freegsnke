@@ -1,7 +1,7 @@
 import numpy as np
 from freegs.gradshafranov import Greens
 
-from . import machine_config
+# from . import machine_config
 
 
 def make_layer_mask(plasma_domain_mask, layer_size=3):
@@ -190,53 +190,53 @@ class Grids:
         layer_mask = (layer_mask > 0).astype(bool)
         self.layer_mask = layer_mask
 
-    def Myy(
-        self,
-    ):
-        """Calculates the matrix of mutual inductances between plasma grid points
+    # def Myy(
+    #     self,
+    # ):
+    #     """Calculates the matrix of mutual inductances between plasma grid points
 
-        Parameters
-        ----------
-        plasma_pts : np.ndarray
-            Array with R and Z coordinates of all the points inside the limiter
+    #     Parameters
+    #     ----------
+    #     plasma_pts : np.ndarray
+    #         Array with R and Z coordinates of all the points inside the limiter
 
-        Returns
-        -------
-        Myy : np.ndarray
-            Array of mutual inductances between plasma grid points
-        """
-        greenm = Greens(
-            self.plasma_pts[:, np.newaxis, 0],
-            self.plasma_pts[:, np.newaxis, 1],
-            self.plasma_pts[np.newaxis, :, 0],
-            self.plasma_pts[np.newaxis, :, 1],
-        )
-        return 2 * np.pi * greenm
+    #     Returns
+    #     -------
+    #     Myy : np.ndarray
+    #         Array of mutual inductances between plasma grid points
+    #     """
+    #     greenm = Greens(
+    #         self.plasma_pts[:, np.newaxis, 0],
+    #         self.plasma_pts[:, np.newaxis, 1],
+    #         self.plasma_pts[np.newaxis, :, 0],
+    #         self.plasma_pts[np.newaxis, :, 1],
+    #     )
+    #     return 2 * np.pi * greenm
 
-    def Mey(
-        self,
-    ):
-        """Calculates the matrix of mutual inductances between plasma grid points and all vessel coils
+    # def Mey(
+    #     self,
+    # ):
+    #     """Calculates the matrix of mutual inductances between plasma grid points and all vessel coils
 
-        Parameters
-        ----------
-        plasma_pts : np.ndarray
-            Array with R and Z coordinates of all the points inside the limiter
+    #     Parameters
+    #     ----------
+    #     plasma_pts : np.ndarray
+    #         Array with R and Z coordinates of all the points inside the limiter
 
-        Returns
-        -------
-        Mey : np.ndarray
-            Array of mutual inductances between plasma grid points and all vessel coils
-        """
-        coils_dict = machine_config.coils_dict
-        mey = np.zeros((machine_config.n_coils, len(self.plasma_pts)))
-        for j, labelj in enumerate(machine_config.coils_order):
-            greenm = Greens(
-                self.plasma_pts[:, 0, np.newaxis],
-                self.plasma_pts[:, 1, np.newaxis],
-                coils_dict[labelj]["coords"][0][np.newaxis, :],
-                coils_dict[labelj]["coords"][1][np.newaxis, :],
-            )
-            greenm *= coils_dict[labelj]["polarity"][np.newaxis, :]
-            mey[j] = np.sum(greenm, axis=-1)
-        return 2 * np.pi * mey
+    #     Returns
+    #     -------
+    #     Mey : np.ndarray
+    #         Array of mutual inductances between plasma grid points and all vessel coils
+    #     """
+    #     coils_dict = machine_config.coils_dict
+    #     mey = np.zeros((machine_config.n_coils, len(self.plasma_pts)))
+    #     for j, labelj in enumerate(machine_config.coils_order):
+    #         greenm = Greens(
+    #             self.plasma_pts[:, 0, np.newaxis],
+    #             self.plasma_pts[:, 1, np.newaxis],
+    #             coils_dict[labelj]["coords"][0][np.newaxis, :],
+    #             coils_dict[labelj]["coords"][1][np.newaxis, :],
+    #         )
+    #         greenm *= coils_dict[labelj]["polarity"][np.newaxis, :]
+    #         mey[j] = np.sum(greenm, axis=-1)
+    #     return 2 * np.pi * mey

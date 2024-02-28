@@ -17,6 +17,9 @@ examples/stattic*
 examples/evo*
 examples/modes
 examples/paper
+examples/basic*
+examples/machine*
+examples/example_nonlinear_ev*
 freegsnke/nonlinear_solve_*
 freegsnke/plasma_grids*
 freegsnke/newtonkrylov_*

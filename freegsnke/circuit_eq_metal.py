@@ -2,6 +2,8 @@ import numpy as np
 
 from . import machine_config, normal_modes
 from .implicit_euler import implicit_euler_solver
+from freegs.gradshafranov import Greens
+
 
 
 class metal_currents:
@@ -58,7 +60,7 @@ class metal_currents:
 
         if flag_plasma:
             self.plasma_grids = plasma_grids
-            self.Mey = plasma_grids.Mey()
+            # self.Mey = plasma_grids.Mey()
 
         # Dummy voltage vector
         self.empty_U = np.zeros(self.n_coils)
@@ -186,7 +188,7 @@ class metal_currents:
 
         if control * flag_plasma:
             self.plasma_grids = plasma_grids
-            self.Mey = plasma_grids.Mey()
+            # self.Mey = plasma_grids.Mey()
 
         control += flag_vessel_eig != self.flag_vessel_eig
         self.flag_vessel_eig = flag_vessel_eig
@@ -348,3 +350,32 @@ class metal_currents:
         residual += Itpdt
         residual -= forcing_term
         return residual
+
+    def Mey(
+        self, 
+    ):
+        """Calculates the matrix of mutual inductances between plasma grid points and all vessel coils
+
+        Parameters
+        ----------
+        plasma_pts : np.ndarray
+            Array with R and Z coordinates of all the points inside the limiter
+
+        Returns
+        -------
+        Mey : np.ndarray
+            Array of mutual inductances between plasma grid points and all vessel coils
+        """
+        coils_dict = machine_config.coils_dict
+        mey = np.zeros((machine_config.n_coils, len(self.plasma_pts)))
+        for j, labelj in enumerate(machine_config.coils_order):
+            greenm = Greens(
+                self.plasma_grids.plasma_pts[:, 0, np.newaxis],
+                self.plasma_grids.plasma_pts[:, 1, np.newaxis],
+                coils_dict[labelj]["coords"][0][np.newaxis, :],
+                coils_dict[labelj]["coords"][1][np.newaxis, :],
+            )
+            greenm *= coils_dict[labelj]["polarity"][np.newaxis, :]
+            greenm *= coils_dict[labelj]["multiplier"][np.newaxis, :]
+            mey[j] = np.sum(greenm, axis=-1)
+        return 2 * np.pi * mey

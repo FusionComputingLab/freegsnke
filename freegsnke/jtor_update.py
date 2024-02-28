@@ -31,6 +31,7 @@ class ConstrainBetapIp(freegs.jtor.ConstrainBetapIp):
         self.limiter_mask_for_plotting = (
             self.mask_inside_limiter + self.limiter_mask_out
         ) > 0
+        self.plasma_grids = plasma_grids.Grids(eq, self.mask_inside_limiter)
 
         if not hasattr(self, "fast"):
             self.Jtor = self._Jtor
@@ -119,6 +120,7 @@ class ConstrainPaxisIp(freegs.jtor.ConstrainPaxisIp):
         self.limiter_mask_for_plotting = (
             self.mask_inside_limiter + self.limiter_mask_out
         ) > 0
+        self.plasma_grids = plasma_grids.Grids(eq, self.mask_inside_limiter)
 
         if not hasattr(self, "fast"):
             self.Jtor = self._Jtor

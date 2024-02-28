@@ -36,10 +36,10 @@ class linear_solver:
         Mey: np.array
             matrix of inductances between grid points in the reduced plasma domain and all metal coils
             (active coils and passive-structure filaments, self.Vm1Rm12Mey below is the one between plasma and the normal modes)
-            calculated by plasma_grids.py
+            calculated using plasma_grids.py
         Myy: np.array
             inductance matrix of grid points in the reduced plasma domain
-            calculated by plasma_grids.py
+            calculated using plasma_grids.py
         plasma_norm_factor: float
             an overall number to work with a rescaled plasma current, so that it's within a comparable range
         max_internal_timestep: float

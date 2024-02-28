@@ -1,4 +1,5 @@
 import numpy as np
+from freegs.gradshafranov import Greens
 
 
 class plasma_current:
@@ -27,13 +28,14 @@ class plasma_current:
 
         """
 
-        self.Myy = plasma_grids.Myy()
+        self.plasma_grids = plasma_grids
         self.Rm12 = Rm12
         self.V = V
         self.Rm12V = self.Rm12 @ V
         self.Mye = Mye
         self.MyeRm12V = np.matmul(Mye, self.Rm12V)
         self.Ryy = plasma_resistance_1d
+        self.Myy_matrix = self.Myy()
 
     def reset_modes(self, V):
         """Allows a reset of the attributes set up at initialization time following a change
@@ -47,6 +49,29 @@ class plasma_current:
         self.V = V
         self.Rm12V = self.Rm12 @ V
         self.MyeRm12V = np.matmul(self.Mye, self.Rm12V)
+
+    def Myy(
+        self,
+    ):
+        """Calculates the matrix of mutual inductances between plasma grid points
+
+        Parameters
+        ----------
+        plasma_pts : np.ndarray
+            Array with R and Z coordinates of all the points inside the limiter
+
+        Returns
+        -------
+        Myy : np.ndarray
+            Array of mutual inductances between plasma grid points
+        """
+        greenm = Greens(
+            self.plasma_grids.plasma_pts[:, np.newaxis, 0],
+            self.plasma_grids.plasma_pts[:, np.newaxis, 1],
+            self.plasma_grids.plasma_pts[np.newaxis, :, 0],
+            self.plasma_grids.plasma_pts[np.newaxis, :, 1],
+        )
+        return 2 * np.pi * greenm
 
     def current_residual(self, red_Iy0, red_Iy1, red_Iydot, Iddot):
         """Calculates the residual of the circuit equation corresponding to the input currents and derivatives.

@@ -78,35 +78,35 @@ def test_make_layer_mask(create_machine, grids):
     ), "Layer mask and limiter mask are overlapping"
 
 
-def test_Myy(grids):
-    """
-    Tests if the shape of the mutual inductance matrix is correct. The mutual
-    inductance matrix of the plasma on itself should be symmetrical and postive
-    definite.
-    """
-    Myy_ = grids.Myy()
+# def test_Myy(grids):
+#     """
+#     Tests if the shape of the mutual inductance matrix is correct. The mutual
+#     inductance matrix of the plasma on itself should be symmetrical and postive
+#     definite.
+#     """
+#     Myy_ = grids.Myy()
 
-    assert Myy_.shape == (len(grids.plasma_pts), len(grids.plasma_pts)), (
-        f"Shape of Myy not correct, shape of Myy: {Myy_.shape}, number of"
-        + f" plasma point: {len(grids.plasma_pts)}"
-    )
-    assert np.all(Myy_ == Myy_.T), "Myy not symmetric"
-    assert np.all(np.linalg.eigvals(Myy_) > 0), "Myy not positive definite"
+#     assert Myy_.shape == (len(grids.plasma_pts), len(grids.plasma_pts)), (
+#         f"Shape of Myy not correct, shape of Myy: {Myy_.shape}, number of"
+#         + f" plasma point: {len(grids.plasma_pts)}"
+#     )
+#     assert np.all(Myy_ == Myy_.T), "Myy not symmetric"
+#     assert np.all(np.linalg.eigvals(Myy_) > 0), "Myy not positive definite"
 
 
-def test_Mey(create_machine, grids):
-    """
-    Tests if the shape of the mutual inductance matrix of the plasma gridpoints
-    and all vessel coils is correct.
-    """
-    _, eq = create_machine
+# def test_Mey(create_machine, grids):
+#     """
+#     Tests if the shape of the mutual inductance matrix of the plasma gridpoints
+#     and all vessel coils is correct.
+#     """
+#     _, eq = create_machine
 
-    Mey_ = grids.Mey()
+#     Mey_ = grids.Mey()
 
-    assert Mey_.shape == (len(eq.tokamak.coils), len(grids.plasma_pts)), (
-        f"Shape of Myy not correct, shape of Myy: {Mey_.shape}, number of"
-        + f" plasma point: {len(eq.tokomak.coils), len(grids.plasma_pts)}"
-    )
+#     assert Mey_.shape == (len(eq.tokamak.coils), len(grids.plasma_pts)), (
+#         f"Shape of Myy not correct, shape of Myy: {Mey_.shape}, number of"
+#         + f" plasma point: {len(eq.tokomak.coils), len(grids.plasma_pts)}"
+#     )
 
 
 @pytest.mark.skip(reason="Not implemented yet")

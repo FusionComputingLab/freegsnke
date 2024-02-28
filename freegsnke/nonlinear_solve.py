@@ -83,9 +83,8 @@ class nl_solver:
         plasma_domain_mask : np.array of size (eq.nx,eq.ny)
             mask of grid domain points to be included in the current circuit equation.
             This reduces the dimensionality of associated matrices.
-            Include all regions within the limiter, or where the plasma is expected to be.
-            If None, the mask of points within the limiter profiles.mask_inside_limiter
-            will be used.
+            If None, the mask defaults to the one based on the limiter associated to the input profiles.
+            Only specify if a different mask is required.
         nbroad : int, optional, by default 3
             pixel size (as number of grid points) of (square) smoothing filter applied to
             the instantaneous plasma current distribution, before contracting the plasma circuit equations
@@ -128,10 +127,16 @@ class nl_solver:
         # setting up domain for plasma circuit eq.:
         if plasma_domain_mask is None:
             plasma_domain_mask = profiles.mask_inside_limiter
-        self.plasma_grids = plasma_grids.Grids(eq, plasma_domain_mask)
-        self.plasma_domain_mask = self.plasma_grids.plasma_domain_mask
-        self.plasma_domain_size = np.sum(self.plasma_grids.plasma_domain_mask)
-        # self.plasma_against_wall = 0
+            self.plasma_grids = profiles.plasma_grids
+            self.plasma_domain_mask = self.plasma_grids.plasma_domain_mask
+        else:
+            if plasma_domain_mask != profiles.mask_inside_limiter:
+                print(
+                    "A plasma_domain_mask different from the profiles.mask_inside_limiter has been provided."
+                )
+                self.plasma_grids = plasma_grids.Grids(eq, plasma_domain_mask)
+                self.plasma_domain_mask = plasma_domain_mask
+        self.plasma_domain_size = np.sum(self.plasma_domain_mask)
 
         # Extract relevant information on the type of profile function used and on the actual value of associated parameters
         self.get_profiles_values(profiles)
@@ -170,7 +175,7 @@ class nl_solver:
             Rm12=np.diag(self.evol_metal_curr.Rm12),
             V=self.evol_metal_curr.V,
             plasma_resistance_1d=self.plasma_resistance_1d,
-            Mye=self.evol_metal_curr.Mey.T,
+            Mye=self.evol_metal_curr.Mey_matrix.T,
         )
 
         # This solves the system of circuit eqs based on an assumption
@@ -181,8 +186,8 @@ class nl_solver:
             Vm1Rm12=np.matmul(
                 self.evol_metal_curr.Vm1, np.diag(self.evol_metal_curr.Rm12)
             ),
-            Mey=self.evol_metal_curr.Mey,
-            Myy=self.evol_plasma_curr.Myy,
+            Mey=self.evol_metal_curr.Mey_matrix,
+            Myy=self.evol_plasma_curr.Myy_matrix,
             plasma_norm_factor=self.plasma_norm_factor,
             plasma_resistance_1d=self.plasma_resistance_1d,
             max_internal_timestep=self.dt_step,
@@ -211,8 +216,8 @@ class nl_solver:
             Vm1Rm12=np.matmul(
                 self.evol_metal_curr.Vm1, np.diag(self.evol_metal_curr.Rm12)
             ),
-            Mey=self.evol_metal_curr.Mey,
-            Myy=self.evol_plasma_curr.Myy,
+            Mey=self.evol_metal_curr.Mey_matrix,
+            Myy=self.evol_plasma_curr.Myy_matrix,
             plasma_norm_factor=self.plasma_norm_factor,
             plasma_resistance_1d=self.plasma_resistance_1d,
             max_internal_timestep=self.max_internal_timestep,
@@ -368,8 +373,8 @@ class nl_solver:
             Vm1Rm12=np.matmul(
                 self.evol_metal_curr.Vm1, np.diag(self.evol_metal_curr.Rm12)
             ),
-            Mey=self.evol_metal_curr.Mey,
-            Myy=self.evol_plasma_curr.Myy,
+            Mey=self.evol_metal_curr.Mey_matrix,
+            Myy=self.evol_plasma_curr.Myy_matrix,
             plasma_norm_factor=self.plasma_norm_factor,
             plasma_resistance_1d=self.plasma_resistance_1d,
             # this is used with no internal step subdivision, to help nonlinear convergence
@@ -380,8 +385,8 @@ class nl_solver:
         self.linearised_sol = linear_solver(
             Lambdam1=self.evol_metal_curr.Lambdam1,
             Vm1Rm12=self.simplified_solver_J1.Vm1Rm12,
-            Mey=self.evol_metal_curr.Mey,
-            Myy=self.evol_plasma_curr.Myy,
+            Mey=self.evol_metal_curr.Mey_matrix,
+            Myy=self.evol_plasma_curr.Myy_matrix,
             plasma_norm_factor=self.plasma_norm_factor,
             plasma_resistance_1d=self.plasma_resistance_1d,
             max_internal_timestep=self.max_internal_timestep,

@@ -28,7 +28,6 @@ class plasma_current:
 
         """
 
-        # self.Myy = plasma_grids.Myy()
         self.plasma_grids = plasma_grids
         self.Rm12 = Rm12
         self.V = V
@@ -36,6 +35,7 @@ class plasma_current:
         self.Mye = Mye
         self.MyeRm12V = np.matmul(Mye, self.Rm12V)
         self.Ryy = plasma_resistance_1d
+        self.Myy_matrix = self.Myy()
 
     def reset_modes(self, V):
         """Allows a reset of the attributes set up at initialization time following a change

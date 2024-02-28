@@ -33,7 +33,6 @@ class ConstrainBetapIp(freegs.jtor.ConstrainBetapIp):
         ) > 0
         self.plasma_grids = plasma_grids.Grids(eq, self.mask_inside_limiter)
 
-
         if not hasattr(self, "fast"):
             self.Jtor = self._Jtor
         else:

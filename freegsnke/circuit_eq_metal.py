@@ -1,9 +1,8 @@
 import numpy as np
+from freegs.gradshafranov import Greens
 
 from . import machine_config, normal_modes
 from .implicit_euler import implicit_euler_solver
-from freegs.gradshafranov import Greens
-
 
 
 class metal_currents:
@@ -60,7 +59,7 @@ class metal_currents:
 
         if flag_plasma:
             self.plasma_grids = plasma_grids
-            # self.Mey = plasma_grids.Mey()
+            self.Mey_matrix = self.Mey()
 
         # Dummy voltage vector
         self.empty_U = np.zeros(self.n_coils)
@@ -188,7 +187,7 @@ class metal_currents:
 
         if control * flag_plasma:
             self.plasma_grids = plasma_grids
-            # self.Mey = plasma_grids.Mey()
+            self.Mey_matrix = self.Mey()
 
         control += flag_vessel_eig != self.flag_vessel_eig
         self.flag_vessel_eig = flag_vessel_eig
@@ -352,7 +351,7 @@ class metal_currents:
         return residual
 
     def Mey(
-        self, 
+        self,
     ):
         """Calculates the matrix of mutual inductances between plasma grid points and all vessel coils
 
@@ -367,7 +366,7 @@ class metal_currents:
             Array of mutual inductances between plasma grid points and all vessel coils
         """
         coils_dict = machine_config.coils_dict
-        mey = np.zeros((machine_config.n_coils, len(self.plasma_pts)))
+        mey = np.zeros((machine_config.n_coils, len(self.plasma_grids.plasma_pts)))
         for j, labelj in enumerate(machine_config.coils_order):
             greenm = Greens(
                 self.plasma_grids.plasma_pts[:, 0, np.newaxis],

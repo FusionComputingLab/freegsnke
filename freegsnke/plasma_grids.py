@@ -159,8 +159,10 @@ class Grids:
             2d map on full domain. Values on gridpoints outside the
             reduced plasma domain are set to zero.
         """
-        self.map2d[self.idxs_mask[0], self.idxs_mask[1]] = reduced_vector
-        return self.map2d
+        map2d = np.zeros_like(self.R)
+        map2d[self.idxs_mask[0], self.idxs_mask[1]] = reduced_vector
+        # self.map2d = map2d.copy()
+        return map2d
 
     def make_layer_mask(self, layer_size=3):
         """Creates a mask for the points just outside the reduced domain, with a width=`layer_size`

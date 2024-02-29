@@ -498,7 +498,8 @@ class nl_solver:
             profile_coefficients=(
                 profiles.alpha_m + self.final_dpars_record[0],
                 profiles.alpha_n,
-            )
+            ),
+            profile_parameter=profiles.profile_parameter
         )
         self.assign_currents_solve_GS(current_, rtol_NK)
         dIy_1 = self.plasma_grids.Iy_from_jtor(self.profiles2.jtor) - self.Iy
@@ -664,7 +665,7 @@ class nl_solver:
         ):
             self.NK.forward_solve(eq, profile, target_relative_tolerance=rtol_NK)
             self.build_current_vec(eq, profile)
-            self.Iy = self.plasma_grids.Iy_from_jtor(profile.jtor)
+            self.Iy = self.plasma_grids.Iy_from_jtor(profile.jtor).copy()
 
         # build/update dIydI
         if dIydI is None:
@@ -1694,6 +1695,7 @@ class nl_solver:
                 self.profiles1.alpha_n = profile_coefficients[1]
                 self.profiles2.alpha_m = profile_coefficients[0]
                 self.profiles2.alpha_n = profile_coefficients[1]
+        # print(self.profiles2.alpha_m, self.profiles2.alpha_n, self.profiles2.profile_parameter)
 
     def nlstepper(
         self,

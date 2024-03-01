@@ -38,9 +38,10 @@ class ConstrainBetapIp(freegs.jtor.ConstrainBetapIp):
         else:
             self.Jtor = self.Jtor_fast
 
-    def get_pars(self, ):
-        """Fetches all profile parameters and returns them in a single array
-        """
+    def get_pars(
+        self,
+    ):
+        """Fetches all profile parameters and returns them in a single array"""
         return np.array([self.alpha_m, self.alpha_n, self.betap])
 
     def assign_profile_parameter(self, betap):
@@ -132,9 +133,10 @@ class ConstrainPaxisIp(freegs.jtor.ConstrainPaxisIp):
         else:
             self.Jtor = self.Jtor_fast
 
-    def get_pars(self, ):
-        """Fetches all profile parameters and returns them in a single array
-        """
+    def get_pars(
+        self,
+    ):
+        """Fetches all profile parameters and returns them in a single array"""
         return np.array([self.alpha_m, self.alpha_n, self.paxis])
 
     def assign_profile_parameter(self, paxis):

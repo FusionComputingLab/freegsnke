@@ -504,7 +504,7 @@ class nl_solver:
                 profiles.alpha_m + self.final_dpars_record[0],
                 profiles.alpha_n,
             ),
-            profile_parameter=profiles.profile_parameter
+            profile_parameter=profiles.profile_parameter,
         )
         self.assign_currents_solve_GS(current_, rtol_NK)
         dIy_1 = self.plasma_grids.Iy_from_jtor(self.profiles2.jtor) - self.Iy
@@ -693,7 +693,7 @@ class nl_solver:
         else:
             self.dIydI = dIydI
 
-        # build/update dIydpars 
+        # build/update dIydpars
         # Note this assumes 3 free profile parameters at the moment!
         if dIydpars is None:
             if self.dIydpars is None:
@@ -1181,9 +1181,9 @@ class nl_solver:
         )
         if record_for_updates:
             self.record_for_update(currents_vec, self.profiles2)
-            
+
     def record_for_update(self, currents_vec, profiles):
-        """Appends new GS solution to record of independent variables 
+        """Appends new GS solution to record of independent variables
         and record of reduced Iy distributions.
 
         Parameters
@@ -1193,28 +1193,39 @@ class nl_solver:
         profiles : freeGS profile obj
             profile used to build the equilibrium to be recorded
         """
-        self.record_currents_pars = np.vstack((self.record_currents_pars, 
-                                               self.build_current_pars_vec(currents_vec, profiles)))
-        self.record_Iys = np.vstack((self.record_Iys,
-                                     self.plasma_grids.Iy_from_jtor(profiles.jtor)))
+        self.record_currents_pars = np.vstack(
+            (
+                self.record_currents_pars,
+                self.build_current_pars_vec(currents_vec, profiles),
+            )
+        )
+        self.record_Iys = np.vstack(
+            (self.record_Iys, self.plasma_grids.Iy_from_jtor(profiles.jtor))
+        )
 
-    def get_number_of_independent_pars(self, ):
+    def get_number_of_independent_pars(
+        self,
+    ):
         """Queries the profile function and the metal modes
-        to establish the number of independent variables to 
+        to establish the number of independent variables to
         the GS equilibrium.
         """
         self.number_of_independent_pars = self.n_metal_modes + 1 + self.n_profile_pars
 
     def get_number_of_profile_pars(self, profiles):
-        """Queries the profile function to establish the number of independent parameters.
-        """
+        """Queries the profile function to establish the number of independent parameters."""
         self.n_profile_pars = np.size(profiles.get_pars())
 
-    def reset_records_for_linearization_update(self, ):
-        """Resets the recod vectors used for building the update to the linearization matrices.
-        """
-        self.record_currents_pars = np.array([], dtype=np.float32).reshape(0, self.number_of_independent_pars)
-        self.record_Iys = np.array([], dtype=np.float32).reshape(0, self.plasma_domain_size)
+    def reset_records_for_linearization_update(
+        self,
+    ):
+        """Resets the recod vectors used for building the update to the linearization matrices."""
+        self.record_currents_pars = np.array([], dtype=np.float32).reshape(
+            0, self.number_of_independent_pars
+        )
+        self.record_Iys = np.array([], dtype=np.float32).reshape(
+            0, self.plasma_domain_size
+        )
 
     def build_current_pars_vec(self, currents_vec, profiles):
         """Builds vector with full list of independent variables,
@@ -1234,7 +1245,6 @@ class nl_solver:
         """
         currents_pars_vec = np.concatenate((currents_vec, profiles.get_pars()))
         return currents_pars_vec
-
 
     def make_broad_hatIy_conv(self, hatIy1, blend=0):
         """Averages the normalised plasma current distributions at time t and

@@ -1,305 +1,218 @@
-
-""" 
-File to replace probes_floops_pickups.py
-Aim to modify/generalise so that a general probe dictionary can be read in, as with active_coils, passive_coils etc.
-Currently new probe dict consists of floops and pickups, but more could be added later. (Rogowskii coils, Mirnov Coils)
+"""  Class to implement magnetic probes computations
+- sets up probe object, containing the types and locations of the probes
+- methods to extract the 'measurements' by each probe from an equilibrium.
 """
 
-#copying/modifying the old file "probes_floops_pickups.py"
 import os
-this_dir , this_filename = os.path.split(__file__)
-
-
-try:
-    from freegs import critical
-except:
-    from freegs.freegs import critical
-try:
-    from freegs.gradshafranov import Greens
-except:
-    from freegs.freegs.gradshafranov import Greens
 import numpy as np
 import pickle
 
-import MASTU_coils
-from MASTU_coils import coils_dict
-
-
-# Get magnetic probes pickle file.
-# os.environ["PROBE_PATH"] = "../machine_configs/MAST-U/magnetic_probes.pickle"  
-#do i need this here or is it meant ot be in the setup file when creating equilbiria etc.?
-
-
-probe_path = os.environ.get("PROBE_PATH",None)
-if probe_path is None:
-    raise ValueError("PROBE_PATH environment variable not set.")
-
-# open probe dictionary
-with open(probe_path, 'rb') as file:
-    probe_dict = pickle.load(file)
+from freegs.gradshafranov import Greens, GreensBr, GreensBz
+from . import machine_config 
 
 
 
-class quants_for_emulation:
-    #needs coil_dict from MASTU_coils.py
-    
-    def __init__(self, eq , probe_dict = probe_dict):
-        """ 
-        pre-builds matrices for inductance calculations on new equilibria.
-        eq need not be the actual one, only has to have same grid properties.
-        as those on which calculations will be made by calling other methods.
-        """
-      
-        # leave the following as is...
-
-        dR_dZ = (eq.R[0,0]-eq.R[1,0])*(eq.Z[0,0]-eq.Z[0,1])
-        two_pi_dR_dZ = 2*np.pi*dR_dZ
-        
-        #reduced grid for plasma-related inductances
-        red_idx = np.round(np.array(np.shape(eq.R))*
-                           np.array([[12,100],[30,99]])/129).astype(int)
-        red_R = eq.R[red_idx[0,0]:red_idx[0,1],
-                     red_idx[1,0]:red_idx[1,1]]
-        red_Z = eq.Z[red_idx[0,0]:red_idx[0,1],
-                     red_idx[1,0]:red_idx[1,1]]
-        self.red_idx = red_idx
-        
-        #for plasma-plasma flux
-        greenmatrix = Greens(red_R[:,:,np.newaxis,np.newaxis], red_Z[:,:,np.newaxis,np.newaxis],
-                             red_R[np.newaxis,np.newaxis,:,:], red_Z[np.newaxis,np.newaxis,:,:])
-        greenmatrix *= two_pi_dR_dZ*dR_dZ
-        self.greenmatrix = greenmatrix
-                
-        #for coil-plasma and plasma-coil fluxes 
-        resgrid = np.shape(red_Z)
-        coil_plasma_greens = np.zeros((len(coils_dict.keys()),resgrid[0],resgrid[1]))
-        for i,labeli in enumerate(coils_dict.keys()):
-            greenm = Greens(red_R[np.newaxis,:,:], red_Z[np.newaxis,:,:],
-                            coils_dict[labeli]['coords'][0][:,np.newaxis,np.newaxis],
-                            coils_dict[labeli]['coords'][1][:,np.newaxis,np.newaxis])
-            greenm *= coils_dict[labeli]['polarity'][:,np.newaxis,np.newaxis]
-            coil_plasma_greens[i] = two_pi_dR_dZ*np.sum(greenm, axis=0)
-        self.coil_plasma_greens = coil_plasma_greens
-        
-        #for separatrix characterization
-        self.Zvec = np.arange(len(red_Z[0]))[np.newaxis,:].astype('float64')
-        self.Zvec -= np.mean(self.Zvec)
-       
-        self.dR_dZ = dR_dZ
-        self.red_R = red_R
-        
-        self.fvac = eq.fvac()
-        #
-        ## the stuff below is needed for the magnetics
-        #
-        Rs=eq.R[:,0]
-        Zs=eq.Z[0,:]
-        # please keep both the private and self.-ed variables for ease with the typing in discpos below
-        NX=len(Rs)
-        NY=len(Zs)
-        Rmin , Rmax = min(Rs) , max(Rs)
-        Zmin , Zmax = min(Zs) , max(Zs)
-        self.NX=NX
-        self.NY=NY
-        self.Rmin , self.Rmax = Rmin , Rmax
-        self.Zmin , self.Zmax = Zmin , Zmax
-        
-
-        # Now modify things to do differentlyf or each probe type
-
-        # extract pickup coils and flux loops. Add here if new probes are added.
-        pccoils = probe_dict["pickups"]
-        floops = probe_dict["flux_loops"]
-        self.floops  = floops
-        self.pccoils = pccoils
-        
-        self.get_pickups()
-
-    # Methods...
-    def get_floops(self):
-        pass
-
-    def get_pickups(self):
-        self.discpos = {}
-        for coil in self.pccoils:
-            #discpos[coil['name']]
-            tpos=coil['position']
-            tpR=tpos[0]
-            tpZ=tpos[2]
-            tRi = int((NX-1)*(tpR-Rmin)/(Rmax-Rmin))
-            tZi = int((NY-1)*(tpZ-Zmin)/(Zmax-Zmin))
-            tvec=coil['orientation_vector']
-            #
-            # Dealing with edge cases where coil is on boundary of grid??
-            if (tRi<NX-1 and tRi>0):
-                tRp=(tRi+1)*((NX-1)*(tpR-Rmin)/(Rmax-Rmin)>tRi+0.5)+tRi*((NX-1)*(tpR-Rmin)/(Rmax-Rmin)<=tRi+0.5)
-                tRm=(tRi)*((NX-1)*(tpR-Rmin)/(Rmax-Rmin)>tRi+0.5)+(tRi-1)*((NX-1)*(tpR-Rmin)/(Rmax-Rmin)<=tRi+0.5)
-            elif tRi<NX-1:
-                tRp= tRi
-                tRm=0
-            else:
-                tRm= tRi-1
-                tRp=tRi
-            dR=1.0#*(tRi<NX-1)+1.0*(tRi>0)
-            dR=dR*(Rmax-Rmin)/NX
-            #
-            if (tZi<NY-1 and tZi>0):
-                tZp=(tZi+1)*((NY-1)*(tpZ-Zmin)/(Zmax-Zmin)>tZi+0.5)+tZi*((NY-1)*(tpZ-Zmin)/(Zmax-Zmin)<=tZi+0.5)
-                tZm=(tZi)*((NY-1)*(tpZ-Zmin)/(Zmax-Zmin)>tZi+0.5)+(tZi-1)*((NY-1)*(tpZ-Zmin)/(Zmax-Zmin)<=tZi+0.5)
-            elif tZi<NY-1:
-                tZp= tZi
-                tZm=0
-            else:
-                tZm= tZi-1
-                tZp=tZi
-            dZ=1.0#*(tRi<NX-1)+1.0*(tRi>0)
-        #         if tZi<NY-1: tZp=tZi+1;
-        #         else: tZp= tZi;
-        #         if tZi>0: tZm=tZi-1;
-        #         else: tZm= tZi;
-        #         dZ=1.0*(tZi<NX-1)+1.0*(tZi>0)
-            dZ=dZ*(Zmax-Zmin)/NY
-            #
-            self.discpos[coil['name']]={'Ri':tRi, 'Zi':tZi ,'Rp':tRp,'Rm':tRm,'Zp':tZp,'Zm':tZm,'dR':dR,'dZ':dZ}
-
+class probe():
     """ 
-    NEW Modifications
-    
-    modifying now the methods to interact with new larger dictionary format. the maths inside kept the same.
+    Class to implement magnetic probes
+    - flux loops: compute psi(R,Z) 
+    - pickup coils: compute B(R,phi,Z).nhat (nhat is unit vector orientation of the probe)
+
+    Inputs
+    - equilibrium object - contains grid, plasma profile, plasma and coil currents, coil positions.
+
+    Methods 
+    - get_coil_currents(eq) : returns current values in all the coils. NB different equilibrium to that used in init
+    - greens_all_coils() : returns array with greens function for each coil and probe combination.
+    - psi_all_coils(eq): returns list of psi values at each flux loop position. contributions from all coils.
+    - psi_from_plasma(eq): returns list of psi values at each flux loop position. contributions from plasma itself.
+    - calc_flux_value(eq): returns total flux at each probe position (sum of previous two outputs)
+
+    - 
+        
     """
-    def getpsis(self, eq):
+    def __init__(self, eqbm):
         """ 
-        Flux loops measure the magntetic flux funcition psi(R,Z)
+        Initialise the following
+        - read the probe dictionaries from file
+        - set coil positions from equilibrium object
+        - set grid size/spacing from equilibrium object
+        - create array of greens functions with positions of coils and probes
         """
-        #this one is easy, just get psi(R,Z) at the flux-loop positions
-        #you can also run it with a different dictionary of flux-loop positions
-        Psilist=[]
-        for floop in self.floops:
-            tpos=floop['position']
-            tpR=tpos[0]
-            tpZ=tpos[1]
-            tRi = int((self.NX-1)*(tpR-self.Rmin)/(self.Rmax-self.Rmin))
-            tZi = int((self.NY-1)*(tpZ-self.Zmin)/(self.Zmax-self.Zmin))
-            tpsiRZ=eq.psi()[tRi,tZi]
-            Psilist.append(tpsiRZ)
-        return Psilist
+        # extract probe dictionaries, and set variables for each probe type
+        probe_path = os.environ.get("PROBE_PATH",None)
+        if probe_path is None:
+            raise ValueError("PROBE_PATH environment variable not set.")
+    
+        with open(probe_path, 'rb') as file:
+            probe_dict = pickle.load(file) 
+
+        # set coil lists and probe lists
+        self.floops = probe_dict['flux_loops']
+        self.pickups = probe_dict['pickups']
+
+        #tokamak is a list of all the coils (active pasive etc.)
+        # take coil info from machine_config.py where coil_dict is defined
+        self.coil_names = [name  for name in eqbm.tokamak.getCurrents()]
+        self.coil_positions = []
+        self.coil_dict = machine_config.coils_dict
+
+        self.coils_order = [labeli for i, labeli in enumerate(self.coils_dict.keys())]
+
+        #FLUX LOOPS
+        self.floop_pos = np.array([probe['position'] for probe in self.floops])
+        self.floop_pos_R = np.array([probe['position'][0] for  probe in self.floops])
+        self.floop_pos_Z  = np.array([probe['position'][1] for probe in self.floops])
+        self.floop_order = [probe['name']for probe in self.floops]
+  
+
+        # create greens function array for all coils, eval at position of flux loop probes
+        
+
+        # PICKUP COILS
+        # greens functions for pickups - runs over grid G[i][j][k] = greens for coil i, probe pos j, grid
 
 
-    def getBs_disc(self, eq):
+
+    """
+    Things for flux loops
+    """
+    def greens_psi_single_coil(self,coil_key):
+        """
+        Create array of greens functions for given coil evaluate at all flux loop positions
+        - defines array of greens for each filament at each probe.
+        - multplies by polarity and multiplier
+        - then sums over filaments to return greens function for probes from a given coil
+        """
+        #### need to include multiplicities and polarities. here?
+        pol = self.coil_dict[key]['polarity'][np.newaxis,:]
+        mul = self.coil_dict[key]['multiplier'][:,np.newaxis]
+        greens_filaments = Greens(self.coildict[coil_key]['coords'][0],
+                            self.coildict[coil_key]['coords'][1],
+                            self.floop_pos[0][:,np.newaxis],
+                            self.floop_pos[1][:,np.newaxis])
+        greens_filaments *= pol 
+        greens_filaments *= mul 
+        greens_psi_coil = np.sum(greens_filaments,axis=1)
+
+        return greens_psi_coil
+
+    def greens_psi_all_coils(self):
+        """
+        Create 2d array of greens functions for all coils and at all probe positions
+        - array[i][j] is greens function for coil i evaluated at probe position j
+        """
+        array = []
+        for key in self.coil_dict.keys():
+            array.append(self.greens_psi_coil(key))
+        return array 
+    
+    def get_coil_currents(self,eq):
         """ 
-        NB: if you change eq object or the pickup-coils, you'll need to re-init the quants_for_emu so that the probe radii in self.discpos fall in the correct cells.
-        the derivative estimation below uses D(sinh(arcsinh)) to that it's better behaved over a large value of psi's (e.g. close to the coils)
+        create list of coil currents from the equilibrium
         """
-        fvac=self.fvac
-        Blist=[]
-        for coil in self.pccoils:
-            discs=self.discpos[coil['name']]
-            tpos=coil['position']
-            tpR=tpos[0]
-            tpZ=tpos[2]
-            tvec=coil['orientation_vector']
-            #
-            tRi=discs['Ri'] ; tZi = discs['Zi']
-            tRp=discs['Rp'] ; tRm=discs['Rm'] ; tZp=discs['Zp'] ; tZm=discs['Zm'] ; dR=discs['dR'] ; dZ=discs['dZ']
-            tB=0.0
-            #
-            if tvec[0]!=0.0:
-                fm=eq.psi()[tRi,tZi] # 0.5*(eq.psi()[tRi,tZp]+eq.psi()[tRi,tZm])
-                fm=np.sqrt(1.0+fm**2)
-                df=fm*(np.arcsinh(eq.psi()[tRi,tZp])-np.arcsinh(eq.psi()[tRi,tZm]))/dZ
-                ## or uncomment this and comment the above uncomment this if you prefer the old-school finite difference derivative, way faster but less accurate
-                #df=(eq.psi()[tRi,tZp]-eq.psi()[tRi,tZm])/dZ
-                tBr=-(1./tpR)*df
-                tB+=tvec[0]*tBr; # eq.Br(tpR,tpZ);
-            if tvec[1]!=0.0:
-                tB+=tvec[1]*fvac/tpR; #eq.Btor(tpR,tpZ)
-            if tvec[2]!=0.0:
-                fm=eq.psi()[tRi,tZi] # 0.5*(eq.psi()[tRp,tZi]+eq.psi()[tRm,tZi])
-                fm=np.sqrt(1.0+fm**2)
-                df=fm*(np.arcsinh(eq.psi()[tRp,tZi])-np.arcsinh(eq.psi()[tRm,tZi]))/dR
-                ## or uncomment this and comment the above if you prefer the old-school finite difference derivative, way faster but less accurate
-                #df=(eq.psi()[tRp,tZi]-eq.psi()[tRm,tZi])/dR
-                tBz=(1./tpR)*df
-                tB+=tvec[2]*tBz; # eq.Bz(tpR,tpZ);
-            ## the above replaces the slow spline-based sub below:
-            #tB=eq.Br(tpR,tpZ)*tvec[0]+eq.Btor(tpR,tpZ)*tvec[1]+eq.Bz(tpR,tpZ)*tvec[2]
-            Blist.append(tB)
-        return Blist
-
-        
+        array_of_coil_currents = np.zeros(len(self.coil_names))
+        for i, label in enumerate(self.coil_mames): 
+            array_of_coil_currents[i] = eq.tokamak[label].current
+        return array_of_coil_currrents 
 
 
-    """ 
-    The following methods (jtor_and_mask, fluxes and quants_out) are copied from old file
-    I think nico said they're not important/needed now?
-    """  
-    def jtor_and_mask(self, eq, profiles):
-        # eq is the actual one on which to calculate quantities
-        # profiles is the associated ConstrainPaxisIp or ConstrainBetapIp obj
-        # call this BEFORE calling method fluxes
-        jtor = profiles.Jtor(eq.R, eq.Z, eq.psi())
-        self.plasma_mask = jtor>0
-        self.red_jtor = jtor[self.red_idx[0,0]:self.red_idx[0,1],
-                             self.red_idx[1,0]:self.red_idx[1,1]]
-        self.red_plasma_mask = self.red_jtor>0
-        
-        #separatrix characterization
-        self.plasma_zloc = np.stack((np.mean(self.Zvec*self.red_plasma_mask, axis=1),
-                                     np.sum(self.red_plasma_mask, axis=1)))
-        
-        self.tot_current = self.dR_dZ*np.sum(jtor)
-        
-        #to be devided by the conductivity \sigma
-        plasma_resistance = np.sum(self.red_R*self.red_jtor)
-        plasma_resistance *= 2*np.pi*self.dR_dZ/self.tot_current
-        self.plasma_resistance = plasma_resistance
-                
-    def fluxes(self, eq):
-        #needs jtor and plasma masks
-        
-        #plasma-plasma flux:
-        plasma_self_flux = self.red_jtor[np.newaxis,np.newaxis,:,:]*self.greenmatrix
-        plasma_self_flux *= self.red_plasma_mask[:,:,np.newaxis,np.newaxis]
-        self.plasma_self_flux = np.sum(plasma_self_flux)
-        
-        #flux of plasma current on coils, 
-        #the quantity of interest is the derivative wrp to: tot plasma current 
-        #                                                   plasma parameters
-        #                                                   coil currents
-        coil_plasma_flux = self.red_jtor[np.newaxis,:,:]*self.coil_plasma_greens
-        coil_plasma_flux = np.sum(coil_plasma_flux, axis=(1,2))
-        self.coil_plasma_flux = coil_plasma_flux/MASTU_coils.nloops_per_coil
-        
-        #inductance of coils on plasma                                               
-        plasma_coil_ind = (self.red_plasma_mask[np.newaxis,:,:])*self.coil_plasma_greens
-        plasma_coil_ind = np.sum(plasma_coil_ind, axis=(1,2))
-        self.plasma_coil_ind = plasma_coil_ind
+    def psi_all_coils(self,array_of_coil_currents):
+        """
+        compute flux function summed over all coils. 
+        returns array of flux values at the positions of the floop probes
+        """
+        psi_from_all_coils = np.sum(self.greens_psi_all_coils * array_of_coil_currents[:,np.newaxis], axis=0) 
+        return psi_from_all_coils
         
 
-   
-    def quants_out(self, eq, profiles):
-        #calls all that's needed on eq, in order, and returns results
-        self.jtor_and_mask(eq, profiles)
-        self.fluxes(eq)
+    def green_psi_plasma(self,eq):
+        """ 
+        Compute greens function at probes from the plasma currents .
+        - plasma current source in grid from solve. grid points contained in eq object 
+        """
+        rgrid = eq.R
+        zgrid = eq.Z 
+
+        greens = Greens(rgrid[:,:,np.newaxis],
+                        zgrid[:,:,np.newaxis],
+                        self.floop_pos[0][np.newaxis,np.newaxis,:],
+                        self.floop_pos[1][np.newaxis, np.newaxis,:])
         
-        results = {}
-        
-        #total plasma current, plasma resistance term (to devide by conductivity)
-        results['tot_Ip_Rp'] = [self.tot_current, self.plasma_resistance]
-        
-        #plasma-plasma flux:
-        results['plasma_self_flux'] = self.plasma_self_flux
-        
-        #flux of plasma current on coils
-        results['plasma_flux_on_coils'] = self.coil_plasma_flux
-        
-        #inductance of coils on plasma
-        results['plasma_coil_ind'] = self.plasma_coil_ind
-        
-        #plasma centroid and width in Z of section inside separatrix
-        #in grid units
-        results['separatrix'] = [self.plasma_zloc, self.plasma_mask]
-        
-        return results
+        return greens
+
+
+    def psi_from_plasma(self,eq):
+        """
+        Calculate flux function contribution from the plasma
+        returns array of flux values from plasma at position of floop probes
+        """
+        plasma_greens = self.green_psi_plasma(eq)
+
+        plasma_current_distribution = eq._profiles.jtor #toroidal current distribution from plasma equilibrium
+    
+        Psi_from_plasma = np.sum(plasma_greens*plasma_current_distribution[:,:,np.newaxis], axis=(0,1)) 
+        return Psi_from_plasma
+
+
+    def calculate_flux_value(self,eq):
+        """ 
+        total flux for all floop probes
+        """
+        return self.psi_all_coils(eq) + self.psi_from_plasma(eq)
+
+
+    """
+    Things for pickup coils
+    """
+
+
+    def pickup_position(self):
+        """
+        Return array of positions of pickup coils    
+        coordinates are [r,theta,z]
+        """
+        return[el['position'] for el in self.pickups]
+
+    def pickup_orientation(self):
+        """ 
+        Return array of orientation vectors for the pickup coil probes
+        """
+        return [el['orientation_vector'] for el in self.pickups]
     
 
+    # Version1 - plasma compuation uses scipy.interpolate which is slow.
+    # def pickup_value(self,eq):
+    #     """ 
+    #     Computes value of B.n at each pickup probe postition.
+    #     Uses Br,Btor,Bz methods defined already for equilibrium object. 
+    #     # i'm asumming that these already do the appropriate sums over the coils/grid/plasma etc.
+    #     """
+    #     BdotN = []
+    #     for i, el in enumerate(self.pickups):
+    #         # only need r, z positions as B = B(r,z)
+    #         R,Z = self.pickup_position[i][0], self.pickup_position[i][2]
+    #         orientation_vec = self.pickup_orientation[i]
+    #         Bvec = [eq.Br(R,Z),eq.Btor(R,Z),eq.Bz(R,Z)]
+
+    #         BdotN.append(np.dot(Bvec,orientation_vec))
+        
+    #     return BdotN
+    
+#  BUILDING FROM SCRATCH
+    def Greens_B_Plasma(self,eq):
+        """
+        3d array of greens functions evaluated for all coils at each point in g
+        """
+        pass 
+
+    def plasma_current_dist(self,eq):
+        """ 
+        Compute the current values in the plasma over the grid
+        """
+        return eq.tokamak._profiles.jtor 
+    def calculate_pickup_value(self,eq):
+        """ 
+        Method to compute and return B.n, for a given pickup coil
+        """
+        pass

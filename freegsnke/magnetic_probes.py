@@ -31,7 +31,7 @@ class probe():
     - 
         
     """
-    def __init__(self, eqbm):
+    def __init__(self, eq):
         """ 
         Initialise the following
         - read the probe dictionaries from file
@@ -53,11 +53,10 @@ class probe():
 
         #tokamak is a list of all the coils (active pasive etc.)
         # take coil info from machine_config.py where coil_dict is defined
-        self.coil_names = [name  for name in eqbm.tokamak.getCurrents()]
-        self.coil_positions = []
+        self.coil_names = [name  for name in eq.tokamak.getCurrents()]
         self.coil_dict = machine_config.coils_dict
 
-        self.coils_order = [labeli for i, labeli in enumerate(self.coils_dict.keys())]
+        # self.coils_order = [labeli for i, labeli in enumerate(self.coil_dict.keys())]
 
         #FLUX LOOPS
         self.floop_pos = np.array([probe['position'] for probe in self.floops])
@@ -85,12 +84,12 @@ class probe():
         - then sums over filaments to return greens function for probes from a given coil
         """
         #### need to include multiplicities and polarities. here?
-        pol = self.coil_dict[key]['polarity'][np.newaxis,:]
-        mul = self.coil_dict[key]['multiplier'][:,np.newaxis]
-        greens_filaments = Greens(self.coildict[coil_key]['coords'][0],
-                            self.coildict[coil_key]['coords'][1],
-                            self.floop_pos[0][:,np.newaxis],
-                            self.floop_pos[1][:,np.newaxis])
+        pol = self.coil_dict[coil_key]['polarity'][np.newaxis,:]
+        mul = self.coil_dict[coil_key]['multiplier'][np.newaxis,:]
+        greens_filaments = Greens(self.coil_dict[coil_key]['coords'][0],
+                            self.coil_dict[coil_key]['coords'][1],
+                            self.floop_pos_R[:,np.newaxis],
+                            self.floop_pos_Z[:,np.newaxis])
         greens_filaments *= pol 
         greens_filaments *= mul 
         greens_psi_coil = np.sum(greens_filaments,axis=1)
@@ -104,7 +103,7 @@ class probe():
         """
         array = []
         for key in self.coil_dict.keys():
-            array.append(self.greens_psi_coil(key))
+            array.append(self.greens_psi_single_coil(key))
         return array 
     
     def get_coil_currents(self,eq):
@@ -112,17 +111,21 @@ class probe():
         create list of coil currents from the equilibrium
         """
         array_of_coil_currents = np.zeros(len(self.coil_names))
-        for i, label in enumerate(self.coil_mames): 
+        for i, label in enumerate(self.coil_names): 
             array_of_coil_currents[i] = eq.tokamak[label].current
-        return array_of_coil_currrents 
+    
+        return array_of_coil_currents 
 
 
-    def psi_all_coils(self,array_of_coil_currents):
+    def psi_all_coils(self,eq):
         """
         compute flux function summed over all coils. 
         returns array of flux values at the positions of the floop probes
         """
-        psi_from_all_coils = np.sum(self.greens_psi_all_coils * array_of_coil_currents[:,np.newaxis], axis=0) 
+        array_of_coil_currents = self.get_coil_currents(eq)
+        green_psi_coils = self.greens_psi_all_coils()
+
+        psi_from_all_coils = np.sum(green_psi_coils * array_of_coil_currents[:,np.newaxis], axis=1) 
         return psi_from_all_coils
         
 

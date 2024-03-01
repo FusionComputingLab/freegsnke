@@ -125,7 +125,7 @@ class probe():
         array_of_coil_currents = self.get_coil_currents(eq)
         green_psi_coils = self.greens_psi_all_coils()
 
-        psi_from_all_coils = np.sum(green_psi_coils * array_of_coil_currents[:,np.newaxis], axis=1) 
+        psi_from_all_coils = np.sum(green_psi_coils * array_of_coil_currents[:,np.newaxis], axis=0) 
         return psi_from_all_coils
         
 

@@ -261,6 +261,9 @@ class nl_solver:
         # with respect to the independent profile parameters (alpha_m, alpha_n, paxis OR betap)
         self.dIydpars = dIydpars
 
+        self.get_number_of_profile_pars(profiles)
+        self.get_number_of_independent_pars()
+
         # initialize and set up the linearization
         # input value for dIydI is used when available
         # no noise is added to normal modes
@@ -396,6 +399,8 @@ class nl_solver:
         self.linearised_sol.set_linearization_point(
             dIydI=self.dIydI, dIydpars=self.dIydpars, hatIy0=self.broad_hatIy
         )
+
+        self.get_number_of_independent_pars()
 
     def set_linear_solution(self, active_voltage_vec, d_profile_pars_dt=None):
         """Uses the solver of the linearised problem to set up an initial guess
@@ -688,7 +693,8 @@ class nl_solver:
         else:
             self.dIydI = dIydI
 
-        # build/update dIydpars
+        # build/update dIydpars 
+        # Note this assumes 3 free profile parameters at the moment!
         if dIydpars is None:
             if self.dIydpars is None:
                 print("I'm building the linearization wrt the profile parameters.")
@@ -1007,6 +1013,8 @@ class nl_solver:
             dIydI=self.dIydI, dIydpars=self.dIydpars, hatIy0=self.broad_hatIy
         )
 
+        self.reset_records_for_linearization_update()
+
         # NOT USED AT THE MOMENT
         if self.update_linearization:
             self.current_record = np.zeros(
@@ -1156,7 +1164,7 @@ class nl_solver:
         for i, labeli in enumerate(coils_order):
             eq.tokamak[labeli].current = self.vessel_currents_vec[i]
 
-    def assign_currents_solve_GS(self, currents_vec, rtol_NK):
+    def assign_currents_solve_GS(self, currents_vec, rtol_NK, record_for_updates=False):
         """Assigns current values as in input currents_vec to private self.eq2 and self.profiles2.
         Static GS problem is accordingly solved, which finds the associated plasma flux and current distribution.
 
@@ -1171,9 +1179,62 @@ class nl_solver:
         self.NK.forward_solve(
             self.eq2, self.profiles2, target_relative_tolerance=rtol_NK
         )
-        # self.trial_Iy1 = self.plasma_grids.Iy_from_jtor(self.profiles2.jtor)
-        # self.Iy_dot = (self.trial_Iy1 - self.Iy)/self.dt_step
-        # self.Id_dot = ((currents_vec - self.currents_vec)/self.dt_step)[:-1]
+        if record_for_updates:
+            self.record_for_update(currents_vec, self.profiles2)
+            
+    def record_for_update(self, currents_vec, profiles):
+        """Appends new GS solution to record of independent variables 
+        and record of reduced Iy distributions.
+
+        Parameters
+        ----------
+        currents_vec : np.array
+            vector of all extensive currents (normal modes + plasma current)
+        profiles : freeGS profile obj
+            profile used to build the equilibrium to be recorded
+        """
+        self.record_currents_pars = np.vstack((self.record_currents_pars, 
+                                               self.build_current_pars_vec(currents_vec, profiles)))
+        self.record_Iys = np.vstack((self.record_Iys,
+                                     self.plasma_grids.Iy_from_jtor(profiles.jtor)))
+
+    def get_number_of_independent_pars(self, ):
+        """Queries the profile function and the metal modes
+        to establish the number of independent variables to 
+        the GS equilibrium.
+        """
+        self.number_of_independent_pars = self.n_metal_modes + 1 + self.n_profile_pars
+
+    def get_number_of_profile_pars(self, profiles):
+        """Queries the profile function to establish the number of independent parameters.
+        """
+        self.n_profile_pars = np.size(profiles.get_pars())
+
+    def reset_records_for_linearization_update(self, ):
+        """Resets the recod vectors used for building the update to the linearization matrices.
+        """
+        self.record_currents_pars = np.array([], dtype=np.float32).reshape(0, self.number_of_independent_pars)
+        self.record_Iys = np.array([], dtype=np.float32).reshape(0, self.plasma_domain_size)
+
+    def build_current_pars_vec(self, currents_vec, profiles):
+        """Builds vector with full list of independent variables,
+        used in the linearization update.
+
+        Parameters
+        ----------
+        currents_vec : np.array
+            Input current values to be assigned. Format as in self.assign_currents.
+        profiles : FreeGS profile Object
+            profile from which to fetch the profile parameters
+
+        Returns
+        -------
+        np.array
+            Input current values and profile parameter values in a single vector.
+        """
+        currents_pars_vec = np.concatenate((currents_vec, profiles.get_pars()))
+        return currents_pars_vec
+
 
     def make_broad_hatIy_conv(self, hatIy1, blend=0):
         """Averages the normalised plasma current distributions at time t and
@@ -1894,6 +1955,7 @@ class nl_solver:
                     self.NK.forward_solve(self.eq2, self.profiles2, self.rtol_NK)
                     self.trial_plasma_psi *= 1 - blend_GS
                     self.trial_plasma_psi += blend_GS * self.eq2.plasma_psi
+                    self.record_for_update(self.trial_currents, self.profiles2)
 
                 # prepare for NK algorithms: 1d vectors needed for independent variable
                 self.trial_plasma_psi = self.trial_plasma_psi.reshape(-1)

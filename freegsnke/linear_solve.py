@@ -189,52 +189,6 @@ class linear_solver:
         Itpdt = self.solver.full_stepper(It, self.forcing)
         return Itpdt
 
-    def prepare_min_update_linearization(
-        self, current_record, Iy_record, threshold_svd
-    ):
-        """Computes quantities to update the linearisation matrices, using a record of recently computed Grad-Shafranov solutions.
-        To be updated.
-
-        Parameters
-        ----------
-        current_record : np.array
-            <<current>> parameter values over a time-horizon
-        Iy_record : np.array
-            plasma cell currents (over the reduced domain) over a time-horizon
-        threshold_svd : float
-            discards singular values that are too small, to obtain a smoother pseudo-inverse
-        other parameters are passed in as object attributes
-        """
-        self.Iy_dv = ((Iy_record - Iy_record[-1:])[:-1]).T
-
-        self.current_dv = (current_record - current_record[-1:])[:-1]
-        self.abs_current_dv = np.mean(abs(self.current_dv), axis=0)
-
-        U, S, B = np.linalg.svd(self.current_dv.T, full_matrices=False)
-
-        mask = S > threshold_svd
-        S = S[mask]
-        U = U[:, mask]
-        B = B[mask, :]
-
-        # delta = Iy_dv@(B.T)@np.diag(1/S)@(U.T)
-        self.pseudo_inverse = (B.T) @ np.diag(1 / S) @ (U.T)
-
-    def min_update_linearization(
-        self,
-    ):
-        """Returns a minimum update to the Jacobian dIydI based on a set of recently computed Grad-Shafranov solutions.
-
-        Parameters
-        ----------
-        parameters are passed in as object attributes
-        """
-        self.predicted_Iy = np.matmul(self.dIydI, self.current_dv.T)
-        Iy_dv_d = self.Iy_dv - self.predicted_Iy
-
-        delta = Iy_dv_d @ self.pseudo_inverse
-        return delta
-
     def calculate_linear_growth_rate(
         self,
     ):
@@ -247,3 +201,86 @@ class linear_solver:
         self.all_timescales = np.sort(np.linalg.eig(self.Mmatrix)[0])
         mask = self.all_timescales < 0
         self.growth_rates = self.all_timescales[mask]
+
+    def build_dIydall(self, ):
+        """Builds full Jacobian including both extensive currents and profile pars
+        """
+        self.dIydall = np.concatenate((self.dIydI, self.dIydpars), axis=-1)
+
+    def assign_from_dIydall(self, ):
+        """Uses full Jacobian to assign current and profile components
+        """
+        self.dIydI = self.dIydall[:, :self.n_independent_vars + 1]
+        self.dIydpars = self.dIydall[:, self.n_independent_vars + 1:]
+
+    def build_n2_diffs(self, vectors):
+        """Builds non trivial pairwise differences.
+
+        Parameters
+        ----------
+        vectors : list of arrays
+            These should be the recorded currents and Iys
+
+        Returns
+        -------
+        list of arrays
+            Each array has non-trivial pairwise differences of entries in the input arrays
+        """
+        diff_1d = []
+        size = np.shape(vectors[0])[0]
+        idxs = np.tril_indices(size, k=-1)
+        idxs = idxs[0]*size + idxs[1]
+        for vector in vectors:
+            diff_vec_2d = vector[np.newaxis, :, :] - vector[:, np.newaxis, :] 
+            diff_1d.append(diff_vec_2d.reshape(size*size,-1)[idxs])
+        return diff_1d
+    
+    
+
+
+
+    # def prepare_min_update_linearization(
+    #     self, current_record, Iy_record, threshold_svd
+    # ):
+    #     """Computes quantities to update the linearisation matrices, using a record of recently computed Grad-Shafranov solutions.
+    #     To be updated.
+
+    #     Parameters
+    #     ----------
+    #     current_record : np.array
+    #         <<current>> parameter values over a time-horizon
+    #     Iy_record : np.array
+    #         plasma cell currents (over the reduced domain) over a time-horizon
+    #     threshold_svd : float
+    #         discards singular values that are too small, to obtain a smoother pseudo-inverse
+    #     other parameters are passed in as object attributes
+    #     """
+    #     self.Iy_dv = ((Iy_record - Iy_record[-1:])[:-1]).T
+
+    #     self.current_dv = (current_record - current_record[-1:])[:-1]
+    #     self.abs_current_dv = np.mean(abs(self.current_dv), axis=0)
+
+    #     U, S, B = np.linalg.svd(self.current_dv.T, full_matrices=False)
+
+    #     mask = S > threshold_svd
+    #     S = S[mask]
+    #     U = U[:, mask]
+    #     B = B[mask, :]
+
+    #     # delta = Iy_dv@(B.T)@np.diag(1/S)@(U.T)
+    #     self.pseudo_inverse = (B.T) @ np.diag(1 / S) @ (U.T)
+
+    # def min_update_linearization(
+    #     self,
+    # ):
+    #     """Returns a minimum update to the Jacobian dIydI based on a set of recently computed Grad-Shafranov solutions.
+
+    #     Parameters
+    #     ----------
+    #     parameters are passed in as object attributes
+    #     """
+    #     self.predicted_Iy = np.matmul(self.dIydI, self.current_dv.T)
+    #     Iy_dv_d = self.Iy_dv - self.predicted_Iy
+
+    #     delta = Iy_dv_d @ self.pseudo_inverse
+    #     return delta

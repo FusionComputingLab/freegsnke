@@ -51,6 +51,7 @@ class Grids:
         self.R = eq.R
         self.Z = eq.Z
         self.nx, self.ny = np.shape(eq.R)
+        self.nxny = self.nx*self.ny
 
         # area factor for Iy
         dR = eq.R[1, 0] - eq.R[0, 0]
@@ -69,6 +70,7 @@ class Grids:
         #     plasma_domain_mask *= (self.Z<2.26-1.1*self.R)*(self.Z>-2.26+1.1*self.R)
         #     plasma_domain_mask = plasma_domain_mask.astype(bool)
         self.plasma_domain_mask = plasma_domain_mask
+        self.plasma_domain_mask_1d = self.plasma_domain_mask.reshape(-1)
 
         # Extracts R and Z coordinates of the grid points in the reduced plasma domain
         self.plasma_pts = np.concatenate(
@@ -191,6 +193,55 @@ class Grids:
         layer_mask *= 1 - self.plasma_domain_mask
         layer_mask = (layer_mask > 0).astype(bool)
         self.layer_mask = layer_mask
+
+    def build_linear_regularization(self, ):
+        """Builds matrix to be used for linear regularization. See Press 1992 18.5.
+
+        Returns
+        -------
+        np.array
+            Regularization matrix accounting for both horizontal and vertical first derivatives.
+            Applicable to the reduced Iy vector rather than the full Jtor map.
+        """
+
+        # horizontal gradient
+        R1h = -np.triu(np.tril(np.ones((self.nxny, self.nxny)), k=0), k=0)
+        R1h += np.triu(np.tril(np.ones((self.nxny, self.nxny)), k=1), k=1)
+        R1h = R1h.T@R1h
+
+        # vertical gradient
+        R1v = -np.triu(np.tril(np.ones((self.nxny, self.nxny)), k=0), k=0)
+        R1v += np.triu(np.tril(np.ones((self.nxny, self.nxny)), k=self.nx), k=self.nx)
+        R1h += R1v.T@R1v
+
+        R1h = R1h[self.plasma_domain_mask_1d, :][:, self.plasma_domain_mask_1d]
+        return R1h
+
+    def build_quadratic_regularization(self, ):
+        """Builds matrix to be used for linear regularization. See Press 1992 18.5.
+
+        Returns
+        -------
+        np.array
+            Regularization matrix accounting for both horizontal and vertical first derivatives.
+            Applicable to the reduced Iy vector rather than the full Jtor map.
+        """
+
+        # horizontal gradient
+        R1h = -np.triu(np.tril(np.ones((self.nxny, self.nxny)), k=0), k=0)
+        R1h += np.triu(np.tril(np.ones((self.nxny, self.nxny)), k=1), k=1)
+        R1h = R1h.T@R1h
+
+        # vertical gradient
+        R1v = -np.triu(np.tril(np.ones((self.nxny, self.nxny)), k=0), k=0)
+        R1v += np.triu(np.tril(np.ones((self.nxny, self.nxny)), k=self.nx), k=self.nx)
+        R1h += R1v.T@R1v
+
+        R1h = R1h[self.plasma_domain_mask_1d, :][:, self.plasma_domain_mask_1d]
+        return R1h
+
+
+
 
     # def Myy(
     #     self,

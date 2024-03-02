@@ -223,22 +223,24 @@ class Grids:
         Returns
         -------
         np.array
-            Regularization matrix accounting for both horizontal and vertical first derivatives.
+            Regularization matrix accounting for both horizontal and vertical second derivatives.
             Applicable to the reduced Iy vector rather than the full Jtor map.
         """
 
         # horizontal gradient
-        R1h = -np.triu(np.tril(np.ones((self.nxny, self.nxny)), k=0), k=0)
-        R1h += np.triu(np.tril(np.ones((self.nxny, self.nxny)), k=1), k=1)
-        R1h = R1h.T@R1h
+        R2h = - np.triu(np.tril(np.ones((self.nxny, self.nxny)), k=0), k=0)
+        R2h -=  np.triu(np.tril(np.ones((self.nxny, self.nxny)), k=2), k=2)
+        R2h += 2*np.triu(np.tril(np.ones((self.nxny, self.nxny)), k=1), k=1)
+        R2h = R2h.T@R2h
 
         # vertical gradient
-        R1v = -np.triu(np.tril(np.ones((self.nxny, self.nxny)), k=0), k=0)
-        R1v += np.triu(np.tril(np.ones((self.nxny, self.nxny)), k=self.nx), k=self.nx)
-        R1h += R1v.T@R1v
+        R2v = - np.triu(np.tril(np.ones((self.nxny, self.nxny)), k=0), k=0)
+        R2v -=  np.triu(np.tril(np.ones((self.nxny, self.nxny)), k=2*self.nx), k=2*self.nx)
+        R2v += 2*np.triu(np.tril(np.ones((self.nxny, self.nxny)), k=self.nx), k=self.nx)
+        R2h += R2v.T@R2v
 
-        R1h = R1h[self.plasma_domain_mask_1d, :][:, self.plasma_domain_mask_1d]
-        return R1h
+        R2h = R2h[self.plasma_domain_mask_1d, :][:, self.plasma_domain_mask_1d]
+        return R2h
 
 
 

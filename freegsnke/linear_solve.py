@@ -1,4 +1,5 @@
 import numpy as np
+from scipy.linalg import solve_sylvester
 
 from . import machine_config
 from .implicit_euler import implicit_euler_solver
@@ -235,7 +236,49 @@ class linear_solver:
             diff_1d.append(diff_vec_2d.reshape(size*size,-1)[idxs])
         return diff_1d
     
-    
+    def prepare_linearization_update(self, current_record, Iy_record):
+        """Computes quantities to update the linearisation matrices, 
+        using a record of recently computed Grad-Shafranov solutions.
+
+        Parameters
+        ----------
+        current_record : np.array
+            <<current>> and profile parameter values over a time-horizon
+        Iy_record : np.array
+            plasma cell currents (over the reduced domain) over a time-horizon
+        """
+
+        dv, dIy = self.build_n2_diffs([current_record, Iy_record])
+
+        dd = dIy - np.matmul(self.dIydall, dv)
+
+        # Composing the Sylverster equation
+        # where D is the sought Jacobian update
+        # dd@dv.T + D@(dv@dv.T) + \lambda R@D == 0
+        # standard form is
+        # AX + XB = Q
+
+        self.B = np.matmul(dv, dv.T)
+        self.Q = np.matmul(dd, dv.T)
+
+    def find_linearization_update(self, current_record, Iy_record, R):
+        """Computes the regularised update to the full jacobian.
+
+        Parameters
+        ----------
+        current_record : np.array
+            <<current>> and profile parameter values over a time-horizon
+        Iy_record : np.array
+            plasma cell currents (over the reduced domain) over a time-horizon
+        R : np.array
+            the regularization to be applied.
+        """
+        self.prepare_linearization_update(current_record, Iy_record)
+        self.jacobian_update = solve_sylvester(a=R, b=self.B, q=self.Q)
+
+        
+
+
 
 
 

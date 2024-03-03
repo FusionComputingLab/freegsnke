@@ -176,8 +176,8 @@ class Probe():
         zgrid = eq.Z
         greens = Greens(rgrid[:,:,np.newaxis],
                         zgrid[:,:,np.newaxis],
-                        self.floop_pos[0][np.newaxis,np.newaxis,:],
-                        self.floop_pos[1][np.newaxis, np.newaxis,:])
+                        self.floop_pos_R[np.newaxis,np.newaxis,:],
+                        self.floop_pos_Z[np.newaxis, np.newaxis,:])
 
         return greens
 
@@ -276,13 +276,13 @@ class Probe():
 
         greens_br = GreensBr(rgrid[:,:,np.newaxis],
                         zgrid[:,:,np.newaxis],
-                        self.pickup_pos[0][np.newaxis,np.newaxis,:],
-                        self.pickup_pos[1][np.newaxis, np.newaxis,:])
+                        self.pickup_pos_R[np.newaxis,np.newaxis,:],
+                        self.pickup_pos_Z[np.newaxis, np.newaxis,:])
 
         greens_bz = GreensBz(rgrid[:,:,np.newaxis],
                         zgrid[:,:,np.newaxis],
-                        self.pickup_pos[0][np.newaxis,np.newaxis,:],
-                        self.pickup_pos[1][np.newaxis, np.newaxis,:])
+                        self.pickup_pos_R[np.newaxis,np.newaxis,:],
+                        self.pickup_pos_Z[np.newaxis, np.newaxis,:])
 
         return greens_br, greens_bz
 

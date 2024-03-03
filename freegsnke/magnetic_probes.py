@@ -4,15 +4,16 @@
 """
 
 import os
-import numpy as np
 import pickle
+import numpy as np
+
 
 from freegs.gradshafranov import Greens, GreensBr, GreensBz
-from . import machine_config 
+from . import machine_config
 
 
 
-class probe():
+class Probe():
     """ 
     Class to implement magnetic probes:
     - flux loops: compute psi(R,Z) 
@@ -20,6 +21,8 @@ class probe():
 
     Inputs:
     - equilibrium object - contains grid, plasma profile, plasma and coil currents, coil positions.
+    N.B:- in init the eq object provides machine /domain/position information
+        - in methods the equilibrium provides currents and other aspects that evolve in solve().
 
     Attributes:
     - floops,pickups = dictionaries with name, position, orientation of the probes
@@ -30,12 +33,12 @@ class probe():
     - greens_brbz_plasma = greens functions for Br and Bz from plasma, evaluated at pickup coil positions
 
     Methods:
-    - get_coil_currents(eq) : returns current values in all the coils. NB different equilibrium to that used in init
-    - get_plasma_current(eq) : returns toroidal current values at each plasma grid point, taken from equilibrium input.
-    - greens_all_coils() : returns array with greens function for each coil and probe combination.
-    - psi_all_coils(eq): returns list of psi values at each flux loop position. contributions from all coils.
-    - psi_from_plasma(eq): returns list of psi values at each flux loop position. contributions from plasma itself.
-    - calc_flux_value(eq): returns total flux at each probe position (sum of previous two outputs)
+    - get_coil_currents(eq): returns current values in all the coils from equilibrium object.
+    - get_plasma_current(eq): returns toroidal current values at each plasma grid point, taken from equilibrium input.
+    - greens_all_coils(): returns array with greens function for each coil and probe combination.
+    - psi_all_coils(eq): returns list of psi values at each flux loop position, summed over all coils.
+    - psi_from_plasma(eq): returns list of psi values at each flux loop position from plasma itself.
+    - calc_flux_value(eq): returns total flux at each probe position (sum of previous two outputs).
 
     - Br(eq)/ Bz(eq) : computes radial/z component of magnetic field, sum of coil and plasma contributions
     - Btor(eq) : extracts toroidal magnetic field (outside of plasma), evaluated at 
@@ -55,7 +58,7 @@ class probe():
             raise ValueError("PROBE_PATH environment variable not set.")
 
         with open(probe_path, 'rb') as file:
-            probe_dict = pickle.load(file) 
+            probe_dict = pickle.load(file)
 
         # set coil lists and probe lists
         self.floops = probe_dict['flux_loops']
@@ -69,9 +72,8 @@ class probe():
         # self.coils_order = [labeli for i, labeli in enumerate(self.coil_dict.keys())]
 
         # greens function for plasma
-        self.greens_psi_plasma = self.green_psi_plasma()
-        self.greens_br_plasma = self.green_br_plasma()
-        self.greens_bz_plasma = self.green_bz_plasma()
+        self.greens_psi_plasma = self.green_psi_plasma(eq)
+        self.greens_br_plasma, self.greens_bz_plasma = self.green_BrBz_plasma(eq)
 
         #FLUX LOOPS
         # positions
@@ -81,8 +83,8 @@ class probe():
         self.floop_order = [probe['name']for probe in self.floops]
 
         # Initilaise Greens functions Gpsi
-        self.greens_psi_coils = self.greens_psi_all_coils(eq)
-        self.greens_psi_plasma = self.green_psi_plasma(eq) 
+        self.greens_psi_coils = self.greens_psi_all_coils()
+        self.greens_psi_plasma = self.green_psi_plasma(eq)
 
         # PICKUP COILS
         # Positions and orientations - 3d vectors of [R, theta, Z]
@@ -96,7 +98,7 @@ class probe():
         # Other probes - to add in future...
 
 
-    """ 
+    """
     Things for all probes
     - coil current array
     - plasma current array
@@ -107,10 +109,10 @@ class probe():
         create list of coil currents from the equilibrium
         """
         array_of_coil_currents = np.zeros(len(self.coil_names))
-        for i, label in enumerate(self.coil_names): 
+        for i, label in enumerate(self.coil_names):
             array_of_coil_currents[i] = eq.tokamak[label].current
-    
-        return array_of_coil_currents 
+
+        return array_of_coil_currents
 
     def get_plasma_current(self,eq):
         """
@@ -138,8 +140,8 @@ class probe():
                             self.coil_dict[coil_key]['coords'][1],
                             self.floop_pos_R[:,np.newaxis],
                             self.floop_pos_Z[:,np.newaxis])
-        greens_filaments *= pol 
-        greens_filaments *= mul 
+        greens_filaments *= pol
+        greens_filaments *= mul
         greens_psi_coil = np.sum(greens_filaments,axis=1)
 
         return greens_psi_coil
@@ -152,7 +154,7 @@ class probe():
         array = []
         for key in self.coil_dict.keys():
             array.append(self.greens_psi_single_coil(key))
-        return array 
+        return array
 
     def psi_all_coils(self,eq):
         """
@@ -162,22 +164,21 @@ class probe():
         array_of_coil_currents = self.get_coil_currents(eq)
         green_psi_coils = self.greens_psi_all_coils()
 
-        psi_from_all_coils = np.sum(green_psi_coils * array_of_coil_currents[:,np.newaxis], axis=0) 
+        psi_from_all_coils = np.sum(green_psi_coils * array_of_coil_currents[:,np.newaxis], axis=0)
         return psi_from_all_coils
- 
+
     def green_psi_plasma(self,eq):
         """ 
         Compute greens function at probes from the plasma currents .
         - plasma current source in grid from solve. grid points contained in eq object 
         """
         rgrid = eq.R
-        zgrid = eq.Z 
-
+        zgrid = eq.Z
         greens = Greens(rgrid[:,:,np.newaxis],
                         zgrid[:,:,np.newaxis],
                         self.floop_pos[0][np.newaxis,np.newaxis,:],
                         self.floop_pos[1][np.newaxis, np.newaxis,:])
-        
+
         return greens
 
     def psi_from_plasma(self,eq):
@@ -188,9 +189,9 @@ class probe():
         plasma_greens = self.green_psi_plasma(eq)
 
         plasma_current_distribution = eq._profiles.jtor #toroidal current distribution from plasma equilibrium
-    
-        Psi_from_plasma = np.sum(plasma_greens*plasma_current_distribution[:,:,np.newaxis], axis=(0,1)) 
-        return Psi_from_plasma
+
+        psi_from_plasma = np.sum(plasma_greens*plasma_current_distribution[:,:,np.newaxis], axis=(0,1))
+        return psi_from_plasma
 
 
     def calculate_flux_value(self,eq):
@@ -199,16 +200,16 @@ class probe():
         """
         return self.psi_all_coils(eq) + self.psi_from_plasma(eq)
 
-
     """
     Things for pickup coils
     """
 
-    # Version1 - plasma compuation uses scipy.interpolate which is slow.
+    # Version1 - Using ready built in methods for extracting B fields.
+    # plasma compuation uses scipy.interpolate which is slow.
     # def pickup_value(self,eq):
-    #     """ 
+    #     """
     #     Computes value of B.n at each pickup probe postition.
-    #     Uses Br,Btor,Bz methods defined already for equilibrium object. 
+    #     Uses Br,Btor,Bz methods defined already for equilibrium object.
     #     # i'm asumming that these already do the appropriate sums over the coils/grid/plasma etc.
     #     """
     #     BdotN = []
@@ -238,17 +239,17 @@ class probe():
                             self.coil_dict[coil_key]['coords'][1],
                             self.pickup_pos_R[:,np.newaxis],
                             self.pickup_pos_Z[:,np.newaxis])
-        greens_br_filaments *= pol 
-        greens_br_filaments *= mul 
+        greens_br_filaments *= pol
+        greens_br_filaments *= mul
         greens_br_coil = np.sum(greens_br_filaments,axis=1)
 
         greens_bz_filaments = GreensBz(self.coil_dict[coil_key]['coords'][0],
                             self.coil_dict[coil_key]['coords'][1],
                             self.pickup_pos_R[:,np.newaxis],
                             self.pickup_pos_Z[:,np.newaxis])
-        
-        greens_bz_filaments *= pol 
-        greens_bz_filaments *= mul 
+
+        greens_bz_filaments *= pol
+        greens_bz_filaments *= mul
         greens_bz_coil = np.sum(greens_bz_filaments,axis=1)
 
         return greens_br_coil, greens_bz_coil
@@ -271,7 +272,7 @@ class probe():
         - plasma current source in grid from solve. grid points contained in eq object 
         """
         rgrid = eq.R
-        zgrid = eq.Z 
+        zgrid = eq.Z
 
         greens_br = GreensBr(rgrid[:,:,np.newaxis],
                         zgrid[:,:,np.newaxis],
@@ -292,9 +293,9 @@ class probe():
         """
         coil_currents = self.get_coil_currents(eq)
         plasma_current = self.get_plasma_current(eq)
-        br_coil = np.sum(self.greens_BrBz_all_coils[0]*coil_currents,axis = 0)
+        br_coil = np.sum(self.greens_br*coil_currents,axis = 0)
         br_plasma = np.sum(self.greens_br_plasma * plasma_current, axis = (0,1))
-        return br_coil + br_plasma 
+        return br_coil + br_plasma
 
     def Bz(self,eq):
         """
@@ -303,9 +304,9 @@ class probe():
         """
         coil_currents = self.get_coil_currents(eq)
         plasma_current = self.get_plasma_current(eq)
-        bz_coil = np.sum(self.greens_BrBz_all_coils[1]*coil_currents,axis = 0)
+        bz_coil = np.sum(self.greens_bz*coil_currents,axis = 0)
         bz_plasma = np.sum(self.greens_bz_plasma * plasma_current, axis = (0,1))
-        return bz_coil + bz_plasma 
+        return bz_coil + bz_plasma
 
     def Btor(self,eq):
         """
@@ -313,17 +314,16 @@ class probe():
         returns array of btor for each probe position
         """
         R_pos = self.pickup_pos_R
-        btor  = eq._profiles._fvac/R_pos 
-        return btor 
+        btor  = eq._profiles._fvac/R_pos
+        return btor
 
     def calculate_pickup_value(self,eq):
         """ 
         Method to compute and return B.n, for a given pickup coil
         """
-        orientation = self.pickup_or 
+        orientation = self.pickup_or
         Btotal = np.array([self.Br(eq),self.Btor(eq),self.Bz(eq)])
 
         BdotN = np.sum(orientation*Btotal[:,np.newaxis], axis = 0)
 
         return BdotN
-        

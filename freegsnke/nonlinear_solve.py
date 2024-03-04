@@ -335,6 +335,11 @@ class nl_solver:
                     "No unstable modes found. It is impossible to automatically set timestep!, please do so manually."
                 )
 
+        # prepare regularization matrices
+        self.reg0 = np.eye(self.plasma_domain_size)
+        self.reg1 = self.plasma_grids.build_linear_regularization()
+        self.reg2 = self.plasma_grids.build_quadratic_regularization()
+
         self.text_nk_cycle = "This is NK cycle no {nkcycle}."
         self.text_psi_0 = "NK on psi has been skipped {skippedno} times. The residual on psi is {psi_res:.8f}."
         self.text_psi_1 = "The coefficients applied to psi are"

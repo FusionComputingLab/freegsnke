@@ -233,7 +233,7 @@ class linear_solver:
         idxs = idxs[0]*size + idxs[1]
         for vector in vectors:
             diff_vec_2d = vector[np.newaxis, :, :] - vector[:, np.newaxis, :] 
-            diff_1d.append(diff_vec_2d.reshape(size*size,-1)[idxs])
+            diff_1d.append((diff_vec_2d.reshape(size*size,-1)[idxs]).T)
         return diff_1d
     
     def prepare_linearization_update(self, current_record, Iy_record):
@@ -248,9 +248,9 @@ class linear_solver:
             plasma cell currents (over the reduced domain) over a time-horizon
         """
 
-        dv, dIy = self.build_n2_diffs([current_record, Iy_record])
-
-        dd = dIy - np.matmul(self.dIydall, dv)
+        self.dv, self.dIy = self.build_n2_diffs([current_record, Iy_record])
+        self.build_dIydall()
+        self.dd = self.dIy - np.matmul(self.dIydall, self.dv)
 
         # Composing the Sylverster equation
         # where D is the sought Jacobian update
@@ -258,8 +258,8 @@ class linear_solver:
         # standard form is
         # AX + XB = Q
 
-        self.B = np.matmul(dv, dv.T)
-        self.Q = np.matmul(dd, dv.T)
+        self.B = np.matmul(self.dv, self.dv.T)
+        self.Q = np.matmul(self.dd, self.dv.T)
 
     def find_linearization_update(self, current_record, Iy_record, R):
         """Computes the regularised update to the full jacobian.
@@ -273,6 +273,7 @@ class linear_solver:
         R : np.array
             the regularization to be applied.
         """
+
         self.prepare_linearization_update(current_record, Iy_record)
         self.jacobian_update = solve_sylvester(a=R, b=self.B, q=self.Q)
 

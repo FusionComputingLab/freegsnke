@@ -76,7 +76,6 @@ class Probe():
         # positions, number of probes, ordering 
         self.floop_pos = np.array([probe['position'] for probe in self.floops])
         self.number_floops = np.shape(self.floop_pos)[0]        #number of probes
-        # r pos  = floop_pos[:,0]
         self.floop_order = [probe['name']for probe in self.floops]
 
         # # Initilaise Greens functions Gpsi
@@ -85,17 +84,14 @@ class Probe():
 
         # # PICKUP COILS
         # # Positions and orientations - 3d vectors of [R, theta, Z]
-        # self.pickup_pos = np.array([el['position'] for el in self.pickups])
-        # self.pickup_pos_R = np.array([probe['position'][0] for probe in self.pickups])
-        # self.pickup_pos_Z = np.array([probe['position'][2] for probe in self.pickups])
-        # self.pickup_or = np.array([el['orientation_vector'] for el in self.pickups])
+        self.pickup_pos = np.array([el['position'] for el in self.pickups])
+        self.pickup_or = np.array([el['orientation_vector'] for el in self.pickups])
+        self.number_pickups = np.shape(self.pickup_pos)[0]
+        self.pickup_order = [probe['name']for probe in self.pickups]
 
         # # Initialise greens functions for pickups
-        # self.greens_br_pickup, self.greens_bz_pickup = self.greens_BrBz_all_coils(self.pickup_pos_R,self.pickup_pos_Z)
-
-        # # greens function from plasma
-        # self.greens_psi_plasma = self.green_psi_plasma(eq,self.floop_pos_R,self.floop_pos_Z)
-        # self.greens_br_plasma, self.greens_bz_plasma = self.green_BrBz_plasma(eq,self.pickup_pos_R,self.pickup_pos_Z)
+        self.greens_br_coils_pickup, self.greens_bz_coils_pickup = self.greens_BrBz_all_coils('pickups')
+        self.greens_br_plasma_pickup, self.greens_bz_plasma_pickup = self.greens_BrBz_plasma(eq,'pickups')
 
         # Other probes - to add in future...
 
@@ -219,35 +215,17 @@ class Probe():
     Things for pickup coils
     """
 
-    # Version1 - Using ready built in methods for extracting B fields.
-    # plasma compuation uses scipy.interpolate which is slow.
-    # def pickup_value(self,eq):
-    #     """
-    #     Computes value of B.n at each pickup probe postition.
-    #     Uses Br,Btor,Bz methods defined already for equilibrium object.
-    #     # i'm asumming that these already do the appropriate sums over the coils/grid/plasma etc.
-    #     """
-    #     BdotN = []
-    #     for i, el in enumerate(self.pickups):
-    #         # only need r, z positions as B = B(r,z)
-    #         R,Z = self.pickup_position[i][0], self.pickup_position[i][2]
-    #         orientation_vec = self.pickup_orientation[i]
-    #         Bvec = [eq.Br(R,Z),eq.Btor(R,Z),eq.Bz(R,Z)]
-
-    #         BdotN.append(np.dot(Bvec,orientation_vec))
-
-    #     return BdotN
-
-    #  BUILDING FROM SCRATCH
-
-    def greens_BrBz_single_coil(self,coil_key,pos_R, pos_Z):
+    def greens_BrBz_single_coil(self,coil_key,probe = 'pickups'):
         """
         Create array of greens functions for given coil evaluate at all pickup positions
         - defines array of greens for each filament at each probe.
         - multiplies by polarity and multiplier
         - then sums over filaments to return greens function for probes from a given coil
         """
-        #### need to include multiplicities and polarities. here?
+        if probe == 'pickups':
+            pos_R = self.pickup_pos[:,0]
+            pos_Z = self.pickup_pos[:,1]
+
         pol = self.coil_dict[coil_key]['polarity'][np.newaxis,:]
         mul = self.coil_dict[coil_key]['multiplier'][np.newaxis,:]
         greens_br_filaments = GreensBr(self.coil_dict[coil_key]['coords'][0][np.newaxis,:],
@@ -258,8 +236,8 @@ class Probe():
         greens_br_filaments *= mul
         greens_br_coil = np.sum(greens_br_filaments,axis=1)
 
-        greens_bz_filaments = GreensBz(self.coil_dict[coil_key]['coords'][0],
-                            self.coil_dict[coil_key]['coords'][1],
+        greens_bz_filaments = GreensBz(self.coil_dict[coil_key]['coords'][0][np.newaxis,:],
+                            self.coil_dict[coil_key]['coords'][1][np.newaxis,:],
                             pos_R[:,np.newaxis],
                             pos_Z[:,np.newaxis])
 
@@ -269,23 +247,28 @@ class Probe():
 
         return greens_br_coil, greens_bz_coil
 
-    def greens_BrBz_all_coils(self,pos_R,pos_Z):
+    def greens_BrBz_all_coils(self, probe = 'pickups'):
         """
         Create 2d array of greens functions for all coils and at all probe positions
         - array[i][j] is greens function for coil i evaluated at probe position j
         """
-        array_r, array_z = [], []
+        array_r = np.array([]).reshape(0,self.number_pickups)
+        array_z = np.array([]).reshape(0,self.number_pickups)
         for key in self.coil_dict.keys():
-            array_r.append(self.greens_BrBz_single_coil(key,pos_R,pos_Z)[0])
-            array_z.append(self.greens_BrBz_single_coil(key,pos_R,pos_Z)[1])
+            array_r = np.vstack((array_r,self.greens_BrBz_single_coil(key,probe)[0]))
+            array_z = np.vstack((array_z,self.greens_BrBz_single_coil(key,probe)[1]))
 
         return array_r, array_z
 
-    def green_BrBz_plasma(self,eq,pos_R,pos_Z):
+    def greens_BrBz_plasma(self,eq,probe = 'pickups'):
         """ 
         Compute greens function at probes from the plasma currents .
         - plasma current source in grid from solve. grid points contained in eq object 
         """
+        if probe == 'pickups':
+            pos_R = self.pickup_pos[:,0]
+            pos_Z = self.pickup_pos[:,2]
+
         rgrid = eq.R
         zgrid = eq.Z
 
@@ -301,45 +284,48 @@ class Probe():
 
         return greens_br, greens_bz
 
-    def Br_pickup(self,eq):
+    def Br(self,eq, probe = 'pickups'):
         """
         Method to compute total radial magnetic field from coil and plasma
         returns array with Br at each pickup coil probe
         """
-        coil_currents = self.get_coil_currents(eq)
-        plasma_current = self.get_plasma_current(eq)
-        br_coil = np.sum(self.greens_br_pickup*coil_currents,axis = 0)
-        br_plasma = np.sum(self.greens_br_plasma * plasma_current, axis = (0,1))
+        coil_currents = self.get_coil_currents(eq)[:,np.newaxis]
+        plasma_current = self.get_plasma_current(eq)[:,:,np.newaxis]
+        if probe =='pickups':
+            br_coil = np.sum(self.greens_br_coils_pickup*coil_currents,axis = 0)
+            br_plasma = np.sum(self.greens_br_plasma_pickup * plasma_current, axis = (0,1))
         return br_coil + br_plasma
 
-    def Bz_pickup(self,eq):
+    def Bz(self,eq,probe = 'pickups'):
         """
         Method to compute total z component of magnetic field from coil and plasma
         returns array with Bz at each pickup coil probe
         """
-        coil_currents = self.get_coil_currents(eq)
-        plasma_current = self.get_plasma_current(eq)
-        bz_coil = np.sum(self.greens_bz_pickup*coil_currents,axis = 0)
-        bz_plasma = np.sum(self.greens_bz_plasma * plasma_current, axis = (0,1))
+        coil_currents = self.get_coil_currents(eq)[:,np.newaxis]
+        plasma_current = self.get_plasma_current(eq)[:,:,np.newaxis]
+        if probe =='pickups':
+            bz_coil = np.sum(self.greens_bz_coils_pickup * coil_currents,axis = 0)
+            bz_plasma = np.sum(self.greens_bz_plasma_pickup * plasma_current, axis = (0,1))
         return bz_coil + bz_plasma
 
-    def Btor(self,eq,pos_R):
+    def Btor(self,eq,probe = "pickups"):
         """
         Probes outside of plasma therfore Btor = fvac/R
         returns array of btor for each probe position
         """
+        if probe == 'pickups':
+            pos_R = self.pickup_pos[:,0]
+
         btor  = eq._profiles.fvac()/pos_R
         return btor
 
-    def calculate_pickup_value(self,eq):
+    def calculate_pickup_value(self,eq,probe = 'pickups'):
         """ 
         Method to compute and return B.n, for a given pickup coil
         """
         orientation = self.pickup_or
-        pos_R = self.pickup_pos_R
-        # pos_Z = self.pickup_pos_Z
-        Btotal = np.array([self.Br_pickup(eq),self.Btor(eq,pos_R),self.Bz_pickup(eq)])
+        Btotal = np.vstack((self.Br(eq),self.Btor(eq,probe),self.Bz(eq)))
 
-        BdotN = np.sum(orientation*Btotal[:,np.newaxis], axis = 0)
+        BdotN = np.sum(orientation*Btotal[np.newaxis,:], axis = 1)
 
         return BdotN

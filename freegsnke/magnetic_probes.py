@@ -323,9 +323,9 @@ class Probe():
         """ 
         Method to compute and return B.n, for a given pickup coil
         """
-        orientation = self.pickup_or
+        orientation = self.pickup_or.transpose()
         Btotal = np.vstack((self.Br(eq),self.Btor(eq,probe),self.Bz(eq)))
 
-        BdotN = np.sum(orientation*Btotal[np.newaxis,:], axis = 1)
+        BdotN = np.sum(orientation*Btotal, axis = 0)
 
         return BdotN

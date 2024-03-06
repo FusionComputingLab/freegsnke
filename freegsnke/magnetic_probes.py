@@ -73,29 +73,29 @@ class Probe():
 
 
         #FLUX LOOPS
-        # positions
+        # positions, number of probes, ordering 
         self.floop_pos = np.array([probe['position'] for probe in self.floops])
-        self.floop_pos_R = np.array([probe['position'][0] for  probe in self.floops])
-        self.floop_pos_Z  = np.array([probe['position'][1] for probe in self.floops])
+        self.number_floops = np.shape(self.floop_pos)[0]        #number of probes
+        # r pos  = floop_pos[:,0]
         self.floop_order = [probe['name']for probe in self.floops]
 
-        # Initilaise Greens functions Gpsi
-        self.greens_psi_coils = self.greens_psi_all_coils(self.floop_pos_R,self.floop_pos_Z)
-        self.greens_psi_plasma = self.green_psi_plasma(eq,self.floop_pos_R,self.floop_pos_Z)
+        # # Initilaise Greens functions Gpsi
+        self.greens_psi_coils_floops = self.greens_psi_all_coils(eq)
+        self.greens_psi_plasma_floops = self.green_psi_plasma(eq)
 
-        # PICKUP COILS
-        # Positions and orientations - 3d vectors of [R, theta, Z]
-        self.pickup_pos = np.array([el['position'] for el in self.pickups])
-        self.pickup_pos_R = np.array([probe['position'][0] for probe in self.pickups])
-        self.pickup_pos_Z = np.array([probe['position'][1] for probe in self.pickups])
-        self.pickup_or = np.array([el['orientation_vector'] for el in self.pickups])
+        # # PICKUP COILS
+        # # Positions and orientations - 3d vectors of [R, theta, Z]
+        # self.pickup_pos = np.array([el['position'] for el in self.pickups])
+        # self.pickup_pos_R = np.array([probe['position'][0] for probe in self.pickups])
+        # self.pickup_pos_Z = np.array([probe['position'][2] for probe in self.pickups])
+        # self.pickup_or = np.array([el['orientation_vector'] for el in self.pickups])
 
-        # Initialise greens functions for pickups
-        self.greens_br_pickup, self.greens_bz_pickup = self.greens_BrBz_all_coils(self.pickup_pos_R,self.pickup_pos_Z)
+        # # Initialise greens functions for pickups
+        # self.greens_br_pickup, self.greens_bz_pickup = self.greens_BrBz_all_coils(self.pickup_pos_R,self.pickup_pos_Z)
 
-        # greens function from plasma
-        self.greens_psi_plasma = self.green_psi_plasma(eq,self.floop_pos_R,self.floop_pos_Z)
-        self.greens_br_plasma, self.greens_bz_plasma = self.green_BrBz_plasma(eq,self.pickup_pos_R,self.pickup_pos_Z)
+        # # greens function from plasma
+        # self.greens_psi_plasma = self.green_psi_plasma(eq,self.floop_pos_R,self.floop_pos_Z)
+        # self.greens_br_plasma, self.greens_bz_plasma = self.green_BrBz_plasma(eq,self.pickup_pos_R,self.pickup_pos_Z)
 
         # Other probes - to add in future...
 
@@ -114,6 +114,7 @@ class Probe():
         for i, label in enumerate(self.coil_names):
             array_of_coil_currents[i] = eq.tokamak[label].current
 
+        # could use eq.tokamak.getcurrents() instead
         return array_of_coil_currents
 
     def get_plasma_current(self,eq):
@@ -128,7 +129,7 @@ class Probe():
     """
     Things for flux loops
     """
-    def greens_psi_single_coil(self,coil_key,pos_Z,pos_R):
+    def greens_psi_single_coil(self,coil_key, probe = 'floops'):
         """
         Create array of greens functions for given coil evaluate at all probe positions
         - pos_R and pos_Z are arrays of R,Z coordinates of the probes 
@@ -136,11 +137,13 @@ class Probe():
         - multiplies by polarity and multiplier
         - then sums over filaments to return greens function for probes from a given coil
         """
-        #### need to include multiplicities and polarities. here?
+        pos_R = self.floop_pos[:,0]
+        pos_Z = self.floop_pos[:,1]
+
         pol = self.coil_dict[coil_key]['polarity'][np.newaxis,:]
         mul = self.coil_dict[coil_key]['multiplier'][np.newaxis,:]
-        greens_filaments = Greens(self.coil_dict[coil_key]['coords'][0],
-                            self.coil_dict[coil_key]['coords'][1],
+        greens_filaments = 2* np.pi* Greens(self.coil_dict[coil_key]['coords'][0][np.newaxis,:],
+                            self.coil_dict[coil_key]['coords'][1][np.newaxis,:],
                             pos_R[:,np.newaxis],
                             pos_Z[:,np.newaxis])
         greens_filaments *= pol
@@ -149,49 +152,57 @@ class Probe():
 
         return greens_psi_coil
 
-    def greens_psi_all_coils(self,pos_R,pos_Z):
+    def greens_psi_all_coils(self, probe = 'floops'):
         """
         Create 2d array of greens functions for all coils and at all probe positions
         - array[i][j] is greens function for coil i evaluated at probe position j
         """
-        array = []
+            
+        array = np.array([]).reshape(0,self.number_floops)
         for key in self.coil_dict.keys():
-            array.append(self.greens_psi_single_coil(key,pos_R,pos_Z))
+            array = np.vstack((array, self.greens_psi_single_coil(key,probe)))
         return array
 
-    def psi_floop_all_coils(self,eq):
+    def psi_floop_all_coils(self,eq, probe = 'floops'):
         """
         compute flux function summed over all coils. 
         returns array of flux values at the positions of the floop probes
         """
         array_of_coil_currents = self.get_coil_currents(eq)
-        green_psi_coils = self.greens_psi_coils 
+        if probe == 'floops':
+            greens = self.greens_psi_coils_floops
 
-        psi_from_all_coils = np.sum(green_psi_coils * array_of_coil_currents[:,np.newaxis], axis=0)
+        psi_from_all_coils = np.sum(greens * array_of_coil_currents[:,np.newaxis], axis=0)
+        self.floop_psi = psi_from_all_coils
         return psi_from_all_coils
 
-    def green_psi_plasma(self,eq,pos_R,pos_Z):
+    def green_psi_plasma(self,eq,probe = 'floops'):
         """ 
         Compute greens function at probes from the plasma currents .
         - plasma current source in grid from solve. grid points contained in eq object 
         """
-        rgrid = eq.R
+        if probe == 'floops':
+            pos_R = self.floop_pos[:,0]
+            pos_Z = self.floop_pos[:,0]
+
+        rgrid = eq.R # FOR LATER: can speed up only calcualte in plasma, J = 0 outiside
         zgrid = eq.Z
-        greens = Greens(rgrid[:,:,np.newaxis],
+        greens = 2 * np.pi *Greens(rgrid[:,:,np.newaxis],
                         zgrid[:,:,np.newaxis],
                         pos_R[np.newaxis,np.newaxis,:],
                         pos_Z[np.newaxis, np.newaxis,:])
 
         return greens
 
-    def psi_from_plasma(self,eq,pos_R,pos_Z):
+    def psi_from_plasma(self,eq,probe = 'floops'):
         """
         Calculate flux function contribution from the plasma
         returns array of flux values from plasma at position of floop probes
         """
-        plasma_greens = self.green_psi_plasma(eq,pos_R,pos_Z)
-
         plasma_current_distribution = eq._profiles.jtor #toroidal current distribution from plasma equilibrium
+
+        if probe == 'floops':
+            plasma_greens = self.greens_psi_plasma_floops
 
         psi_from_plasma = np.sum(plasma_greens*plasma_current_distribution[:,:,np.newaxis], axis=(0,1))
         return psi_from_plasma
@@ -201,9 +212,8 @@ class Probe():
         """ 
         total flux for all floop probes
         """
-        r = self.floop_pos_R
-        z = self.floop_pos_Z
-        return self.psi_floop_all_coils(eq) + self.psi_from_plasma(eq,r,z)
+
+        return self.psi_floop_all_coils(eq) + self.psi_from_plasma(eq)
 
     """
     Things for pickup coils
@@ -240,8 +250,8 @@ class Probe():
         #### need to include multiplicities and polarities. here?
         pol = self.coil_dict[coil_key]['polarity'][np.newaxis,:]
         mul = self.coil_dict[coil_key]['multiplier'][np.newaxis,:]
-        greens_br_filaments = GreensBr(self.coil_dict[coil_key]['coords'][0],
-                            self.coil_dict[coil_key]['coords'][1],
+        greens_br_filaments = GreensBr(self.coil_dict[coil_key]['coords'][0][np.newaxis,:],
+                            self.coil_dict[coil_key]['coords'][1][np.newaxis,:],
                             pos_R[:,np.newaxis],
                             pos_Z[:,np.newaxis])
         greens_br_filaments *= pol

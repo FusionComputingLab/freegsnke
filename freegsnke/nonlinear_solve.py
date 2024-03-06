@@ -336,9 +336,10 @@ class nl_solver:
                 )
 
         # prepare regularization matrices
-        self.reg0 = np.eye(self.plasma_domain_size)
-        self.reg1 = self.plasma_grids.build_linear_regularization()
-        self.reg2 = self.plasma_grids.build_quadratic_regularization()
+        self.reg_matrix = np.eye(self.plasma_domain_size) + self.plasma_grids.build_linear_regularization() + self.plasma_grids.build_quadratic_regularization()
+        # self.reg0 = np.eye(self.plasma_domain_size)
+        # self.reg1 = self.plasma_grids.build_linear_regularization()
+        # self.reg2 = self.plasma_grids.build_quadratic_regularization()
 
         self.text_nk_cycle = "This is NK cycle no {nkcycle}."
         self.text_psi_0 = "NK on psi has been skipped {skippedno} times. The residual on psi is {psi_res:.8f}."
@@ -1250,6 +1251,34 @@ class nl_solver:
         """
         currents_pars_vec = np.concatenate((currents_vec, profiles.get_pars()))
         return currents_pars_vec
+    
+    def run_linearization_update(self, min_records, lambda_reg=1e-3):
+        """Updates the linearization
+
+        Parameters
+        ----------
+        min_records: int
+            minimum number of GS solution required to trigger an update
+        lambda_reg : float, optional
+            regularization coefficient, by default 1e-3
+        """
+        if np.shape(self.record_Iys)[0] > min_records:
+            print('Im updating the linearization!')
+            self.linearised_sol.find_linearization_update(self.record_currents_pars,
+                                                        self.record_Iys,
+                                                        lambda_reg*self.reg_matrix)
+            self.linearised_sol.apply_linearization_update()
+            self.dIydI = self.linearised_sol.dIydI.copy()
+            self.dIydpars = self.linearised_sol.dIydpars.copy()
+
+            self.make_broad_hatIy(self.hatIy)
+            self.linearised_sol.set_linearization_point(self.linearised_sol.dIydI,
+                                                        self.linearised_sol.dIydpars,
+                                                        self.broad_hatIy)
+            
+            self.reset_records_for_linearization_update()
+
+
 
     def make_broad_hatIy_conv(self, hatIy1, blend=0):
         """Averages the normalised plasma current distributions at time t and

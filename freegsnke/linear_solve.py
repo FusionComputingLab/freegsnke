@@ -110,9 +110,12 @@ class linear_solver:
             Normalised plasma current distribution on the reduced plasma domain (1d) at the equilibrium of the linearization.
             This vector sums to 1.
         """
-        self.dIydI = dIydI
-        self.dIydpars = dIydpars
-        self.hatIy0 = hatIy0
+        if dIydI is not None:
+            self.dIydI = dIydI
+        if dIydpars is not None:
+            self.dIydpars = dIydpars
+        if hatIy0 is not None:
+            self.hatIy0 = hatIy0
 
         self.build_Mmatrix()
 
@@ -203,12 +206,15 @@ class linear_solver:
         mask = self.all_timescales < 0
         self.growth_rates = self.all_timescales[mask]
 
-    def build_dIydall(self, ):
+    def build_dIydall(self, mask=None):
         """Builds full Jacobian including both extensive currents and profile pars
         """
         self.dIydall = np.concatenate((self.dIydI, self.dIydpars), axis=-1)
+        if mask is not None:
+            self.dIydall = self.dIydall[mask, :]
 
-    def assign_from_dIydall(self, ):
+
+    def assign_from_dIydall(self, mask=None):
         """Uses full Jacobian to assign current and profile components
         """
         self.dIydI = self.dIydall[:, :self.n_independent_vars + 1]
@@ -248,8 +254,10 @@ class linear_solver:
             plasma cell currents (over the reduced domain) over a time-horizon
         """
 
+        self.mask_Iy = np.sum(Iy_record>0, axis=0)>0
+        Iy_record = Iy_record[:, self.mask_Iy]
         self.dv, self.dIy = self.build_n2_diffs([current_record, Iy_record])
-        self.build_dIydall()
+        self.build_dIydall(mask=self.mask_Iy)
         self.dd = self.dIy - np.matmul(self.dIydall, self.dv)
 
         # Composing the Sylverster equation
@@ -277,6 +285,13 @@ class linear_solver:
         self.prepare_linearization_update(current_record, Iy_record)
         self.jacobian_update = solve_sylvester(a=R, b=self.B, q=self.Q)
 
+    def apply_linearization_update(self, ):
+        """Uses the precalculated self.jacobian_update to update both 
+        self.dIydI and self.dIydpars
+        """
+        
+        self.dIydall += self.jacobian_update
+        self.assign_from_dIydall()
         
 
 

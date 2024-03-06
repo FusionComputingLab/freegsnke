@@ -194,8 +194,6 @@ class ConstrainPaxisIp(freegs.jtor.ConstrainPaxisIp):
         return self.jtor
 
 
-
-
 class Fiesta_Topiol(freegs.jtor.Fiesta_Topiol):
     """FreeGS profile class with a few modifications, to:
     - retain memory of critical point calculation;

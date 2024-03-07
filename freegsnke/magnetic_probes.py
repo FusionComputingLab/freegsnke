@@ -27,10 +27,13 @@ class Probe():
     Attributes:
     - floops,pickups = dictionaries with name, position, orientation of the probes
     - floops_positions etc.  = extract individual arrays of positions, orientations etc.
-    - greens_psi = greens functions for psi, evaluated at flux loop positions
-    - greens_br/bz = greens functions for Br and Bz, evaluated at pickup coil positions
-    - greens_psi_plasma = greens functions for psi from plasma current, evaluated at flux loop positions
-    - greens_brbz_plasma = greens functions for Br and Bz from plasma, evaluated at pickup coil positions
+    - floops_order / pickups_order = list of fluxloop / pickups names, if individual probe value is required
+    - greens_psi_coils_floops = greens functions for psi, evaluated at flux loop positions
+    - greens_br/bz_coils_pickups = greens functions for Br and Bz, evaluated at pickup coil positions
+    - greens_psi_plasma_floops = greens functions for psi from plasma current, evaluated at flux loop positions
+    - greens_brbz_plasma_pickups = greens functions for Br and Bz from plasma, evaluated at pickup coil positions
+
+    - more greens function attributes would be added if new probes area added.
 
     Methods:
     - get_coil_currents(eq): returns current values in all the coils from equilibrium object.
@@ -43,6 +46,7 @@ class Probe():
     - Br(eq)/ Bz(eq) : computes radial/z component of magnetic field, sum of coil and plasma contributions
     - Btor(eq) : extracts toroidal magnetic field (outside of plasma), evaluated at 
         
+    Methods currently have floop or pickup positions as default, but these can be changed with optional argument.
     """
     def __init__(self, eq):
         """ 
@@ -73,7 +77,7 @@ class Probe():
 
 
         #FLUX LOOPS
-        # positions, number of probes, ordering 
+        # positions, number of probes, ordering
         self.floop_pos = np.array([probe['position'] for probe in self.floops])
         self.number_floops = np.shape(self.floop_pos)[0]        #number of probes
         self.floop_order = [probe['name']for probe in self.floops]
@@ -132,9 +136,11 @@ class Probe():
         - defines array of greens for each filament at each probe.
         - multiplies by polarity and multiplier
         - then sums over filaments to return greens function for probes from a given coil
+        - flux loops by default, can apply to other probes too with minor modification
         """
-        pos_R = self.floop_pos[:,0]
-        pos_Z = self.floop_pos[:,1]
+        if probe == 'floops':
+            pos_R = self.floop_pos[:,0]
+            pos_Z = self.floop_pos[:,1]
 
         pol = self.coil_dict[coil_key]['polarity'][np.newaxis,:]
         mul = self.coil_dict[coil_key]['multiplier'][np.newaxis,:]
@@ -162,20 +168,22 @@ class Probe():
     def psi_floop_all_coils(self,eq, probe = 'floops'):
         """
         compute flux function summed over all coils. 
-        returns array of flux values at the positions of the floop probes
+        returns array of flux values at the positions of the floop probes by default 
+        New probes can be used instead (just change which greens function is used)
         """
         array_of_coil_currents = self.get_coil_currents(eq)
         if probe == 'floops':
             greens = self.greens_psi_coils_floops
 
         psi_from_all_coils = np.sum(greens * array_of_coil_currents[:,np.newaxis], axis=0)
-        self.floop_psi = psi_from_all_coils
+        # self.floop_psi = psi_from_all_coils
         return psi_from_all_coils
 
     def green_psi_plasma(self,eq,probe = 'floops'):
         """ 
         Compute greens function at probes from the plasma currents .
         - plasma current source in grid from solve. grid points contained in eq object 
+        - evaluated on flux loops by default, can apply to other probes too with minor modification
         """
         if probe == 'floops':
             pos_R = self.floop_pos[:,0]
@@ -193,7 +201,8 @@ class Probe():
     def psi_from_plasma(self,eq,probe = 'floops'):
         """
         Calculate flux function contribution from the plasma
-        returns array of flux values from plasma at position of floop probes
+        - returns array of flux values from plasma at position of floop probes
+        - evaluated on flux loops by default, can apply to other probes too with minor modification
         """
         plasma_current_distribution = eq._profiles.jtor #toroidal current distribution from plasma equilibrium
 
@@ -221,6 +230,7 @@ class Probe():
         - defines array of greens for each filament at each probe.
         - multiplies by polarity and multiplier
         - then sums over filaments to return greens function for probes from a given coil
+        - evaluated on pickups by default, can apply to other probes too with minor modification
         """
         if probe == 'pickups':
             pos_R = self.pickup_pos[:,0]
@@ -251,6 +261,7 @@ class Probe():
         """
         Create 2d array of greens functions for all coils and at all probe positions
         - array[i][j] is greens function for coil i evaluated at probe position j
+        - evaluated on pickups by default, can apply to other probes too with minor modification
         """
         array_r = np.array([]).reshape(0,self.number_pickups)
         array_z = np.array([]).reshape(0,self.number_pickups)
@@ -264,6 +275,7 @@ class Probe():
         """ 
         Compute greens function at probes from the plasma currents .
         - plasma current source in grid from solve. grid points contained in eq object 
+        - evaluated on pickups by default, can apply to other probes too with minor modification
         """
         if probe == 'pickups':
             pos_R = self.pickup_pos[:,0]
@@ -288,6 +300,7 @@ class Probe():
         """
         Method to compute total radial magnetic field from coil and plasma
         returns array with Br at each pickup coil probe
+        - evaluated on pickups by default, can apply to other probes too with minor modification
         """
         coil_currents = self.get_coil_currents(eq)[:,np.newaxis]
         plasma_current = self.get_plasma_current(eq)[:,:,np.newaxis]
@@ -300,6 +313,7 @@ class Probe():
         """
         Method to compute total z component of magnetic field from coil and plasma
         returns array with Bz at each pickup coil probe
+        - evaluated on pickups by default, can apply to other probes too with minor modification
         """
         coil_currents = self.get_coil_currents(eq)[:,np.newaxis]
         plasma_current = self.get_plasma_current(eq)[:,:,np.newaxis]
@@ -312,6 +326,7 @@ class Probe():
         """
         Probes outside of plasma therfore Btor = fvac/R
         returns array of btor for each probe position
+        - evaluated on pickups by default, can apply to other probes too with minor modification
         """
         if probe == 'pickups':
             pos_R = self.pickup_pos[:,0]

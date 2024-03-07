@@ -255,10 +255,12 @@ class nl_solver:
 
         # self.dIydI is the Jacobian of the plasma current distribution
         # with respect to the independent currents (as in self.currents_vec)
+        self.dIydI_ICs = dIydI
         self.dIydI = dIydI
 
         # self.dIydpars is the Jacobian of the plasma current distribution
         # with respect to the independent profile parameters (alpha_m, alpha_n, paxis OR betap)
+        self.dIydpars_ICs = dIydpars
         self.dIydpars = dIydpars
 
         self.get_number_of_profile_pars(profiles)
@@ -336,7 +338,10 @@ class nl_solver:
                 )
 
         # prepare regularization matrices
-        self.reg_matrix = np.eye(self.plasma_domain_size) + self.plasma_grids.build_linear_regularization() + self.plasma_grids.build_quadratic_regularization()
+        self.reg_matrix = (
+            np.eye(self.plasma_domain_size)
+            + self.plasma_grids.build_linear_regularization()
+        )  # + self.plasma_grids.build_quadratic_regularization()
         # self.reg0 = np.eye(self.plasma_domain_size)
         # self.reg1 = self.plasma_grids.build_linear_regularization()
         # self.reg2 = self.plasma_grids.build_quadratic_regularization()
@@ -680,7 +685,7 @@ class nl_solver:
 
         # build/update dIydI
         if dIydI is None:
-            if self.dIydI is None:
+            if self.dIydI_ICs is None:
                 print(
                     "I'm building the linearization wrt the currents. This may take a minute or two."
                 )
@@ -693,16 +698,16 @@ class nl_solver:
 
                 for j in self.arange_currents:
                     self.dIydI[:, j] = self.build_dIydI_j(j, rtol_NK, verbose)
-                self.updated_dIydI = np.copy(self.dIydI)
-                self.norm_updated_dIydI = np.linalg.norm(self.updated_dIydI)
+                # self.norm_updated_dIydI = np.linalg.norm(self.updated_dIydI)
 
         else:
             self.dIydI = dIydI
+        self.dIydI_ICs = np.copy(self.dIydI)
 
         # build/update dIydpars
         # Note this assumes 3 free profile parameters at the moment!
         if dIydpars is None:
-            if self.dIydpars is None:
+            if self.dIydpars_ICs is None:
                 print("I'm building the linearization wrt the profile parameters.")
                 self.dIydpars = np.zeros((self.plasma_domain_size, 3))
                 self.final_dpars_record = np.zeros(3)
@@ -714,6 +719,7 @@ class nl_solver:
 
         else:
             self.dIydpars = dIydpars
+        self.dIydpars_ICs = np.copy(self.dIydpars)
 
     def set_plasma_resistivity(self, plasma_resistivity):
         """Function to set the resistivity of the plasma.
@@ -1016,72 +1022,10 @@ class nl_solver:
 
         # transfer linearization to linear solver
         self.linearised_sol.set_linearization_point(
-            dIydI=self.dIydI, dIydpars=self.dIydpars, hatIy0=self.broad_hatIy
+            dIydI=self.dIydI_ICs, dIydpars=self.dIydpars_ICs, hatIy0=self.broad_hatIy
         )
 
         self.reset_records_for_linearization_update()
-
-        # NOT USED AT THE MOMENT
-        if self.update_linearization:
-            self.current_record = np.zeros(
-                (self.update_n_steps, self.n_metal_modes + 1)
-            )
-            self.Iy_record = np.zeros((self.update_n_steps, self.plasma_domain_size))
-            self.current_at_last_linearization = np.copy(self.currents_vec)
-
-        # check if initial equilibrium contacts the wall
-        # if self.plasma_grids.check_if_outside_domain(jtor=self.profiles1.jtor):
-        #     print('plasma in ICs is touching the wall!')
-
-    # NOT CURRENTLY USED
-    # def run_linearization_update(self, max_dIy_update):
-    #     """To be revised.
-    #     """
-
-    #     self.linearised_sol.prepare_min_update_linearization(self.current_record[:-1],
-    #                                                          self.Iy_record[:-1],
-    #                                                          self.threshold_svd)
-    #     delta_dIydI = self.linearised_sol.min_update_linearization()
-
-    #     compare_ = np.linalg.norm(delta_dIydI)/self.norm_updated_dIydI
-    #     print('relative_d_dIydI', compare_)
-    #     control = (compare_>max_dIy_update)
-
-    #     if control:
-    #         print('Need linearization update: starting...')
-    #         i = 0
-    #         urgency = abs((self.current_at_last_linearization - self.currents_vec)/(self.norm_updated_dIydI/self.ddIyddI))
-    #         urgency = np.argsort(-urgency)
-
-    #         while control:
-    #             j = urgency[i]
-    #             self.updated_dIydI[:,j] = self.build_dIydI_j(j, rtol_NK=self.rtol_NK)
-    #             self.norm_updated_dIydI = np.linalg.norm(self.updated_dIydI)
-    #             self.linearised_sol.set_linearization_point(dIydI=self.updated_dIydI,
-    #                                                         hatIy0=self.broad_hatIy)
-
-    #             delta_dIydI = self.linearised_sol.min_update_linearization()
-
-    #             compare_ = np.linalg.norm(delta_dIydI)/self.norm_updated_dIydI
-    #             print('relative_d_dIydI', compare_)
-    #             control = (compare_>max_dIy_update)*(i<self.max_updates)
-
-    #             i += 1
-
-    # def check_linearization_and_update(self, max_dIy_update, max_updates):
-    #     """To be revised.
-    #     """
-    #     if self.step_no / self.update_n_steps < 1:
-    #         id = self.step_no % self.update_n_steps
-    #         self.current_record[id] = self.currents_vec
-    #         self.Iy_record[id] = self.Iy
-    #     else:
-    #         self.current_record[-1] = self.currents_vec
-    #         self.Iy_record[-1] = self.Iy
-    #         self.current_record[:-1] = self.current_record[1:]
-    #         self.Iy_record[:-1] = self.Iy_record[1:]
-
-    #         self.run_linearization_update(max_dIy_update, max_updates)
 
     def step_complete_assign(self, working_relative_tol_GS, from_linear=False):
         """This function completes the advancement by dt.
@@ -1251,8 +1195,8 @@ class nl_solver:
         """
         currents_pars_vec = np.concatenate((currents_vec, profiles.get_pars()))
         return currents_pars_vec
-    
-    def run_linearization_update(self, min_records, lambda_reg=1e-3):
+
+    def run_linearization_update(self, min_records=160, lambda_reg=10, threshold=0.08):
         """Updates the linearization
 
         Parameters
@@ -1263,22 +1207,25 @@ class nl_solver:
             regularization coefficient, by default 1e-3
         """
         if np.shape(self.record_Iys)[0] > min_records:
-            print('Im updating the linearization!')
-            self.linearised_sol.find_linearization_update(self.record_currents_pars,
-                                                        self.record_Iys,
-                                                        lambda_reg*self.reg_matrix)
+            print("Im updating the linearization!")
+            self.linearised_sol.find_linearization_update(
+                self.record_currents_pars,
+                self.record_Iys,
+                lambda_reg * self.reg_matrix,
+                threshold,
+            )
             self.linearised_sol.apply_linearization_update()
             self.dIydI = self.linearised_sol.dIydI.copy()
             self.dIydpars = self.linearised_sol.dIydpars.copy()
 
             self.make_broad_hatIy(self.hatIy)
-            self.linearised_sol.set_linearization_point(self.linearised_sol.dIydI,
-                                                        self.linearised_sol.dIydpars,
-                                                        self.broad_hatIy)
-            
+            self.linearised_sol.set_linearization_point(
+                self.linearised_sol.dIydI,
+                self.linearised_sol.dIydpars,
+                self.broad_hatIy,
+            )
+
             self.reset_records_for_linearization_update()
-
-
 
     def make_broad_hatIy_conv(self, hatIy1, blend=0):
         """Averages the normalised plasma current distributions at time t and

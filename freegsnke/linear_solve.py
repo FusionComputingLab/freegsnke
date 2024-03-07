@@ -207,18 +207,17 @@ class linear_solver:
         self.growth_rates = self.all_timescales[mask]
 
     def build_dIydall(self, mask=None):
-        """Builds full Jacobian including both extensive currents and profile pars
-        """
-        self.dIydall = np.concatenate((self.dIydI, self.dIydpars), axis=-1)
+        """Builds full Jacobian including both extensive currents and profile pars"""
+        self.dIydall_full = np.concatenate((self.dIydI, self.dIydpars), axis=-1)
         if mask is not None:
-            self.dIydall = self.dIydall[mask, :]
-
+            self.dIydall = self.dIydall_full[mask, :]
+        else:
+            self.dIydall = self.dIydall_full.copy()
 
     def assign_from_dIydall(self, mask=None):
-        """Uses full Jacobian to assign current and profile components
-        """
-        self.dIydI = self.dIydall[:, :self.n_independent_vars + 1]
-        self.dIydpars = self.dIydall[:, self.n_independent_vars + 1:]
+        """Uses full Jacobian to assign current and profile components"""
+        self.dIydI = self.dIydall_full[:, : self.n_independent_vars + 1]
+        self.dIydpars = self.dIydall_full[:, self.n_independent_vars + 1 :]
 
     def build_n2_diffs(self, vectors):
         """Builds non trivial pairwise differences.
@@ -236,14 +235,14 @@ class linear_solver:
         diff_1d = []
         size = np.shape(vectors[0])[0]
         idxs = np.tril_indices(size, k=-1)
-        idxs = idxs[0]*size + idxs[1]
+        idxs = idxs[0] * size + idxs[1]
         for vector in vectors:
-            diff_vec_2d = vector[np.newaxis, :, :] - vector[:, np.newaxis, :] 
-            diff_1d.append((diff_vec_2d.reshape(size*size,-1)[idxs]).T)
+            diff_vec_2d = vector[np.newaxis, :, :] - vector[:, np.newaxis, :]
+            diff_1d.append((diff_vec_2d.reshape(size * size, -1)[idxs]).T)
         return diff_1d
-    
-    def prepare_linearization_update(self, current_record, Iy_record):
-        """Computes quantities to update the linearisation matrices, 
+
+    def prepare_linearization_update(self, current_record, Iy_record, threshold):
+        """Computes quantities to update the linearisation matrices,
         using a record of recently computed Grad-Shafranov solutions.
 
         Parameters
@@ -254,7 +253,10 @@ class linear_solver:
             plasma cell currents (over the reduced domain) over a time-horizon
         """
 
-        self.mask_Iy = np.sum(Iy_record>0, axis=0)>0
+        # self.mask_Iy = (np.sum(Iy_record>0, axis=0)>0)
+        self.mask_Iy = (
+            np.std(Iy_record, axis=0) / (np.mean(Iy_record, axis=0) + 0.1)
+        ) > threshold
         Iy_record = Iy_record[:, self.mask_Iy]
         self.dv, self.dIy = self.build_n2_diffs([current_record, Iy_record])
         self.build_dIydall(mask=self.mask_Iy)
@@ -269,7 +271,7 @@ class linear_solver:
         self.B = np.matmul(self.dv, self.dv.T)
         self.Q = np.matmul(self.dd, self.dv.T)
 
-    def find_linearization_update(self, current_record, Iy_record, R):
+    def find_linearization_update(self, current_record, Iy_record, R, threshold):
         """Computes the regularised update to the full jacobian.
 
         Parameters
@@ -281,22 +283,21 @@ class linear_solver:
         R : np.array
             the regularization to be applied.
         """
+        self.prepare_linearization_update(current_record, Iy_record, threshold)
+        reg_matrix = R[self.mask_Iy, :][:, self.mask_Iy]
+        self.jacobian_update = solve_sylvester(a=reg_matrix, b=self.B, q=self.Q)
 
-        self.prepare_linearization_update(current_record, Iy_record)
-        self.jacobian_update = solve_sylvester(a=R, b=self.B, q=self.Q)
+        self.jacobian_update_full = np.zeros_like(self.dIydall_full)
+        self.jacobian_update_full[self.mask_Iy, :] = self.jacobian_update
 
-    def apply_linearization_update(self, ):
-        """Uses the precalculated self.jacobian_update to update both 
+    def apply_linearization_update(
+        self,
+    ):
+        """Uses the precalculated self.jacobian_update to update both
         self.dIydI and self.dIydpars
         """
-        
-        self.dIydall += self.jacobian_update
+        self.dIydall_full += self.jacobian_update_full
         self.assign_from_dIydall()
-        
-
-
-
-
 
     # def prepare_min_update_linearization(
     #     self, current_record, Iy_record, threshold_svd

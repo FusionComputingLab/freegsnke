@@ -205,17 +205,22 @@ class Grids:
         """
 
         # horizontal gradient
-        R1h = -np.triu(np.tril(np.ones((self.nxny, self.nxny)), k=0), k=0)
-        R1h += np.triu(np.tril(np.ones((self.nxny, self.nxny)), k=1), k=1)
-        R1h = R1h.T@R1h
+        rr = -np.triu(np.tril(np.ones((self.nxny, self.nxny)), k=0), k=0)
+        rr += np.triu(np.tril(np.ones((self.nxny, self.nxny)), k=1), k=1)
+        R1 = rr.T@rr
 
         # vertical gradient
-        R1v = -np.triu(np.tril(np.ones((self.nxny, self.nxny)), k=0), k=0)
-        R1v += np.triu(np.tril(np.ones((self.nxny, self.nxny)), k=self.nx), k=self.nx)
-        R1h += R1v.T@R1v
+        rr = -np.triu(np.tril(np.ones((self.nxny, self.nxny)), k=0), k=0)
+        rr += np.triu(np.tril(np.ones((self.nxny, self.nxny)), k=self.nx), k=self.nx)
+        R1 += rr.T@rr
 
-        R1h = R1h[self.plasma_domain_mask_1d, :][:, self.plasma_domain_mask_1d]
-        return R1h
+        # diagonal gradient
+        rr = -np.triu(np.tril(np.ones((self.nxny, self.nxny)), k=0), k=0)
+        rr += np.triu(np.tril(np.ones((self.nxny, self.nxny)), k=self.nx+1), k=self.nx+1)
+        R1 += rr.T@rr
+
+        R1 = R1[self.plasma_domain_mask_1d, :][:, self.plasma_domain_mask_1d]
+        return R1
 
     def build_quadratic_regularization(self, ):
         """Builds matrix to be used for linear regularization. See Press 1992 18.5.

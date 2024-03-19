@@ -76,6 +76,7 @@ class simplified_solver_J1:
         self.Myy = Myy
 
         self.n_active_coils = machine_config.n_active_coils
+        self.n_coils = machine_config.n_coils
 
         self.plasma_resistance_1d = plasma_resistance_1d
 
@@ -92,7 +93,7 @@ class simplified_solver_J1:
         )
 
         # dummy vessel voltage vector
-        self.empty_U = np.zeros(np.shape(Vm1Rm12)[1])
+        self.empty_U = np.zeros(self.n_coils)
         # dummy voltage vec for eig modes
         self.forcing = np.zeros(self.n_independent_vars + 1)
         # dummy voltage vec for residuals
@@ -220,12 +221,16 @@ class simplified_solver_J1:
         np.array
             Residual of the circuit eq, lumped for the plasma: dimensions are self.n_independent_vars + 1.
         """
+        residuals = np.zeros_like(I_1)
+        empty_U = np.zeros(self.n_coils)
+        forcing = np.zeros_like(I_1)
+
         # prepare time derivatives
         Id_dot = (I_1 - I_0)[:-1]
         Iy_dot = hatIy_1 * I_1[-1] - hatIy_0 * I_0[-1]
         # prepare forcing term
-        self.empty_U[: self.n_active_coils] = active_voltage_vec
-        self.forcing[:-1] = np.dot(self.Vm1Rm12, self.empty_U)
+        empty_U[: self.n_active_coils] = active_voltage_vec
+        forcing[:-1] = np.dot(self.Vm1Rm12, empty_U)
         # prepare the lumped plasma resistance
         Rp = np.sum(self.plasma_resistance_1d * hatIy_left * hatIy_1)
 
@@ -235,16 +240,18 @@ class simplified_solver_J1:
         # plasma lump
         res_pl = np.dot(self.Myy, Iy_dot)
         res_pl += np.dot(self.Vm1Rm12Mey.T, Id_dot) / self.plasma_norm_factor
-        res_pl /= Rp
         res_pl = np.dot(res_pl, hatIy_left)
+        res_pl /= Rp
         # build residual ved
-        self.residuals[:-1] = res_met
-        self.residuals[-1] = res_pl
+        residuals[:-1] = res_met
+        residuals[-1] = res_pl
 
         # add resistive and forcing terms
-        self.residuals += (I_1 - self.forcing) * self.full_timestep
+        # I_1[-1] *= Rp
+        # residuals /= self.full_timestep
+        residuals += (I_1 - forcing) * self.full_timestep
 
-        return self.residuals
+        return residuals
 
 
 # BELOW is not used and probably outdated

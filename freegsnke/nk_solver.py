@@ -217,7 +217,7 @@ class nksolver:
 
         """
 
-        nR0 = np.linalg.norm(R0)
+        self.nR0 = np.linalg.norm(R0)
 
         # basis in x space
         self.Q = np.zeros((self.problem_dimension, max_n_directions + 1))
@@ -232,7 +232,7 @@ class nksolver:
 
         self.n_it = 0
         self.n_it_tot = 0
-        adjusted_step_size = step_size * nR0
+        adjusted_step_size = step_size * self.nR0
 
         # print('norm trial_sol', np.linalg.norm(trial_sol))
 
@@ -254,7 +254,7 @@ class nksolver:
                 # print(self.n_it, self.G[:,:self.n_it])
                 self.least_square_problem(
                     R0,
-                    nR0,
+                    self.nR0,
                     G=self.G[:, : self.n_it],
                     Q=self.Q[:, : self.n_it],
                     clip=clip,

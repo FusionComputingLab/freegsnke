@@ -83,8 +83,8 @@ class Probe():
         self.floop_order = [probe['name']for probe in self.floops]
 
         # # Initilaise Greens functions Gpsi
-        self.greens_psi_coils_floops = self.greens_psi_all_coils(eq)
-        self.greens_psi_plasma_floops = self.green_psi_plasma(eq)
+        self.greens_psi_coils_floops = self.greens_psi_all_coils('floops')
+        self.greens_psi_plasma_floops = self.green_psi_plasma(eq,'floops')
 
         # # PICKUP COILS
         # # Positions and orientations - 3d vectors of [R, theta, Z]
@@ -121,7 +121,10 @@ class Probe():
         """
         equilibirium object contains toroidal current distribution, over the grid positions.
         """
-        plasma_current_distribution = eq._profiles.jtor
+        #  grid spacings 
+        dR = eq.R[1, 0] - eq.R[0, 0]
+        dZ = eq.Z[0, 1] - eq.Z[0, 0]
+        plasma_current_distribution = eq._profiles.jtor *dR * dZ
 
         return plasma_current_distribution
 
@@ -144,7 +147,8 @@ class Probe():
 
         pol = self.coil_dict[coil_key]['polarity'][np.newaxis,:]
         mul = self.coil_dict[coil_key]['multiplier'][np.newaxis,:]
-        greens_filaments = 2* np.pi* Greens(self.coil_dict[coil_key]['coords'][0][np.newaxis,:],
+
+        greens_filaments = Greens(self.coil_dict[coil_key]['coords'][0][np.newaxis,:],
                             self.coil_dict[coil_key]['coords'][1][np.newaxis,:],
                             pos_R[:,np.newaxis],
                             pos_Z[:,np.newaxis])
@@ -175,9 +179,12 @@ class Probe():
         if probe == 'floops':
             greens = self.greens_psi_coils_floops
 
+            
+
         psi_from_all_coils = np.sum(greens * array_of_coil_currents[:,np.newaxis], axis=0)
         # self.floop_psi = psi_from_all_coils
         return psi_from_all_coils
+    
 
     def green_psi_plasma(self,eq,probe = 'floops'):
         """ 
@@ -187,11 +194,11 @@ class Probe():
         """
         if probe == 'floops':
             pos_R = self.floop_pos[:,0]
-            pos_Z = self.floop_pos[:,0]
+            pos_Z = self.floop_pos[:,1]
 
         rgrid = eq.R # FOR LATER: can speed up only calcualte in plasma, J = 0 outiside
         zgrid = eq.Z
-        greens = 2 * np.pi *Greens(rgrid[:,:,np.newaxis],
+        greens = Greens(rgrid[:,:,np.newaxis],
                         zgrid[:,:,np.newaxis],
                         pos_R[np.newaxis,np.newaxis,:],
                         pos_Z[np.newaxis, np.newaxis,:])
@@ -204,8 +211,8 @@ class Probe():
         - returns array of flux values from plasma at position of floop probes
         - evaluated on flux loops by default, can apply to other probes too with minor modification
         """
-        plasma_current_distribution = eq._profiles.jtor #toroidal current distribution from plasma equilibrium
 
+        plasma_current_distribution = self.get_plasma_current(eq) #toroidal current distribution from plasma equilibrium
         if probe == 'floops':
             plasma_greens = self.greens_psi_plasma_floops
 
@@ -219,6 +226,7 @@ class Probe():
         """
 
         return self.psi_floop_all_coils(eq) + self.psi_from_plasma(eq)
+
 
     """
     Things for pickup coils
@@ -234,7 +242,7 @@ class Probe():
         """
         if probe == 'pickups':
             pos_R = self.pickup_pos[:,0]
-            pos_Z = self.pickup_pos[:,1]
+            pos_Z = self.pickup_pos[:,2]
 
         pol = self.coil_dict[coil_key]['polarity'][np.newaxis,:]
         mul = self.coil_dict[coil_key]['multiplier'][np.newaxis,:]
@@ -263,13 +271,25 @@ class Probe():
         - array[i][j] is greens function for coil i evaluated at probe position j
         - evaluated on pickups by default, can apply to other probes too with minor modification
         """
-        array_r = np.array([]).reshape(0,self.number_pickups)
-        array_z = np.array([]).reshape(0,self.number_pickups)
+        if probe == 'pickups':
+            array_r = np.array([]).reshape(0,self.number_pickups)
+            array_z = np.array([]).reshape(0,self.number_pickups)
+      
         for key in self.coil_dict.keys():
             array_r = np.vstack((array_r,self.greens_BrBz_single_coil(key,probe)[0]))
             array_z = np.vstack((array_z,self.greens_BrBz_single_coil(key,probe)[1]))
 
         return array_r, array_z
+
+    def BrBz_coils(self,eq,probe = 'pickups'):
+        """
+        Magnetic fields from coils
+        """
+        coil_currents = self.get_coil_currents(eq)[:,np.newaxis]
+        if probe =='pickups':
+            br_coil = np.sum(self.greens_br_coils_pickup*coil_currents,axis = 0)
+            bz_coil = np.sum(self.greens_bz_coils_pickup*coil_currents,axis = 0)
+        return br_coil,bz_coil
 
     def greens_BrBz_plasma(self,eq,probe = 'pickups'):
         """ 
@@ -295,6 +315,17 @@ class Probe():
                         pos_Z[np.newaxis, np.newaxis,:])
 
         return greens_br, greens_bz
+
+    def BrBz_plasma(self,eq,probe = 'pickups'):
+        """
+        Magnetic fields from coils
+        """
+        plasma_current = self.get_plasma_current(eq)[:,:,np.newaxis]
+        if probe =='pickups':
+            br_plasma = np.sum(self.greens_br_plasma_pickup * plasma_current, axis = (0,1))
+            bz_plasma = np.sum(self.greens_bz_plasma_pickup * plasma_current, axis = (0,1))
+        return br_plasma,bz_plasma
+
 
     def Br(self,eq, probe = 'pickups'):
         """

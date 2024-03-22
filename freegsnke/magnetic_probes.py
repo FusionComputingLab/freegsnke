@@ -97,8 +97,8 @@ class Probe():
         self.greens_br_coils_pickup, self.greens_bz_coils_pickup = self.greens_BrBz_all_coils('pickups')
         self.greens_br_plasma_pickup, self.greens_bz_plasma_pickup = self.greens_BrBz_plasma(eq,'pickups')
 
-        self.greens_B_plasma_oriented = self.greens_B_oriented_plasma(eq)
-        self.greens_B_coils_oriented = self.greens_B_oriented_coils()
+        self.greens_B_plasma_oriented = self.greens_B_oriented_plasma(eq,'pickups')
+        self.greens_B_coils_oriented = self.greens_B_oriented_coils('pickups')
 
         # Other probes - to add in future...
 
@@ -286,9 +286,11 @@ class Probe():
         """ 
         perform dot product of greens fucntion vector with orientation
         """
-        or_R = self.pickup_or[:,0]
-        or_Z = self.pickup_or[:,2]
-        prod = self.greens_BrBz_all_coils()[0]*or_R + self.greens_BrBz_all_coils()[1]*or_Z
+        if probe == 'pickups':
+            or_R = self.pickup_or[:,0]
+            or_Z = self.pickup_or[:,2]
+
+        prod = self.greens_BrBz_all_coils(probe)[0]*or_R + self.greens_BrBz_all_coils(probe)[1]*or_Z
 
         return prod
     
@@ -342,7 +344,7 @@ class Probe():
 
     def BrBz_plasma(self,eq,probe = 'pickups'):
         """
-        Magnetic fields from coils
+        Magnetic fields from plasma
         """
         plasma_current = self.get_plasma_current(eq)[:,:,np.newaxis]
         if probe =='pickups':
@@ -379,7 +381,7 @@ class Probe():
 
     def Btor(self,eq,probe = "pickups"):
         """
-        Probes outside of plasma therfore Btor = fvac/R
+        Probes outside of plasma therefore Btor = fvac/R
         returns array of btor for each probe position
         - evaluated on pickups by default, can apply to other probes too with minor modification
         """
@@ -391,7 +393,7 @@ class Probe():
 
     def calculate_pickup_value_v1(self,eq,probe = 'pickups'):
         """ 
-        Method to compute and return B.n, for a given pickup coil
+        Method to compute and return B.n, for pickup coils
         """
         orientation = self.pickup_or.transpose()
         Btotal = np.vstack((self.Br(eq),self.Btor(eq,probe),self.Bz(eq)))
@@ -402,14 +404,15 @@ class Probe():
     
     def calculate_pickup_value(self,eq,probe = 'pickups'):
         """ 
-        Compute B.n using oriented greens functions.
+        Compute B.n at pickup probes, using oriented greens functions.
         """
         coil_current = self.get_coil_currents(eq)
         plasma_current = self.get_plasma_current(eq)
 
-        pickup_tor = self.Btor(eq,probe)*self.pickup_or[:,1]
-        pickup_pol_coil = np.sum(self.greens_B_coils_oriented * coil_current[:,np.newaxis],axis = 0)
-        pickup_pol_pl = np.sum(self.greens_B_plasma_oriented * plasma_current[:,:,np.newaxis],axis = (0,1))
+        if probe == 'pickups':
+            pickup_tor = self.Btor(eq,probe)*self.pickup_or[:,1]
+            pickup_pol_coil = np.sum(self.greens_B_coils_oriented * coil_current[:,np.newaxis],axis = 0)
+            pickup_pol_pl = np.sum(self.greens_B_plasma_oriented * plasma_current[:,:,np.newaxis],axis = (0,1))
 
         return pickup_pol_coil + pickup_pol_pl + pickup_tor
 

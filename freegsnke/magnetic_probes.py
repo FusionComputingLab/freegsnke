@@ -29,7 +29,7 @@ class Probe():
     - floops_positions etc.  = extract individual arrays of positions, orientations etc.
     - floops_order / pickups_order = list of fluxloop / pickups names, if individual probe value is required
     - greens_psi_coils_floops = greens functions for psi, evaluated at flux loop positions
-    - greens_br/bz_coils_pickups = greens functions for Br and Bz, evaluated at pickup coil positions
+    - greens_br/bz_coils_pickups = greens functions for Br/Bz, evaluated at pickup coil positions
     - greens_psi_plasma_floops = greens functions for psi from plasma current, evaluated at flux loop positions
     - greens_brbz_plasma_pickups = greens functions for Br and Bz from plasma, evaluated at pickup coil positions
 
@@ -97,6 +97,9 @@ class Probe():
         self.greens_br_coils_pickup, self.greens_bz_coils_pickup = self.greens_BrBz_all_coils('pickups')
         self.greens_br_plasma_pickup, self.greens_bz_plasma_pickup = self.greens_BrBz_plasma(eq,'pickups')
 
+        self.greens_B_plasma_oriented = self.greens_B_oriented_plasma(eq)
+        self.greens_B_coils_oriented = self.greens_B_oriented_coils()
+
         # Other probes - to add in future...
 
 
@@ -121,7 +124,7 @@ class Probe():
         """
         equilibirium object contains toroidal current distribution, over the grid positions.
         """
-        #  grid spacings 
+        #  grid spacings
         dR = eq.R[1, 0] - eq.R[0, 0]
         dZ = eq.Z[0, 1] - eq.Z[0, 0]
         plasma_current_distribution = eq._profiles.jtor *dR * dZ
@@ -163,7 +166,7 @@ class Probe():
         Create 2d array of greens functions for all coils and at all probe positions
         - array[i][j] is greens function for coil i evaluated at probe position j
         """
-            
+
         array = np.array([]).reshape(0,self.number_floops)
         for key in self.coil_dict.keys():
             array = np.vstack((array, self.greens_psi_single_coil(key,probe)))
@@ -179,12 +182,11 @@ class Probe():
         if probe == 'floops':
             greens = self.greens_psi_coils_floops
 
-            
 
         psi_from_all_coils = np.sum(greens * array_of_coil_currents[:,np.newaxis], axis=0)
         # self.floop_psi = psi_from_all_coils
         return psi_from_all_coils
-    
+
 
     def green_psi_plasma(self,eq,probe = 'floops'):
         """ 
@@ -212,7 +214,7 @@ class Probe():
         - evaluated on flux loops by default, can apply to other probes too with minor modification
         """
 
-        plasma_current_distribution = self.get_plasma_current(eq) #toroidal current distribution from plasma equilibrium
+        plasma_current_distribution = self.get_plasma_current(eq)
         if probe == 'floops':
             plasma_greens = self.greens_psi_plasma_floops
 
@@ -224,7 +226,6 @@ class Probe():
         """ 
         total flux for all floop probes
         """
-
         return self.psi_floop_all_coils(eq) + self.psi_from_plasma(eq)
 
 
@@ -274,12 +275,23 @@ class Probe():
         if probe == 'pickups':
             array_r = np.array([]).reshape(0,self.number_pickups)
             array_z = np.array([]).reshape(0,self.number_pickups)
-      
+
         for key in self.coil_dict.keys():
             array_r = np.vstack((array_r,self.greens_BrBz_single_coil(key,probe)[0]))
             array_z = np.vstack((array_z,self.greens_BrBz_single_coil(key,probe)[1]))
 
         return array_r, array_z
+    
+    def greens_B_oriented_coils(self,probe = 'pickups'):
+        """ 
+        perform dot product of greens fucntion vector with orientation
+        """
+        or_R = self.pickup_or[:,0]
+        or_Z = self.pickup_or[:,2]
+        prod = self.greens_BrBz_all_coils()[0]*or_R + self.greens_BrBz_all_coils()[1]*or_Z
+
+        return prod
+    
 
     def BrBz_coils(self,eq,probe = 'pickups'):
         """
@@ -299,7 +311,7 @@ class Probe():
         """
         if probe == 'pickups':
             pos_R = self.pickup_pos[:,0]
-            pos_Z = self.pickup_pos[:,2]
+            pos_Z = self.pickup_pos[:,2] 
 
         rgrid = eq.R
         zgrid = eq.Z
@@ -315,6 +327,18 @@ class Probe():
                         pos_Z[np.newaxis, np.newaxis,:])
 
         return greens_br, greens_bz
+    
+
+    def greens_B_oriented_plasma(self,eq,probe = 'pickups'):
+        """ 
+        perform dot product of greens fucntion vector with orientation
+        """
+        or_R = self.pickup_or[:,0]
+        or_Z = self.pickup_or[:,2]
+        prod = self.greens_BrBz_plasma(eq)[0]*or_R + self.greens_BrBz_plasma(eq)[1]*or_Z
+
+        return prod
+    
 
     def BrBz_plasma(self,eq,probe = 'pickups'):
         """
@@ -365,7 +389,7 @@ class Probe():
         btor  = eq._profiles.fvac()/pos_R
         return btor
 
-    def calculate_pickup_value(self,eq,probe = 'pickups'):
+    def calculate_pickup_value_v1(self,eq,probe = 'pickups'):
         """ 
         Method to compute and return B.n, for a given pickup coil
         """
@@ -375,3 +399,20 @@ class Probe():
         BdotN = np.sum(orientation*Btotal, axis = 0)
 
         return BdotN
+    
+    def calculate_pickup_value(self,eq,probe = 'pickups'):
+        """ 
+        Compute B.n using oriented greens functions.
+        """
+        coil_current = self.get_coil_currents(eq)
+        plasma_current = self.get_plasma_current(eq)
+
+        pickup_tor = self.Btor(eq,probe)*self.pickup_or[:,1]
+        pickup_pol_coil = np.sum(self.greens_B_coils_oriented * coil_current[:,np.newaxis],axis = 0)
+        pickup_pol_pl = np.sum(self.greens_B_plasma_oriented * plasma_current[:,:,np.newaxis],axis = (0,1))
+
+        return pickup_pol_coil + pickup_pol_pl + pickup_tor
+
+
+
+    

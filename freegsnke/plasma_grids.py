@@ -51,6 +51,7 @@ class Grids:
         self.R = eq.R
         self.Z = eq.Z
         self.nx, self.ny = np.shape(eq.R)
+        self.nxny = self.nx*self.ny
 
         # area factor for Iy
         dR = eq.R[1, 0] - eq.R[0, 0]
@@ -69,6 +70,7 @@ class Grids:
         #     plasma_domain_mask *= (self.Z<2.26-1.1*self.R)*(self.Z>-2.26+1.1*self.R)
         #     plasma_domain_mask = plasma_domain_mask.astype(bool)
         self.plasma_domain_mask = plasma_domain_mask
+        self.plasma_domain_mask_1d = self.plasma_domain_mask.reshape(-1)
 
         # Extracts R and Z coordinates of the grid points in the reduced plasma domain
         self.plasma_pts = np.concatenate(
@@ -159,8 +161,10 @@ class Grids:
             2d map on full domain. Values on gridpoints outside the
             reduced plasma domain are set to zero.
         """
-        self.map2d[self.idxs_mask[0], self.idxs_mask[1]] = reduced_vector
-        return self.map2d
+        map2d = np.zeros_like(self.R)
+        map2d[self.idxs_mask[0], self.idxs_mask[1]] = reduced_vector
+        # self.map2d = map2d.copy()
+        return map2d
 
     def make_layer_mask(self, layer_size=3):
         """Creates a mask for the points just outside the reduced domain, with a width=`layer_size`
@@ -189,6 +193,62 @@ class Grids:
         layer_mask *= 1 - self.plasma_domain_mask
         layer_mask = (layer_mask > 0).astype(bool)
         self.layer_mask = layer_mask
+
+    def build_linear_regularization(self, ):
+        """Builds matrix to be used for linear regularization. See Press 1992 18.5.
+
+        Returns
+        -------
+        np.array
+            Regularization matrix accounting for both horizontal and vertical first derivatives.
+            Applicable to the reduced Iy vector rather than the full Jtor map.
+        """
+
+        # horizontal gradient
+        rr = -np.triu(np.tril(np.ones((self.nxny, self.nxny)), k=0), k=0)
+        rr += np.triu(np.tril(np.ones((self.nxny, self.nxny)), k=1), k=1)
+        R1 = rr.T@rr
+
+        # vertical gradient
+        rr = -np.triu(np.tril(np.ones((self.nxny, self.nxny)), k=0), k=0)
+        rr += np.triu(np.tril(np.ones((self.nxny, self.nxny)), k=self.nx), k=self.nx)
+        R1 += rr.T@rr
+
+        # diagonal gradient
+        rr = -np.triu(np.tril(np.ones((self.nxny, self.nxny)), k=0), k=0)
+        rr += np.triu(np.tril(np.ones((self.nxny, self.nxny)), k=self.nx+1), k=self.nx+1)
+        R1 += rr.T@rr
+
+        R1 = R1[self.plasma_domain_mask_1d, :][:, self.plasma_domain_mask_1d]
+        return R1
+
+    def build_quadratic_regularization(self, ):
+        """Builds matrix to be used for linear regularization. See Press 1992 18.5.
+
+        Returns
+        -------
+        np.array
+            Regularization matrix accounting for both horizontal and vertical second derivatives.
+            Applicable to the reduced Iy vector rather than the full Jtor map.
+        """
+
+        # horizontal gradient
+        R2h = - np.triu(np.tril(np.ones((self.nxny, self.nxny)), k=0), k=0)
+        R2h -=  np.triu(np.tril(np.ones((self.nxny, self.nxny)), k=2), k=2)
+        R2h += 2*np.triu(np.tril(np.ones((self.nxny, self.nxny)), k=1), k=1)
+        R2h = R2h.T@R2h
+
+        # vertical gradient
+        R2v = - np.triu(np.tril(np.ones((self.nxny, self.nxny)), k=0), k=0)
+        R2v -=  np.triu(np.tril(np.ones((self.nxny, self.nxny)), k=2*self.nx), k=2*self.nx)
+        R2v += 2*np.triu(np.tril(np.ones((self.nxny, self.nxny)), k=self.nx), k=self.nx)
+        R2h += R2v.T@R2v
+
+        R2h = R2h[self.plasma_domain_mask_1d, :][:, self.plasma_domain_mask_1d]
+        return R2h
+
+
+
 
     # def Myy(
     #     self,

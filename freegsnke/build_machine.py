@@ -5,6 +5,8 @@ from freegs.coil import Coil
 from freegs.machine import Circuit, Solenoid, Wall
 from freegs.multi_coil import MultiCoil
 
+from .magnetic_probes import Probe
+
 from .machine_update import Machine
 
 passive_coils_path = os.environ.get("PASSIVE_COILS_PATH", None)
@@ -110,8 +112,12 @@ def tokamak():
     r_limiter = [entry["R"] for entry in limiter]
     z_limiter = [entry["Z"] for entry in limiter]
 
-    return Machine(coils, wall=Wall(r_wall, z_wall), limiter=Wall(r_limiter, z_limiter))
+    tokamak_machine =  Machine(coils, wall=Wall(r_wall, z_wall), limiter=Wall(r_limiter, z_limiter))
 
+    # add probe object attribute to tokamak
+    tokamak_machine.probes = Probe()
+
+    return tokamak_machine
 
 if __name__ == "__main__":
     # tokamak = tokamak()

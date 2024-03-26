@@ -42,7 +42,7 @@ class nl_solver:
         automatic_timestep=False,
         mode_removal=True,
         linearize=True,
-        min_dIy_dI=1,
+        min_dIy_dI=.1,
         verbose=False,
     ):
         """Initializes the time-evolution Object.
@@ -174,8 +174,8 @@ class nl_solver:
         # to calculate residual of plasma contracted circuit eq
         self.evol_plasma_curr = plasma_current(
             plasma_grids=self.plasma_grids,
-            Rm12=np.diag(self.evol_metal_curr.Rm12),
-            V=self.evol_metal_curr.V,
+            Rm1=np.diag(self.evol_metal_curr.Rm1),
+            P=self.evol_metal_curr.P,
             plasma_resistance_1d=self.plasma_resistance_1d,
             Mye=self.evol_metal_curr.Mey_matrix.T,
         )
@@ -185,9 +185,8 @@ class nl_solver:
         # Note that this does not use sub-time-stepping, i.e. max_internal_timestep = full_timestep
         self.simplified_solver_J1 = simplified_solver_J1(
             Lambdam1=self.evol_metal_curr.Lambdam1,
-            Vm1Rm12=np.matmul(
-                self.evol_metal_curr.Vm1, np.diag(self.evol_metal_curr.Rm12)
-            ),
+            Pm1 = self.evol_metal_curr.Pm1,
+            Rm1 = np.diag(self.evol_metal_curr.Rm1),
             Mey=self.evol_metal_curr.Mey_matrix,
             Myy=self.evol_plasma_curr.Myy_matrix,
             plasma_norm_factor=self.plasma_norm_factor,
@@ -203,7 +202,7 @@ class nl_solver:
         eq_currents = eq.tokamak.getCurrents()
         for i, labeli in enumerate(coils_order):
             vessel_currents_vec[i] = eq_currents[labeli]
-        self.vessel_currents_vec = 1.0 * vessel_currents_vec
+        self.vessel_currents_vec = vessel_currents_vec.copy()
 
         # self.currents_vec is the vector of current values in which the dynamics is actually solved for
         # it includes: active coils, vessel normal modes, total plasma current
@@ -215,9 +214,8 @@ class nl_solver:
         # self.linearised_sol handles the linearised dynamic problem
         self.linearised_sol = linear_solver(
             Lambdam1=self.evol_metal_curr.Lambdam1,
-            Vm1Rm12=np.matmul(
-                self.evol_metal_curr.Vm1, np.diag(self.evol_metal_curr.Rm12)
-            ),
+            Pm1 = self.evol_metal_curr.Pm1,
+            Rm1 = np.diag(self.evol_metal_curr.Rm1),
             Mey=self.evol_metal_curr.Mey_matrix,
             Myy=self.evol_plasma_curr.Myy_matrix,
             plasma_norm_factor=self.plasma_norm_factor,
@@ -384,13 +382,12 @@ class nl_solver:
             self.extensive_currents_dim + self.nxny
         )
 
-        self.evol_plasma_curr.reset_modes(V=self.evol_metal_curr.V)
+        self.evol_plasma_curr.reset_modes(P=self.evol_metal_curr.P)
 
         self.simplified_solver_J1 = simplified_solver_J1(
             Lambdam1=self.evol_metal_curr.Lambdam1,
-            Vm1Rm12=np.matmul(
-                self.evol_metal_curr.Vm1, np.diag(self.evol_metal_curr.Rm12)
-            ),
+            Pm1 = self.evol_metal_curr.Pm1,
+            Rm1 = np.diag(self.evol_metal_curr.Rm1),
             Mey=self.evol_metal_curr.Mey_matrix,
             Myy=self.evol_plasma_curr.Myy_matrix,
             plasma_norm_factor=self.plasma_norm_factor,
@@ -402,7 +399,8 @@ class nl_solver:
 
         self.linearised_sol = linear_solver(
             Lambdam1=self.evol_metal_curr.Lambdam1,
-            Vm1Rm12=self.simplified_solver_J1.Vm1Rm12,
+            Pm1 = self.evol_metal_curr.Pm1,
+            Rm1 = np.diag(self.evol_metal_curr.Rm1),
             Mey=self.evol_metal_curr.Mey_matrix,
             Myy=self.evol_plasma_curr.Myy_matrix,
             plasma_norm_factor=self.plasma_norm_factor,
@@ -1400,120 +1398,7 @@ class nl_solver:
         iterated_currs = self.currents_from_hatIy(self.hatIy1_last, active_voltage_vec)
         current_res = iterated_currs - trial_currents
         return current_res
-
-    def calculate_hatIy_GS(self, trial_currents, rtol_NK, record_for_updates=False):
-        """Finds the normalised plasma current distribution corresponding
-        to the combination of the input current values by solving the static GS problem.
-
-        Parameters
-        ----------
-        trial_currents : np.array
-            Vector of current values. Same format as self.currents_vec.
-        rtol_NK : float
-            Relative tolerance to be used in the static GS problem.
-
-        Returns
-        -------
-        np.array
-            Normalised plasma current distribution. 1d vector on the reduced plasma domain.
-        """
-        self.assign_currents_solve_GS(
-            trial_currents, rtol_NK=rtol_NK, record_for_updates=record_for_updates
-        )
-        hatIy1 = self.plasma_grids.hat_Iy_from_jtor(self.profiles2.jtor)
-        return hatIy1
-
-    # WORKING ON IT
-    def F_function_0(self, trial_sol, active_voltage_vec):
-        # full vector of unknowns,
-        # residuals of circuit eq, GS residuals
-
-        trial_currents = trial_sol[: self.extensive_currents_dim]
-        trial_plasma_psi = trial_sol[self.extensive_currents_dim :]
-
-        trial_hatIy1 = self.calculate_hatIy(
-            trial_currents, trial_plasma_psi.reshape(self.nx, self.ny)
-        )
-        self.make_broad_hatIy(trial_hatIy1)
-
-        ceq_residuals = (
-            self.simplified_solver_J1.ceq_residuals(
-                I_0=self.currents_vec,
-                I_1=trial_currents,
-                hatIy_left=self.broad_hatIy,
-                hatIy_0=self.hatIy,
-                hatIy_1=trial_hatIy1,
-                active_voltage_vec=active_voltage_vec,
-            )
-            / self.current_norm
-        )
-
-        GS_psi_residuals = (
-            self.NK.F_function(
-                trial_plasma_psi, self.tokamak_psi.reshape(-1), self.profiles2
-            )
-            / self.psi_norm
-        )
-
-        full_residual = np.concatenate((ceq_residuals, GS_psi_residuals))
-
-        return full_residual
-
-    def F_function_1(self, trial_sol, active_voltage_vec):
-
-        trial_currents = trial_sol[: self.extensive_currents_dim] * self.current_norm
-        trial_plasma_psi = trial_sol[self.extensive_currents_dim :] * self.psi_norm
-        self.trial_plasma_psi = np.copy(trial_plasma_psi).reshape(self.nx, self.ny)
-
-        # trial_hatIy1 = self.calculate_hatIy(trial_currents, trial_plasma_psi.reshape(self.nx, self.ny))
-        # self.make_broad_hatIy(trial_hatIy1)
-
-        # ceq_residuals = self.simplified_solver_J1.ceq_residuals(I_0=self.currents_vec,
-        #                                                         I_1=trial_currents,
-        #                                                         hatIy_left=self.broad_hatIy,
-        #                                                         hatIy_0=self.hatIy,
-        #                                                         hatIy_1=trial_hatIy1,
-        #                                                         active_voltage_vec=active_voltage_vec)
-        ceq_residuals = (
-            self.F_function_curr(trial_currents, active_voltage_vec) / self.current_norm
-        )
-
-        GS_psi_residuals = (
-            self.NK.F_function(
-                trial_plasma_psi, self.tokamak_psi.reshape(-1), self.profiles2
-            )
-            / self.psi_norm
-        )
-
-        full_residual = np.concatenate((ceq_residuals, GS_psi_residuals))
-
-        return full_residual
-
-    def F_function_2(self, trial_sol, active_voltage_vec, curr_eps):
-
-        trial_currents = trial_sol[: self.extensive_currents_dim] * self.current_norm
-        trial_plasma_psi = trial_sol[self.extensive_currents_dim :] * self.psi_norm
-        self.trial_plasma_psi = np.copy(trial_plasma_psi).reshape(self.nx, self.ny)
-
-        curr_step = abs(trial_currents - self.currents_vec_m1)
-        self.curr_step = np.where(curr_step > curr_eps, curr_step, curr_eps)
-        ceq_residuals = (
-            self.F_function_curr(trial_currents, active_voltage_vec) / self.curr_step
-        )
-
-        plasma_psi_step = trial_plasma_psi - self.eq1.plasma_psi.reshape(-1)
-        self.d_plasma_psi_step = np.amax(plasma_psi_step) - np.amin(plasma_psi_step)
-        GS_psi_residuals = (
-            self.NK.F_function(
-                trial_plasma_psi, self.tokamak_psi.reshape(-1), self.profiles2
-            )
-            / self.d_plasma_psi_step
-        )
-
-        full_residual = np.concatenate((ceq_residuals, GS_psi_residuals))
-
-        return full_residual
-
+    
     def F_function_curr_GS(self, trial_currents, active_voltage_vec, rtol_NK):
         """Full non-linear system of circuit eqs written as root problem
         in the vector of current values at time t+dt.
@@ -1547,49 +1432,29 @@ class nl_solver:
         current_res = iterated_currs - trial_currents
         return current_res
 
-    def F_function_ceq_GS(self, trial_currents, active_voltage_vec, rtol_NK):
-        """Full non-linear system of circuit eqs written as root problem
-        in the vector of current values at time t+dt.
-        Note that, differently from self.F_function_curr, here the plasma flux
-        is not imposed, but self-consistently solved for based on the input trial_currents.
-        Iteration consists of:
-        trial_currents -> plasma flux, through static GS
-        [trial_currents, plasma_flux] -> hatIy1, through calculating plasma distribution
-        hatIy1 -> iterated_currents, through 'simplified' circuit eqs
-        Residual: iterated_currents - trial_currents
-        is zero if trial_currents solve the full non-linear problem.
+
+    def calculate_hatIy_GS(self, trial_currents, rtol_NK, record_for_updates=False):
+        """Finds the normalised plasma current distribution corresponding
+        to the combination of the input current values by solving the static GS problem.
 
         Parameters
         ----------
         trial_currents : np.array
             Vector of current values. Same format as self.currents_vec.
-        active_voltage_vec : np.array
-            Vector of active voltages for the active coils, applied between t and t+dt.
         rtol_NK : float
             Relative tolerance to be used in the static GS problem.
 
         Returns
         -------
         np.array
-            Residual in current values. Same format as self.currents_vec.
+            Normalised plasma current distribution. 1d vector on the reduced plasma domain.
         """
-        hatIy1 = self.calculate_hatIy_GS(trial_currents, rtol_NK=rtol_NK)
-        self.make_broad_hatIy(hatIy1)
-        # print('self.currents_vec', self.currents_vec)
-        # print('trial_currents', trial_currents)
-        # print('hatIy_1', np.sum(hatIy1**2))
-        # print('hatIy_0', np.sum(self.hatIy**2))
-        # print('active_voltage_vec',active_voltage_vec)
-        ceq_residuals = self.simplified_solver_J1.ceq_residuals(
-            I_0=self.currents_vec,
-            I_1=trial_currents.copy(),
-            hatIy_left=self.broad_hatIy,
-            hatIy_0=self.hatIy,
-            hatIy_1=hatIy1,
-            active_voltage_vec=active_voltage_vec,
+        self.assign_currents_solve_GS(
+            trial_currents, rtol_NK=rtol_NK, record_for_updates=record_for_updates
         )
-        return ceq_residuals
-
+        hatIy1 = self.plasma_grids.hat_Iy_from_jtor(self.profiles2.jtor)
+        return hatIy1
+    
     def F_function_psi(self, trial_plasma_psi, active_voltage_vec, rtol_NK):
         """Full non-linear system of circuit eqs written as root problem
         in the plasma flux. Note that the flux associated to the metal currents
@@ -1625,50 +1490,6 @@ class nl_solver:
             hatIy1=hatIy1, active_voltage_vec=active_voltage_vec, rtol_NK=rtol_NK
         )
         psi_residual = self.eq2.plasma_psi.reshape(-1) - trial_plasma_psi
-        return psi_residual
-
-    def F_function_psi_GS(self, trial_plasma_psi, active_voltage_vec, rtol_NK):
-        """Full non-linear system of circuit eqs written as root problem
-        in the plasma flux. Note that the flux associated to the metal currents
-        is fixed externally through self.tokamak_psi.
-        Iteration consists of:
-        [trial_plasma_psi, tokamak_psi] -> hatIy1, by calculating Jtor
-        hatIy1 -> currents(t+dt), through 'simplified' circuit eq
-        currents(t+dt) -> iterated_plasma_flux, through static GS
-        Residual: iterated_plasma_flux - trial_plasma_psi
-        is zero if [trial_plasma_psi, tokamak_psi] solve the full non-linear problem.
-
-        Parameters
-        ----------
-        trial_plasma_psi : np.array
-            Plasma flux values in 1d vector covering full domain of size eq.nx*eq.ny.
-        active_voltage_vec : np.array
-            Vector of active voltages for the active coils, applied between t and t+dt.
-        rtol_NK : float
-            Relative tolerance to be used in the static GS problem.
-
-        Returns
-        -------
-        np.array
-            Residual in plasma flux, 1d.
-        """
-        jtor_ = self.profiles2.Jtor(
-            self.eqR,
-            self.eqZ,
-            (self.tokamak_psi + trial_plasma_psi).reshape(self.nx, self.ny),
-        )
-        hatIy1 = self.plasma_grids.hat_Iy_from_jtor(jtor_)
-        self.hatIy1_iterative_cycle(
-            hatIy1=hatIy1, active_voltage_vec=active_voltage_vec, rtol_NK=rtol_NK
-        )
-        psi_residual = self.psi_gs_alpha[0] * (
-            self.eq2.plasma_psi.reshape(-1) - trial_plasma_psi
-        )
-
-        psi_residual += self.psi_gs_alpha[1] * self.NK.F_function(
-            trial_plasma_psi.reshape(-1), self.tokamak_psi.reshape(-1), self.profiles2
-        )
-
         return psi_residual
 
     def calculate_rel_tolerance_currents(self, current_residual, curr_eps):
@@ -3312,3 +3133,185 @@ class nl_solver:
     #     # flag = self.plasma_grids.check_if_outside_domain(jtor=self.profiles2.jtor)
 
     #     # return flag
+
+
+    # # WORKING ON IT
+    # def F_function_0(self, trial_sol, active_voltage_vec):
+    #     # full vector of unknowns,
+    #     # residuals of circuit eq, GS residuals
+
+    #     trial_currents = trial_sol[: self.extensive_currents_dim]
+    #     trial_plasma_psi = trial_sol[self.extensive_currents_dim :]
+
+    #     trial_hatIy1 = self.calculate_hatIy(
+    #         trial_currents, trial_plasma_psi.reshape(self.nx, self.ny)
+    #     )
+    #     self.make_broad_hatIy(trial_hatIy1)
+
+    #     ceq_residuals = (
+    #         self.simplified_solver_J1.ceq_residuals(
+    #             I_0=self.currents_vec,
+    #             I_1=trial_currents,
+    #             hatIy_left=self.broad_hatIy,
+    #             hatIy_0=self.hatIy,
+    #             hatIy_1=trial_hatIy1,
+    #             active_voltage_vec=active_voltage_vec,
+    #         )
+    #         / self.current_norm
+    #     )
+
+    #     GS_psi_residuals = (
+    #         self.NK.F_function(
+    #             trial_plasma_psi, self.tokamak_psi.reshape(-1), self.profiles2
+    #         )
+    #         / self.psi_norm
+    #     )
+
+    #     full_residual = np.concatenate((ceq_residuals, GS_psi_residuals))
+
+    #     return full_residual
+
+    # def F_function_1(self, trial_sol, active_voltage_vec):
+
+    #     trial_currents = trial_sol[: self.extensive_currents_dim] * self.current_norm
+    #     trial_plasma_psi = trial_sol[self.extensive_currents_dim :] * self.psi_norm
+    #     self.trial_plasma_psi = np.copy(trial_plasma_psi).reshape(self.nx, self.ny)
+
+    #     # trial_hatIy1 = self.calculate_hatIy(trial_currents, trial_plasma_psi.reshape(self.nx, self.ny))
+    #     # self.make_broad_hatIy(trial_hatIy1)
+
+    #     # ceq_residuals = self.simplified_solver_J1.ceq_residuals(I_0=self.currents_vec,
+    #     #                                                         I_1=trial_currents,
+    #     #                                                         hatIy_left=self.broad_hatIy,
+    #     #                                                         hatIy_0=self.hatIy,
+    #     #                                                         hatIy_1=trial_hatIy1,
+    #     #                                                         active_voltage_vec=active_voltage_vec)
+    #     ceq_residuals = (
+    #         self.F_function_curr(trial_currents, active_voltage_vec) / self.current_norm
+    #     )
+
+    #     GS_psi_residuals = (
+    #         self.NK.F_function(
+    #             trial_plasma_psi, self.tokamak_psi.reshape(-1), self.profiles2
+    #         )
+    #         / self.psi_norm
+    #     )
+
+    #     full_residual = np.concatenate((ceq_residuals, GS_psi_residuals))
+
+    #     return full_residual
+
+    # def F_function_2(self, trial_sol, active_voltage_vec, curr_eps):
+
+    #     trial_currents = trial_sol[: self.extensive_currents_dim] * self.current_norm
+    #     trial_plasma_psi = trial_sol[self.extensive_currents_dim :] * self.psi_norm
+    #     self.trial_plasma_psi = np.copy(trial_plasma_psi).reshape(self.nx, self.ny)
+
+    #     curr_step = abs(trial_currents - self.currents_vec_m1)
+    #     self.curr_step = np.where(curr_step > curr_eps, curr_step, curr_eps)
+    #     ceq_residuals = (
+    #         self.F_function_curr(trial_currents, active_voltage_vec) / self.curr_step
+    #     )
+
+    #     plasma_psi_step = trial_plasma_psi - self.eq1.plasma_psi.reshape(-1)
+    #     self.d_plasma_psi_step = np.amax(plasma_psi_step) - np.amin(plasma_psi_step)
+    #     GS_psi_residuals = (
+    #         self.NK.F_function(
+    #             trial_plasma_psi, self.tokamak_psi.reshape(-1), self.profiles2
+    #         )
+    #         / self.d_plasma_psi_step
+    #     )
+
+    #     full_residual = np.concatenate((ceq_residuals, GS_psi_residuals))
+
+    #     return full_residual
+
+   
+    # def F_function_ceq_GS(self, trial_currents, active_voltage_vec, rtol_NK):
+    #     """Full non-linear system of circuit eqs written as root problem
+    #     in the vector of current values at time t+dt.
+    #     Note that, differently from self.F_function_curr, here the plasma flux
+    #     is not imposed, but self-consistently solved for based on the input trial_currents.
+    #     Iteration consists of:
+    #     trial_currents -> plasma flux, through static GS
+    #     [trial_currents, plasma_flux] -> hatIy1, through calculating plasma distribution
+    #     hatIy1 -> iterated_currents, through 'simplified' circuit eqs
+    #     Residual: iterated_currents - trial_currents
+    #     is zero if trial_currents solve the full non-linear problem.
+
+    #     Parameters
+    #     ----------
+    #     trial_currents : np.array
+    #         Vector of current values. Same format as self.currents_vec.
+    #     active_voltage_vec : np.array
+    #         Vector of active voltages for the active coils, applied between t and t+dt.
+    #     rtol_NK : float
+    #         Relative tolerance to be used in the static GS problem.
+
+    #     Returns
+    #     -------
+    #     np.array
+    #         Residual in current values. Same format as self.currents_vec.
+    #     """
+    #     hatIy1 = self.calculate_hatIy_GS(trial_currents, rtol_NK=rtol_NK)
+    #     self.make_broad_hatIy(hatIy1)
+    #     # print('self.currents_vec', self.currents_vec)
+    #     # print('trial_currents', trial_currents)
+    #     # print('hatIy_1', np.sum(hatIy1**2))
+    #     # print('hatIy_0', np.sum(self.hatIy**2))
+    #     # print('active_voltage_vec',active_voltage_vec)
+    #     ceq_residuals = self.simplified_solver_J1.ceq_residuals(
+    #         I_0=self.currents_vec,
+    #         I_1=trial_currents.copy(),
+    #         hatIy_left=self.broad_hatIy,
+    #         hatIy_0=self.hatIy,
+    #         hatIy_1=hatIy1,
+    #         active_voltage_vec=active_voltage_vec,
+    #     )
+    #     return ceq_residuals
+
+    
+
+    # def F_function_psi_GS(self, trial_plasma_psi, active_voltage_vec, rtol_NK):
+    #     """Full non-linear system of circuit eqs written as root problem
+    #     in the plasma flux. Note that the flux associated to the metal currents
+    #     is fixed externally through self.tokamak_psi.
+    #     Iteration consists of:
+    #     [trial_plasma_psi, tokamak_psi] -> hatIy1, by calculating Jtor
+    #     hatIy1 -> currents(t+dt), through 'simplified' circuit eq
+    #     currents(t+dt) -> iterated_plasma_flux, through static GS
+    #     Residual: iterated_plasma_flux - trial_plasma_psi
+    #     is zero if [trial_plasma_psi, tokamak_psi] solve the full non-linear problem.
+
+    #     Parameters
+    #     ----------
+    #     trial_plasma_psi : np.array
+    #         Plasma flux values in 1d vector covering full domain of size eq.nx*eq.ny.
+    #     active_voltage_vec : np.array
+    #         Vector of active voltages for the active coils, applied between t and t+dt.
+    #     rtol_NK : float
+    #         Relative tolerance to be used in the static GS problem.
+
+    #     Returns
+    #     -------
+    #     np.array
+    #         Residual in plasma flux, 1d.
+    #     """
+    #     jtor_ = self.profiles2.Jtor(
+    #         self.eqR,
+    #         self.eqZ,
+    #         (self.tokamak_psi + trial_plasma_psi).reshape(self.nx, self.ny),
+    #     )
+    #     hatIy1 = self.plasma_grids.hat_Iy_from_jtor(jtor_)
+    #     self.hatIy1_iterative_cycle(
+    #         hatIy1=hatIy1, active_voltage_vec=active_voltage_vec, rtol_NK=rtol_NK
+    #     )
+    #     psi_residual = self.psi_gs_alpha[0] * (
+    #         self.eq2.plasma_psi.reshape(-1) - trial_plasma_psi
+    #     )
+
+    #     psi_residual += self.psi_gs_alpha[1] * self.NK.F_function(
+    #         trial_plasma_psi.reshape(-1), self.tokamak_psi.reshape(-1), self.profiles2
+    #     )
+
+    #     return psi_residual

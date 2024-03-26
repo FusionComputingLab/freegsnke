@@ -378,7 +378,7 @@ class Probe():
             greens_bz = self.greens_bz_plasma_pickup[eq_key]
         except:
             self.greens_br_plasma_pickup[eq_key],self.greens_bz_plasma_pickup[eq_key] = self.create_greens_BrBz_plasma(eq,'pickups')
-
+            print('new equilibrium grid - computed new greens functions')
         if probe =='pickups':
             br_plasma = np.sum(greens_br * plasma_current, axis = (0,1))
             bz_plasma = np.sum(greens_bz * plasma_current, axis = (0,1))
@@ -401,7 +401,7 @@ class Probe():
             except:
                 self.greens_br_plasma_pickup[eq_key] = self.create_greens_BrBz_plasma(eq,'pickups')[0]
                 greens_pl = self.greens_br_plasma_pickup[eq_key]
-
+                print('new equilibrium grid - computed new greens functions')
             br_coil = np.sum(self.greens_br_coils_pickup*coil_currents,axis = 0)
             br_plasma = np.sum(greens_pl * plasma_current, axis = (0,1))
         return br_coil + br_plasma
@@ -422,7 +422,7 @@ class Probe():
             except:
                 self.greens_bz_plasma_pickup[eq_key] = self.create_greens_BrBz_plasma(eq,'pickups')[1]
                 greens_pl = self.greens_bz_plasma_pickup[eq_key]
-
+                print('new equilibrium grid - computed new greens functions')
 
             bz_coil = np.sum(self.greens_bz_coils_pickup * coil_currents,axis = 0)
             bz_plasma = np.sum(greens_pl * plasma_current, axis = (0,1))

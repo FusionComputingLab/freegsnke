@@ -21,17 +21,17 @@ class Probe():
 
     Inputs:
     - equilibrium object - contains grid, plasma profile, plasma and coil currents, coil positions.
-    N.B:- in init the eq object provides machine /domain/position information
+    N.B:- in init/setup the eq object only provides machine /domain/position information
         - in methods the equilibrium provides currents and other aspects that evolve in solve().
 
     Attributes:
     - floops,pickups = dictionaries with name, position, orientation of the probes
     - floops_positions etc.  = extract individual arrays of positions, orientations etc.
-    - floops_order / pickups_order = list of fluxloop / pickups names, if individual probe value is required
+    - floops_order / pickups_order = list of fluxloop/pickups names, if individual probe value is required
     - greens_psi_coils_floops = greens functions for psi, evaluated at flux loop positions
     - greens_br/bz_coils_pickups = greens functions for Br/Bz, evaluated at pickup coil positions
-    - greens_psi_plasma_floops = greens functions for psi from plasma current, evaluated at flux loop positions
-    - create_greens_BrBz_plasma_pickups = greens functions for Br and Bz from plasma, evaluated at pickup coil positions
+    - greens_psi_plasma_floops = dictionary of greens functions for psi from plasma current, evaluated at flux loop positions
+    - greens_BrBz_plasma_pickups = dictionary of greens functions for Br and Bz from plasma, evaluated at pickup coil positions
 
     - more greens function attributes would be added if new probes area added.
 
@@ -41,7 +41,10 @@ class Probe():
     - create_greens_all_coils(): returns array with greens function for each coil and probe combination.
     - psi_all_coils(eq): returns list of psi values at each flux loop position, summed over all coils.
     - psi_from_plasma(eq): returns list of psi values at each flux loop position from plasma itself.
-    - calc_flux_value(eq): returns total flux at each probe position (sum of previous two outputs).
+    - create_greens_B_oriented_plasma(eq) : creates oriented greens functions for pickup coils.
+    - calculate_fluxloop_value(eq): returns total flux at each probe position (sum of previous two outputs).
+    - calculate_pickup_value(eq): returns pickup values at each probe position.
+
 
     - Br(eq)/ Bz(eq) : computes radial/z component of magnetic field, sum of coil and plasma contributions
     - Btor(eq) : extracts toroidal magnetic field (outside of plasma), evaluated at 
@@ -52,9 +55,6 @@ class Probe():
         """ 
         Initialise the following
         - read the probe dictionaries from file
-        - set probe positions and orientations
-        - set coil positions from equilibrium object
-        - create arrays of greens functions with positions of coils/plasma currents and probes
         """
         # extract probe dictionaries, and set variables for each probe type
         probe_path = os.environ.get("PROBE_PATH",None)
@@ -71,16 +71,17 @@ class Probe():
         
     def initialise_setup(self,eq):
             """
-            Setup postions and greens functions 
+            Setup attributes: positions, orientations and greens functions 
+            - set probe positions and orientations
+            - set coil positions from equilibrium object
+            - create arrays/dictionaries of greens functions with positions of coils/plasma currents and probes
             """
 
-            #tokamak is a list of all the coils (active pasive etc.)
             # take coil info from machine_config.py where coil_dict is defined
             self.coil_names = [name  for name in eq.tokamak.getCurrents()]
             self.coil_dict = machine_config.coils_dict
 
             # self.coils_order = [labeli for i, labeli in enumerate(self.coil_dict.keys())]
-
 
             #FLUX LOOPS
             # positions, number of probes, ordering
@@ -106,7 +107,7 @@ class Probe():
             self.greens_br_plasma_pickup[self.create_eq_key(eq)], self.greens_bz_plasma_pickup[self.create_eq_key(eq)] = self.create_greens_BrBz_plasma(eq,'pickups')
 
             self.greens_B_plasma_oriented = {}
-            self.greens_B_plasma_oriented[self.create_eq_key(eq)] = self.greens_B_oriented_plasma(eq,'pickups')
+            self.greens_B_plasma_oriented[self.create_eq_key(eq)] = self.create_greens_B_oriented_plasma(eq,'pickups')
             self.greens_B_coils_oriented = self.create_greens_B_oriented_coils('pickups')
 
             # Other probes - to add in future...
@@ -115,6 +116,7 @@ class Probe():
     Things for all probes
     - coil current array
     - plasma current array
+    - eq grid key 
     """
 
     def get_coil_currents(self,eq):
@@ -130,7 +132,7 @@ class Probe():
 
     def get_plasma_current(self,eq):
         """
-        equilibirium object contains toroidal current distribution, over the grid positions.
+        From equilibirium object contains toroidal current distribution on the grid.
         """
         #  grid spacings
         dR = eq.R[1, 0] - eq.R[0, 0]
@@ -141,11 +143,12 @@ class Probe():
 
     def create_eq_key(self,eq):
         """
-        produces tuple (Rmin,Rmax,Zmin,Zmax,nx,ny) from equilibrium to access correct greens function
+        Produces tuple (Rmin,Rmax,Zmin,Zmax,nx,ny) from equilibrium to access correct greens function.
         """
         nx,ny = len(eq.R_1D),len(eq.Z_1D)
         eq_key = (eq.Rmin,eq.Rmax,eq.Zmin,eq.Zmax, nx,ny)
         return eq_key
+
 
     """
     Things for flux loops
@@ -190,8 +193,8 @@ class Probe():
     def psi_floop_all_coils(self,eq, probe = 'floops'):
         """
         compute flux function summed over all coils. 
-        returns array of flux values at the positions of the floop probes by default 
-        New probes can be used instead (just change which greens function is used)
+        returns array of flux values at the positions of the floop probes by default.
+        new probes can be used instead (just change which greens function is used)
         """
         array_of_coil_currents = self.get_coil_currents(eq)
         if probe == 'floops':
@@ -308,7 +311,7 @@ class Probe():
     
     def create_greens_B_oriented_coils(self,probe = 'pickups'):
         """ 
-        perform dot product of greens fucntion vector with orientation
+        perform dot product of greens function vector with pickup coil orientation
         """
         if probe == 'pickups':
             or_R = self.pickup_or[:,0]
@@ -321,7 +324,8 @@ class Probe():
 
     def BrBz_coils(self,eq,probe = 'pickups'):
         """
-        Magnetic fields from coils
+        Magnetic fields from coils, radial and z components only. 
+        evaluated on pickup positions by default.
         """
         coil_currents = self.get_coil_currents(eq)[:,np.newaxis]
         if probe =='pickups':
@@ -355,9 +359,9 @@ class Probe():
         return greens_br, greens_bz
     
 
-    def greens_B_oriented_plasma(self,eq,probe = 'pickups'):
+    def create_greens_B_oriented_plasma(self,eq,probe = 'pickups'):
         """ 
-        perform dot product of greens fucntion vector with orientation
+        perform dot product of greens function vector with orientation
         """
         or_R = self.pickup_or[:,0]
         or_Z = self.pickup_or[:,2]
@@ -464,7 +468,7 @@ class Probe():
                  greens_pl = self.greens_B_plasma_oriented[eq_key]
             except :
                 #  add new greens functions to dictionary
-                self.greens_B_plasma_oriented[eq_key] = self.greens_B_oriented_plasma(eq,'floops')
+                self.greens_B_plasma_oriented[eq_key] = self.create_greens_B_oriented_plasma(eq,'floops')
                 print('new equilibrium grid - computed new greens functions')
                 # use newly created dictionary element.
                 greens_pl =  self.greens_B_plasma_oriented[eq_key]

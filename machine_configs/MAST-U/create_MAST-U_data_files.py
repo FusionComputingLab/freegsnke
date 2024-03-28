@@ -3,8 +3,9 @@ the format required by freegsnke. It contains a load of geometry data and logic
 for creating the dictionaries. The dictionaries are ultimately saved as pickle
 files in this directory."""
 
-import numpy as np
 import pickle
+
+import numpy as np
 
 eta_copper = 1.55e-8  # Resistivity in Ohm*m, for active coils
 

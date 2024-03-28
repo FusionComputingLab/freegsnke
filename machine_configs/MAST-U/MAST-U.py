@@ -1,7 +1,7 @@
-import numpy as np
 import pickle
-from freegs.gradshafranov import Greens
 
+import numpy as np
+from freegs.gradshafranov import Greens
 
 eta_copper = 1.55e-8  # resistivity in Ohm*m, for active coils
 eta_steel = 5.5e-7  # in Ohm*m, for passive structures
@@ -863,8 +863,8 @@ Vmatrix[:N_active, :N_active] = np.eye(N_active)
 Vmatrix[N_active:, N_active:] = 1.0 * Vmatrix_passive
 
 
-from freegs.machine import Machine, Circuit, Wall, Solenoid
 from freegs.coil import Coil
+from freegs.machine import Circuit, Machine, Solenoid, Wall
 from freegs.multi_coil import MultiCoil
 
 

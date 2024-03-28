@@ -57,16 +57,19 @@ class Probe:
         - read the probe dictionaries from file
         """
         # extract probe dictionaries, and set variables for each probe type
-        probe_path = os.environ.get("PROBE_PATH", None)
-        if probe_path is None:
-            raise ValueError("PROBE_PATH environment variable not set.")
+        try:
+            probe_path = os.environ.get("PROBE_PATH", None)
+            if probe_path is None:
+                raise ValueError("PROBE_PATH environment variable not set.")
 
-        with open(probe_path, "rb") as file:
-            probe_dict = pickle.load(file)
+            with open(probe_path, "rb") as file:
+                probe_dict = pickle.load(file)
 
-        # set coil lists and probe lists
-        self.floops = probe_dict["flux_loops"]
-        self.pickups = probe_dict["pickups"]
+            # set coil lists and probe lists
+            self.floops = probe_dict["flux_loops"]
+            self.pickups = probe_dict["pickups"]
+        except ValueError:
+            print("No probe configuration is provided")
 
     def initialise_setup(self, eq):
         """

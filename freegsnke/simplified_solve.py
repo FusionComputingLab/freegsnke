@@ -144,10 +144,6 @@ class simplified_solver_J1:
         Rp = np.sum(self.plasma_resistance_1d * hatIy_left * hatIy_1)
         self.Rp = Rp
 
-        simplified_self_left = np.dot(self.Myy, hatIy_left)
-        simplified_self_1 = np.dot(simplified_self_left, hatIy_1)
-        simplified_self_0 = np.dot(simplified_self_left, hatIy_0)
-
         self.Mmatrix[-1, :-1] = np.dot(self.MyeP_T, hatIy_left) / (Rp * self.plasma_norm_factor)
         self.Lmatrix[-1, :-1] = np.copy(self.Mmatrix[-1, :-1])
 
@@ -155,8 +151,11 @@ class simplified_solver_J1:
         self.Mmatrix[:-1, -1] = np.dot(simplified_mutual, hatIy_1)
         self.Lmatrix[:-1, -1] = np.dot(simplified_mutual, hatIy_0)
 
-        self.Mmatrix[-1, -1] = simplified_self_1 / Rp
-        self.Lmatrix[-1, -1] = simplified_self_0 / Rp
+        simplified_self_left = np.dot(self.Myy, hatIy_left) / Rp
+        simplified_self_1 = np.dot(simplified_self_left, hatIy_1)
+        simplified_self_0 = np.dot(simplified_self_left, hatIy_0)
+        self.Mmatrix[-1, -1] = simplified_self_1 
+        self.Lmatrix[-1, -1] = simplified_self_0 
 
         self.solver.set_Lmatrix(self.Lmatrix)
         self.solver.set_Mmatrix(self.Mmatrix)
@@ -165,6 +164,7 @@ class simplified_solver_J1:
 
         self.empty_U[: self.n_active_coils] = active_voltage_vec
         self.forcing[:-1] = np.dot(self.Pm1Rm1, self.empty_U)
+        
 
     def stepper(self, It, hatIy_left, hatIy_0, hatIy_1, active_voltage_vec):
         """Computes and returns the set of extensive currents at time t+dt
@@ -245,13 +245,11 @@ class simplified_solver_J1:
         res_pl += np.dot(self.MyeP_T, Id_dot) / self.plasma_norm_factor
         res_pl = np.dot(res_pl, hatIy_left)
         res_pl /= Rp
-        # build residual ved
+        # build residual vector
         residuals[:-1] = res_met
         residuals[-1] = res_pl
 
         # add resistive and forcing terms
-        # I_1[-1] *= Rp
-        # residuals /= self.full_timestep
         residuals += (I_1 - forcing) * self.full_timestep
 
         return residuals

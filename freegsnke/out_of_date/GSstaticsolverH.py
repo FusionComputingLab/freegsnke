@@ -76,8 +76,8 @@ class NKGSsolver:
             [
                 [(x, 0) for x in range(nx)],
                 [(x, ny - 1) for x in range(nx)],
-                [(0, y) for y in range(ny)],
-                [(nx - 1, y) for y in range(ny)],
+                [(0, y) for y in np.arange(1,ny-1)],
+                [(nx - 1, y) for y in np.arange(1,ny-1)],
             ]
         )
         self.bndry_indices = bndry_indices
@@ -126,19 +126,24 @@ class NKGSsolver:
         )
         self.rhs = self.rhs_before_jtor * self.jtor
 
-        # calculates and assignes boundary conditions
-        self.psi_boundary = np.zeros_like(self.R)
+        # calculates and assigns boundary conditions
+        # self.psi_boundary = np.zeros_like(self.R)
         psi_bnd = np.sum(self.greenfunc * self.jtor[np.newaxis, :, :], axis=(-1, -2))
 
-        self.psi_boundary[:, 0] = psi_bnd[: self.nx]
-        self.psi_boundary[:, -1] = psi_bnd[self.nx : 2 * self.nx]
-        self.psi_boundary[0, :] = psi_bnd[2 * self.nx : 2 * self.nx + self.ny]
-        self.psi_boundary[-1, :] = psi_bnd[2 * self.nx + self.ny :]
+        # self.psi_boundary[:, 0] = psi_bnd[: self.nx]
+        # self.psi_boundary[:, -1] = psi_bnd[self.nx : 2 * self.nx]
+        # self.psi_boundary[0, :] = psi_bnd[2 * self.nx : 2 * self.nx + self.ny]
+        # self.psi_boundary[-1, :] = psi_bnd[2 * self.nx + self.ny :]
 
-        self.rhs[0, :] = self.psi_boundary[0, :]
-        self.rhs[:, 0] = self.psi_boundary[:, 0]
-        self.rhs[-1, :] = self.psi_boundary[-1, :]
-        self.rhs[:, -1] = self.psi_boundary[:, -1]
+        # self.rhs[0, :] = self.psi_boundary[0, :]
+        # self.rhs[:, 0] = self.psi_boundary[:, 0]
+        # self.rhs[-1, :] = self.psi_boundary[-1, :]
+        # self.rhs[:, -1] = self.psi_boundary[:, -1]
+
+        self.rhs[:, 0] = psi_bnd[ :self.nx]
+        self.rhs[:, -1] = psi_bnd[self.nx :2*self.nx]
+        self.rhs[0, 1:self.ny-1] = psi_bnd[2*self.nx : 2*self.nx + self.ny - 2]
+        self.rhs[-1, 1:self.ny-1] = psi_bnd[2*self.nx + self.ny-2 :2*self.nx + 2*self.ny - 4]
 
     def F_function(self, plasma_psi, tokamak_psi, profiles, rel_psi_error=0):
         """Nonlinear Grad Shafranov equation written as a root problem
@@ -166,7 +171,7 @@ class NKGSsolver:
 
         self.freeboundary(plasma_psi, tokamak_psi, profiles, rel_psi_error)
         residual = plasma_psi - (
-            self.linear_GS_solver(self.psi_boundary, self.rhs)
+            self.linear_GS_solver(plasma_psi, self.rhs)
         ).reshape(-1)
         return residual
 
@@ -266,13 +271,13 @@ class NKGSsolver:
         trial_plasma_psi = np.copy(eq.plasma_psi).reshape(-1)
         self.tokamak_psi = (eq.tokamak.calcPsiFromGreens(pgreen=eq._pgreen)).reshape(-1)
 
-        args = [self.tokamak_psi, self.profiles]
-
         res0 = self.F_function(trial_plasma_psi, self.tokamak_psi, self.profiles)
         # print('initial residual', res0)
         rel_change = np.amax(np.abs(res0))
         del_psi = np.amax(trial_plasma_psi) - np.amin(trial_plasma_psi)
         rel_change /= del_psi
+
+        args = [self.tokamak_psi, self.profiles, rel_change]
 
         iterations = 0
         while (rel_change > target_relative_tolerance) * (
@@ -281,8 +286,7 @@ class NKGSsolver:
 
             if rel_change > Picard_handover:
                 # using Picard instead of NK
-                # del_res0 = (np.amax(res0) - np.amin(res0))
-                trial_plasma_psi -= res0  # /max(4, del_psi/del_res0)
+                trial_plasma_psi -= res0  
                 picard_flag = 1
 
             else:
@@ -309,9 +313,7 @@ class NKGSsolver:
             rel_change = np.amax(np.abs(res0))
             rel_change /= np.amax(trial_plasma_psi) - np.amin(trial_plasma_psi)
             self.relative_change = 1.0 * rel_change
-
-            # print('rel_unexpl res = ', self.nksolver.relative_unexplained_residual)
-            # print(iterations, rel_change)
+            args[2] = rel_change
 
             iterations += 1
 
@@ -322,11 +324,6 @@ class NKGSsolver:
         eq._current = np.sum(profiles.jtor) * self.dRdZ
         eq._profiles = profiles
 
-        # record xpoints and opoints
-        # eq.xpt = np.copy(profiles.xpt)
-        # eq.opt = np.copy(profiles.opt)
-        # eq.psi_axis = eq.opt[0,2]
-        # eq.psi_bndry = eq.xpt[0,2]
         self.port_critical(eq=eq, profiles=profiles)
 
         if picard_flag and verbose:

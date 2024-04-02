@@ -1,4 +1,4 @@
-/tmp
+tmp
 *.tmp
 *.pyc
 /dist/

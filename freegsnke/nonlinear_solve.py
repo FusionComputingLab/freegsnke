@@ -10,7 +10,7 @@ from . import nk_solver_Hessenberg as nk_solver_H
 from . import plasma_grids
 from .circuit_eq_metal import metal_currents
 from .circuit_eq_plasma import plasma_current
-from .GSstaticsolverH import NKGSsolver
+from .GSstaticsolver import NKGSsolver
 from .linear_solve import linear_solver
 from .machine_config import coils_order
 from .simplified_solve import simplified_solver_J1

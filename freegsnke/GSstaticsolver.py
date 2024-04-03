@@ -192,6 +192,8 @@ class NKGSsolver:
         eq._current = np.sum(profiles.jtor) * self.dRdZ
         eq._profiles = deepcopy(profiles)
 
+        eq.tokamak_psi = self.tokamak_psi.reshape(self.nx, self.ny)
+
     def forward_solve(
         self,
         eq,

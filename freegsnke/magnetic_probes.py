@@ -85,6 +85,11 @@ class Probe:
 
         # self.coils_order = [labeli for i, labeli in enumerate(self.coil_dict.keys())]
 
+        eq_key = self.create_eq_key(eq)
+
+        self.limiter_handler = {}
+        self.limiter_handler[eq_key] = eq.limiter_handler
+
         # FLUX LOOPS
         # positions, number of probes, ordering
         self.floop_pos = np.array([probe["position"] for probe in self.floops])
@@ -94,7 +99,7 @@ class Probe:
         # # Initilaise Greens functions Gpsi
         self.greens_psi_coils_floops = self.create_greens_psi_all_coils("floops")
         self.greens_psi_plasma_floops = {}
-        self.greens_psi_plasma_floops[self.create_eq_key(eq)] = (
+        self.greens_psi_plasma_floops[eq_key] = (
             self.create_green_psi_plasma(eq, "floops")
         )
 
@@ -110,13 +115,14 @@ class Probe:
         self.greens_br_coils_pickup, self.greens_bz_coils_pickup = (
             self.greens_BrBz_all_coils("pickups")
         )
-        (
-            self.greens_br_plasma_pickup[self.create_eq_key(eq)],
-            self.greens_bz_plasma_pickup[self.create_eq_key(eq)],
-        ) = self.create_greens_BrBz_plasma(eq, "pickups")
+        # not initialised unless needed to save memory
+        # (
+        #     self.greens_br_plasma_pickup[eq_key],
+        #     self.greens_bz_plasma_pickup[eq_key],
+        # ) = self.create_greens_BrBz_plasma(eq, "pickups")
 
         self.greens_B_plasma_oriented = {}
-        self.greens_B_plasma_oriented[self.create_eq_key(eq)] = (
+        self.greens_B_plasma_oriented[eq_key] = (
             self.create_greens_B_oriented_plasma(eq, "pickups")
         )
         self.greens_B_coils_oriented = self.create_greens_B_oriented_coils("pickups")
@@ -393,11 +399,12 @@ class Probe:
         """
         perform dot product of greens function vector with orientation
         """
+        br, bz = self.create_greens_BrBz_plasma(eq)
+
         or_R = self.pickup_or[:, 0]
         or_Z = self.pickup_or[:, 2]
         prod = (
-            self.create_greens_BrBz_plasma(eq)[0] * or_R
-            + self.create_greens_BrBz_plasma(eq)[1] * or_Z
+            br * or_R + bz * or_Z
         )
 
         return prod

@@ -2,7 +2,7 @@ import freegs
 import numpy as np
 from freegs import critical
 
-from . import limiter_func, plasma_grids
+from . import limiter_func
 
 
 class ConstrainBetapIp(freegs.jtor.ConstrainBetapIp):
@@ -12,35 +12,45 @@ class ConstrainBetapIp(freegs.jtor.ConstrainBetapIp):
 
     """
 
-    def __init__(self, eq, limiter, *args, **kwargs):
+    def __init__(self, eq, limiter=None, *args, **kwargs):
         """Instantiates the object.
 
-        Parameters
+         Parameters
         ----------
-        mask_inside_limiter : np.array
-            Boole mask, it is True inside the limiter. Same size as full domain grid: (eq.nx, eq.ny)
+        eq : freeGS Equilibrium object
+            Specifies the domain properties
+        limiter : freeGS.machine.Wall object
+            Specifies the limiter contour points. 
+            Only set if a limiter different from eq.tokamak.limiter is to be used.
         """
         super().__init__(*args, **kwargs)
         self.profile_parameter = self.betap
 
-        self.limiter_handler = limiter_func.Limiter_handler(eq, limiter)
-        self.limiter_mask_out = plasma_grids.make_layer_mask(
-            self.limiter_handler.mask_inside_limiter, layer_size=1
-        )
-        self.mask_inside_limiter = self.limiter_handler.mask_inside_limiter
-        self.limiter_mask_for_plotting = (
-            self.mask_inside_limiter + self.limiter_mask_out
-        ) > 0
-        self.plasma_grids = plasma_grids.Grids(eq, self.mask_inside_limiter)
+        if limiter is None:
+            self.limiter_handler = eq.limiter_handler
+
+            self.limiter_mask_out = eq.limiter_mask_out
+            self.mask_inside_limiter = eq.mask_inside_limiter
+            self.limiter_mask_for_plotting = (
+                self.mask_inside_limiter + self.limiter_mask_out
+            ) > 0
+        else:
+            self.limiter_handler = limiter_func.Limiter_handler(eq, limiter)
+
+            self.mask_inside_limiter = self.limiter_handler.mask_inside_limiter
+            self.limiter_mask_out = self.limiter_handler.make_layer_mask(
+                layer_size=1
+            )
+            self.limiter_mask_for_plotting = (
+                self.mask_inside_limiter + self.limiter_mask_out
+            ) > 0
 
         if not hasattr(self, "fast"):
             self.Jtor = self._Jtor
         else:
             self.Jtor = self.Jtor_fast
 
-    def get_pars(
-        self,
-    ):
+    def get_pars(self,):
         """Fetches all profile parameters and returns them in a single array"""
         return np.array([self.alpha_m, self.alpha_n, self.betap])
 
@@ -105,7 +115,7 @@ class ConstrainPaxisIp(freegs.jtor.ConstrainPaxisIp):
 
     """
 
-    def __init__(self, eq, limiter, *args, **kwargs):
+    def __init__(self, eq, limiter=None, *args, **kwargs):
         """Instantiates the object.
 
         Parameters
@@ -114,19 +124,30 @@ class ConstrainPaxisIp(freegs.jtor.ConstrainPaxisIp):
             Specifies the domain properties
         limiter : freeGS.machine.Wall object
             Specifies the limiter contour points
+            Only set if a limiter different from eq.tokamak.limiter is to be used.
+
         """
         super().__init__(*args, **kwargs)
         self.profile_parameter = self.paxis
 
-        self.limiter_handler = limiter_func.Limiter_handler(eq, limiter)
-        self.limiter_mask_out = plasma_grids.make_layer_mask(
-            self.limiter_handler.mask_inside_limiter, layer_size=1
-        )
-        self.mask_inside_limiter = self.limiter_handler.mask_inside_limiter
-        self.limiter_mask_for_plotting = (
-            self.mask_inside_limiter + self.limiter_mask_out
-        ) > 0
-        self.plasma_grids = plasma_grids.Grids(eq, self.mask_inside_limiter)
+        if limiter is None:
+            self.limiter_handler = eq.limiter_handler
+
+            self.limiter_mask_out = eq.limiter_mask_out
+            self.mask_inside_limiter = eq.mask_inside_limiter
+            self.limiter_mask_for_plotting = (
+                self.mask_inside_limiter + self.limiter_mask_out
+            ) > 0
+        else:
+            self.limiter_handler = limiter_func.Limiter_handler(eq, limiter)
+
+            self.mask_inside_limiter = self.limiter_handler.mask_inside_limiter
+            self.limiter_mask_out = self.limiter_handler.make_layer_mask(
+                layer_size=1
+            )
+            self.limiter_mask_for_plotting = (
+                self.mask_inside_limiter + self.limiter_mask_out
+            ) > 0
 
         if not hasattr(self, "fast"):
             self.Jtor = self._Jtor
@@ -201,7 +222,7 @@ class Fiesta_Topiol(freegs.jtor.Fiesta_Topiol):
 
     """
 
-    def __init__(self, eq, limiter, *args, **kwargs):
+    def __init__(self, eq, limiter=None, *args, **kwargs):
         """Instantiates the object.
 
         Parameters
@@ -210,19 +231,30 @@ class Fiesta_Topiol(freegs.jtor.Fiesta_Topiol):
             Specifies the domain properties
         limiter : freeGS.machine.Wall object
             Specifies the limiter contour points
+            Only set if a limiter different from eq.tokamak.limiter is to be used.
+
         """
         super().__init__(*args, **kwargs)
         self.profile_parameter = self.Beta0
 
-        self.limiter_handler = limiter_func.Limiter_handler(eq, limiter)
-        self.limiter_mask_out = plasma_grids.make_layer_mask(
-            self.limiter_handler.mask_inside_limiter, layer_size=1
-        )
-        self.mask_inside_limiter = self.limiter_handler.mask_inside_limiter
-        self.limiter_mask_for_plotting = (
-            self.mask_inside_limiter + self.limiter_mask_out
-        ) > 0
-        self.plasma_grids = plasma_grids.Grids(eq, self.mask_inside_limiter)
+        if limiter is None:
+            self.limiter_handler = eq.limiter_handler
+
+            self.limiter_mask_out = eq.limiter_mask_out
+            self.mask_inside_limiter = eq.mask_inside_limiter
+            self.limiter_mask_for_plotting = (
+                self.mask_inside_limiter + self.limiter_mask_out
+            ) > 0
+        else:
+            self.limiter_handler = limiter_func.Limiter_handler(eq, limiter)
+
+            self.mask_inside_limiter = self.limiter_handler.mask_inside_limiter
+            self.limiter_mask_out = self.limiter_handler.make_layer_mask(
+                layer_size=1
+            )
+            self.limiter_mask_for_plotting = (
+                self.mask_inside_limiter + self.limiter_mask_out
+            ) > 0
 
         if not hasattr(self, "fast"):
             self.Jtor = self._Jtor

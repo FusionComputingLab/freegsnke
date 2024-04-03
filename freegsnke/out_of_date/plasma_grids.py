@@ -4,8 +4,8 @@ from freegs.gradshafranov import Greens
 # from . import machine_config
 
 
-def make_layer_mask(plasma_domain_mask, layer_size=3):
-    """Creates a mask for the points just outside the input plasma_domain_mask, with a width=`layer_size`
+def make_layer_mask(mask_inside_limiter, layer_size=3):
+    """Creates a mask for the points just outside the input mask_inside_limiter, with a width=`layer_size`
 
     Parameters
     ----------
@@ -17,14 +17,14 @@ def make_layer_mask(plasma_domain_mask, layer_size=3):
     layer_mask : np.ndarray
         Mask of the points outside the limiter within a distance of `layer_size` from the limiter
     """
-    nx, ny = np.shape(plasma_domain_mask)
+    nx, ny = np.shape(mask_inside_limiter)
     layer_mask = np.zeros(np.array([nx, ny]) + 2 * np.array([layer_size, layer_size]))
 
     for i in np.arange(-layer_size, layer_size + 1) + layer_size:
         for j in np.arange(-layer_size, layer_size + 1) + layer_size:
-            layer_mask[i : i + nx, j : j + ny] += plasma_domain_mask
+            layer_mask[i : i + nx, j : j + ny] += mask_inside_limiter
     layer_mask = layer_mask[layer_size : layer_size + nx, layer_size : layer_size + ny]
-    layer_mask *= 1 - plasma_domain_mask
+    layer_mask *= 1 - mask_inside_limiter
     layer_mask = (layer_mask > 0).astype(bool)
     return layer_mask
 
@@ -36,14 +36,14 @@ class Grids:
     Handles the transfromation between full domain grid and reduced grid and viceversa.
     """
 
-    def __init__(self, eq, plasma_domain_mask):
+    def __init__(self, eq, mask_inside_limiter):
         """Instantiates the class.
 
         Parameters
         ----------
         eq : freeGS equilibrium object
             Used to extract domain information
-        plasma_domain_mask : np.ndarray
+        mask_inside_limiter : np.ndarray
             Mask of domain points to be included in the reduced plasma grid.
             Needs to have the same shape as eq.R and eq.Z
         """
@@ -60,29 +60,21 @@ class Grids:
 
         self.map2d = np.zeros_like(eq.R)
 
-        # the if statement should be eliminated in favour of actual input
-        # The one below is a 'MASTU by-eye'
-        # if plasma_domain_mask is None:
-        #     plasma_domain_mask = np.ones_like(self.R)
-        #     plasma_domain_mask *= (self.R>0.265)*(self.R<1.582)
-        #     plasma_domain_mask *= (self.Z<.95+1*self.R)*(self.Z>-.95-1*self.R)
-        #     plasma_domain_mask *= (self.Z<-1.98+9.*self.R)*(self.Z>1.98-9.*self.R)
-        #     plasma_domain_mask *= (self.Z<2.26-1.1*self.R)*(self.Z>-2.26+1.1*self.R)
-        #     plasma_domain_mask = plasma_domain_mask.astype(bool)
-        self.plasma_domain_mask = plasma_domain_mask
-        self.plasma_domain_mask_1d = self.plasma_domain_mask.reshape(-1)
+        # source the domain points inside
+        self.mask_inside_limiter = mask_inside_limiter
+        self.mask_inside_limiter_1d = self.mask_inside_limiter.reshape(-1)
 
         # Extracts R and Z coordinates of the grid points in the reduced plasma domain
         self.plasma_pts = np.concatenate(
             (
-                self.R[self.plasma_domain_mask][:, np.newaxis],
-                self.Z[self.plasma_domain_mask][:, np.newaxis],
+                self.R[self.mask_inside_limiter][:, np.newaxis],
+                self.Z[self.mask_inside_limiter][:, np.newaxis],
             ),
             axis=-1,
         )
 
         self.idxs_mask = np.mgrid[0 : self.nx, 0 : self.ny][
-            np.tile(self.plasma_domain_mask, (2, 1, 1))
+            np.tile(self.mask_inside_limiter, (2, 1, 1))
         ].reshape(2, -1)
 
         self.make_layer_mask()
@@ -100,7 +92,7 @@ class Grids:
         Iy : np.ndarray
             Reduced 1d plasma current vector
         """
-        Iy = jtor[self.plasma_domain_mask] * self.dRdZ
+        Iy = jtor[self.mask_inside_limiter] * self.dRdZ
         return Iy
 
     def normalize_sum(self, Iy, epsilon=1e-6):
@@ -139,7 +131,7 @@ class Grids:
             Reduced 1d plasma current vector, normalized to total plasma current
 
         """
-        hat_Iy = jtor[self.plasma_domain_mask]
+        hat_Iy = jtor[self.mask_inside_limiter]
         hat_Iy = self.normalize_sum(hat_Iy)
         return hat_Iy
 
@@ -186,11 +178,11 @@ class Grids:
 
         for i in np.arange(-layer_size, layer_size + 1) + layer_size:
             for j in np.arange(-layer_size, layer_size + 1) + layer_size:
-                layer_mask[i : i + self.nx, j : j + self.ny] += self.plasma_domain_mask
+                layer_mask[i : i + self.nx, j : j + self.ny] += self.mask_inside_limiter
         layer_mask = layer_mask[
             layer_size : layer_size + self.nx, layer_size : layer_size + self.ny
         ]
-        layer_mask *= 1 - self.plasma_domain_mask
+        layer_mask *= 1 - self.mask_inside_limiter
         layer_mask = (layer_mask > 0).astype(bool)
         self.layer_mask = layer_mask
 
@@ -219,7 +211,7 @@ class Grids:
         rr += np.triu(np.tril(np.ones((self.nxny, self.nxny)), k=self.nx+1), k=self.nx+1)
         R1 += rr.T@rr
 
-        R1 = R1[self.plasma_domain_mask_1d, :][:, self.plasma_domain_mask_1d]
+        R1 = R1[self.mask_inside_limiter_1d, :][:, self.mask_inside_limiter_1d]
         return R1
 
     def build_quadratic_regularization(self, ):
@@ -244,7 +236,7 @@ class Grids:
         R2v += 2*np.triu(np.tril(np.ones((self.nxny, self.nxny)), k=self.nx), k=self.nx)
         R2h += R2v.T@R2v
 
-        R2h = R2h[self.plasma_domain_mask_1d, :][:, self.plasma_domain_mask_1d]
+        R2h = R2h[self.mask_inside_limiter_1d, :][:, self.mask_inside_limiter_1d]
         return R2h
 
 

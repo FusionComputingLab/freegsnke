@@ -8,15 +8,15 @@ class plasma_current:
     $$I_{y}^T/I_p (M_{yy} \dot{I_y} + M_{ye} \dot{I_e} + R_p I_y) = 0$$
     """
 
-    def __init__(self, plasma_grids, Rm1, P, plasma_resistance_1d, Mye):
+    def __init__(self, plasma_pts, Rm1, P, plasma_resistance_1d, Mye):
         """Implements a class for evaluating the plasma circuit equation in projection on $I_{y}^T$:
 
         $$I_{y}^T/I_p (M_{yy} \dot{I_y} + M_{ye} \dot{I_e} + R_p I_y) = 0$$
 
         Parameters
         ----------
-        plasma_grids : freegsnke.plasma_grids
-            Grids object defining the reduced plasma domain.
+        plasma_pts : freegsnke.limiter_handler.plasma_pts
+            Domain points in the solution domain (inside the limiter). Defaults to None.
         Rm12 : np.ndarray
             The diagonal matrix of all metal vessel resistances to the power of -1 ($R^{-1}$).
         P : np.ndarray
@@ -28,7 +28,7 @@ class plasma_current:
 
         """
 
-        self.plasma_grids = plasma_grids
+        self.plasma_pts = plasma_pts
         self.Rm1 = Rm1
         self.P = P
         self.Mye = Mye
@@ -66,10 +66,10 @@ class plasma_current:
             Array of mutual inductances between plasma grid points
         """
         greenm = Greens(
-            self.plasma_grids.plasma_pts[:, np.newaxis, 0],
-            self.plasma_grids.plasma_pts[:, np.newaxis, 1],
-            self.plasma_grids.plasma_pts[np.newaxis, :, 0],
-            self.plasma_grids.plasma_pts[np.newaxis, :, 1],
+            self.plasma_pts[:, np.newaxis, 0],
+            self.plasma_pts[:, np.newaxis, 1],
+            self.plasma_pts[np.newaxis, :, 0],
+            self.plasma_pts[np.newaxis, :, 1],
         )
         return 2 * np.pi * greenm
 

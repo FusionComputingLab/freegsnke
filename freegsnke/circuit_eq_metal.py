@@ -18,8 +18,8 @@ class metal_currents:
     flag_plasma : bool
         Whether to include plasma in circuit equation. If True, plasma_grids
         must be provided.
-    plasma_grids : freegsnke.plasma_grids
-        Plasma grids object. Defaults to None.
+    plasma_pts : freegsnke.limiter_handler.plasma_pts
+        Domain points in the solution domain (inside the limiter). Defaults to None.
     max_mode_frequency : float
         Maximum frequency of vessel eigenmodes to include in circuit equation.
         Defaults to 1.
@@ -33,7 +33,7 @@ class metal_currents:
         self,
         flag_vessel_eig,
         flag_plasma,
-        plasma_grids=None,
+        plasma_pts=None,
         max_mode_frequency=1,
         max_internal_timestep=0.0001,
         full_timestep=0.0001,
@@ -58,7 +58,7 @@ class metal_currents:
             self.initialize_for_no_eig()
 
         if flag_plasma:
-            self.plasma_grids = plasma_grids
+            self.plasma_pts = plasma_pts
             self.Mey_matrix = self.Mey()
 
         # Dummy voltage vector
@@ -153,7 +153,7 @@ class metal_currents:
         self,
         flag_vessel_eig,
         flag_plasma,
-        plasma_grids=None,
+        plasma_pts=None,
         max_mode_frequency=1,
         max_internal_timestep=0.0001,
         full_timestep=0.0001,
@@ -187,7 +187,7 @@ class metal_currents:
         self.flag_plasma = flag_plasma
 
         if control * flag_plasma:
-            self.plasma_grids = plasma_grids
+            self.plasma_pts = plasma_pts
             self.Mey_matrix = self.Mey()
 
         control += flag_vessel_eig != self.flag_vessel_eig
@@ -343,11 +343,11 @@ class metal_currents:
             Array of mutual inductances between plasma grid points and all vessel coils
         """
         coils_dict = machine_config.coils_dict
-        mey = np.zeros((machine_config.n_coils, len(self.plasma_grids.plasma_pts)))
+        mey = np.zeros((machine_config.n_coils, len(self.plasma_pts)))
         for j, labelj in enumerate(machine_config.coils_order):
             greenm = Greens(
-                self.plasma_grids.plasma_pts[:, 0, np.newaxis],
-                self.plasma_grids.plasma_pts[:, 1, np.newaxis],
+                self.plasma_pts[:, 0, np.newaxis],
+                self.plasma_pts[:, 1, np.newaxis],
                 coils_dict[labelj]["coords"][0][np.newaxis, :],
                 coils_dict[labelj]["coords"][1][np.newaxis, :],
             )
@@ -356,26 +356,26 @@ class metal_currents:
             mey[j] = np.sum(greenm, axis=-1)
         return 2 * np.pi * mey
 
-    def current_residual(self, Itpdt, Iddot, forcing_term):
-        """Calculates the residual of the circuit equation in normal modes.
+    # def current_residual(self, Itpdt, Iddot, forcing_term):
+    #     """Calculates the residual of the circuit equation in normal modes.
 
-        $$\Lambda^{-1} \dot{I} + I - F = \text{residual}$$.
+    #     $$\Lambda^{-1} \dot{I} + I - F = \text{residual}$$.
 
-        Parameters
-        ----------
-        Itpdt : np.ndarray
-            Currents at time t+dt.
-        Iddot : np.ndarray
-            Rate of change of currents at time t.
-        forcing_term : np.ndarray
-            Forcing term of circuit equation.
+    #     Parameters
+    #     ----------
+    #     Itpdt : np.ndarray
+    #         Currents at time t+dt.
+    #     Iddot : np.ndarray
+    #         Rate of change of currents at time t.
+    #     forcing_term : np.ndarray
+    #         Forcing term of circuit equation.
 
-        Returns
-        -------
-        residual : np.ndarray
-            Residual of circuit equation.
-        """
-        residual = np.dot(self.Lambdam1, Iddot)
-        residual += Itpdt
-        residual -= forcing_term
-        return residual
+    #     Returns
+    #     -------
+    #     residual : np.ndarray
+    #         Residual of circuit equation.
+    #     """
+    #     residual = np.dot(self.Lambdam1, Iddot)
+    #     residual += Itpdt
+    #     residual -= forcing_term
+    #     return residual

@@ -99,8 +99,8 @@ class Probe:
         # # Initilaise Greens functions Gpsi
         self.greens_psi_coils_floops = self.create_greens_psi_all_coils("floops")
         self.greens_psi_plasma_floops = {}
-        self.greens_psi_plasma_floops[eq_key] = (
-            self.create_green_psi_plasma(eq, "floops")
+        self.greens_psi_plasma_floops[eq_key] = self.create_green_psi_plasma(
+            eq, "floops"
         )
 
         # # PICKUP COILS
@@ -122,8 +122,8 @@ class Probe:
         # ) = self.create_greens_BrBz_plasma(eq, "pickups")
 
         self.greens_B_plasma_oriented = {}
-        self.greens_B_plasma_oriented[eq_key] = (
-            self.create_greens_B_oriented_plasma(eq, "pickups")
+        self.greens_B_plasma_oriented[eq_key] = self.create_greens_B_oriented_plasma(
+            eq, "pickups"
         )
         self.greens_B_coils_oriented = self.create_greens_B_oriented_coils("pickups")
 
@@ -231,7 +231,7 @@ class Probe:
             pos_R = self.floop_pos[:, 0]
             pos_Z = self.floop_pos[:, 1]
 
-    #   only on the limiter domain pts
+        #   only on the limiter domain pts
         greens = Greens(
             eq.limiter_handler.plasma_pts[:, 0, np.newaxis],
             eq.limiter_handler.plasma_pts[:, 1, np.newaxis],
@@ -397,9 +397,7 @@ class Probe:
 
         or_R = self.pickup_or[:, 0]
         or_Z = self.pickup_or[:, 2]
-        prod = (
-            br * or_R + bz * or_Z
-        )
+        prod = br * or_R + bz * or_Z
 
         return prod
 
@@ -518,8 +516,6 @@ class Probe:
             pickup_pol_coil = np.sum(
                 self.greens_B_coils_oriented * coil_current, axis=0
             )
-            pickup_pol_pl = np.sum(
-                greens_pl * plasma_current, axis=(0, 1)
-            )
+            pickup_pol_pl = np.sum(greens_pl * plasma_current, axis=(0, 1))
 
         return pickup_pol_coil + pickup_pol_pl + pickup_tor

@@ -38,7 +38,11 @@ def create_machine():
 def plasma_domain_masks(create_machine):
     tokamak, eq = create_machine
     limiter_handler = limiter_func.Limiter_handler(eq, tokamak.limiter)
-    return limiter_handler.mask_inside_limiter, limiter_handler.layer_mask, limiter_handler.plasma_pts
+    return (
+        limiter_handler.mask_inside_limiter,
+        limiter_handler.layer_mask,
+        limiter_handler.plasma_pts,
+    )
 
 
 def test_plasma_domain_mask(create_machine, plasma_domain_masks):
@@ -51,7 +55,6 @@ def test_plasma_domain_mask(create_machine, plasma_domain_masks):
     assert (
         mask_inside_limiter.shape == eq.R.shape
     ), "The shape of the limiter  mask is incorrect"
-    
 
 
 def test_make_layer_mask(create_machine, plasma_domain_masks):

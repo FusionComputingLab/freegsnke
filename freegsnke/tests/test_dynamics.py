@@ -86,7 +86,6 @@ def create_machine():
         full_timestep=3e-3,
         max_internal_timestep=1,
         plasma_resistivity=5e-7,
-        plasma_domain_mask=None,
         automatic_timestep=False,
         mode_removal=True,
         min_dIy_dI=1,

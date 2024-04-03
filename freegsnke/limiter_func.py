@@ -21,13 +21,13 @@ class Limiter_handler:
         self.limiter = limiter
         self.eqR = eq.R
         self.eqZ = eq.Z
-        
+
         self.dR = self.eqR[1, 0] - self.eqR[0, 0]
         self.dZ = self.eqZ[0, 1] - self.eqZ[0, 0]
         self.dRdZ = self.dR * self.dZ
         # self.ker_signs = np.array([[1,-1],[-1,1]])[np.newaxis, :, :]
         self.nx, self.ny = np.shape(eq.R)
-        self.nxny = self.nx*self.ny
+        self.nxny = self.nx * self.ny
         self.map2d = np.zeros_like(eq.R)
 
         self.build_mask_inside_limiter()
@@ -35,7 +35,9 @@ class Limiter_handler:
         self.extract_plasma_pts()
         self.make_layer_mask()
 
-    def extract_plasma_pts(self, ):
+    def extract_plasma_pts(
+        self,
+    ):
         # Extracts R and Z coordinates of the grid points in the reduced plasma domain
         self.plasma_pts = np.concatenate(
             (
@@ -110,7 +112,7 @@ class Limiter_handler:
         layer_mask *= 1 - self.mask_inside_limiter
         layer_mask = (layer_mask > 0).astype(bool)
         self.layer_mask = layer_mask
-        
+
         return layer_mask
 
     def limiter_points(self, refine=6):
@@ -309,7 +311,7 @@ class Limiter_handler:
             core_mask = (psi > psi_bndry) * core_mask
 
         return psi_bndry, core_mask, flag_limiter
-    
+
     def Iy_from_jtor(self, jtor):
         """Generates 1d vector of plasma current values at the grid points of the reduced plasma domain.
 
@@ -389,7 +391,9 @@ class Limiter_handler:
         # self.map2d = map2d.copy()
         return map2d
 
-    def build_linear_regularization(self, ):
+    def build_linear_regularization(
+        self,
+    ):
         """Builds matrix to be used for linear regularization. See Press 1992 18.5.
 
         Returns
@@ -402,22 +406,26 @@ class Limiter_handler:
         # horizontal gradient
         rr = -np.triu(np.tril(np.ones((self.nxny, self.nxny)), k=0), k=0)
         rr += np.triu(np.tril(np.ones((self.nxny, self.nxny)), k=1), k=1)
-        R1 = rr.T@rr
+        R1 = rr.T @ rr
 
         # vertical gradient
         rr = -np.triu(np.tril(np.ones((self.nxny, self.nxny)), k=0), k=0)
         rr += np.triu(np.tril(np.ones((self.nxny, self.nxny)), k=self.nx), k=self.nx)
-        R1 += rr.T@rr
+        R1 += rr.T @ rr
 
         # diagonal gradient
         rr = -np.triu(np.tril(np.ones((self.nxny, self.nxny)), k=0), k=0)
-        rr += np.triu(np.tril(np.ones((self.nxny, self.nxny)), k=self.nx+1), k=self.nx+1)
-        R1 += rr.T@rr
+        rr += np.triu(
+            np.tril(np.ones((self.nxny, self.nxny)), k=self.nx + 1), k=self.nx + 1
+        )
+        R1 += rr.T @ rr
 
         R1 = R1[self.mask_inside_limiter_1d, :][:, self.mask_inside_limiter_1d]
         return R1
 
-    def build_quadratic_regularization(self, ):
+    def build_quadratic_regularization(
+        self,
+    ):
         """Builds matrix to be used for linear regularization. See Press 1992 18.5.
 
         Returns
@@ -428,17 +436,20 @@ class Limiter_handler:
         """
 
         # horizontal gradient
-        R2h = - np.triu(np.tril(np.ones((self.nxny, self.nxny)), k=0), k=0)
-        R2h -=  np.triu(np.tril(np.ones((self.nxny, self.nxny)), k=2), k=2)
-        R2h += 2*np.triu(np.tril(np.ones((self.nxny, self.nxny)), k=1), k=1)
-        R2h = R2h.T@R2h
+        R2h = -np.triu(np.tril(np.ones((self.nxny, self.nxny)), k=0), k=0)
+        R2h -= np.triu(np.tril(np.ones((self.nxny, self.nxny)), k=2), k=2)
+        R2h += 2 * np.triu(np.tril(np.ones((self.nxny, self.nxny)), k=1), k=1)
+        R2h = R2h.T @ R2h
 
         # vertical gradient
-        R2v = - np.triu(np.tril(np.ones((self.nxny, self.nxny)), k=0), k=0)
-        R2v -=  np.triu(np.tril(np.ones((self.nxny, self.nxny)), k=2*self.nx), k=2*self.nx)
-        R2v += 2*np.triu(np.tril(np.ones((self.nxny, self.nxny)), k=self.nx), k=self.nx)
-        R2h += R2v.T@R2v
+        R2v = -np.triu(np.tril(np.ones((self.nxny, self.nxny)), k=0), k=0)
+        R2v -= np.triu(
+            np.tril(np.ones((self.nxny, self.nxny)), k=2 * self.nx), k=2 * self.nx
+        )
+        R2v += 2 * np.triu(
+            np.tril(np.ones((self.nxny, self.nxny)), k=self.nx), k=self.nx
+        )
+        R2h += R2v.T @ R2v
 
         R2h = R2h[self.mask_inside_limiter_1d, :][:, self.mask_inside_limiter_1d]
         return R2h
-

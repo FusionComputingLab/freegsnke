@@ -1234,7 +1234,9 @@ class nl_solver:
             with (a guess for) the one at time t+dt before contraction of the plasma
             lumped circuit eq.
         """
-        self.broad_hatIy = self.limiter_handler.rebuild_map2d(hatIy1 + blend * self.hatIy)
+        self.broad_hatIy = self.limiter_handler.rebuild_map2d(
+            hatIy1 + blend * self.hatIy
+        )
         self.broad_hatIy = convolve2d(
             self.broad_hatIy, self.ones_to_broaden, mode="same"
         )
@@ -1251,7 +1253,9 @@ class nl_solver:
             Guess for the normalised plasma current distributions at time t+dt.
             Should be a vector that sums to 1. Reduced plasma domain only.
         """
-        self.broad_hatIy = self.limiter_handler.rebuild_map2d(hatIy1 + blend * self.hatIy)
+        self.broad_hatIy = self.limiter_handler.rebuild_map2d(
+            hatIy1 + blend * self.hatIy
+        )
         # self.broad_hatIy = convolve2d(self.broad_hatIy, self.ones_to_broaden, mode='same')
         self.broad_hatIy = self.limiter_handler.hat_Iy_from_jtor(self.broad_hatIy)
 

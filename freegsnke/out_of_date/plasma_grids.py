@@ -51,7 +51,7 @@ class Grids:
         self.R = eq.R
         self.Z = eq.Z
         self.nx, self.ny = np.shape(eq.R)
-        self.nxny = self.nx*self.ny
+        self.nxny = self.nx * self.ny
 
         # area factor for Iy
         dR = eq.R[1, 0] - eq.R[0, 0]
@@ -186,7 +186,9 @@ class Grids:
         layer_mask = (layer_mask > 0).astype(bool)
         self.layer_mask = layer_mask
 
-    def build_linear_regularization(self, ):
+    def build_linear_regularization(
+        self,
+    ):
         """Builds matrix to be used for linear regularization. See Press 1992 18.5.
 
         Returns
@@ -199,22 +201,26 @@ class Grids:
         # horizontal gradient
         rr = -np.triu(np.tril(np.ones((self.nxny, self.nxny)), k=0), k=0)
         rr += np.triu(np.tril(np.ones((self.nxny, self.nxny)), k=1), k=1)
-        R1 = rr.T@rr
+        R1 = rr.T @ rr
 
         # vertical gradient
         rr = -np.triu(np.tril(np.ones((self.nxny, self.nxny)), k=0), k=0)
         rr += np.triu(np.tril(np.ones((self.nxny, self.nxny)), k=self.nx), k=self.nx)
-        R1 += rr.T@rr
+        R1 += rr.T @ rr
 
         # diagonal gradient
         rr = -np.triu(np.tril(np.ones((self.nxny, self.nxny)), k=0), k=0)
-        rr += np.triu(np.tril(np.ones((self.nxny, self.nxny)), k=self.nx+1), k=self.nx+1)
-        R1 += rr.T@rr
+        rr += np.triu(
+            np.tril(np.ones((self.nxny, self.nxny)), k=self.nx + 1), k=self.nx + 1
+        )
+        R1 += rr.T @ rr
 
         R1 = R1[self.mask_inside_limiter_1d, :][:, self.mask_inside_limiter_1d]
         return R1
 
-    def build_quadratic_regularization(self, ):
+    def build_quadratic_regularization(
+        self,
+    ):
         """Builds matrix to be used for linear regularization. See Press 1992 18.5.
 
         Returns
@@ -225,22 +231,23 @@ class Grids:
         """
 
         # horizontal gradient
-        R2h = - np.triu(np.tril(np.ones((self.nxny, self.nxny)), k=0), k=0)
-        R2h -=  np.triu(np.tril(np.ones((self.nxny, self.nxny)), k=2), k=2)
-        R2h += 2*np.triu(np.tril(np.ones((self.nxny, self.nxny)), k=1), k=1)
-        R2h = R2h.T@R2h
+        R2h = -np.triu(np.tril(np.ones((self.nxny, self.nxny)), k=0), k=0)
+        R2h -= np.triu(np.tril(np.ones((self.nxny, self.nxny)), k=2), k=2)
+        R2h += 2 * np.triu(np.tril(np.ones((self.nxny, self.nxny)), k=1), k=1)
+        R2h = R2h.T @ R2h
 
         # vertical gradient
-        R2v = - np.triu(np.tril(np.ones((self.nxny, self.nxny)), k=0), k=0)
-        R2v -=  np.triu(np.tril(np.ones((self.nxny, self.nxny)), k=2*self.nx), k=2*self.nx)
-        R2v += 2*np.triu(np.tril(np.ones((self.nxny, self.nxny)), k=self.nx), k=self.nx)
-        R2h += R2v.T@R2v
+        R2v = -np.triu(np.tril(np.ones((self.nxny, self.nxny)), k=0), k=0)
+        R2v -= np.triu(
+            np.tril(np.ones((self.nxny, self.nxny)), k=2 * self.nx), k=2 * self.nx
+        )
+        R2v += 2 * np.triu(
+            np.tril(np.ones((self.nxny, self.nxny)), k=self.nx), k=self.nx
+        )
+        R2h += R2v.T @ R2v
 
         R2h = R2h[self.mask_inside_limiter_1d, :][:, self.mask_inside_limiter_1d]
         return R2h
-
-
-
 
     # def Myy(
     #     self,

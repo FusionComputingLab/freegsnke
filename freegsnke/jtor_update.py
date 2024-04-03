@@ -20,7 +20,7 @@ class ConstrainBetapIp(freegs.jtor.ConstrainBetapIp):
         eq : freeGS Equilibrium object
             Specifies the domain properties
         limiter : freeGS.machine.Wall object
-            Specifies the limiter contour points. 
+            Specifies the limiter contour points.
             Only set if a limiter different from eq.tokamak.limiter is to be used.
         """
         super().__init__(*args, **kwargs)
@@ -38,9 +38,7 @@ class ConstrainBetapIp(freegs.jtor.ConstrainBetapIp):
             self.limiter_handler = limiter_func.Limiter_handler(eq, limiter)
 
             self.mask_inside_limiter = self.limiter_handler.mask_inside_limiter
-            self.limiter_mask_out = self.limiter_handler.make_layer_mask(
-                layer_size=1
-            )
+            self.limiter_mask_out = self.limiter_handler.make_layer_mask(layer_size=1)
             self.limiter_mask_for_plotting = (
                 self.mask_inside_limiter + self.limiter_mask_out
             ) > 0
@@ -50,7 +48,9 @@ class ConstrainBetapIp(freegs.jtor.ConstrainBetapIp):
         else:
             self.Jtor = self.Jtor_fast
 
-    def get_pars(self,):
+    def get_pars(
+        self,
+    ):
         """Fetches all profile parameters and returns them in a single array"""
         return np.array([self.alpha_m, self.alpha_n, self.betap])
 
@@ -142,9 +142,7 @@ class ConstrainPaxisIp(freegs.jtor.ConstrainPaxisIp):
             self.limiter_handler = limiter_func.Limiter_handler(eq, limiter)
 
             self.mask_inside_limiter = self.limiter_handler.mask_inside_limiter
-            self.limiter_mask_out = self.limiter_handler.make_layer_mask(
-                layer_size=1
-            )
+            self.limiter_mask_out = self.limiter_handler.make_layer_mask(layer_size=1)
             self.limiter_mask_for_plotting = (
                 self.mask_inside_limiter + self.limiter_mask_out
             ) > 0
@@ -249,9 +247,7 @@ class Fiesta_Topiol(freegs.jtor.Fiesta_Topiol):
             self.limiter_handler = limiter_func.Limiter_handler(eq, limiter)
 
             self.mask_inside_limiter = self.limiter_handler.mask_inside_limiter
-            self.limiter_mask_out = self.limiter_handler.make_layer_mask(
-                layer_size=1
-            )
+            self.limiter_mask_out = self.limiter_handler.make_layer_mask(layer_size=1)
             self.limiter_mask_for_plotting = (
                 self.mask_inside_limiter + self.limiter_mask_out
             ) > 0

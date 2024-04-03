@@ -87,8 +87,8 @@ class Probe:
 
         eq_key = self.create_eq_key(eq)
 
-        self.limiter_handler = {}
-        self.limiter_handler[eq_key] = eq.limiter_handler
+        # self.limiter_handler = {}
+        # self.limiter_handler[eq_key] = eq.limiter_handler
 
         # FLUX LOOPS
         # positions, number of probes, ordering
@@ -149,14 +149,9 @@ class Probe:
 
     def get_plasma_current(self, eq):
         """
-        From equilibirium object contains toroidal current distribution on the grid.
+        From equilibirium object contains toroidal current distribution on the grid, reduced to the limiter region only.
         """
-        #  grid spacings
-        dR = eq.R[1, 0] - eq.R[0, 0]
-        dZ = eq.Z[0, 1] - eq.Z[0, 0]
-        plasma_current_distribution = eq._profiles.jtor * dR * dZ
-
-        return plasma_current_distribution
+        return eq.limiter_handler.Iy_from_jtor(eq._profiles.jtor)
 
     def create_eq_key(self, eq):
         """
@@ -236,13 +231,12 @@ class Probe:
             pos_R = self.floop_pos[:, 0]
             pos_Z = self.floop_pos[:, 1]
 
-        rgrid = eq.R  # FOR LATER: can speed up only calcualte in plasma, J = 0 outiside
-        zgrid = eq.Z
+    #   only on the limiter domain pts
         greens = Greens(
-            rgrid[:, :, np.newaxis],
-            zgrid[:, :, np.newaxis],
-            pos_R[np.newaxis, np.newaxis, :],
-            pos_Z[np.newaxis, np.newaxis, :],
+            eq.limiter_handler.plasma_pts[:, 0, np.newaxis],
+            eq.limiter_handler.plasma_pts[:, 1, np.newaxis],
+            pos_R[np.newaxis, :],
+            pos_Z[np.newaxis, :],
         )
 
         return greens
@@ -269,7 +263,7 @@ class Probe:
                 plasma_greens = self.greens_psi_plasma_floops[eq_key]
 
         psi_from_plasma = np.sum(
-            plasma_greens * plasma_current_distribution[:, :, np.newaxis], axis=(0, 1)
+            plasma_greens * plasma_current_distribution[:, np.newaxis], axis=0
         )
         return psi_from_plasma
 
@@ -376,21 +370,21 @@ class Probe:
             pos_R = self.pickup_pos[:, 0]
             pos_Z = self.pickup_pos[:, 2]
 
-        rgrid = eq.R
-        zgrid = eq.Z
+        # rgrid = eq.R
+        # zgrid = eq.Z
 
         greens_br = GreensBr(
-            rgrid[:, :, np.newaxis],
-            zgrid[:, :, np.newaxis],
-            pos_R[np.newaxis, np.newaxis, :],
-            pos_Z[np.newaxis, np.newaxis, :],
+            eq.limiter_handler.plasma_pts[:, 0, np.newaxis],
+            eq.limiter_handler.plasma_pts[:, 1, np.newaxis],
+            pos_R[np.newaxis, :],
+            pos_Z[np.newaxis, :],
         )
 
         greens_bz = GreensBz(
-            rgrid[:, :, np.newaxis],
-            zgrid[:, :, np.newaxis],
-            pos_R[np.newaxis, np.newaxis, :],
-            pos_Z[np.newaxis, np.newaxis, :],
+            eq.limiter_handler.plasma_pts[:, 0, np.newaxis],
+            eq.limiter_handler.plasma_pts[:, 1, np.newaxis],
+            pos_R[np.newaxis, :],
+            pos_Z[np.newaxis, :],
         )
 
         return greens_br, greens_bz
@@ -414,7 +408,7 @@ class Probe:
         Magnetic fields from plasma
         """
         eq_key = self.create_eq_key(eq)
-        plasma_current = self.get_plasma_current(eq)[:, :, np.newaxis]
+        plasma_current = self.get_plasma_current(eq)[:, np.newaxis]
 
         try:
             greens_br = self.greens_br_plasma_pickup[eq_key]
@@ -437,7 +431,7 @@ class Probe:
         - evaluated on pickups by default, can apply to other probes too with minor modification
         """
         coil_currents = self.get_coil_currents(eq)[:, np.newaxis]
-        plasma_current = self.get_plasma_current(eq)[:, :, np.newaxis]
+        plasma_current = self.get_plasma_current(eq)[:, np.newaxis]
         eq_key = self.create_eq_key(eq)
 
         if probe == "pickups":
@@ -460,7 +454,7 @@ class Probe:
         - evaluated on pickups by default, can apply to other probes too with minor modification
         """
         coil_currents = self.get_coil_currents(eq)[:, np.newaxis]
-        plasma_current = self.get_plasma_current(eq)[:, :, np.newaxis]
+        plasma_current = self.get_plasma_current(eq)[:, np.newaxis]
         eq_key = self.create_eq_key(eq)
 
         if probe == "pickups":
@@ -505,8 +499,8 @@ class Probe:
         """
         Compute B.n at pickup probes, using oriented greens functions.
         """
-        coil_current = self.get_coil_currents(eq)
-        plasma_current = self.get_plasma_current(eq)
+        coil_current = self.get_coil_currents(eq)[:, np.newaxis]
+        plasma_current = self.get_plasma_current(eq)[:, np.newaxis]
         eq_key = self.create_eq_key(eq)
         if probe == "pickups":
             try:
@@ -522,10 +516,10 @@ class Probe:
 
             pickup_tor = self.Btor(eq, probe) * self.pickup_or[:, 1]
             pickup_pol_coil = np.sum(
-                self.greens_B_coils_oriented * coil_current[:, np.newaxis], axis=0
+                self.greens_B_coils_oriented * coil_current, axis=0
             )
             pickup_pol_pl = np.sum(
-                greens_pl * plasma_current[:, :, np.newaxis], axis=(0, 1)
+                greens_pl * plasma_current, axis=(0, 1)
             )
 
         return pickup_pol_coil + pickup_pol_pl + pickup_tor

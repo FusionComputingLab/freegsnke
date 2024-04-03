@@ -35,7 +35,9 @@ def create_machine():
     # Creates equilibrium object and initializes it with
     # a "good" solution
     # plasma_psi = np.loadtxt('plasma_psi_example.txt')
-    eq = freegs.Equilibrium(
+    from freegsnke import equilibrium_update
+
+    eq = equilibrium_update.Equilibrium(
         tokamak=tokamak,
         # domains can be changed
         Rmin=0.1,

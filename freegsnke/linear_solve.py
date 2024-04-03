@@ -13,7 +13,8 @@ class linear_solver:
     def __init__(
         self,
         Lambdam1,
-        Vm1Rm12,
+        Pm1,
+        Rm1,
         Mey,
         Myy,
         plasma_norm_factor,
@@ -30,10 +31,12 @@ class linear_solver:
         ----------
         Lambdam1: np.array
             State matrix of the circuit equations for the metal in normal mode form:
-            Lambdam1 = self.Vm1@normal_modes.rm1l@self.V, where rm1l = Rm12@machine_config.coil_self_ind@Rm12
-            V is the identity on the active coils and diagonalises the passive coils, R^{-1/2}L_{passive}R^{-1/2}
-        Vm1Rm12: np.array
-            matrix combination V^{-1}R^{-1/2}, where V is defined above
+            Pm1Rm1MP = Lambdam1
+            P is the identity on the active coils and diagonalises the isolated dynamics of the passive coils, R^{-1/2}L_{passive}R^{-1/2}
+        Pm1: np.array
+            change of basis matrix, as defined above
+        Rm1: np.array
+            matrix of all metal resitances to the power of -1. Diagonal.
         Mey: np.array
             matrix of inductances between grid points in the reduced plasma domain and all metal coils
             (active coils and passive-structure filaments, self.Vm1Rm12Mey below is the one between plasma and the normal modes)
@@ -57,8 +60,11 @@ class linear_solver:
         self.Mmatrix = np.eye(self.n_independent_vars + 1)
 
         self.Lambdam1 = Lambdam1
-        self.Vm1Rm12 = Vm1Rm12
-        self.Vm1Rm12Mey = np.matmul(Vm1Rm12, Mey)
+        self.Pm1 = Pm1
+        self.Rm1 = Rm1
+        self.Pm1Rm1 = Pm1 @ Rm1
+        self.Pm1Rm1Mey = np.matmul(self.Pm1Rm1, Mey)
+        self.MyeP_T = Pm1 @ Mey
         self.Myy = Myy
 
         self.n_active_coils = machine_config.n_active_coils
@@ -73,7 +79,7 @@ class linear_solver:
         self.plasma_resistance_1d = plasma_resistance_1d
 
         # dummy vessel voltage vector
-        self.empty_U = np.zeros(np.shape(Vm1Rm12)[1])
+        self.empty_U = np.zeros(np.shape(self.Pm1Rm1)[1])
         # dummy voltage vec for eig modes
         self.forcing = np.zeros(self.n_independent_vars + 1)
         self.profile_forcing = np.zeros(self.n_independent_vars + 1)
@@ -130,7 +136,21 @@ class linear_solver:
         self,
     ):
         """Initialises the pseudo-inductance matrix of the problem
-        M\dot(x)+ Rx=forcing from the linearisation Jacobian.
+        M\dot(x) + Rx = forcing from the linearisation Jacobian.
+
+                \Lambda^-1 + P^-1R^-1Mey A        P^-1R^-1Mey B
+        M = (                                                       )
+                J(Myy A + MyeP)/Rp                J Myy B/Rp
+
+        This also builds the forcing:
+                    P^-1R^-1 Voltage         P^-1R^-1Mey
+        forcing = (                   ) - (                 ) C \dot{theta}
+                            0                  J Myy/Rp
+
+        where A = dIy/dId
+              B = dIy/dIp
+              C = dIy/plasmapars
+
 
         Parameters
         ----------
@@ -142,18 +162,18 @@ class linear_solver:
             * self.plasma_norm_factor
         )
 
-        # build the state matrix M (MIdot + RI = V) so that R=Id
+        # build the state matrix M (MIdot + RI = V)
         self.Mmatrix[: self.n_independent_vars, : self.n_independent_vars] = np.copy(
             self.Lambdam1
         )
         self.Mmatrix[: self.n_independent_vars, : self.n_independent_vars] += np.matmul(
-            self.Vm1Rm12Mey, self.dIydI[:, :-1]
+            self.Pm1Rm1Mey, self.dIydI[:, :-1]
         )
 
-        self.Mmatrix[:-1, -1] = np.dot(self.Vm1Rm12Mey, self.dIydI[:, -1])
+        self.Mmatrix[:-1, -1] = np.dot(self.Pm1Rm1Mey, self.dIydI[:, -1])
 
         mat = np.matmul(self.Myy, self.dIydI[:, :-1]).T
-        mat += self.Vm1Rm12Mey
+        mat += self.MyeP_T
         self.Mmatrix[-1, :-1] = np.dot(mat, self.hatIy0)
 
         JMyy = np.dot(self.Myy, self.hatIy0)
@@ -163,10 +183,10 @@ class linear_solver:
 
         # build necessary terms to incorporate forcing term from variations of the profile parameters
         # MIdot + RI = V - self.Vm1Rm12Mey_plus@self.dIydpars@d_profile_pars_dt
-        Vm1Rm12Mey_plus = np.concatenate(
-            (self.Vm1Rm12Mey, JMyy[np.newaxis] / nRp), axis=0
+        Pm1Rm1Mey_plus = np.concatenate(
+            (self.Pm1Rm1Mey, JMyy[np.newaxis] / nRp), axis=0
         )
-        self.forcing_pars_matrix = np.matmul(Vm1Rm12Mey_plus, self.dIydpars)
+        self.forcing_pars_matrix = np.matmul(Pm1Rm1Mey_plus, self.dIydpars)
 
     def stepper(self, It, active_voltage_vec, d_profile_pars_dt=None):
         """Executes the time advancement. Uses the implicit_euler instance.
@@ -183,7 +203,7 @@ class linear_solver:
         other parameters are passed in as object attributes
         """
         self.empty_U[: self.n_active_coils] = active_voltage_vec
-        self.forcing[:-1] = np.dot(self.Vm1Rm12, self.empty_U)
+        self.forcing[:-1] = np.dot(self.Pm1Rm1, self.empty_U)
         self.forcing[-1] = 0.0
 
         # add forcing term from time derivative of profile parameters

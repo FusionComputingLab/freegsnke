@@ -22,7 +22,9 @@ def create_machine():
     # Creates equilibrium object and initializes it with
     # a "good" solution
     # plasma_psi = np.loadtxt('plasma_psi_example.txt')
-    eq = freegs.Equilibrium(
+    from freegsnke import equilibrium_update
+
+    eq = equilibrium_update.Equilibrium(
         tokamak=tokamak,
         # domains can be changed
         Rmin=0.1,
@@ -54,17 +56,17 @@ def create_machine():
     NK = GSstaticsolver.NKGSsolver(eq)
     currents = np.array(
         [
-            4.00000000e04,
-            4.66888649e03,
-            1.18887128e04,
-            1.09099021e04,
-            7.76454625e03,
-            -4.25085229e03,
-            1.29072804e03,
-            4.61377534e02,
-            1.12340825e01,
-            -2.79838121e03,
-            -4.05265744e03,
+            40000,
+            623.1330076232998,
+            15761.113413087669,
+            6218.6648587680265,
+            10169.401670695957,
+            -1913.7157252356117,
+            2440.9195954337097,
+            -5349.68745069716,
+            -1786.696839741781,
+            93.17532977532858,
+            -4057.3992383452764,
             0.00000000e00,
         ]
     )
@@ -81,8 +83,8 @@ def create_machine():
         profiles=profiles,
         eq=eq,
         max_mode_frequency=10**2.5,
-        full_timestep=3e-4,
-        max_internal_timestep=3e-5,
+        full_timestep=3e-3,
+        max_internal_timestep=1,
         plasma_resistivity=5e-7,
         plasma_domain_mask=None,
         automatic_timestep=False,
@@ -95,16 +97,10 @@ def create_machine():
 def test_linearised_growth_rate(create_machine):
     tokamak, eq, profiles, stepping = create_machine
 
-    # In absence of a policy, this calculates the active voltages U_active
-    # to maintain the currents needed for the equilibrium statically
-    U_active = (stepping.vessel_currents_vec * stepping.evol_metal_curr.R)[
-        : stepping.evol_metal_curr.n_active_coils
-    ]
-
     # check that
     assert (
-        abs((stepping.linearised_sol.growth_rates[0] + 0.00312225) / 0.0031225) < 1e-3
-    ), f"Growth rate deviates { abs((stepping.linearised_sol.growth_rates[0]+0.00312225)/0.00312225)}% from baseline"
+        abs((stepping.linearised_sol.growth_rates[0] + 0.0338) / 0.0338) < 1e-3
+    ), f"Growth rate deviates { abs((stepping.linearised_sol.growth_rates[0]+0.0338)/0.0338)}% from baseline"
 
 
 def test_linearised_stepper(create_machine):
@@ -113,44 +109,12 @@ def test_linearised_stepper(create_machine):
         : stepping.evol_metal_curr.n_active_coils
     ]
 
-    # vector of noise values
-    noise_vec = np.array(
-        [
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.001,
-            0.00108136,
-            -0.00068193,
-            0.00057806,
-            -0.00042085,
-            -0.00064365,
-            0.00030653,
-            0.00081871,
-            -0.00078934,
-            0.00026346,
-            0.00055102,
-            -0.0003639,
-            -0.00059548,
-            0.00012328,
-        ]
-    )
-
     # Example of evolution with constant applied voltages
     t = 0
-    flag = 0
     history_times = [t]
     t_per_step = []
     # use the following to reset stepping.eq1 to a new IC
-    stepping.initialize_from_ICs(eq, profiles, noise_vec=noise_vec)
+    stepping.initialize_from_ICs(eq, profiles, noise_level=0)
     #  noise_level=.001,
     #  noise_vec=None,
     #  update_linearization=False,
@@ -167,7 +131,7 @@ def test_linearised_stepper(create_machine):
     # history_dJs = [stepping.dJ]
 
     counter = 0
-    max_count = 20
+    max_count = 10
     while counter < max_count:
         clear_output(wait=True)
         display(f"Step: {counter}/{max_count-1}")
@@ -178,8 +142,8 @@ def test_linearised_stepper(create_machine):
 
         stepping.nlstepper(
             active_voltage_vec=U_active,
-            target_relative_tol_currents=0.01,
-            target_relative_tol_GS=0.01,
+            target_relative_tol_currents=0.001,
+            target_relative_tol_GS=0.001,
             verbose=False,
             linear_only=True,
         )
@@ -213,8 +177,8 @@ def test_linearised_stepper(create_machine):
         / 2
     )  # 1/2 of the pixel size
 
-    true_o_point = np.array([9.69180105e-01, 8.26792234e-04])
-    true_x_point = np.array([0.60045696, 1.09597043])
+    true_o_point = np.array([9.48478048e-01, 8.45681774e-04])
+    true_x_point = np.array([0.59286636, 1.07637788])
 
     assert np.all(
         np.abs((history_o_points[-1, :2] - true_o_point)) < leeway
@@ -230,45 +194,13 @@ def test_non_linear_stepper(create_machine):
         : stepping.evol_metal_curr.n_active_coils
     ]
 
-    # vector of noise values
-    noise_vec = np.array(
-        [
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.001,
-            0.00108136,
-            -0.00068193,
-            0.00057806,
-            -0.00042085,
-            -0.00064365,
-            0.00030653,
-            0.00081871,
-            -0.00078934,
-            0.00026346,
-            0.00055102,
-            -0.0003639,
-            -0.00059548,
-            0.00012328,
-        ]
-    )
-
     # Example of evolution with constant applied voltages
     t = 0
-    flag = 0
     history_times = [t]
     t_per_step = []
 
     # use the following to reset stepping.eq1 to a new IC
-    stepping.initialize_from_ICs(eq, profiles, noise_vec=noise_vec)
+    stepping.initialize_from_ICs(eq, profiles, noise_level=0)
     # noise_vec=stepping.noise_vec,)
     #  update_linearization=False,
     #  update_n_steps=12,
@@ -284,7 +216,7 @@ def test_non_linear_stepper(create_machine):
     # history_dJs = [stepping.dJ]
 
     counter = 0
-    max_count = 20
+    max_count = 10
     while counter < max_count:
         clear_output(wait=True)
         display(f"Step: {counter}/{max_count-1}")
@@ -295,8 +227,8 @@ def test_non_linear_stepper(create_machine):
 
         stepping.nlstepper(
             active_voltage_vec=U_active,
-            target_relative_tol_currents=0.01,
-            target_relative_tol_GS=0.01,
+            target_relative_tol_currents=0.001,
+            target_relative_tol_GS=0.001,
             verbose=False,
             linear_only=False,
         )
@@ -329,8 +261,8 @@ def test_non_linear_stepper(create_machine):
         )
         / 2
     )  # 1/2 of the pixel size
-    true_o_point = np.array([9.69102054e-01, 8.45405683e-04])
-    true_x_point = np.array([0.6004537, 1.09587265])
+    true_o_point = np.array([0.9473678, 0.00254919])
+    true_x_point = np.array([0.59251894, 1.07629889])
 
     assert np.all(
         np.abs((history_o_points[-1, :2] - true_o_point)) < leeway

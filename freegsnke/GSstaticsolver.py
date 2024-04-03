@@ -78,8 +78,8 @@ class NKGSsolver:
             [
                 [(x, 0) for x in range(nx)],
                 [(x, ny - 1) for x in range(nx)],
-                [(0, y) for y in range(ny)],
-                [(nx - 1, y) for y in range(ny)],
+                [(0, y) for y in np.arange(1, ny - 1)],
+                [(nx - 1, y) for y in np.arange(1, ny - 1)],
             ]
         )
         self.bndry_indices = bndry_indices
@@ -134,12 +134,14 @@ class NKGSsolver:
 
         self.psi_boundary[:, 0] = psi_bnd[: self.nx]
         self.psi_boundary[:, -1] = psi_bnd[self.nx : 2 * self.nx]
-        self.psi_boundary[0, :] = psi_bnd[2 * self.nx : 2 * self.nx + self.ny]
-        self.psi_boundary[-1, :] = psi_bnd[2 * self.nx + self.ny :]
+        self.psi_boundary[0, 1 : self.ny - 1] = psi_bnd[
+            2 * self.nx : 2 * self.nx + self.ny - 2
+        ]
+        self.psi_boundary[-1, 1 : self.ny - 1] = psi_bnd[2 * self.nx + self.ny - 2 :]
 
-        self.rhs[0, :] = self.psi_boundary[0, :]
+        self.rhs[0, 1 : self.ny - 1] = self.psi_boundary[0, 1 : self.ny - 1]
         self.rhs[:, 0] = self.psi_boundary[:, 0]
-        self.rhs[-1, :] = self.psi_boundary[-1, :]
+        self.rhs[-1, 1 : self.ny - 1] = self.psi_boundary[-1, 1 : self.ny - 1]
         self.rhs[:, -1] = self.psi_boundary[:, -1]
 
     def F_function(self, plasma_psi, tokamak_psi, profiles, rel_psi_error=0):
@@ -186,9 +188,13 @@ class NKGSsolver:
         eq.opt = np.copy(profiles.opt)
         eq.psi_axis = eq.opt[0, 2]
 
-        # eq.psi_bndry = eq.xpt[0,2]
         eq.psi_bndry = profiles.psi_bndry
         eq.flag_limiter = profiles.flag_limiter
+
+        eq._current = np.sum(profiles.jtor) * self.dRdZ
+        eq._profiles = deepcopy(profiles)
+
+        eq.tokamak_psi = self.tokamak_psi.reshape(self.nx, self.ny)
 
     def forward_solve(
         self,
@@ -264,17 +270,16 @@ class NKGSsolver:
         """
 
         picard_flag = 0
-        self.profiles = profiles
         trial_plasma_psi = np.copy(eq.plasma_psi).reshape(-1)
         self.tokamak_psi = (eq.tokamak.calcPsiFromGreens(pgreen=eq._pgreen)).reshape(-1)
 
-        res0 = self.F_function(trial_plasma_psi, self.tokamak_psi, self.profiles)
+        res0 = self.F_function(trial_plasma_psi, self.tokamak_psi, profiles)
         # print('initial residual', res0)
         rel_change = np.amax(np.abs(res0))
         del_psi = np.amax(trial_plasma_psi) - np.amin(trial_plasma_psi)
         rel_change /= del_psi
 
-        args = [self.tokamak_psi, self.profiles, rel_change]
+        args = [self.tokamak_psi, profiles, rel_change]
 
         iterations = 0
         while (rel_change > target_relative_tolerance) * (
@@ -306,7 +311,7 @@ class NKGSsolver:
                 # print(self.nksolver.coeffs)
                 trial_plasma_psi += self.nksolver.dx
 
-            res0 = self.F_function(trial_plasma_psi, self.tokamak_psi, self.profiles)
+            res0 = self.F_function(trial_plasma_psi, self.tokamak_psi, profiles)
             rel_change = np.amax(np.abs(res0))
             rel_change /= np.amax(trial_plasma_psi) - np.amin(trial_plasma_psi)
             self.relative_change = 1.0 * rel_change
@@ -316,10 +321,6 @@ class NKGSsolver:
 
         # update eq with new solution
         eq.plasma_psi = trial_plasma_psi.reshape(self.nx, self.ny).copy()
-
-        # update plasma current
-        eq._current = np.sum(profiles.jtor) * self.dRdZ
-        eq._profiles = deepcopy(profiles)
 
         self.port_critical(eq=eq, profiles=profiles)
 

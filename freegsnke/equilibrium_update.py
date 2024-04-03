@@ -16,6 +16,49 @@ class Equilibrium(freegs.equilibrium.Equilibrium):
         self.equilibrium_path = os.environ.get("EQUILIBRIUM_PATH", None)
         self.reinitialize_from_file()
 
+        # redefine interpolating function
+        self.psi_func_interp = interpolate.RectBivariateSpline(
+            self.R[:, 0], self.Z[0, :], self.plasma_psi
+        )
+
+        self.nxh = len(self.R) // 2
+        self.nyh = len(self.Z[0]) // 2
+        self.Rnxh = self.R[self.nxh, 0]
+        self.Znyh = self.Z[0, self.nyh]
+
+    def psi_func(self, R, Z, *args, **kwargs):
+        """Scipy interpolation of plasma function.
+        Replaces the original FreeGS interpolation.
+        It now includes a check which leads to the update of the interpolation when needed.
+
+        Parameters
+        ----------
+        R : _type_
+            _description_
+        Z : _type_
+            _description_
+
+        Returns
+        -------
+        _type_
+            _description_
+        """
+        check = (
+            np.abs(
+                np.max(self.psi_func_interp(self.Rnxh, self.Znyh))
+                - self.plasma_psi[self.nxh, self.nyh]
+            )
+            > 1e-5
+        )
+        if check:
+            print("psi_func has been re-set.")
+            # redefine interpolating function
+            self.psi_func_interp = interpolate.RectBivariateSpline(
+                self.R[:, 0], self.Z[0, :], self.plasma_psi
+            )
+
+        return self.psi_func_interp(R, Z, *args, **kwargs)
+
     def reinitialize_from_file(
         self,
     ):

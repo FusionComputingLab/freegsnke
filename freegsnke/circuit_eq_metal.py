@@ -94,23 +94,24 @@ class metal_currents:
         self.selected_modes_mask = selected_modes_mask
         self.n_independent_vars = np.sum(self.selected_modes_mask)
 
-        # Id = Vm1 R**(1/2) I
-        # to change base to truncated modes
-        # I = R**(-1/2) V Id
-        self.Vm1 = ((normal_modes.Vmatrix).T)[selected_modes_mask, :]
-        self.V = (normal_modes.Vmatrix)[:, selected_modes_mask]
+        # Id = Pm1 I
+        # so to change base to truncated modes
+        # I = P Id
+        self.P = (normal_modes.Pmatrix)[:, selected_modes_mask]
+        self.Pm1 = (self.P).T
 
         # Equation is Lambda**(-1)Iddot + I = F
-        # where Lambda is such that R12@M-1@R12 = V Lambda V-1
-        # w are frequences, eigenvalues of Lambda
-        # Note Lambda is not diagonal because of active/passive mode separation
-        self.Lambda = self.Vm1 @ normal_modes.lm1r @ self.V
-        self.Lambdam1 = self.Vm1 @ normal_modes.rm1l @ self.V
+        # where Lambda is such that Lambda**(-1) = Rm1 M
+        # Note Lambda is not diagonal because of active/passive mode coupling
+        # although the modes of used for the passive structures diagonalise the isolated dynamics of the walls
+        self.Lambdam1 = self.Pm1 @ normal_modes.rm1l_non_symm @ self.P
+        self.Lambda = self.Pm1 @ normal_modes.lm1r @ self.P
 
         self.R = machine_config.coil_resist
-        self.R12 = machine_config.coil_resist**0.5
-        self.Rm12 = machine_config.coil_resist**-0.5
-        # R, R12, Rm12 are vectors rather than matrices!
+        self.Rm1 = machine_config.coil_resist**-1
+        # self.R12 = machine_config.coil_resist**0.5
+        # self.Rm12 = machine_config.coil_resist**-0.5
+        # R, Rm1 are vectors rather than matrices!
 
         self.solver = implicit_euler_solver(
             Mmatrix=self.Lambdam1,
@@ -130,15 +131,15 @@ class metal_currents:
         self.n_independent_vars = self.n_coils
         self.M = machine_config.coil_self_ind
         self.Mm1 = normal_modes.Mm1
-        self.R = np.diag(machine_config.coil_resist)
-        self.Rm1 = 1 / machine_config.coil_resist  # it's a vector!
-        self.Mm1R = self.Mm1 @ self.R
-        self.Rm1M = np.diag(1 / machine_config.coil_resist) @ self.M
+        # self.R = np.diag(machine_config.coil_resist)
+        # self.Rm1 = 1 / machine_config.coil_resist  # it's a vector!
+        # self.Mm1R = self.Mm1 @ self.R
+        # self.Rm1M = np.diag(1 / machine_config.coil_resist) @ self.M
 
         # Equation is MIdot + RI = F
         self.solver = implicit_euler_solver(
             Mmatrix=self.M,
-            Rmatrix=self.R,
+            Rmatrix=np.diag(self.R),
             max_internal_timestep=self.max_internal_timestep,
             full_timestep=self.full_timestep,
         )
@@ -218,7 +219,7 @@ class metal_currents:
         all_Us = np.zeros_like(self.empty_U)
         all_Us[: self.n_active_coils] = active_voltage_vec
         all_Us -= self.Mey @ Iydot
-        all_Us = np.dot(self.Vm1, self.Rm12 * all_Us)
+        all_Us = np.dot(self.Pm1, self.Rm1 * all_Us)
         return all_Us
 
     def forcing_term_eig_no_plasma(self, active_voltage_vec, Iydot=0):
@@ -238,7 +239,7 @@ class metal_currents:
             Voltages."""
         all_Us = self.empty_U.copy()
         all_Us[: self.n_active_coils] = active_voltage_vec
-        all_Us = np.dot(self.Vm1, self.Rm12 * all_Us)
+        all_Us = np.dot(self.Pm1, self.Rm1 * all_Us)
         return all_Us
 
     def forcing_term_no_eig_plasma(self, active_voltage_vec, Iydot):
@@ -294,7 +295,7 @@ class metal_currents:
         Id : np.ndarray
 
         """
-        Id = np.dot(self.Vm1, self.R12 * Ivessel)
+        Id = np.dot(self.Pm1, Ivessel)
         return Id
 
     def IdtoIvessel(self, Id):
@@ -302,7 +303,7 @@ class metal_currents:
 
         Parameters
         ----------"""
-        Ivessel = self.Rm12 * np.dot(self.V, Id)
+        Ivessel = np.dot(self.P, Id)
         return Ivessel
 
     def stepper(self, It, active_voltage_vec, Iydot=0):
@@ -325,30 +326,6 @@ class metal_currents:
         forcing = self.forcing_term(active_voltage_vec, Iydot)
         It = self.solver(It, forcing)
         return It
-
-    def current_residual(self, Itpdt, Iddot, forcing_term):
-        """Calculates the residual of the circuit equation in normal modes.
-
-        $$\Lambda^{-1} \dot{I} + I - F = \text{residual}$$.
-
-        Parameters
-        ----------
-        Itpdt : np.ndarray
-            Currents at time t+dt.
-        Iddot : np.ndarray
-            Rate of change of currents at time t.
-        forcing_term : np.ndarray
-            Forcing term of circuit equation.
-
-        Returns
-        -------
-        residual : np.ndarray
-            Residual of circuit equation.
-        """
-        residual = np.dot(self.Lambdam1, Iddot)
-        residual += Itpdt
-        residual -= forcing_term
-        return residual
 
     def Mey(
         self,
@@ -378,3 +355,27 @@ class metal_currents:
             greenm *= coils_dict[labelj]["multiplier"][np.newaxis, :]
             mey[j] = np.sum(greenm, axis=-1)
         return 2 * np.pi * mey
+
+    def current_residual(self, Itpdt, Iddot, forcing_term):
+        """Calculates the residual of the circuit equation in normal modes.
+
+        $$\Lambda^{-1} \dot{I} + I - F = \text{residual}$$.
+
+        Parameters
+        ----------
+        Itpdt : np.ndarray
+            Currents at time t+dt.
+        Iddot : np.ndarray
+            Rate of change of currents at time t.
+        forcing_term : np.ndarray
+            Forcing term of circuit equation.
+
+        Returns
+        -------
+        residual : np.ndarray
+            Residual of circuit equation.
+        """
+        residual = np.dot(self.Lambdam1, Iddot)
+        residual += Itpdt
+        residual -= forcing_term
+        return residual

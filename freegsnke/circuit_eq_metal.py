@@ -356,7 +356,6 @@ class metal_currents:
             mey[j] = np.sum(greenm, axis=-1)
         return 2 * np.pi * mey
 
-
     def current_residual(self, Itpdt, Iddot, forcing_term):
         """Calculates the residual of the circuit equation in normal modes.
 

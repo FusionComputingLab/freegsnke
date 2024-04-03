@@ -78,8 +78,8 @@ class NKGSsolver:
             [
                 [(x, 0) for x in range(nx)],
                 [(x, ny - 1) for x in range(nx)],
-                [(0, y) for y in np.arange(1, ny-1)],
-                [(nx - 1, y) for y in np.arange(1, ny-1)],
+                [(0, y) for y in np.arange(1, ny - 1)],
+                [(nx - 1, y) for y in np.arange(1, ny - 1)],
             ]
         )
         self.bndry_indices = bndry_indices
@@ -134,12 +134,14 @@ class NKGSsolver:
 
         self.psi_boundary[:, 0] = psi_bnd[: self.nx]
         self.psi_boundary[:, -1] = psi_bnd[self.nx : 2 * self.nx]
-        self.psi_boundary[0, 1:self.ny-1] = psi_bnd[2 * self.nx : 2 * self.nx + self.ny-2]
-        self.psi_boundary[-1, 1:self.ny-1] = psi_bnd[2 * self.nx + self.ny-2 :]
+        self.psi_boundary[0, 1 : self.ny - 1] = psi_bnd[
+            2 * self.nx : 2 * self.nx + self.ny - 2
+        ]
+        self.psi_boundary[-1, 1 : self.ny - 1] = psi_bnd[2 * self.nx + self.ny - 2 :]
 
-        self.rhs[0, 1:self.ny-1] = self.psi_boundary[0, 1:self.ny-1]
+        self.rhs[0, 1 : self.ny - 1] = self.psi_boundary[0, 1 : self.ny - 1]
         self.rhs[:, 0] = self.psi_boundary[:, 0]
-        self.rhs[-1, 1:self.ny-1] = self.psi_boundary[-1, 1:self.ny-1]
+        self.rhs[-1, 1 : self.ny - 1] = self.psi_boundary[-1, 1 : self.ny - 1]
         self.rhs[:, -1] = self.psi_boundary[:, -1]
 
     def F_function(self, plasma_psi, tokamak_psi, profiles, rel_psi_error=0):

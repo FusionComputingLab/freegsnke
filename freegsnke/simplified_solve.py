@@ -75,9 +75,9 @@ class simplified_solver_J1:
 
         self.Pm1 = Pm1
         self.Rm1 = Rm1
-        self.Pm1Rm1 = Pm1@Rm1
+        self.Pm1Rm1 = Pm1 @ Rm1
         self.Pm1Rm1Mey = np.matmul(self.Pm1Rm1, Mey)
-        self.MyeP_T = Pm1@Mey
+        self.MyeP_T = Pm1 @ Mey
         # self.Myy = Myy
         self.Myy = Myy
 
@@ -144,7 +144,9 @@ class simplified_solver_J1:
         Rp = np.sum(self.plasma_resistance_1d * hatIy_left * hatIy_1)
         self.Rp = Rp
 
-        self.Mmatrix[-1, :-1] = np.dot(self.MyeP_T, hatIy_left) / (Rp * self.plasma_norm_factor)
+        self.Mmatrix[-1, :-1] = np.dot(self.MyeP_T, hatIy_left) / (
+            Rp * self.plasma_norm_factor
+        )
         self.Lmatrix[-1, :-1] = np.copy(self.Mmatrix[-1, :-1])
 
         simplified_mutual = self.Pm1Rm1Mey * self.plasma_norm_factor
@@ -154,8 +156,8 @@ class simplified_solver_J1:
         simplified_self_left = np.dot(self.Myy, hatIy_left) / Rp
         simplified_self_1 = np.dot(simplified_self_left, hatIy_1)
         simplified_self_0 = np.dot(simplified_self_left, hatIy_0)
-        self.Mmatrix[-1, -1] = simplified_self_1 
-        self.Lmatrix[-1, -1] = simplified_self_0 
+        self.Mmatrix[-1, -1] = simplified_self_1
+        self.Lmatrix[-1, -1] = simplified_self_0
 
         self.solver.set_Lmatrix(self.Lmatrix)
         self.solver.set_Mmatrix(self.Mmatrix)
@@ -164,7 +166,6 @@ class simplified_solver_J1:
 
         self.empty_U[: self.n_active_coils] = active_voltage_vec
         self.forcing[:-1] = np.dot(self.Pm1Rm1, self.empty_U)
-        
 
     def stepper(self, It, hatIy_left, hatIy_0, hatIy_1, active_voltage_vec):
         """Computes and returns the set of extensive currents at time t+dt

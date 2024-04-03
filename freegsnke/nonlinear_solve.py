@@ -42,7 +42,7 @@ class nl_solver:
         automatic_timestep=False,
         mode_removal=True,
         linearize=True,
-        min_dIy_dI=.1,
+        min_dIy_dI=0.1,
         verbose=False,
     ):
         """Initializes the time-evolution Object.
@@ -185,8 +185,8 @@ class nl_solver:
         # Note that this does not use sub-time-stepping, i.e. max_internal_timestep = full_timestep
         self.simplified_solver_J1 = simplified_solver_J1(
             Lambdam1=self.evol_metal_curr.Lambdam1,
-            Pm1 = self.evol_metal_curr.Pm1,
-            Rm1 = np.diag(self.evol_metal_curr.Rm1),
+            Pm1=self.evol_metal_curr.Pm1,
+            Rm1=np.diag(self.evol_metal_curr.Rm1),
             Mey=self.evol_metal_curr.Mey_matrix,
             Myy=self.evol_plasma_curr.Myy_matrix,
             plasma_norm_factor=self.plasma_norm_factor,
@@ -214,8 +214,8 @@ class nl_solver:
         # self.linearised_sol handles the linearised dynamic problem
         self.linearised_sol = linear_solver(
             Lambdam1=self.evol_metal_curr.Lambdam1,
-            Pm1 = self.evol_metal_curr.Pm1,
-            Rm1 = np.diag(self.evol_metal_curr.Rm1),
+            Pm1=self.evol_metal_curr.Pm1,
+            Rm1=np.diag(self.evol_metal_curr.Rm1),
             Mey=self.evol_metal_curr.Mey_matrix,
             Myy=self.evol_plasma_curr.Myy_matrix,
             plasma_norm_factor=self.plasma_norm_factor,
@@ -386,8 +386,8 @@ class nl_solver:
 
         self.simplified_solver_J1 = simplified_solver_J1(
             Lambdam1=self.evol_metal_curr.Lambdam1,
-            Pm1 = self.evol_metal_curr.Pm1,
-            Rm1 = np.diag(self.evol_metal_curr.Rm1),
+            Pm1=self.evol_metal_curr.Pm1,
+            Rm1=np.diag(self.evol_metal_curr.Rm1),
             Mey=self.evol_metal_curr.Mey_matrix,
             Myy=self.evol_plasma_curr.Myy_matrix,
             plasma_norm_factor=self.plasma_norm_factor,
@@ -399,8 +399,8 @@ class nl_solver:
 
         self.linearised_sol = linear_solver(
             Lambdam1=self.evol_metal_curr.Lambdam1,
-            Pm1 = self.evol_metal_curr.Pm1,
-            Rm1 = np.diag(self.evol_metal_curr.Rm1),
+            Pm1=self.evol_metal_curr.Pm1,
+            Rm1=np.diag(self.evol_metal_curr.Rm1),
             Mey=self.evol_metal_curr.Mey_matrix,
             Myy=self.evol_plasma_curr.Myy_matrix,
             plasma_norm_factor=self.plasma_norm_factor,
@@ -1398,7 +1398,7 @@ class nl_solver:
         iterated_currs = self.currents_from_hatIy(self.hatIy1_last, active_voltage_vec)
         current_res = iterated_currs - trial_currents
         return current_res
-    
+
     def F_function_curr_GS(self, trial_currents, active_voltage_vec, rtol_NK):
         """Full non-linear system of circuit eqs written as root problem
         in the vector of current values at time t+dt.
@@ -1432,7 +1432,6 @@ class nl_solver:
         current_res = iterated_currs - trial_currents
         return current_res
 
-
     def calculate_hatIy_GS(self, trial_currents, rtol_NK, record_for_updates=False):
         """Finds the normalised plasma current distribution corresponding
         to the combination of the input current values by solving the static GS problem.
@@ -1454,7 +1453,7 @@ class nl_solver:
         )
         hatIy1 = self.plasma_grids.hat_Iy_from_jtor(self.profiles2.jtor)
         return hatIy1
-    
+
     def F_function_psi(self, trial_plasma_psi, active_voltage_vec, rtol_NK):
         """Full non-linear system of circuit eqs written as root problem
         in the plasma flux. Note that the flux associated to the metal currents
@@ -3134,7 +3133,6 @@ class nl_solver:
 
     #     # return flag
 
-
     # # WORKING ON IT
     # def F_function_0(self, trial_sol, active_voltage_vec):
     #     # full vector of unknowns,
@@ -3226,7 +3224,6 @@ class nl_solver:
 
     #     return full_residual
 
-   
     # def F_function_ceq_GS(self, trial_currents, active_voltage_vec, rtol_NK):
     #     """Full non-linear system of circuit eqs written as root problem
     #     in the vector of current values at time t+dt.
@@ -3269,8 +3266,6 @@ class nl_solver:
     #         active_voltage_vec=active_voltage_vec,
     #     )
     #     return ceq_residuals
-
-    
 
     # def F_function_psi_GS(self, trial_plasma_psi, active_voltage_vec, rtol_NK):
     #     """Full non-linear system of circuit eqs written as root problem

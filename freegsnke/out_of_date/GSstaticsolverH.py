@@ -76,8 +76,8 @@ class NKGSsolver:
             [
                 [(x, 0) for x in range(nx)],
                 [(x, ny - 1) for x in range(nx)],
-                [(0, y) for y in np.arange(1,ny-1)],
-                [(nx - 1, y) for y in np.arange(1,ny-1)],
+                [(0, y) for y in np.arange(1, ny - 1)],
+                [(nx - 1, y) for y in np.arange(1, ny - 1)],
             ]
         )
         self.bndry_indices = bndry_indices
@@ -140,10 +140,12 @@ class NKGSsolver:
         # self.rhs[-1, :] = self.psi_boundary[-1, :]
         # self.rhs[:, -1] = self.psi_boundary[:, -1]
 
-        self.rhs[:, 0] = psi_bnd[ :self.nx]
-        self.rhs[:, -1] = psi_bnd[self.nx :2*self.nx]
-        self.rhs[0, 1:self.ny-1] = psi_bnd[2*self.nx : 2*self.nx + self.ny - 2]
-        self.rhs[-1, 1:self.ny-1] = psi_bnd[2*self.nx + self.ny-2 :2*self.nx + 2*self.ny - 4]
+        self.rhs[:, 0] = psi_bnd[: self.nx]
+        self.rhs[:, -1] = psi_bnd[self.nx : 2 * self.nx]
+        self.rhs[0, 1 : self.ny - 1] = psi_bnd[2 * self.nx : 2 * self.nx + self.ny - 2]
+        self.rhs[-1, 1 : self.ny - 1] = psi_bnd[
+            2 * self.nx + self.ny - 2 : 2 * self.nx + 2 * self.ny - 4
+        ]
 
     def F_function(self, plasma_psi, tokamak_psi, profiles, rel_psi_error=0):
         """Nonlinear Grad Shafranov equation written as a root problem
@@ -170,9 +172,9 @@ class NKGSsolver:
         """
 
         self.freeboundary(plasma_psi, tokamak_psi, profiles, rel_psi_error)
-        residual = plasma_psi - (
-            self.linear_GS_solver(plasma_psi, self.rhs)
-        ).reshape(-1)
+        residual = plasma_psi - (self.linear_GS_solver(plasma_psi, self.rhs)).reshape(
+            -1
+        )
         return residual
 
     def port_critical(self, eq, profiles):
@@ -286,7 +288,7 @@ class NKGSsolver:
 
             if rel_change > Picard_handover:
                 # using Picard instead of NK
-                trial_plasma_psi -= res0  
+                trial_plasma_psi -= res0
                 picard_flag = 1
 
             else:

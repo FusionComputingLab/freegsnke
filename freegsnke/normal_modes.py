@@ -16,7 +16,7 @@ Mm1 = np.linalg.inv(machine_config.coil_self_ind)
 lm1r = R12 @ Mm1 @ R12
 lm1r_non_symm = Mm1 @ np.diag(machine_config.coil_resist)
 rm1l = Rm12 @ machine_config.coil_self_ind @ Rm12
-rm1l_non_symm = np.diag(machine_config.coil_resist**-1.) @ machine_config.coil_self_ind
+rm1l_non_symm = np.diag(machine_config.coil_resist**-1.0) @ machine_config.coil_self_ind
 
 # 1. active coils
 # normal modes are not used for the active coils,

@@ -62,9 +62,9 @@ class linear_solver:
         self.Lambdam1 = Lambdam1
         self.Pm1 = Pm1
         self.Rm1 = Rm1
-        self.Pm1Rm1 = Pm1@Rm1
+        self.Pm1Rm1 = Pm1 @ Rm1
         self.Pm1Rm1Mey = np.matmul(self.Pm1Rm1, Mey)
-        self.MyeP_T = Pm1@Mey
+        self.MyeP_T = Pm1 @ Mey
         self.Myy = Myy
 
         self.n_active_coils = machine_config.n_active_coils
@@ -140,7 +140,7 @@ class linear_solver:
 
                 \Lambda^-1 + P^-1R^-1Mey A        P^-1R^-1Mey B
         M = (                                                       )
-                J(Myy A + MyeP)/Rp                J Myy B/Rp                                              
+                J(Myy A + MyeP)/Rp                J Myy B/Rp
 
         This also builds the forcing:
                     P^-1R^-1 Voltage         P^-1R^-1Mey
@@ -150,7 +150,7 @@ class linear_solver:
         where A = dIy/dId
               B = dIy/dIp
               C = dIy/plasmapars
-                            
+
 
         Parameters
         ----------

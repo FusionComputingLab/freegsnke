@@ -50,14 +50,8 @@ class Equilibrium(freegs.equilibrium.Equilibrium):
             )
             > 1e-5
         )
-        print(
-            "doing check!",
-            np.max(self.psi_func_interp(self.Rnxh, self.Znyh)),
-            self.plasma_psi[self.nxh, self.nyh],
-            check,
-        )
         if check:
-            print("re-calculating!")
+            print("psi_func has been re-set.")
             # redefine interpolating function
             self.psi_func_interp = interpolate.RectBivariateSpline(
                 self.R[:, 0], self.Z[0, :], self.plasma_psi

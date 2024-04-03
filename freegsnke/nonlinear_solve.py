@@ -6,8 +6,6 @@ from scipy.signal import convolve2d
 
 from . import machine_config
 from . import nk_solver as nk_solver
-from . import nk_solver_Hessenberg as nk_solver_H
-from . import plasma_grids
 from .circuit_eq_metal import metal_currents
 from .circuit_eq_plasma import plasma_current
 from .GSstaticsolver import NKGSsolver
@@ -34,7 +32,6 @@ class nl_solver:
         max_internal_timestep=0.0001,
         plasma_resistivity=1e-6,
         plasma_norm_factor=1000,
-        plasma_domain_mask=None,
         nbroad=1,
         blend_hatJ=0,
         dIydI=None,
@@ -53,12 +50,14 @@ class nl_solver:
             Profile function of the initial equilibrium.
             This will be used to set up the linearization used by the linear solver.
             It can be changed later by initializing a new set of initial conditions.
+            Note however that, to change either the tokamak or limiter properties
+            it will be necessary to instantiate a new evolution object.
         eq : FreeGS equilibrium Object
             Initial equilibrium. This is used to set the domain/grid properties
             as well as the tokamak/machine properties.
             Furthermore, eq will be used to set up the linearization used by the linear solver.
             It can be changed later by initializing a new set of initial conditions.
-            Note however that, to change either the domain or tokamak properties
+            Note however that, to change either the tokamak or limiter properties
             it will be necessary to instantiate a new evolution object.
         max_mode_frequency : float
             Threshold value used to include/exclude vessel normal modes.
@@ -82,11 +81,6 @@ class nl_solver:
         plasma_norm_factor : float, optional, by default 1000
             The lumped circuit eq relating to the plasma is divided by this factor,
             to make differences with metal current values less extreme.
-        plasma_domain_mask : np.array of size (eq.nx,eq.ny)
-            mask of grid domain points to be included in the current circuit equation.
-            This reduces the dimensionality of associated matrices.
-            If None, the mask defaults to the one based on the limiter associated to the input profiles.
-            Only specify if a different mask is required.
         nbroad : int, optional, by default 3
             pixel size (as number of grid points) of (square) smoothing filter applied to
             the instantaneous plasma current distribution, before contracting the plasma circuit equations
@@ -127,17 +121,8 @@ class nl_solver:
         self.NK = NKGSsolver(eq)
 
         # setting up domain for plasma circuit eq.:
-        if plasma_domain_mask is None:
-            plasma_domain_mask = profiles.mask_inside_limiter
-            self.plasma_grids = profiles.plasma_grids
-            self.plasma_domain_mask = self.plasma_grids.plasma_domain_mask
-        else:
-            if plasma_domain_mask != profiles.mask_inside_limiter:
-                print(
-                    "A plasma_domain_mask different from the profiles.mask_inside_limiter has been provided."
-                )
-                self.plasma_grids = plasma_grids.Grids(eq, plasma_domain_mask)
-                self.plasma_domain_mask = plasma_domain_mask
+        self.limiter_handler = profiles.limiter_handler
+        self.plasma_domain_mask = self.limiter_handler.mask_inside_limiter
         self.plasma_domain_size = np.sum(self.plasma_domain_mask)
 
         # Extract relevant information on the type of profile function used and on the actual value of associated parameters
@@ -162,7 +147,7 @@ class nl_solver:
         self.evol_metal_curr = metal_currents(
             flag_vessel_eig=1,
             flag_plasma=1,
-            plasma_grids=self.plasma_grids,
+            plasma_pts=self.limiter_handler.plasma_pts,
             max_mode_frequency=self.max_mode_frequency,
             max_internal_timestep=self.max_internal_timestep,
             full_timestep=self.dt_step,
@@ -173,7 +158,7 @@ class nl_solver:
 
         # to calculate residual of plasma contracted circuit eq
         self.evol_plasma_curr = plasma_current(
-            plasma_grids=self.plasma_grids,
+            plasma_pts=self.limiter_handler.plasma_pts,
             Rm1=np.diag(self.evol_metal_curr.Rm1),
             P=self.evol_metal_curr.P,
             plasma_resistance_1d=self.plasma_resistance_1d,
@@ -341,12 +326,12 @@ class nl_solver:
         # prepare regularization matrices
         # self.reg_matrix = (
         #     np.eye(self.plasma_domain_size)
-        #     + self.plasma_grids.build_linear_regularization()
+        #     + self.limiter_handler.build_linear_regularization()
         # )
-        # + self.plasma_grids.build_quadratic_regularization()
+        # + self.limiter_handler.build_quadratic_regularization()
         # self.reg0 = np.eye(self.plasma_domain_size)
-        # self.reg1 = self.plasma_grids.build_linear_regularization()
-        # self.reg2 = self.plasma_grids.build_quadratic_regularization()
+        # self.reg1 = self.limiter_handler.build_linear_regularization()
+        # self.reg2 = self.limiter_handler.build_quadratic_regularization()
 
         self.text_nk_cycle = "This is NK cycle no {nkcycle}."
         self.text_psi_0 = "NK on psi has been skipped {skippedno} times. The residual on psi is {psi_res:.8f}."
@@ -464,7 +449,7 @@ class nl_solver:
             )
         )
         self.assign_currents_solve_GS(current_, rtol_NK)
-        dIy_0 = self.plasma_grids.Iy_from_jtor(self.profiles2.jtor) - self.Iy
+        dIy_0 = self.limiter_handler.Iy_from_jtor(self.profiles2.jtor) - self.Iy
         self.final_dpars_record[0] = (
             starting_dpars[0] * target_dIy / np.linalg.norm(dIy_0)
         )
@@ -477,7 +462,7 @@ class nl_solver:
             )
         )
         self.assign_currents_solve_GS(current_, rtol_NK)
-        dIy_0 = self.plasma_grids.Iy_from_jtor(self.profiles2.jtor) - self.Iy
+        dIy_0 = self.limiter_handler.Iy_from_jtor(self.profiles2.jtor) - self.Iy
         self.final_dpars_record[1] = (
             starting_dpars[1] * target_dIy / np.linalg.norm(dIy_0)
         )
@@ -488,7 +473,7 @@ class nl_solver:
             profile_parameter=(1 + starting_dpars[2]) * profiles.profile_parameter,
         )
         self.assign_currents_solve_GS(current_, rtol_NK)
-        dIy_0 = self.plasma_grids.Iy_from_jtor(self.profiles2.jtor) - self.Iy
+        dIy_0 = self.limiter_handler.Iy_from_jtor(self.profiles2.jtor) - self.Iy
         self.final_dpars_record[2] = (
             starting_dpars[2]
             * profiles.profile_parameter
@@ -520,7 +505,7 @@ class nl_solver:
             profile_parameter=profiles.profile_parameter,
         )
         self.assign_currents_solve_GS(current_, rtol_NK)
-        dIy_1 = self.plasma_grids.Iy_from_jtor(self.profiles2.jtor) - self.Iy
+        dIy_1 = self.limiter_handler.Iy_from_jtor(self.profiles2.jtor) - self.Iy
         self.dIydpars[:, 0] = dIy_1 / self.final_dpars_record[0]
         if verbose:
             print(
@@ -538,7 +523,7 @@ class nl_solver:
             )
         )
         self.assign_currents_solve_GS(current_, rtol_NK)
-        dIy_1 = self.plasma_grids.Iy_from_jtor(self.profiles2.jtor) - self.Iy
+        dIy_1 = self.limiter_handler.Iy_from_jtor(self.profiles2.jtor) - self.Iy
         self.dIydpars[:, 1] = dIy_1 / self.final_dpars_record[1]
         if verbose:
             print(
@@ -554,7 +539,7 @@ class nl_solver:
             profile_parameter=profiles.profile_parameter + self.final_dpars_record[2],
         )
         self.assign_currents_solve_GS(current_, rtol_NK)
-        dIy_1 = self.plasma_grids.Iy_from_jtor(self.profiles2.jtor) - self.Iy
+        dIy_1 = self.limiter_handler.Iy_from_jtor(self.profiles2.jtor) - self.Iy
         self.dIydpars[:, 2] = dIy_1 / self.final_dpars_record[2]
         if verbose:
             print(
@@ -590,7 +575,7 @@ class nl_solver:
         current_[j] += starting_dI
         self.assign_currents_solve_GS(current_, rtol_NK)
 
-        dIy_0 = self.plasma_grids.Iy_from_jtor(self.profiles2.jtor) - self.Iy
+        dIy_0 = self.limiter_handler.Iy_from_jtor(self.profiles2.jtor) - self.Iy
         final_dI = starting_dI * target_dIy / np.linalg.norm(dIy_0)
         final_dI = np.clip(final_dI, min_curr, max_curr)
         self.final_dI_record[j] = final_dI
@@ -619,13 +604,13 @@ class nl_solver:
         current_[j] += final_dI
         self.assign_currents_solve_GS(current_, rtol_NK)
 
-        dIy_1 = self.plasma_grids.Iy_from_jtor(self.profiles2.jtor) - self.Iy
+        dIy_1 = self.limiter_handler.Iy_from_jtor(self.profiles2.jtor) - self.Iy
         dIydIj = dIy_1 / final_dI
 
         # noise = noise_level*np.random.random(self.n_metal_modes+1)
         # current_[j] += final_dI
         # self.assign_currents_solve_GS(current_, rtol_NK)
-        # dIydIj_2 = (self.plasma_grids.Iy_from_jtor(self.profiles2.jtor) - dIy_1 - self.Iy)/final_dI
+        # dIydIj_2 = (self.limiter_handler.Iy_from_jtor(self.profiles2.jtor) - dIy_1 - self.Iy)/final_dI
 
         # self.ddIyddI[j] = np.linalg.norm(dIydIj_2 - dIydIj)/final_dI
 
@@ -683,7 +668,7 @@ class nl_solver:
         ):
             self.NK.forward_solve(eq, profile, target_relative_tolerance=rtol_NK)
             self.build_current_vec(eq, profile)
-            self.Iy = self.plasma_grids.Iy_from_jtor(profile.jtor).copy()
+            self.Iy = self.limiter_handler.Iy_from_jtor(profile.jtor).copy()
 
         # build/update dIydI
         if dIydI is None:
@@ -790,7 +775,7 @@ class nl_solver:
         self.evol_metal_curr.reset_mode(
             flag_vessel_eig=1,
             flag_plasma=1,
-            plasma_grids=self.plasma_grids,
+            plasma_pts=self.limiter_handler.plasma_pts,
             max_mode_frequency=self.max_mode_frequency,
             max_internal_timestep=max_internal_timestep,
             full_timestep=full_timestep,
@@ -988,16 +973,16 @@ class nl_solver:
         # self.Iy is the istantaneous 1d vector representing the plasma current distribution
         # on the reduced plasma domain, as from plasma_domain_mask
         # self.Iy is updated every timestep
-        self.Iy = self.plasma_grids.Iy_from_jtor(self.profiles1.jtor)
+        self.Iy = self.limiter_handler.Iy_from_jtor(self.profiles1.jtor)
         # self.hatIy is the normalised version. The vector sums to 1.
-        self.hatIy = self.plasma_grids.normalize_sum(self.Iy)
+        self.hatIy = self.limiter_handler.normalize_sum(self.Iy)
         # self.hatIy1 is the normalised plasma current distribution at time t+dt
         self.hatIy1 = np.copy(self.hatIy)
         self.make_broad_hatIy(self.hatIy1)
         # self.broad_hatIy is convolved with a broading filter.
         # self.broad_hatIy is used to contract the system of plasma circuit eqs.
         # self.broad_hatIy = convolve2d(self.profiles1.jtor, self.ones_to_broaden, mode='same')
-        # self.broad_hatIy = self.plasma_grids.hat_Iy_from_jtor(self.broad_hatIy)
+        # self.broad_hatIy = self.limiter_handler.hat_Iy_from_jtor(self.broad_hatIy)
 
         # set an additional internal copy of the equilibrium
         # self.eq2 and self.profiles2 are used when solving for the dynamics
@@ -1081,10 +1066,10 @@ class nl_solver:
             )
             self.NK.port_critical(self.eq1, self.profiles1)
 
-        self.Iy = self.plasma_grids.Iy_from_jtor(self.profiles1.jtor)
-        self.hatIy = self.plasma_grids.normalize_sum(self.Iy)
+        self.Iy = self.limiter_handler.Iy_from_jtor(self.profiles1.jtor)
+        self.hatIy = self.limiter_handler.normalize_sum(self.Iy)
         # self.broad_hatIy = convolve2d(self.profiles1.jtor, self.ones_to_broaden, mode='same')
-        # self.broad_hatIy = self.plasma_grids.hat_Iy_from_jtor(self.broad_hatIy)
+        # self.broad_hatIy = self.limiter_handler.hat_Iy_from_jtor(self.broad_hatIy)
 
         self.rtol_NK = working_relative_tol_GS * self.d_plasma_psi_step
 
@@ -1156,7 +1141,7 @@ class nl_solver:
             )
         )
         self.record_Iys = np.vstack(
-            (self.record_Iys, self.plasma_grids.Iy_from_jtor(profiles.jtor))
+            (self.record_Iys, self.limiter_handler.Iy_from_jtor(profiles.jtor))
         )
 
     def get_number_of_independent_pars(
@@ -1249,11 +1234,13 @@ class nl_solver:
             with (a guess for) the one at time t+dt before contraction of the plasma
             lumped circuit eq.
         """
-        self.broad_hatIy = self.plasma_grids.rebuild_map2d(hatIy1 + blend * self.hatIy)
+        self.broad_hatIy = self.limiter_handler.rebuild_map2d(
+            hatIy1 + blend * self.hatIy
+        )
         self.broad_hatIy = convolve2d(
             self.broad_hatIy, self.ones_to_broaden, mode="same"
         )
-        self.broad_hatIy = self.plasma_grids.hat_Iy_from_jtor(self.broad_hatIy)
+        self.broad_hatIy = self.limiter_handler.hat_Iy_from_jtor(self.broad_hatIy)
 
     def make_broad_hatIy_noconv(self, hatIy1, blend=0):
         """Averages the normalised plasma current distributions at time t and
@@ -1266,9 +1253,11 @@ class nl_solver:
             Guess for the normalised plasma current distributions at time t+dt.
             Should be a vector that sums to 1. Reduced plasma domain only.
         """
-        self.broad_hatIy = self.plasma_grids.rebuild_map2d(hatIy1 + blend * self.hatIy)
+        self.broad_hatIy = self.limiter_handler.rebuild_map2d(
+            hatIy1 + blend * self.hatIy
+        )
         # self.broad_hatIy = convolve2d(self.broad_hatIy, self.ones_to_broaden, mode='same')
-        self.broad_hatIy = self.plasma_grids.hat_Iy_from_jtor(self.broad_hatIy)
+        self.broad_hatIy = self.limiter_handler.hat_Iy_from_jtor(self.broad_hatIy)
 
     def circ_eq_residual_f(self, trial_currents, active_voltage_vec):
         """Uses record of state at time t, the provided current values and a record
@@ -1369,7 +1358,7 @@ class nl_solver:
         self.assign_currents(trial_currents, profile=self.profiles2, eq=self.eq2)
         self.tokamak_psi = self.eq2.tokamak.calcPsiFromGreens(pgreen=self.eq2._pgreen)
         jtor_ = self.profiles2.Jtor(self.eqR, self.eqZ, self.tokamak_psi + plasma_psi)
-        hat_Iy1 = self.plasma_grids.hat_Iy_from_jtor(jtor_)
+        hat_Iy1 = self.limiter_handler.hat_Iy_from_jtor(jtor_)
         return hat_Iy1
 
     def F_function_curr(self, trial_currents, active_voltage_vec):
@@ -1451,7 +1440,7 @@ class nl_solver:
         self.assign_currents_solve_GS(
             trial_currents, rtol_NK=rtol_NK, record_for_updates=record_for_updates
         )
-        hatIy1 = self.plasma_grids.hat_Iy_from_jtor(self.profiles2.jtor)
+        hatIy1 = self.limiter_handler.hat_Iy_from_jtor(self.profiles2.jtor)
         return hatIy1
 
     def F_function_psi(self, trial_plasma_psi, active_voltage_vec, rtol_NK):
@@ -1484,7 +1473,7 @@ class nl_solver:
             self.eqZ,
             (self.tokamak_psi + trial_plasma_psi).reshape(self.nx, self.ny),
         )
-        hatIy1 = self.plasma_grids.hat_Iy_from_jtor(jtor_)
+        hatIy1 = self.limiter_handler.hat_Iy_from_jtor(jtor_)
         self.hatIy1_iterative_cycle(
             hatIy1=hatIy1, active_voltage_vec=active_voltage_vec, rtol_NK=rtol_NK
         )
@@ -1977,7 +1966,7 @@ class nl_solver:
             self.step_complete_assign(working_relative_tol_GS)
 
         # # check plasma is still fully contained in the plasma reduced domain
-        # flag = self.plasma_grids.check_if_outside_domain(jtor=self.profiles2.jtor)
+        # flag = self.limiter_handler.check_if_outside_domain(jtor=self.profiles2.jtor)
 
         # return flag
         # return [residuals, residuals_ceq, GS_residuals]
@@ -2509,7 +2498,7 @@ class nl_solver:
 
     #     self.step_complete_assign(self.simplified_c, self.eq2.plasma_psi, working_relative_tol_GS)
 
-    #     flag = self.plasma_grids.check_if_outside_domain(jtor=self.profiles2.jtor)
+    #     flag = self.limiter_handler.check_if_outside_domain(jtor=self.profiles2.jtor)
 
     #     return flag
 
@@ -2809,7 +2798,7 @@ class nl_solver:
     #         self.step_complete_assign(working_relative_tol_GS)
 
     #     # # check plasma is still fully contained in the plasma reduced domain
-    #     # flag = self.plasma_grids.check_if_outside_domain(jtor=self.profiles2.jtor)
+    #     # flag = self.limiter_handler.check_if_outside_domain(jtor=self.profiles2.jtor)
 
     #     # return flag
 
@@ -3129,7 +3118,7 @@ class nl_solver:
     #         self.step_complete_assign(working_relative_tol_GS)
 
     #     # # check plasma is still fully contained in the plasma reduced domain
-    #     # flag = self.plasma_grids.check_if_outside_domain(jtor=self.profiles2.jtor)
+    #     # flag = self.limiter_handler.check_if_outside_domain(jtor=self.profiles2.jtor)
 
     #     # return flag
 
@@ -3297,7 +3286,7 @@ class nl_solver:
     #         self.eqZ,
     #         (self.tokamak_psi + trial_plasma_psi).reshape(self.nx, self.ny),
     #     )
-    #     hatIy1 = self.plasma_grids.hat_Iy_from_jtor(jtor_)
+    #     hatIy1 = self.limiter_handler.hat_Iy_from_jtor(jtor_)
     #     self.hatIy1_iterative_cycle(
     #         hatIy1=hatIy1, active_voltage_vec=active_voltage_vec, rtol_NK=rtol_NK
     #     )

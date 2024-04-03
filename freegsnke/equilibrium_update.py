@@ -5,6 +5,8 @@ import freegs
 import numpy as np
 from scipy import interpolate
 
+from . import limiter_func
+
 
 class Equilibrium(freegs.equilibrium.Equilibrium):
     """FreeGS equilibrium class with optional initialization."""
@@ -25,6 +27,11 @@ class Equilibrium(freegs.equilibrium.Equilibrium):
         self.nyh = len(self.Z[0]) // 2
         self.Rnxh = self.R[self.nxh, 0]
         self.Znyh = self.Z[0, self.nyh]
+
+        # set up for limiter functionality
+        self.limiter_handler = limiter_func.Limiter_handler(self, self.tokamak.limiter)
+        self.mask_inside_limiter = self.limiter_handler.mask_inside_limiter
+        self.limiter_mask_out = self.limiter_handler.make_layer_mask(layer_size=1)
 
     def psi_func(self, R, Z, *args, **kwargs):
         """Scipy interpolation of plasma function.

@@ -1,7 +1,10 @@
+import os
+import sys
+
 import setuptools
-import sys, os
+
 sys.path.insert(0, os.path.abspath("."))
-from freegsnke import __version__, __author__
+from freegsnke import __author__, __version__
 
 with open("README.md", "r") as f:
     long_description = f.read()
@@ -19,5 +22,5 @@ setuptools.setup(
         "Operating System :: OS Independent",
     ],
     packages=["freegsnke"],
-    python_requires=">=3.0"
+    python_requires=">=3.0",
 )

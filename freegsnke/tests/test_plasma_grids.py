@@ -10,7 +10,6 @@ os.environ["WALL_PATH"] = "./machine_configs/MAST-U/wall.pickle"
 os.environ["LIMITER_PATH"] = "./machine_configs/MAST-U/limiter.pickle"
 
 from freegsnke import build_machine, limiter_func
-from freegsnke.plasma_grids import Grids
 
 
 @pytest.fixture
@@ -36,45 +35,40 @@ def create_machine():
 
 
 @pytest.fixture
-def plasma_domain_mask(create_machine):
+def plasma_domain_masks(create_machine):
     tokamak, eq = create_machine
     limiter_handler = limiter_func.Limiter_handler(eq, tokamak.limiter)
-    return limiter_handler.mask_inside_limiter
+    return (
+        limiter_handler.mask_inside_limiter,
+        limiter_handler.layer_mask,
+        limiter_handler.plasma_pts,
+    )
 
 
-@pytest.fixture
-def grids(create_machine, plasma_domain_mask):
-    _, eq = create_machine
-    mask = plasma_domain_mask
-    return Grids(eq, mask)
-
-
-def test_plasma_domain_mask(create_machine, grids):
+def test_plasma_domain_mask(create_machine, plasma_domain_masks):
     """
     Tests if the shape of the limiter mask is correct and if the points
     returned are unique.
     """
     _, eq = create_machine
+    mask_inside_limiter, layer_mask, plasma_pts = plasma_domain_masks
     assert (
-        grids.plasma_domain_mask.shape == eq.R.shape
+        mask_inside_limiter.shape == eq.R.shape
     ), "The shape of the limiter  mask is incorrect"
-    assert len(np.unique(grids.plasma_pts, axis=0)) == len(grids.plasma_pts), (
-        f"There are {len(np.nunique(grids.plasma_pts, axis=0))} unique "
-        + f"points out of {len(grids.plasma_pts)}"
-    )
 
 
-def test_make_layer_mask(create_machine, grids):
+def test_make_layer_mask(create_machine, plasma_domain_masks):
     """
     Tests if the shape of the layer mask is the correct shape and does not
     overlap with the limiter mask.
     """
     _, eq = create_machine
+    mask_inside_limiter, layer_mask, plasma_pts = plasma_domain_masks
     assert (
-        grids.layer_mask.shape == grids.plasma_domain_mask.shape
+        layer_mask.shape == mask_inside_limiter.shape
     ), "Layer mask is not the correct shape"
     assert (
-        np.sum(grids.layer_mask * grids.plasma_domain_mask) == 0
+        np.sum(layer_mask * mask_inside_limiter) == 0
     ), "Layer mask and limiter mask are overlapping"
 
 

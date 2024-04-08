@@ -312,7 +312,6 @@ class Fiesta_Topiol(freegs.jtor.Fiesta_Topiol):
         return self.jtor
 
 
-
 class Lao85(freegs.jtor.Lao85):
     """FreeGS profile class with a few modifications, to:
     - retain memory of critical point calculation;

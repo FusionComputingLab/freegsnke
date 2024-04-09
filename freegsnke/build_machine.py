@@ -88,7 +88,10 @@ def tokamak():
 
     # Add passive coils
     for i, coil in enumerate(passive_coils):
-        coil_name = f"passive_{i}"
+        try:
+            coil_name = coil["name"]
+        except:
+            coil_name = f"passive_{i}"
         coils.append(
             (
                 (

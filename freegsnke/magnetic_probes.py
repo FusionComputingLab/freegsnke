@@ -5,14 +5,12 @@
 
 import os
 import pickle
+from deepdiff import DeepDiff
 
 import numpy as np
 from freegs.gradshafranov import Greens, GreensBr, GreensBz
 
-from . import machine_config
-
-
-class Probe:
+class Probes:
     """
     Class to implement magnetic probes:
     - flux loops: compute psi(R,Z)
@@ -51,7 +49,7 @@ class Probe:
     Methods currently have floop or pickup positions as default, but these can be changed with optional argument.
     """
 
-    def __init__(self):
+    def __init__(self, coils_dict):
         """
         Initialise the following
         - read the probe dictionaries from file
@@ -71,6 +69,11 @@ class Probe:
         except ValueError:
             print("No probe configuration is provided")
 
+        # store coil info 
+        self.coil_names = [name for name in coils_dict]
+        self.coils_dict = coils_dict
+
+
     def initialise_setup(self, eq):
         """
         Setup attributes: positions, orientations and greens functions
@@ -79,11 +82,9 @@ class Probe:
         - create arrays/dictionaries of greens functions with positions of coils/plasma currents and probes
         """
 
-        # take coil info from machine_config.py where coil_dict is defined
-        self.coil_names = [name for name in eq.tokamak.getCurrents()]
-        self.coil_dict = machine_config.coils_dict
-
-        # self.coils_order = [labeli for i, labeli in enumerate(self.coil_dict.keys())]
+        check = (DeepDiff(eq.tokamak.coils_dict, self.coils_dict)=={})
+        if check is not True:
+            raise AssertionError("The supplied equilibrium uses a different tokamak. Probes values can not be computed.")
 
         eq_key = self.create_eq_key(eq)
 
@@ -178,12 +179,12 @@ class Probe:
             pos_R = self.floop_pos[:, 0]
             pos_Z = self.floop_pos[:, 1]
 
-        pol = self.coil_dict[coil_key]["polarity"][np.newaxis, :]
-        mul = self.coil_dict[coil_key]["multiplier"][np.newaxis, :]
+        pol = self.coils_dict[coil_key]["polarity"][np.newaxis, :]
+        mul = self.coils_dict[coil_key]["multiplier"][np.newaxis, :]
 
         greens_filaments = Greens(
-            self.coil_dict[coil_key]["coords"][0][np.newaxis, :],
-            self.coil_dict[coil_key]["coords"][1][np.newaxis, :],
+            self.coils_dict[coil_key]["coords"][0][np.newaxis, :],
+            self.coils_dict[coil_key]["coords"][1][np.newaxis, :],
             pos_R[:, np.newaxis],
             pos_Z[:, np.newaxis],
         )
@@ -200,7 +201,7 @@ class Probe:
         """
 
         array = np.array([]).reshape(0, self.number_floops)
-        for key in self.coil_dict.keys():
+        for key in self.coils_dict.keys():
             array = np.vstack((array, self.create_greens_psi_single_coil(key, probe)))
         return array
 
@@ -289,11 +290,11 @@ class Probe:
             pos_R = self.pickup_pos[:, 0]
             pos_Z = self.pickup_pos[:, 2]
 
-        pol = self.coil_dict[coil_key]["polarity"][np.newaxis, :]
-        mul = self.coil_dict[coil_key]["multiplier"][np.newaxis, :]
+        pol = self.coils_dict[coil_key]["polarity"][np.newaxis, :]
+        mul = self.coils_dict[coil_key]["multiplier"][np.newaxis, :]
         greens_br_filaments = GreensBr(
-            self.coil_dict[coil_key]["coords"][0][np.newaxis, :],
-            self.coil_dict[coil_key]["coords"][1][np.newaxis, :],
+            self.coils_dict[coil_key]["coords"][0][np.newaxis, :],
+            self.coils_dict[coil_key]["coords"][1][np.newaxis, :],
             pos_R[:, np.newaxis],
             pos_Z[:, np.newaxis],
         )
@@ -302,8 +303,8 @@ class Probe:
         greens_br_coil = np.sum(greens_br_filaments, axis=1)
 
         greens_bz_filaments = GreensBz(
-            self.coil_dict[coil_key]["coords"][0][np.newaxis, :],
-            self.coil_dict[coil_key]["coords"][1][np.newaxis, :],
+            self.coils_dict[coil_key]["coords"][0][np.newaxis, :],
+            self.coils_dict[coil_key]["coords"][1][np.newaxis, :],
             pos_R[:, np.newaxis],
             pos_Z[:, np.newaxis],
         )
@@ -324,7 +325,7 @@ class Probe:
             array_r = np.array([]).reshape(0, self.number_pickups)
             array_z = np.array([]).reshape(0, self.number_pickups)
 
-        for key in self.coil_dict.keys():
+        for key in self.coils_dict.keys():
             array_r = np.vstack(
                 (array_r, self.create_greens_BrBz_single_coil(key, probe)[0])
             )

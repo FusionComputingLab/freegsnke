@@ -7,7 +7,7 @@ from freegs.machine import Circuit, Solenoid, Wall
 from freegs.multi_coil import MultiCoil
 
 from .machine_update import Machine
-# from .magnetic_probes import Probe
+from .magnetic_probes import Probes
 
 from .refine_passive import generate_refinement
 
@@ -152,6 +152,7 @@ def tokamak(refine_mode='G', group_filaments=True):
                 )
                 # add coil_dict entry
                 coils_dict[coil_name] = {}
+                coils_dict[coil_name]["active"] = False
                 coils_dict[coil_name]["coords"] = np.array((filaments[:,0], filaments[:,1]))
                 coils_dict[coil_name]["dR"] = (area/n_filaments)**.5
                 coils_dict[coil_name]["dZ"] = (area/n_filaments)**.5
@@ -179,6 +180,7 @@ def tokamak(refine_mode='G', group_filaments=True):
                     )
                     # add coil_dict entry
                     coils_dict[filament_name] = {}
+                    coils_dict[coil_name]["active"] = False
                     coils_dict[filament_name]["coords"] = np.array((filaments[:,0], filaments[:,1]))
                     coils_dict[filament_name]["dR"] = (area/n_filaments)**.5
                     coils_dict[filament_name]["dZ"] = (area/n_filaments)**.5
@@ -204,6 +206,7 @@ def tokamak(refine_mode='G', group_filaments=True):
             )
             # add coil_dict entry
             coils_dict[coil_name] = {}
+            coils_dict[coil_name]["active"] = False
             coils_dict[coil_name]["coords"] = np.array((coil["R"], coil["Z"]))[:, np.newaxis]
             coils_dict[coil_name]["dR"] = coil["dR"]
             coils_dict[coil_name]["dZ"] = coil["dZ"]
@@ -252,8 +255,15 @@ def tokamak(refine_mode='G', group_filaments=True):
     # Total number of coils
     tokamak_machine.n_coils = len(list(coils_dict.keys()))
 
+    # Save coils_dict
+    machine_path = os.path.join(
+            os.path.split(active_coils_path)[0], "machine_data.pickle"
+        )
+    with open(machine_path, "wb") as f:
+            pickle.dump(coils_dict, f)
+
     # add probe object attribute to tokamak
-    # tokamak_machine.probes = Probe()
+    tokamak_machine.probes = Probes(coils_dict)
 
     return tokamak_machine
 
@@ -276,6 +286,7 @@ def build_active_coil_dict(active_coils):
     for i, coil_name in enumerate(active_coils):
         if coil_name == "Solenoid":
             coils_dict[coil_name] = {}
+            coils_dict[coil_name]["active"] = True
             coils_dict[coil_name]["coords"] = np.array(
                 [active_coils[coil_name]["R"], active_coils[coil_name]["Z"]]
             )
@@ -292,7 +303,9 @@ def build_active_coil_dict(active_coils):
                 [active_coils[coil_name]["multiplier"]] * len(active_coils[coil_name]["R"])
             )
             continue
+
         coils_dict[coil_name] = {}
+        coils_dict[coil_name]["active"] = True
 
         coords_R = []
         for ind in active_coils[coil_name].keys():

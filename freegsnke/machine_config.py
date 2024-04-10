@@ -4,7 +4,12 @@ from copy import deepcopy
 
 import numpy as np
 from freegs.gradshafranov import Greens
+from deepdiff import DeepDiff
 
+
+active_coils_path = os.environ.get("ACTIVE_COILS_PATH", None)
+if active_coils_path is None:
+    raise ValueError("ACTIVE_COILS_PATH environment variable not set.")
 
 def Greens_with_depth(Rc, Zc, R, Z, dR, dZ, tol=1e-6):
     mask = np.abs(R - Rc) < tol
@@ -14,166 +19,67 @@ def Greens_with_depth(Rc, Zc, R, Z, dR, dZ, tol=1e-6):
     greens = Greens(Rc, Zc, R, Z)
     return greens
 
+def check_self_inductance_and_resistance(coils_dict):
 
-eta_copper = 1.55e-8  # Resistivity in Ohm*m, for active coils
-eta_steel = 5.5e-7  # In Ohm*m, for passive structures
+    needs_calculating = False
 
-
-# Load active and passive structures and wall location
-passive_coils_path = os.environ.get("PASSIVE_COILS_PATH", None)
-if passive_coils_path is None:
-    raise ValueError("PASSIVE_COILS_PATH environment variable not set.")
-
-active_coils_path = os.environ.get("ACTIVE_COILS_PATH", None)
-if active_coils_path is None:
-    raise ValueError("ACTIVE_COILS_PATH environment variable not set.")
-
-wall_path = os.environ.get("WALL_PATH", None)
-if wall_path is None:
-    raise ValueError("WALL_PATH environment variable not set.")
-
-with open(passive_coils_path, "rb") as f:
-    passive_coils = pickle.load(f)
-
-with open(active_coils_path, "rb") as f:
-    active_coils = pickle.load(f)
-
-with open(wall_path, "rb") as f:
-    wall = pickle.load(f)
-
-
-# Number of active coils
-n_active_coils = len(active_coils)
-
-# Total number of coils
-n_coils = n_active_coils + len(passive_coils)
-
-
-# Check for existence of resistance matrix, self inductance matrix
-# and coil order data files. Calculates and saves them if they don't exist.
-calculate_self_inductance_and_resistance = False
-
-self_inductance_path = os.environ.get("SELF_INDUCTANCE_PATH", None)
-if self_inductance_path is None:
-    self_inductance_path = os.path.join(
-        os.path.split(active_coils_path)[0], "self_inductance.pickle"
-    )
-    if not os.path.exists(self_inductance_path):
-        calculate_self_inductance_and_resistance = True
+    # Check for existence of resistance matrix, self inductance matrix
+    # and coil order data files. Calculates and saves them if they don't exist.
+    self_inductance_path = os.environ.get("RESISTANCE_INDUCTANCE_PATH", None)
+    if self_inductance_path is None:
+        self_inductance_path = os.path.join(
+            os.path.split(active_coils_path)[0], "resistance_inductance_data.pickle"
+        )
+        if not os.path.exists(self_inductance_path):
+            needs_calculating = True
+        else:
+            with open(self_inductance_path, "rb") as f:
+                data = pickle.load(f)
     else:
         with open(self_inductance_path, "rb") as f:
-            coil_self_ind = pickle.load(f)
-else:
-    with open(self_inductance_path, "rb") as f:
-        coil_self_ind = pickle.load(f)
+            data = pickle.load(f)
 
-resistance_path = os.environ.get("RESISTANCE_PATH", None)
-if resistance_path is None:
-    resistance_path = os.path.join(
-        os.path.split(active_coils_path)[0], "resistance.pickle"
-    )
-    if not os.path.exists(resistance_path):
-        calculate_self_inductance_and_resistance = True
-    else:
-        with open(resistance_path, "rb") as f:
-            coil_resist = pickle.load(f)
-else:
-    with open(resistance_path, "rb") as f:
-        coil_resist = pickle.load(f)
+    # check input tokamak and retrieved files refer to the same machine, 
+    if needs_calculating is False:
+        check = (DeepDiff(data['coils_dict'], coils_dict)=={})
+        if check is False:
+            needs_calculating = True
 
-coils_order_path = os.environ.get("COILS_ORDER_PATH", None)
-if coils_order_path is None:
-    coils_order_path = os.path.join(
-        os.path.split(active_coils_path)[0], "coils_order.pickle"
-    )
-    if not os.path.exists(coils_order_path):
-        calculate_self_inductance_and_resistance = True
-    else:
-        with open(coils_order_path, "rb") as f:
-            coils_order = pickle.load(f)
-else:
-    with open(coils_order_path, "rb") as f:
-        coils_order = pickle.load(f)
-
-
-# Create dictionary of coils
-coils_dict = {}
-for i, coil_name in enumerate(active_coils):
-    if coil_name == "Solenoid":
-        coils_dict[coil_name] = {}
-        coils_dict[coil_name]["coords"] = np.array(
-            [active_coils[coil_name]["R"], active_coils[coil_name]["Z"]]
-        )
-        coils_dict[coil_name]["polarity"] = np.array(
-            [active_coils[coil_name]["polarity"]] * len(active_coils[coil_name]["R"])
-        )
-        coils_dict[coil_name]["dR"] = active_coils[coil_name]["dR"]
-        coils_dict[coil_name]["dZ"] = active_coils[coil_name]["dZ"]
-        # this is resistivity divided by area
-        coils_dict[coil_name]["resistivity"] = active_coils[coil_name][
-            "resistivity"
-        ] / (active_coils[coil_name]["dR"] * active_coils[coil_name]["dZ"])
-        coils_dict[coil_name]["multiplier"] = np.array(
-            [active_coils[coil_name]["multiplier"]] * len(active_coils[coil_name]["R"])
-        )
-        continue
-    coils_dict[coil_name] = {}
-
-    coords_R = []
-    for ind in active_coils[coil_name].keys():
-        coords_R.extend(active_coils[coil_name][ind]["R"])
-
-    coords_Z = []
-    for ind in active_coils[coil_name].keys():
-        coords_Z.extend(active_coils[coil_name][ind]["Z"])
-    coils_dict[coil_name]["coords"] = np.array([coords_R, coords_Z])
-
-    polarity = []
-    for ind in active_coils[coil_name].keys():
-        polarity.extend(
-            [active_coils[coil_name][ind]["polarity"]]
-            * len(active_coils[coil_name][ind]["R"])
-        )
-    coils_dict[coil_name]["polarity"] = np.array(polarity)
-
-    multiplier = []
-    for ind in active_coils[coil_name].keys():
-        multiplier.extend(
-            [active_coils[coil_name][ind]["multiplier"]]
-            * len(active_coils[coil_name][ind]["R"])
-        )
-    coils_dict[coil_name]["multiplier"] = np.array(multiplier)
-
-    coils_dict[coil_name]["dR"] = active_coils[coil_name][
-        list(active_coils[coil_name].keys())[0]
-    ]["dR"]
-    coils_dict[coil_name]["dZ"] = active_coils[coil_name][
-        list(active_coils[coil_name].keys())[0]
-    ]["dZ"]
-
-    # this is resistivity divided by area
-    coils_dict[coil_name]["resistivity"] = active_coils[coil_name][
-        list(active_coils[coil_name].keys())[0]
-    ]["resistivity"] / (coils_dict[coil_name]["dR"] * coils_dict[coil_name]["dZ"])
-
-for i, coil in enumerate(passive_coils):
-    tkey = "passive_" + str(i)
-    coils_dict[tkey] = {}
-    coils_dict[tkey]["coords"] = np.array((coil["R"], coil["Z"]))[:, np.newaxis]
-    coils_dict[tkey]["dR"] = coil["dR"]
-    coils_dict[tkey]["dZ"] = coil["dZ"]
-    coils_dict[tkey]["polarity"] = np.array([1])
-    coils_dict[tkey]["multiplier"] = np.array([1])
-    # this is resistivity divided by area
-    coils_dict[tkey]["resistivity"] = coil["resistivity"] / (coil["dR"] * coil["dZ"])
-
-
-if calculate_self_inductance_and_resistance:
-    print(
+    # calculate where necessary
+    if needs_calculating:
+        print(
         "At least one of the self inductance and resistance data files does"
         " not exist. Calculating them now."
-    )
+        )
 
+        coils_order, coil_resist, coil_self_ind = calculate_all(coils_dict)
+        data_to_save = {'coils_dict':coils_dict,
+                        'coils_order':coils_order, 
+                        'coil_resist':coil_resist, 
+                        'coil_self_ind':coil_self_ind}
+        
+        # Save self inductance and resistance matrices, plus list of ordered coils
+        with open(self_inductance_path, "wb") as f:
+            pickle.dump(data_to_save, f)
+    
+    else:
+        coils_order = data['coils_order']
+        coil_resist = data['coil_resist']
+        coil_self_ind = data['coil_self_ind']
+
+    return coils_order, coil_resist, coil_self_ind
+
+def calculate_all(coils_dict):
+    """_summary_
+
+    Parameters
+    ----------
+    coils_dict : dictionary
+        dictionary containing vectorised coil info. 
+        Created in build_machine.py and stored at tokamak.coil_dict
+
+    """
+    n_coils = len(list(coils_dict.keys()))
     coil_resist = np.zeros(n_coils)
     coil_self_ind = np.zeros((n_coils, n_coils))
 
@@ -207,45 +113,143 @@ if calculate_self_inductance_and_resistance:
     coil_self_ind *= 2 * np.pi
     coil_resist *= 2 * np.pi
 
-    # Save self inductance and resistance matrices, plus list of ordered coils
-    with open(self_inductance_path, "wb") as f:
-        pickle.dump(coil_self_ind, f)
-    with open(resistance_path, "wb") as f:
-        pickle.dump(coil_resist, f)
-    with open(coils_order_path, "wb") as f:
-        pickle.dump(coils_order, f)
+    return coils_order, coil_resist, coil_self_ind
+
+# Load machine using coils_dict
+machine_path = os.path.join(
+            os.path.split(active_coils_path)[0], "machine_data.pickle"
+        )
+with open(machine_path, "rb") as f:
+    coils_dict = pickle.load(f)
+
+# Number of active coils
+n_active_coils = np.sum([coils_dict[coil]["active"] for coil in coils_dict])
+# Total number of coils
+n_coils = len(list(coils_dict.keys()))
+
+# Executes checks and calculations where needed:
+coils_order, coil_resist, coil_self_ind = check_self_inductance_and_resistance(coils_dict)
 
 
-# # Extract normal modes
-# # 0. active + passive
-# R12 = np.diag(coil_resist**.5)
-# Rm12 = np.diag(coil_resist**-.5)
-# Mm1 = np.linalg.inv(coil_self_ind)
-# lm1r = R12@Mm1@R12
-# rm1l = Rm12@coil_self_ind@Rm12
-# # w,v = np.linalg.eig(R12@(Mm1@R12))
+# # not actually used in code, user provides relevant values
+# # eta_copper = 1.55e-8  # Resistivity in Ohm*m, for active coils
+# # eta_steel = 5.5e-7  # In Ohm*m, for passive structures
+
+
+
+
+# # Create dictionary of coils
+# coils_dict = {}
+# for i, coil_name in enumerate(active_coils):
+#     if coil_name == "Solenoid":
+#         coils_dict[coil_name] = {}
+#         coils_dict[coil_name]["coords"] = np.array(
+#             [active_coils[coil_name]["R"], active_coils[coil_name]["Z"]]
+#         )
+#         coils_dict[coil_name]["polarity"] = np.array(
+#             [active_coils[coil_name]["polarity"]] * len(active_coils[coil_name]["R"])
+#         )
+#         coils_dict[coil_name]["dR"] = active_coils[coil_name]["dR"]
+#         coils_dict[coil_name]["dZ"] = active_coils[coil_name]["dZ"]
+#         # this is resistivity divided by area
+#         coils_dict[coil_name]["resistivity"] = active_coils[coil_name][
+#             "resistivity"
+#         ] / (active_coils[coil_name]["dR"] * active_coils[coil_name]["dZ"])
+#         coils_dict[coil_name]["multiplier"] = np.array(
+#             [active_coils[coil_name]["multiplier"]] * len(active_coils[coil_name]["R"])
+#         )
+#         continue
+#     coils_dict[coil_name] = {}
+
+#     coords_R = []
+#     for ind in active_coils[coil_name].keys():
+#         coords_R.extend(active_coils[coil_name][ind]["R"])
+
+#     coords_Z = []
+#     for ind in active_coils[coil_name].keys():
+#         coords_Z.extend(active_coils[coil_name][ind]["Z"])
+#     coils_dict[coil_name]["coords"] = np.array([coords_R, coords_Z])
+
+#     polarity = []
+#     for ind in active_coils[coil_name].keys():
+#         polarity.extend(
+#             [active_coils[coil_name][ind]["polarity"]]
+#             * len(active_coils[coil_name][ind]["R"])
+#         )
+#     coils_dict[coil_name]["polarity"] = np.array(polarity)
+
+#     multiplier = []
+#     for ind in active_coils[coil_name].keys():
+#         multiplier.extend(
+#             [active_coils[coil_name][ind]["multiplier"]]
+#             * len(active_coils[coil_name][ind]["R"])
+#         )
+#     coils_dict[coil_name]["multiplier"] = np.array(multiplier)
+
+#     coils_dict[coil_name]["dR"] = active_coils[coil_name][
+#         list(active_coils[coil_name].keys())[0]
+#     ]["dR"]
+#     coils_dict[coil_name]["dZ"] = active_coils[coil_name][
+#         list(active_coils[coil_name].keys())[0]
+#     ]["dZ"]
+
+#     # this is resistivity divided by area
+#     coils_dict[coil_name]["resistivity"] = active_coils[coil_name][
+#         list(active_coils[coil_name].keys())[0]
+#     ]["resistivity"] / (coils_dict[coil_name]["dR"] * coils_dict[coil_name]["dZ"])
+
+# for i, coil in enumerate(passive_coils):
+#     tkey = "passive_" + str(i)
+#     coils_dict[tkey] = {}
+#     coils_dict[tkey]["coords"] = np.array((coil["R"], coil["Z"]))[:, np.newaxis]
+#     coils_dict[tkey]["dR"] = coil["dR"]
+#     coils_dict[tkey]["dZ"] = coil["dZ"]
+#     coils_dict[tkey]["polarity"] = np.array([1])
+#     coils_dict[tkey]["multiplier"] = np.array([1])
+#     # this is resistivity divided by area
+#     coils_dict[tkey]["resistivity"] = coil["resistivity"] / (coil["dR"] * coil["dZ"])
+
+# needs_calculating = check_self_inductance_and_resistance()
+
+#     # Save self inductance and resistance matrices, plus list of ordered coils
+#     with open(self_inductance_path, "wb") as f:
+#         pickle.dump(coil_self_ind, f)
+#     with open(resistance_path, "wb") as f:
+#         pickle.dump(coil_resist, f)
+#     with open(coils_order_path, "wb") as f:
+#         pickle.dump(coils_order, f)
+
+
+# # # Extract normal modes
+# # # 0. active + passive
+# # R12 = np.diag(coil_resist**.5)
+# # Rm12 = np.diag(coil_resist**-.5)
+# # Mm1 = np.linalg.inv(coil_self_ind)
+# # lm1r = R12@Mm1@R12
+# # rm1l = Rm12@coil_self_ind@Rm12
+# # # w,v = np.linalg.eig(R12@(Mm1@R12))
+# # # ordw = np.argsort(w)
+# # # w_active = w[ordw]
+# # # Vmatrix_full = ((v.T)[ordw]).T
+
+# # # 1. active coils
+# # w,v = np.linalg.eig(lm1r[:n_active_coils, :n_active_coils])
 # # ordw = np.argsort(w)
 # # w_active = w[ordw]
-# # Vmatrix_full = ((v.T)[ordw]).T
+# # Vmatrix_active = ((v.T)[ordw]).T
 
-# # 1. active coils
-# w,v = np.linalg.eig(lm1r[:n_active_coils, :n_active_coils])
-# ordw = np.argsort(w)
-# w_active = w[ordw]
-# Vmatrix_active = ((v.T)[ordw]).T
+# # # 2. passive structures
+# # w,v = np.linalg.eig(lm1r[n_active_coils:, n_active_coils:])
+# # ordw = np.argsort(w)
+# # w_passive = w[ordw]
+# # Vmatrix_passive = ((v.T)[ordw]).T
 
-# # 2. passive structures
-# w,v = np.linalg.eig(lm1r[n_active_coils:, n_active_coils:])
-# ordw = np.argsort(w)
-# w_passive = w[ordw]
-# Vmatrix_passive = ((v.T)[ordw]).T
-
-# # compose full
-# Vmatrix = np.zeros((n_coils, n_coils))
-# # Vmatrix[:n_active_coils, :n_active_coils] = 1.0*Vmatrix_active
-# Vmatrix[:n_active_coils, :n_active_coils] = np.eye(n_active_coils)
-# Vmatrix[n_active_coils:, n_active_coils:] = 1.0*Vmatrix_passive
+# # # compose full
+# # Vmatrix = np.zeros((n_coils, n_coils))
+# # # Vmatrix[:n_active_coils, :n_active_coils] = 1.0*Vmatrix_active
+# # Vmatrix[:n_active_coils, :n_active_coils] = np.eye(n_active_coils)
+# # Vmatrix[n_active_coils:, n_active_coils:] = 1.0*Vmatrix_passive
 
 
-# TODO: Unit tests
-# if __name__ == "__main__":
+# # TODO: Unit tests
+# # if __name__ == "__main__":

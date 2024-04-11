@@ -114,13 +114,14 @@ def tokamak(refine_mode='G', group_filaments=True):
         except:
             coil_name = f"passive_{i}"
         coils_list.append(coil_name)
+        # print(coil_name)
         
         if np.size(coil['R'])>1: 
             # refine if vertices provided
             try: 
                 n_refine = coil["n_refine"]
             except:
-                n_refine = 80
+                n_refine = None
             filaments, area = generate_refinement(  R=coil['R'], 
                                                     Z=coil['Z'],
                                                     n_refine=n_refine,

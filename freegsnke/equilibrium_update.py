@@ -76,6 +76,7 @@ class Equilibrium(freegs.equilibrium.Equilibrium):
             print(
                 "Equilibrium data was not provided. Proceeded with default initialization."
             )
+            self.plasma_psi = self.plasma_psi**4
 
     def initialize_from_equilibrium(
         self,

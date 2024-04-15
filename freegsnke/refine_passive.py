@@ -5,15 +5,17 @@ engine = LatinHypercube(d=2)
 
 import numpy as np
 
-min_refine_per_area, min_refine_per_lenght = 500/.01, 1/60
+min_refine_per_area, min_refine_per_lenght = 500 / 0.01, 1 / 60
+
 
 def generate_refinement(R, Z, n_refine, mode):
-    if mode=='G':
+    if mode == "G":
         return generate_refinement_G(R, Z, n_refine)
-    elif mode=='LH':
+    elif mode == "LH":
         return generate_refinement_LH(R, Z, n_refine)
     else:
-        print('refinement mode not recognised!, please use G or LH.')
+        print("refinement mode not recognised!, please use G or LH.")
+
 
 def generate_refinement_LH(R, Z, n_refine):
     """Uses a latine hypercube to fill the shape defined by the input vertices R, Z
@@ -38,13 +40,15 @@ def generate_refinement_LH(R, Z, n_refine):
     area, path, vmin, vmax, dv, meanR, meanZ = find_area(R, Z, n_refine)
 
     if n_refine is None:
-        n_refine = max(1, int(area/min_refine_per_area), np.max(dv/min_refine_per_lenght))
+        n_refine = max(
+            1, int(area / min_refine_per_area), np.max(dv / min_refine_per_lenght)
+        )
 
-    rand_fil = np.zeros((0,2))
+    rand_fil = np.zeros((0, 2))
     it = 0
-    while len(rand_fil)<n_refine and it<100:
+    while len(rand_fil) < n_refine and it < 100:
         vals = engine.random(n=n_refine)
-        vals = vmin + (vmax - vmin)*vals
+        vals = vmin + (vmax - vmin) * vals
         rand_fil = np.concatenate((rand_fil, vals[path.contains_points(vals)]), axis=0)
         it += 1
 
@@ -62,7 +66,7 @@ def generate_refinement_G(R, Z, n_refine):
     Z : array
         Z coordinates of the vertices
     n_refine : int
-        Number of desired refining points 
+        Number of desired refining points
 
     Returns
     -------
@@ -73,30 +77,31 @@ def generate_refinement_G(R, Z, n_refine):
     area, path, vmin, vmax, dv, meanR, meanZ = find_area(R, Z, n_refine)
 
     if n_refine is None:
-        n_refine = max(1, int(area/min_refine_per_area), np.max(dv/min_refine_per_lenght))
+        n_refine = max(
+            1, int(area / min_refine_per_area), np.max(dv / min_refine_per_lenght)
+        )
 
-    dl = (area/n_refine)**.5
-    nx = int(dv[0]//dl)
-    ny = int(dv[1]//dl)
+    dl = (area / n_refine) ** 0.5
+    nx = int(dv[0] // dl)
+    ny = int(dv[1] // dl)
 
     grid_fil = []
     while len(grid_fil) < n_refine:
-        if nx>1:
-            x = np.linspace(vmin[0]*1.00001, vmax[0]*.99999, nx)
+        if nx > 1:
+            x = np.linspace(vmin[0] * 1.00001, vmax[0] * 0.99999, nx)
         else:
             x = np.mean(R)
-        if ny>1:
-            y = np.linspace(vmin[1]*1.00001, vmax[1]*.99999, ny)
+        if ny > 1:
+            y = np.linspace(vmin[1] * 1.00001, vmax[1] * 0.99999, ny)
         else:
             y = np.mean(R)
-            
+
         xv, yv = np.meshgrid(x, y)
 
-        grid_fil = np.concatenate((xv.reshape(-1,1),
-                                    yv.reshape(-1,1)), axis=1)
+        grid_fil = np.concatenate((xv.reshape(-1, 1), yv.reshape(-1, 1)), axis=1)
         grid_fil = grid_fil[path.contains_points(grid_fil)]
 
-        if nx<ny:
+        if nx < ny:
             nx += 1
         else:
             ny += 1
@@ -114,7 +119,7 @@ def find_area(R, Z, n_refine):
     Z : array
         Z coordinates of the vertices
     n_refine : int
-        Number of desired refining points 
+        Number of desired refining points
     """
     if n_refine is None:
         n_refine = 100
@@ -130,26 +135,18 @@ def find_area(R, Z, n_refine):
     vmin = np.min(verts, axis=0)
     vmax = np.max(verts, axis=0)
     dv = vmax - vmin
-    area = dv[0]*dv[1]
+    area = dv[0] * dv[1]
 
     accepted = 0
     mult = 10
-    while accepted<10*n_refine and mult<1e6:
+    while accepted < 10 * n_refine and mult < 1e6:
         mult *= 10
-        vals = engine.random(n=mult*n_refine)
-        vals = vmin + (vmax-vmin)*vals
+        vals = engine.random(n=mult * n_refine)
+        vals = vmin + (vmax - vmin) * vals
         mask = path.contains_points(vals)
         accepted = np.sum(mask)
-    area *= accepted/(mult*n_refine)
+    area *= accepted / (mult * n_refine)
 
-    meanR, meanZ = np.mean( vals[mask], axis=0)
+    meanR, meanZ = np.mean(vals[mask], axis=0)
 
     return area, path, vmin, vmax, dv, meanR, meanZ
-
-    
-
-
-    
-
-
-

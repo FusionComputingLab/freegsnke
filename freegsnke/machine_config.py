@@ -3,13 +3,13 @@ import pickle
 from copy import deepcopy
 
 import numpy as np
-from freegs.gradshafranov import Greens
 from deepdiff import DeepDiff
-
+from freegs.gradshafranov import Greens
 
 active_coils_path = os.environ.get("ACTIVE_COILS_PATH", None)
 if active_coils_path is None:
     raise ValueError("ACTIVE_COILS_PATH environment variable not set.")
+
 
 def Greens_with_depth(Rc, Zc, R, Z, dR, dZ, tol=1e-6):
     mask = np.abs(R - Rc) < tol
@@ -18,6 +18,7 @@ def Greens_with_depth(Rc, Zc, R, Z, dR, dZ, tol=1e-6):
     Rc = np.where(mask, Rc - small_r / 2, Rc)
     greens = Greens(Rc, Zc, R, Z)
     return greens
+
 
 def check_self_inductance_and_resistance(coils_dict):
 
@@ -39,35 +40,38 @@ def check_self_inductance_and_resistance(coils_dict):
         with open(self_inductance_path, "rb") as f:
             data = pickle.load(f)
 
-    # check input tokamak and retrieved files refer to the same machine, 
+    # check input tokamak and retrieved files refer to the same machine,
     if needs_calculating is False:
-        check = (DeepDiff(data['coils_dict'], coils_dict)=={})
+        check = DeepDiff(data["coils_dict"], coils_dict) == {}
         if check is False:
             needs_calculating = True
 
     # calculate where necessary
     if needs_calculating:
         print(
-        "At least one of the self inductance and resistance data files does"
-        " not exist. Calculating them now."
+            "At least one of the self inductance and resistance data files does"
+            " not exist. Calculating them now."
         )
 
         coils_order, coil_resist, coil_self_ind = calculate_all(coils_dict)
-        data_to_save = {'coils_dict':coils_dict,
-                        'coils_order':coils_order, 
-                        'coil_resist':coil_resist, 
-                        'coil_self_ind':coil_self_ind}
-        
+        data_to_save = {
+            "coils_dict": coils_dict,
+            "coils_order": coils_order,
+            "coil_resist": coil_resist,
+            "coil_self_ind": coil_self_ind,
+        }
+
         # Save self inductance and resistance matrices, plus list of ordered coils
         with open(self_inductance_path, "wb") as f:
             pickle.dump(data_to_save, f)
-    
+
     else:
-        coils_order = data['coils_order']
-        coil_resist = data['coil_resist']
-        coil_self_ind = data['coil_self_ind']
+        coils_order = data["coils_order"]
+        coil_resist = data["coil_resist"]
+        coil_self_ind = data["coil_self_ind"]
 
     return coils_order, coil_resist, coil_self_ind
+
 
 def calculate_all(coils_dict):
     """_summary_
@@ -75,7 +79,7 @@ def calculate_all(coils_dict):
     Parameters
     ----------
     coils_dict : dictionary
-        dictionary containing vectorised coil info. 
+        dictionary containing vectorised coil info.
         Created in build_machine.py and stored at tokamak.coil_dict
 
     """
@@ -115,10 +119,9 @@ def calculate_all(coils_dict):
 
     return coils_order, coil_resist, coil_self_ind
 
+
 # Load machine using coils_dict
-machine_path = os.path.join(
-            os.path.split(active_coils_path)[0], "machine_data.pickle"
-        )
+machine_path = os.path.join(os.path.split(active_coils_path)[0], "machine_data.pickle")
 with open(machine_path, "rb") as f:
     coils_dict = pickle.load(f)
 
@@ -128,14 +131,14 @@ n_active_coils = np.sum([coils_dict[coil]["active"] for coil in coils_dict])
 n_coils = len(list(coils_dict.keys()))
 
 # Executes checks and calculations where needed:
-coils_order, coil_resist, coil_self_ind = check_self_inductance_and_resistance(coils_dict)
+coils_order, coil_resist, coil_self_ind = check_self_inductance_and_resistance(
+    coils_dict
+)
 
 
 # # not actually used in code, user provides relevant values
 # # eta_copper = 1.55e-8  # Resistivity in Ohm*m, for active coils
 # # eta_steel = 5.5e-7  # In Ohm*m, for passive structures
-
-
 
 
 # # Create dictionary of coils

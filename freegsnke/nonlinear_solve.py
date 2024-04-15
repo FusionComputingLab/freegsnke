@@ -867,13 +867,9 @@ class nl_solver:
 
         # generate random noise on vessel normal modes only
         if noise_vec is None:
-            noise_vec = np.random.randn(
-                self.n_metal_modes - self.n_active_coils
-            )
+            noise_vec = np.random.randn(self.n_metal_modes - self.n_active_coils)
             noise_vec *= noise_level
-            noise_vec = np.concatenate(
-                (np.zeros(self.n_active_coils), noise_vec)
-            )
+            noise_vec = np.concatenate((np.zeros(self.n_active_coils), noise_vec))
             self.noise_vec = noise_vec
 
         # calculate vessel noise from noise_vec and assign

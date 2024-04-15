@@ -5,10 +5,11 @@
 
 import os
 import pickle
-from deepdiff import DeepDiff
 
 import numpy as np
+from deepdiff import DeepDiff
 from freegs.gradshafranov import Greens, GreensBr, GreensBz
+
 
 class Probes:
     """
@@ -69,10 +70,9 @@ class Probes:
         except ValueError:
             print("No probe configuration is provided")
 
-        # store coil info 
+        # store coil info
         self.coil_names = [name for name in coils_dict]
         self.coils_dict = coils_dict
-
 
     def initialise_setup(self, eq):
         """
@@ -82,9 +82,11 @@ class Probes:
         - create arrays/dictionaries of greens functions with positions of coils/plasma currents and probes
         """
 
-        check = (DeepDiff(eq.tokamak.coils_dict, self.coils_dict)=={})
+        check = DeepDiff(eq.tokamak.coils_dict, self.coils_dict) == {}
         if check is not True:
-            raise AssertionError("The supplied equilibrium uses a different tokamak. Probes values can not be computed.")
+            raise AssertionError(
+                "The supplied equilibrium uses a different tokamak. Probes values can not be computed."
+            )
 
         eq_key = self.create_eq_key(eq)
 

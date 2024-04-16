@@ -5,8 +5,8 @@ from copy import deepcopy
 import numpy as np
 from deepdiff import DeepDiff
 from freegs.gradshafranov import Greens
-from .refine_passive import generate_refinement
 
+from .refine_passive import generate_refinement
 
 active_coils_path = os.environ.get("ACTIVE_COILS_PATH", None)
 if active_coils_path is None:
@@ -96,26 +96,25 @@ def calculate_all(coils_dict):
     for i, labeli in enumerate(coils_order):
         # for coil-coil flux
         # mutual inductance = 2pi * (sum of all Greens(R_i,Z_i, R_j,Z_j) on n_i*n_j terms, where n is the number of windings)
-        
+
         # note that while the eq above is valid for active coils, where each filament carries the nominal current,
-        # this is not valid for refined passive structures, where each filament carries 1/n_filaments 
+        # this is not valid for refined passive structures, where each filament carries 1/n_filaments
         # and for which a mean of the greens (rather than the sum) should be used instead
-        
+
         coords_i = coils_dict[labeli]["coords"]
-    
+
         for j, labelj in enumerate(coils_order):
             if j >= i:
                 coords_j = coils_dict[labelj]["coords"]
-                
 
                 greenm = Greens_with_depth(
-                                coords_i[0][np.newaxis, :],
-                                coords_i[1][np.newaxis, :],
-                                coords_j[0][:, np.newaxis],
-                                coords_j[1][:, np.newaxis],
-                                np.array([coils_dict[labeli]["dR"]])[:, np.newaxis],
-                                np.array([coils_dict[labeli]["dZ"]])[:, np.newaxis],
-                                )
+                    coords_i[0][np.newaxis, :],
+                    coords_i[1][np.newaxis, :],
+                    coords_j[0][:, np.newaxis],
+                    coords_j[1][:, np.newaxis],
+                    np.array([coils_dict[labeli]["dR"]])[:, np.newaxis],
+                    np.array([coils_dict[labeli]["dZ"]])[:, np.newaxis],
+                )
 
                 greenm *= coils_dict[labelj]["polarity"][:, np.newaxis]
                 greenm *= coils_dict[labelj]["multiplier"][:, np.newaxis]
@@ -126,7 +125,11 @@ def calculate_all(coils_dict):
 
         # resistance = 2pi * (resistivity/area) * (number of loops * mean_radius)
         # note the multiplier is used as refined passives have number of loops = 1
-        coil_resist[i] = coils_dict[labeli]["resistivity"] * coils_dict[labeli]["multiplier"][0] * np.sum(coords_i[0])
+        coil_resist[i] = (
+            coils_dict[labeli]["resistivity"]
+            * coils_dict[labeli]["multiplier"][0]
+            * np.sum(coords_i[0])
+        )
     coil_self_ind *= 2 * np.pi
     coil_resist *= 2 * np.pi
 

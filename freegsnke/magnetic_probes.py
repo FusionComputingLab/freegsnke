@@ -128,7 +128,9 @@ class Probes:
         self.greens_B_plasma_oriented[eq_key] = self.create_greens_B_oriented_plasma(
             eq, "pickups"
         )
-        self.greens_B_coils_oriented = self.create_greens_B_oriented_coils(eq, "pickups")
+        self.greens_B_coils_oriented = self.create_greens_B_oriented_coils(
+            eq, "pickups"
+        )
 
         # Other probes - to add in future...
 
@@ -194,7 +196,7 @@ class Probes:
         # greens_filaments *= mul
         # greens_psi_coil = np.sum(greens_filaments, axis=1)
         greens_psi_coil = eq.tokamak[coil_key].controlPsi(pos_R, pos_Z)
-        
+
         return greens_psi_coil
 
     def create_greens_psi_all_coils(self, eq, probe="floops"):
@@ -205,7 +207,9 @@ class Probes:
 
         array = np.array([]).reshape(0, self.number_floops)
         for key in self.coils_dict.keys():
-            array = np.vstack((array, self.create_greens_psi_single_coil(eq, key, probe)))
+            array = np.vstack(
+                (array, self.create_greens_psi_single_coil(eq, key, probe))
+            )
         return array
 
     def psi_floop_all_coils(self, eq, probe="floops"):
@@ -333,12 +337,8 @@ class Probes:
 
         for key in self.coils_dict.keys():
             vals = self.create_greens_BrBz_single_coil(eq, key, probe)
-            array_r = np.vstack(
-                (array_r, vals[0])
-            )
-            array_z = np.vstack(
-                (array_z, vals[1])
-            )
+            array_r = np.vstack((array_r, vals[0]))
+            array_z = np.vstack((array_z, vals[1]))
 
         return array_r, array_z
 
@@ -351,10 +351,7 @@ class Probes:
             or_Z = self.pickup_or[:, 2]
 
         vals = self.greens_BrBz_all_coils(eq, probe)
-        prod = (
-            vals[0] * or_R
-            + vals[1] * or_Z
-        )
+        prod = vals[0] * or_R + vals[1] * or_Z
 
         return prod
 

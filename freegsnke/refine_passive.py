@@ -40,7 +40,7 @@ def generate_refinement_LH(R, Z, n_refine):
 
     # if n_refine is None:
     #     n_refine = int(max(
-    #                             1, area * min_refine_per_area, 
+    #                             1, area * min_refine_per_area,
     #                                Len * min_refine_per_lenght)
     #                         )
 

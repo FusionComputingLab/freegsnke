@@ -6,10 +6,10 @@ from freegs.coil import Coil
 from freegs.machine import Circuit, Solenoid, Wall
 from freegs.multi_coil import MultiCoil
 
-from .refine_passive import generate_refinement
-from .passive_structure import PassiveStructure
 from .machine_update import Machine
 from .magnetic_probes import Probes
+from .passive_structure import PassiveStructure
+from .refine_passive import generate_refinement
 
 passive_coils_path = os.environ.get("PASSIVE_COILS_PATH", None)
 if passive_coils_path is None:
@@ -62,9 +62,7 @@ def tokamak(refine_mode="G", group_filaments=True):
     """
 
     # Add the solenoid
-    multicoil = MultiCoil(
-                            active_coils["Solenoid"]["R"], active_coils["Solenoid"]["Z"]
-                        )
+    multicoil = MultiCoil(active_coils["Solenoid"]["R"], active_coils["Solenoid"]["Z"])
     multicoil.dR = active_coils["Solenoid"]["dR"]
     multicoil.dZ = active_coils["Solenoid"]["dZ"]
     coils = [
@@ -89,25 +87,23 @@ def tokamak(refine_mode="G", group_filaments=True):
             circuit_list = []
             for ind in active_coils[coil_name]:
                 multicoil = MultiCoil(
-                                    active_coils[coil_name][ind]["R"],
-                                    active_coils[coil_name][ind]["Z"],
-                                )
+                    active_coils[coil_name][ind]["R"],
+                    active_coils[coil_name][ind]["Z"],
+                )
                 multicoil.dR = active_coils[coil_name][ind]["dR"]
                 multicoil.dZ = active_coils[coil_name][ind]["dZ"]
                 circuit_list.append(
-                  (
-                                coil_name + ind,
-                                multicoil,
-                                float(active_coils[coil_name][ind]["polarity"])
-                                * float(active_coils[coil_name][ind]["multiplier"]),
-                            )  
+                    (
+                        coil_name + ind,
+                        multicoil,
+                        float(active_coils[coil_name][ind]["polarity"])
+                        * float(active_coils[coil_name][ind]["multiplier"]),
+                    )
                 )
             coils.append(
                 (
                     coil_name,
-                    Circuit(
-                        circuit_list
-                    ),
+                    Circuit(circuit_list),
                 )
             )
 
@@ -130,35 +126,32 @@ def tokamak(refine_mode="G", group_filaments=True):
             if group_filaments:
                 # keep refinement filaments grouped
                 # i.e. use new passive structure class
-                
+
                 ps = PassiveStructure(
-                                R=coil["R"],
-                                Z=coil["Z"],
-                            )
-                coils.append(
-                    (
-                        (
-                            coil_name,
-                            ps
-                        )
-                    )
+                    R=coil["R"],
+                    Z=coil["Z"],
                 )
+                coils.append(((coil_name, ps)))
 
                 # add coil_dict entry
                 coils_dict[coil_name] = {}
                 coils_dict[coil_name]["active"] = False
                 coils_dict[coil_name]["vertices"] = np.array((coil["R"], coil["Z"]))
-                coils_dict[coil_name]["coords"] = np.array([ps.filaments[:,0], ps.filaments[:,1]])
+                coils_dict[coil_name]["coords"] = np.array(
+                    [ps.filaments[:, 0], ps.filaments[:, 1]]
+                )
                 coils_dict[coil_name]["area"] = ps.area
-                filament_size = (ps.area / len(ps.filaments))**.5
+                filament_size = (ps.area / len(ps.filaments)) ** 0.5
                 coils_dict[coil_name]["dR"] = filament_size
                 coils_dict[coil_name]["dZ"] = filament_size
                 coils_dict[coil_name]["polarity"] = np.array([1])
                 # here 'multiplier' is used to normalise the green functions,
-                # this is needed because currents are distributed over the passive structure 
-                coils_dict[coil_name]["multiplier"] = np.array([1/len(ps.filaments)])
+                # this is needed because currents are distributed over the passive structure
+                coils_dict[coil_name]["multiplier"] = np.array([1 / len(ps.filaments)])
                 # this is resistivity divided by area
-                coils_dict[coil_name]["resistivity"] = coil["resistivity"] / coils_dict[coil_name]["area"]
+                coils_dict[coil_name]["resistivity"] = (
+                    coil["resistivity"] / coils_dict[coil_name]["area"]
+                )
 
             else:
                 # splits structure to individual filaments
@@ -189,9 +182,7 @@ def tokamak(refine_mode="G", group_filaments=True):
                     coils_dict[filament_name]["active"] = False
                     coils_dict[filament_name]["coords"] = np.array(
                         (filament[0], filament[1])
-                    )[
-                        :, np.newaxis
-                    ]
+                    )[:, np.newaxis]
                     coils_dict[filament_name]["dR"] = filament_size
                     coils_dict[filament_name]["dZ"] = filament_size
                     coils_dict[filament_name]["polarity"] = np.array([1])

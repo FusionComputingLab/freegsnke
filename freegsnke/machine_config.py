@@ -97,27 +97,37 @@ def calculate_all(coils_dict):
         # for coil-coil flux
         # mutual inductance = 2pi * (sum of all Greens(R_i,Z_i, R_j,Z_j) on n_i*n_j terms, where n is the number of windings)
         
+        # note that while the eq above is valid for active coils, where each filament carries the nominal current,
+        # this is not valid for refined passive structures, where each filament carries 1/n_filaments 
+        # and for which a mean of the greens (rather than the sum) should be used instead
+        
         try:
+            # if this works it is not a refined passive
+            # (could be a passive refined in independent coils, but then each coil has its own current, so no normalization needed)
             coords_i = coils_dict[labeli]["coords"]
+            normalization_for_refined_passive_i = 1
         except:
+            # this needs normalization
             filaments, area = generate_refinement(R=coils_dict[labeli]["vertices"][0], 
                                                     Z=coils_dict[labeli]["vertices"][1], 
                                                     n_refine=None, 
                                                     R=coils_dict[labeli]["refine_mode"])
             coords_i = [filaments[:,0], filaments[:,1]]
+            normalization_for_refined_passive_i = len(filaments)
     
         for j, labelj in enumerate(coils_order):
             if j >= i:
 
                 try:
                     coords_j = coils_dict[labelj]["coords"]
+                    normalization_for_refined_passive_j = 1
                 except:
                     filaments, area = generate_refinement(R=coils_dict[labelj]["vertices"][0], 
                                                             Z=coils_dict[labelj]["vertices"][1], 
                                                             n_refine=None, 
                                                             R=coils_dict[labelj]["refine_mode"])
                     coords_j = [filaments[:,0], filaments[:,1]]
-                
+                    normalization_for_refined_passive_j = len(filaments)
 
                 greenm = Greens(
                                 coords_i[0][np.newaxis, :],
@@ -134,8 +144,10 @@ def calculate_all(coils_dict):
                 greenm *= coils_dict[labeli]["polarity"][np.newaxis, :]
                 greenm *= coils_dict[labeli]["multiplier"][np.newaxis, :]
                 coil_self_ind[i, j] = np.sum(greenm)
+                # now normalise!
+                coil_self_ind[i, j] /= (normalization_for_refined_passive_i * normalization_for_refined_passive_j)
                 coil_self_ind[j, i] = coil_self_ind[i, j]
-                
+
         # resistance = 2pi * (resistivity/area) * (number of loops * mean_radius)
         # voltages in terms of total applied voltage
         coil_resist[i] = coils_dict[labeli]["resistivity"] * np.sum(

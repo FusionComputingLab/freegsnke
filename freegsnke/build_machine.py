@@ -179,6 +179,7 @@ def tokamak(refine_mode="G", group_filaments=True):
                 coils_dict[coil_name]["vertices"] = np.array((coil["R"], coil["Z"]))
                 coils_dict[coil_name]["area"] = ps.area
                 coils_dict[coil_name]["refine_mode"] = refine_mode
+                coils_dict[coil_name]["polarity"] = np.array([1])
                 # this is resistivity divided by area
                 coils_dict[coil_name]["resistivity"] = coil["resistivity"] / coils_dict[coil_name]["area"]
 

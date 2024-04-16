@@ -107,7 +107,7 @@ class PassiveStructure(freegs.coil.Coil):
         except :
             self.greens[RZ_key] = {'Br': greens_br}
 
-    def build_control_br(self, R, Z):
+    def build_control_bz(self, R, Z):
         """Builds controlPsi, controlBr, controlBz for a new set of R, Z grids."""
 
         greens_bz = GreensBz(self.filaments[:,0].reshape([-1]+[1]*R.ndim), 

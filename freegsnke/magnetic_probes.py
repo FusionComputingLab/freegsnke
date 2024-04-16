@@ -100,7 +100,7 @@ class Probes:
         self.floop_order = [probe["name"] for probe in self.floops]
 
         # # Initilaise Greens functions Gpsi
-        self.greens_psi_coils_floops = self.create_greens_psi_all_coils("floops")
+        self.greens_psi_coils_floops = self.create_greens_psi_all_coils(eq, "floops")
         self.greens_psi_plasma_floops = {}
         self.greens_psi_plasma_floops[eq_key] = self.create_green_psi_plasma(
             eq, "floops"
@@ -116,7 +116,7 @@ class Probes:
         # # Initialise greens functions for pickups
         self.greens_br_plasma_pickup, self.greens_bz_plasma_pickup = {}, {}
         self.greens_br_coils_pickup, self.greens_bz_coils_pickup = (
-            self.greens_BrBz_all_coils("pickups")
+            self.greens_BrBz_all_coils(eq, "pickups")
         )
         # not initialised unless needed to save memory
         # (
@@ -128,7 +128,7 @@ class Probes:
         self.greens_B_plasma_oriented[eq_key] = self.create_greens_B_oriented_plasma(
             eq, "pickups"
         )
-        self.greens_B_coils_oriented = self.create_greens_B_oriented_coils("pickups")
+        self.greens_B_coils_oriented = self.create_greens_B_oriented_coils(eq, "pickups")
 
         # Other probes - to add in future...
 
@@ -168,7 +168,7 @@ class Probes:
     Things for flux loops
     """
 
-    def create_greens_psi_single_coil(self, coil_key, probe="floops"):
+    def create_greens_psi_single_coil(self, eq, coil_key, probe="floops"):
         """
         Create array of greens functions for given coil evaluate at all probe positions
         - pos_R and pos_Z are arrays of R,Z coordinates of the probes
@@ -181,22 +181,23 @@ class Probes:
             pos_R = self.floop_pos[:, 0]
             pos_Z = self.floop_pos[:, 1]
 
-        pol = self.coils_dict[coil_key]["polarity"][np.newaxis, :]
-        mul = self.coils_dict[coil_key]["multiplier"][np.newaxis, :]
+        # pol = self.coils_dict[coil_key]["polarity"][np.newaxis, :]
+        # mul = self.coils_dict[coil_key]["multiplier"][np.newaxis, :]
 
-        greens_filaments = Greens(
-            self.coils_dict[coil_key]["coords"][0][np.newaxis, :],
-            self.coils_dict[coil_key]["coords"][1][np.newaxis, :],
-            pos_R[:, np.newaxis],
-            pos_Z[:, np.newaxis],
-        )
-        greens_filaments *= pol
-        greens_filaments *= mul
-        greens_psi_coil = np.sum(greens_filaments, axis=1)
-
+        # greens_filaments = Greens(
+        #     self.coils_dict[coil_key]["coords"][0][np.newaxis, :],
+        #     self.coils_dict[coil_key]["coords"][1][np.newaxis, :],
+        #     pos_R[:, np.newaxis],
+        #     pos_Z[:, np.newaxis],
+        # )
+        # greens_filaments *= pol
+        # greens_filaments *= mul
+        # greens_psi_coil = np.sum(greens_filaments, axis=1)
+        greens_psi_coil = eq.tokamak[coil_key].controlPsi(pos_R, pos_Z)
+        
         return greens_psi_coil
 
-    def create_greens_psi_all_coils(self, probe="floops"):
+    def create_greens_psi_all_coils(self, eq, probe="floops"):
         """
         Create 2d array of greens functions for all coils and at all probe positions
         - array[i][j] is greens function for coil i evaluated at probe position j
@@ -204,7 +205,7 @@ class Probes:
 
         array = np.array([]).reshape(0, self.number_floops)
         for key in self.coils_dict.keys():
-            array = np.vstack((array, self.create_greens_psi_single_coil(key, probe)))
+            array = np.vstack((array, self.create_greens_psi_single_coil(eq, key, probe)))
         return array
 
     def psi_floop_all_coils(self, eq, probe="floops"):
@@ -280,7 +281,7 @@ class Probes:
     Things for pickup coils
     """
 
-    def create_greens_BrBz_single_coil(self, coil_key, probe="pickups"):
+    def create_greens_BrBz_single_coil(self, eq, coil_key, probe="pickups"):
         """
         Create array of greens functions for given coil evaluate at all pickup positions
         - defines array of greens for each filament at each probe.
@@ -292,32 +293,35 @@ class Probes:
             pos_R = self.pickup_pos[:, 0]
             pos_Z = self.pickup_pos[:, 2]
 
-        pol = self.coils_dict[coil_key]["polarity"][np.newaxis, :]
-        mul = self.coils_dict[coil_key]["multiplier"][np.newaxis, :]
-        greens_br_filaments = GreensBr(
-            self.coils_dict[coil_key]["coords"][0][np.newaxis, :],
-            self.coils_dict[coil_key]["coords"][1][np.newaxis, :],
-            pos_R[:, np.newaxis],
-            pos_Z[:, np.newaxis],
-        )
-        greens_br_filaments *= pol
-        greens_br_filaments *= mul
-        greens_br_coil = np.sum(greens_br_filaments, axis=1)
+        # pol = self.coils_dict[coil_key]["polarity"][np.newaxis, :]
+        # mul = self.coils_dict[coil_key]["multiplier"][np.newaxis, :]
+        # greens_br_filaments = GreensBr(
+        #     self.coils_dict[coil_key]["coords"][0][np.newaxis, :],
+        #     self.coils_dict[coil_key]["coords"][1][np.newaxis, :],
+        #     pos_R[:, np.newaxis],
+        #     pos_Z[:, np.newaxis],
+        # )
+        # greens_br_filaments *= pol
+        # greens_br_filaments *= mul
+        # greens_br_coil = np.sum(greens_br_filaments, axis=1)
 
-        greens_bz_filaments = GreensBz(
-            self.coils_dict[coil_key]["coords"][0][np.newaxis, :],
-            self.coils_dict[coil_key]["coords"][1][np.newaxis, :],
-            pos_R[:, np.newaxis],
-            pos_Z[:, np.newaxis],
-        )
+        # greens_bz_filaments = GreensBz(
+        #     self.coils_dict[coil_key]["coords"][0][np.newaxis, :],
+        #     self.coils_dict[coil_key]["coords"][1][np.newaxis, :],
+        #     pos_R[:, np.newaxis],
+        #     pos_Z[:, np.newaxis],
+        # )
 
-        greens_bz_filaments *= pol
-        greens_bz_filaments *= mul
-        greens_bz_coil = np.sum(greens_bz_filaments, axis=1)
+        # greens_bz_filaments *= pol
+        # greens_bz_filaments *= mul
+        # greens_bz_coil = np.sum(greens_bz_filaments, axis=1)
+
+        greens_br_coil = eq.tokamak[coil_key].controlBr(pos_R, pos_Z)
+        greens_bz_coil = eq.tokamak[coil_key].controlBz(pos_R, pos_Z)
 
         return greens_br_coil, greens_bz_coil
 
-    def greens_BrBz_all_coils(self, probe="pickups"):
+    def greens_BrBz_all_coils(self, eq, probe="pickups"):
         """
         Create 2d array of greens functions for all coils and at all probe positions
         - array[i][j] is greens function for coil i evaluated at probe position j
@@ -328,16 +332,17 @@ class Probes:
             array_z = np.array([]).reshape(0, self.number_pickups)
 
         for key in self.coils_dict.keys():
+            vals = self.create_greens_BrBz_single_coil(eq, key, probe)
             array_r = np.vstack(
-                (array_r, self.create_greens_BrBz_single_coil(key, probe)[0])
+                (array_r, vals[0])
             )
             array_z = np.vstack(
-                (array_z, self.create_greens_BrBz_single_coil(key, probe)[1])
+                (array_z, vals[1])
             )
 
         return array_r, array_z
 
-    def create_greens_B_oriented_coils(self, probe="pickups"):
+    def create_greens_B_oriented_coils(self, eq, probe="pickups"):
         """
         perform dot product of greens function vector with pickup coil orientation
         """
@@ -345,9 +350,10 @@ class Probes:
             or_R = self.pickup_or[:, 0]
             or_Z = self.pickup_or[:, 2]
 
+        vals = self.greens_BrBz_all_coils(eq, probe)
         prod = (
-            self.greens_BrBz_all_coils(probe)[0] * or_R
-            + self.greens_BrBz_all_coils(probe)[1] * or_Z
+            vals[0] * or_R
+            + vals[1] * or_Z
         )
 
         return prod

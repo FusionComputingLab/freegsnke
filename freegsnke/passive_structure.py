@@ -15,7 +15,7 @@ class PassiveStructure(freegs.coil.Coil):
     """
 
     def __init__(
-        self, R, Z, refine_mode="G", min_refine_per_area=3e3, min_refine_per_lenght=100
+        self, R, Z, min_refine_per_area, min_refine_per_length, refine_mode="G",
     ):
         """Instantiates the Machine, same as freegs.machine.Machine.
 
@@ -49,7 +49,7 @@ class PassiveStructure(freegs.coil.Coil):
 
         self.refine_mode = refine_mode
         self.n_refine = int(
-            max(1, self.area * min_refine_per_area, self.Len * min_refine_per_lenght)
+            max(1, self.area * min_refine_per_area, self.Len * min_refine_per_length)
         )
         self.filaments = self.build_refining_filaments()
 

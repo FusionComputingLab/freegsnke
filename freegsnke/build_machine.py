@@ -11,6 +11,9 @@ from .magnetic_probes import Probes
 from .passive_structure import PassiveStructure
 from .refine_passive import generate_refinement
 
+default_min_refine_per_area = 3e3
+default_min_refine_per_length = 200
+
 passive_coils_path = os.environ.get("PASSIVE_COILS_PATH", None)
 if passive_coils_path is None:
     raise ValueError("PASSIVE_COILS_PATH environment variable not set.")
@@ -126,10 +129,20 @@ def tokamak(refine_mode="G", group_filaments=True):
             if group_filaments:
                 # keep refinement filaments grouped
                 # i.e. use new passive structure class
+                try:
+                    min_refine_per_area = 1.0*coil["min_refine_per_area"]
+                except:
+                    min_refine_per_area = 1.0*default_min_refine_per_area
+                try:
+                    min_refine_per_length = 1.0*coil["min_refine_per_length"]
+                except:
+                    min_refine_per_length = 1.0*default_min_refine_per_length
 
                 ps = PassiveStructure(
                     R=coil["R"],
                     Z=coil["Z"],
+                    min_refine_per_area=min_refine_per_area,
+                    min_refine_per_length=min_refine_per_length
                 )
                 coils.append(((coil_name, ps)))
 

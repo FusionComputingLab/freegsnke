@@ -15,7 +15,12 @@ class PassiveStructure(freegs.coil.Coil):
     """
 
     def __init__(
-        self, R, Z, min_refine_per_area, min_refine_per_length, refine_mode="G",
+        self,
+        R,
+        Z,
+        min_refine_per_area,
+        min_refine_per_length,
+        refine_mode="G",
     ):
         """Instantiates the Machine, same as freegs.machine.Machine.
 

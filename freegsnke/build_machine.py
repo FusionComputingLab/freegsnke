@@ -130,19 +130,19 @@ def tokamak(refine_mode="G", group_filaments=True):
                 # keep refinement filaments grouped
                 # i.e. use new passive structure class
                 try:
-                    min_refine_per_area = 1.0*coil["min_refine_per_area"]
+                    min_refine_per_area = 1.0 * coil["min_refine_per_area"]
                 except:
-                    min_refine_per_area = 1.0*default_min_refine_per_area
+                    min_refine_per_area = 1.0 * default_min_refine_per_area
                 try:
-                    min_refine_per_length = 1.0*coil["min_refine_per_length"]
+                    min_refine_per_length = 1.0 * coil["min_refine_per_length"]
                 except:
-                    min_refine_per_length = 1.0*default_min_refine_per_length
+                    min_refine_per_length = 1.0 * default_min_refine_per_length
 
                 ps = PassiveStructure(
                     R=coil["R"],
                     Z=coil["Z"],
                     min_refine_per_area=min_refine_per_area,
-                    min_refine_per_length=min_refine_per_length
+                    min_refine_per_length=min_refine_per_length,
                 )
                 coils.append(((coil_name, ps)))
 

@@ -6,9 +6,10 @@ from freegs.coil import Coil
 from freegs.machine import Circuit, Solenoid, Wall
 from freegs.multi_coil import MultiCoil
 
+from .refine_passive import generate_refinement
+from .passive_structure import PassiveStructure
 from .machine_update import Machine
 from .magnetic_probes import Probes
-from .refine_passive import generate_refinement
 
 passive_coils_path = os.environ.get("PASSIVE_COILS_PATH", None)
 if passive_coils_path is None:
@@ -61,6 +62,11 @@ def tokamak(refine_mode="G", group_filaments=True):
     """
 
     # Add the solenoid
+    multicoil = MultiCoil(
+                            active_coils["Solenoid"]["R"], active_coils["Solenoid"]["Z"]
+                        )
+    multicoil.dR = active_coils["Solenoid"]["dR"]
+    multicoil.dZ = active_coils["Solenoid"]["dZ"]
     coils = [
         (
             "Solenoid",
@@ -68,9 +74,7 @@ def tokamak(refine_mode="G", group_filaments=True):
                 [
                     (
                         "Solenoid",
-                        MultiCoil(
-                            active_coils["Solenoid"]["R"], active_coils["Solenoid"]["Z"]
-                        ),
+                        multicoil,
                         float(active_coils["Solenoid"]["polarity"])
                         * float(active_coils["Solenoid"]["multiplier"]),
                     ),
@@ -82,22 +86,27 @@ def tokamak(refine_mode="G", group_filaments=True):
     # Add remaining active coils
     for coil_name in active_coils:
         if not coil_name == "Solenoid":
+            circuit_list = []
+            for ind in active_coils[coil_name]:
+                multicoil = MultiCoil(
+                                    active_coils[coil_name][ind]["R"],
+                                    active_coils[coil_name][ind]["Z"],
+                                )
+                multicoil.dR = active_coils[coil_name][ind]["dR"]
+                multicoil.dZ = active_coils[coil_name][ind]["dZ"]
+                circuit_list.append(
+                  (
+                                coil_name + ind,
+                                multicoil,
+                                float(active_coils[coil_name][ind]["polarity"])
+                                * float(active_coils[coil_name][ind]["multiplier"]),
+                            )  
+                )
             coils.append(
                 (
                     coil_name,
                     Circuit(
-                        [
-                            (
-                                coil_name + ind,
-                                MultiCoil(
-                                    active_coils[coil_name][ind]["R"],
-                                    active_coils[coil_name][ind]["Z"],
-                                ),
-                                float(active_coils[coil_name][ind]["polarity"])
-                                * float(active_coils[coil_name][ind]["multiplier"]),
-                            )
-                            for ind in active_coils[coil_name]
-                        ]
+                        circuit_list
                     ),
                 )
             )
@@ -117,55 +126,71 @@ def tokamak(refine_mode="G", group_filaments=True):
 
         if np.size(coil["R"]) > 1:
             # refine if vertices provided
-            try:
-                n_refine = coil["n_refine"]
-            except:
-                n_refine = None
-            filaments, area = generate_refinement(
-                R=coil["R"], Z=coil["Z"], n_refine=n_refine, mode=refine_mode
-            )
-            n_filaments = len(filaments)
+
+            # try:
+            #     n_refine = coil["n_refine"]
+            # except:
+            #     n_refine = None
+            # filaments, area = generate_refinement(
+            #     R=coil["R"], Z=coil["Z"], n_refine=n_refine, mode=refine_mode
+            # )
+            # n_filaments = len(filaments)
 
             if group_filaments:
                 # keep refinement filaments grouped
+                # i.e. use new passive structure class
+                # coils.append(
+                #     (
+                #         coil_name,
+                #         Circuit(
+                #             [
+                #                 (
+                #                     coil_name,
+                #                     MultiCoil(
+                #                         filaments[:, 0], filaments[:, 1], control=False
+                #                     ),
+                #                     # this makes it so that the coil current
+                #                     # is the current of the total passive structure
+                #                     # this is THE OPPOSITE of how the active coils work!
+                #                     1 / n_filaments,
+                #                 )
+                #             ],
+                #             0,
+                #             False,
+                #         ),
+                #     )
+                # )
+                ps = PassiveStructure(
+                                R=coil["R"],
+                                Z=coil["Z"],
+                            )
                 coils.append(
                     (
-                        coil_name,
-                        Circuit(
-                            [
-                                (
-                                    coil_name,
-                                    MultiCoil(
-                                        filaments[:, 0], filaments[:, 1], control=False
-                                    ),
-                                    # this makes it so that the coil current
-                                    # is the current of the total passive structure
-                                    # this is THE OPPOSITE of how the active coils work!
-                                    1 / n_filaments,
-                                )
-                            ],
-                            0,
-                            False,
-                        ),
+                        (
+                            coil_name,
+                            ps
+                        )
                     )
                 )
+
                 # add coil_dict entry
                 coils_dict[coil_name] = {}
                 coils_dict[coil_name]["active"] = False
-                coils_dict[coil_name]["coords"] = np.array(
-                    (filaments[:, 0], filaments[:, 1])
-                )
-                coils_dict[coil_name]["dR"] = (area / n_filaments) ** 0.5
-                coils_dict[coil_name]["dZ"] = (area / n_filaments) ** 0.5
-                coils_dict[coil_name]["polarity"] = np.array([1] * n_filaments)
-                coils_dict[coil_name]["multiplier"] = np.array(
-                    [1 / n_filaments] * n_filaments
-                )
+                coils_dict[coil_name]["vertices"] = np.array((coil["R"], coil["Z"]))
+                coils_dict[coil_name]["area"] = ps.area
+                coils_dict[coil_name]["refine_mode"] = refine_mode
                 # this is resistivity divided by area
-                coils_dict[coil_name]["resistivity"] = coil["resistivity"] / area
+                coils_dict[coil_name]["resistivity"] = coil["resistivity"] / coils_dict[coil_name]["area"]
 
             else:
                 # splits structure to individual filaments
+                # each with their own current values
+                filaments, area = generate_refinement(
+                    R=coil["R"], Z=coil["Z"], n_refine=None, mode=refine_mode
+                )
+                n_filaments = len(filaments)
+                filament_size = (area / n_filaments) ** 0.5
+
                 for k, filament in enumerate(filaments):
                     filament_name = coil_name + str(k)
                     coils.append(
@@ -183,12 +208,14 @@ def tokamak(refine_mode="G", group_filaments=True):
                     )
                     # add coil_dict entry
                     coils_dict[filament_name] = {}
-                    coils_dict[coil_name]["active"] = False
+                    coils_dict[filament_name]["active"] = False
                     coils_dict[filament_name]["coords"] = np.array(
-                        (filaments[:, 0], filaments[:, 1])
-                    )
-                    coils_dict[filament_name]["dR"] = (area / n_filaments) ** 0.5
-                    coils_dict[filament_name]["dZ"] = (area / n_filaments) ** 0.5
+                        (filament[0], filament[1])
+                    )[
+                        :, np.newaxis
+                    ]
+                    coils_dict[filament_name]["dR"] = filament_size
+                    coils_dict[filament_name]["dZ"] = filament_size
                     coils_dict[filament_name]["polarity"] = np.array([1])
                     coils_dict[filament_name]["multiplier"] = np.array([1])
                     # this is resistivity divided by area

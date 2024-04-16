@@ -5,8 +5,6 @@ engine = LatinHypercube(d=2)
 
 import numpy as np
 
-min_refine_per_area, min_refine_per_lenght = 500 / 0.01, 1 / 60
-
 
 def generate_refinement(R, Z, n_refine, mode):
     if mode == "G":
@@ -38,11 +36,13 @@ def generate_refinement_LH(R, Z, n_refine):
     """
 
     area, path, vmin, vmax, dv, meanR, meanZ = find_area(R, Z, n_refine)
+    Len = np.linalg.norm(dv)
 
-    if n_refine is None:
-        n_refine = max(
-            1, int(area / min_refine_per_area), np.max(dv / min_refine_per_lenght)
-        )
+    # if n_refine is None:
+    #     n_refine = int(max(
+    #                             1, area * min_refine_per_area, 
+    #                                Len * min_refine_per_lenght)
+    #                         )
 
     rand_fil = np.zeros((0, 2))
     it = 0
@@ -76,10 +76,10 @@ def generate_refinement_G(R, Z, n_refine):
 
     area, path, vmin, vmax, dv, meanR, meanZ = find_area(R, Z, n_refine)
 
-    if n_refine is None:
-        n_refine = max(
-            1, int(area / min_refine_per_area), np.max(dv / min_refine_per_lenght)
-        )
+    # if n_refine is None:
+    #     n_refine = max(
+    #         1, int(area / min_refine_per_area), np.max(dv / min_refine_per_lenght)
+    #     )
 
     dl = (area / n_refine) ** 0.5
     nx = int(dv[0] // dl)
@@ -141,7 +141,7 @@ def find_area(R, Z, n_refine):
     mult = 10
     while accepted < 10 * n_refine and mult < 1e6:
         mult *= 10
-        vals = engine.random(n=mult * n_refine)
+        vals = engine.random(n=int(mult * n_refine))
         vals = vmin + (vmax - vmin) * vals
         mask = path.contains_points(vals)
         accepted = np.sum(mask)

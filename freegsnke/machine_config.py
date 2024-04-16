@@ -5,6 +5,8 @@ from copy import deepcopy
 import numpy as np
 from deepdiff import DeepDiff
 from freegs.gradshafranov import Greens
+from .refine_passive import generate_refinement
+
 
 active_coils_path = os.environ.get("ACTIVE_COILS_PATH", None)
 if active_coils_path is None:
@@ -94,21 +96,46 @@ def calculate_all(coils_dict):
     for i, labeli in enumerate(coils_order):
         # for coil-coil flux
         # mutual inductance = 2pi * (sum of all Greens(R_i,Z_i, R_j,Z_j) on n_i*n_j terms, where n is the number of windings)
+        
+        try:
+            coords_i = coils_dict[labeli]["coords"]
+        except:
+            filaments, area = generate_refinement(R=coils_dict[labeli]["vertices"][0], 
+                                                    Z=coils_dict[labeli]["vertices"][1], 
+                                                    n_refine=None, 
+                                                    R=coils_dict[labeli]["refine_mode"])
+            coords_i = [filaments[:,0], filaments[:,1]]
+    
         for j, labelj in enumerate(coils_order):
-            greenm = Greens_with_depth(
-                coils_dict[labeli]["coords"][0][np.newaxis, :],
-                coils_dict[labeli]["coords"][1][np.newaxis, :],
-                coils_dict[labelj]["coords"][0][:, np.newaxis],
-                coils_dict[labelj]["coords"][1][:, np.newaxis],
-                np.array([coils_dict[labeli]["dR"]])[:, np.newaxis],
-                np.array([coils_dict[labeli]["dZ"]])[:, np.newaxis],
-            )
+            if j >= i:
 
-            greenm *= coils_dict[labelj]["polarity"][:, np.newaxis]
-            greenm *= coils_dict[labelj]["multiplier"][:, np.newaxis]
-            greenm *= coils_dict[labeli]["polarity"][np.newaxis, :]
-            greenm *= coils_dict[labeli]["multiplier"][np.newaxis, :]
-            coil_self_ind[i, j] = np.sum(greenm)
+                try:
+                    coords_j = coils_dict[labelj]["coords"]
+                except:
+                    filaments, area = generate_refinement(R=coils_dict[labelj]["vertices"][0], 
+                                                            Z=coils_dict[labelj]["vertices"][1], 
+                                                            n_refine=None, 
+                                                            R=coils_dict[labelj]["refine_mode"])
+                    coords_j = [filaments[:,0], filaments[:,1]]
+                
+
+                greenm = Greens(
+                                coords_i[0][np.newaxis, :],
+                                coords_i[1][np.newaxis, :],
+                                coords_j[0][:, np.newaxis],
+                                coords_j[1][:, np.newaxis]
+                                # ,
+                                # np.array([coils_dict[labeli]["dR"]])[:, np.newaxis],
+                                # np.array([coils_dict[labeli]["dZ"]])[:, np.newaxis],
+                                )
+
+                greenm *= coils_dict[labelj]["polarity"][:, np.newaxis]
+                greenm *= coils_dict[labelj]["multiplier"][:, np.newaxis]
+                greenm *= coils_dict[labeli]["polarity"][np.newaxis, :]
+                greenm *= coils_dict[labeli]["multiplier"][np.newaxis, :]
+                coil_self_ind[i, j] = np.sum(greenm)
+                coil_self_ind[j, i] = coil_self_ind[i, j]
+                
         # resistance = 2pi * (resistivity/area) * (number of loops * mean_radius)
         # voltages in terms of total applied voltage
         coil_resist[i] = coils_dict[labeli]["resistivity"] * np.sum(

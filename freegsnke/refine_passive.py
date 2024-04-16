@@ -6,10 +6,10 @@ engine = LatinHypercube(d=2)
 import numpy as np
 
 
-def generate_refinement(R, Z, n_refine, mode):
-    if mode == "G":
+def generate_refinement(R, Z, n_refine, refine_mode):
+    if refine_mode == "G":
         return generate_refinement_G(R, Z, n_refine)
-    elif mode == "LH":
+    elif refine_mode == "LH":
         return generate_refinement_LH(R, Z, n_refine)
     else:
         print("refinement mode not recognised!, please use G or LH.")

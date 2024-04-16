@@ -127,39 +127,10 @@ def tokamak(refine_mode="G", group_filaments=True):
         if np.size(coil["R"]) > 1:
             # refine if vertices provided
 
-            # try:
-            #     n_refine = coil["n_refine"]
-            # except:
-            #     n_refine = None
-            # filaments, area = generate_refinement(
-            #     R=coil["R"], Z=coil["Z"], n_refine=n_refine, mode=refine_mode
-            # )
-            # n_filaments = len(filaments)
-
             if group_filaments:
                 # keep refinement filaments grouped
                 # i.e. use new passive structure class
-                # coils.append(
-                #     (
-                #         coil_name,
-                #         Circuit(
-                #             [
-                #                 (
-                #                     coil_name,
-                #                     MultiCoil(
-                #                         filaments[:, 0], filaments[:, 1], control=False
-                #                     ),
-                #                     # this makes it so that the coil current
-                #                     # is the current of the total passive structure
-                #                     # this is THE OPPOSITE of how the active coils work!
-                #                     1 / n_filaments,
-                #                 )
-                #             ],
-                #             0,
-                #             False,
-                #         ),
-                #     )
-                # )
+                
                 ps = PassiveStructure(
                                 R=coil["R"],
                                 Z=coil["Z"],
@@ -177,9 +148,15 @@ def tokamak(refine_mode="G", group_filaments=True):
                 coils_dict[coil_name] = {}
                 coils_dict[coil_name]["active"] = False
                 coils_dict[coil_name]["vertices"] = np.array((coil["R"], coil["Z"]))
+                coils_dict[coil_name]["coords"] = np.array([ps.filaments[:,0], ps.filaments[:,1]])
                 coils_dict[coil_name]["area"] = ps.area
-                coils_dict[coil_name]["refine_mode"] = refine_mode
+                filament_size = (ps.area / len(ps.filaments))**.5
+                coils_dict[coil_name]["dR"] = filament_size
+                coils_dict[coil_name]["dZ"] = filament_size
                 coils_dict[coil_name]["polarity"] = np.array([1])
+                # here 'multiplier' is used to normalise the green functions,
+                # this is needed because currents are distributed over the passive structure 
+                coils_dict[coil_name]["multiplier"] = np.array([1/len(ps.filaments)])
                 # this is resistivity divided by area
                 coils_dict[coil_name]["resistivity"] = coil["resistivity"] / coils_dict[coil_name]["area"]
 

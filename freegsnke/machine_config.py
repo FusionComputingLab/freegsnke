@@ -101,42 +101,20 @@ def calculate_all(coils_dict):
         # this is not valid for refined passive structures, where each filament carries 1/n_filaments 
         # and for which a mean of the greens (rather than the sum) should be used instead
         
-        try:
-            # if this works it is not a refined passive
-            # (could be a passive refined in independent coils, but then each coil has its own current, so no normalization needed)
-            coords_i = coils_dict[labeli]["coords"]
-            normalization_for_refined_passive_i = 1
-        except:
-            # this needs normalization
-            filaments, area = generate_refinement(R=coils_dict[labeli]["vertices"][0], 
-                                                    Z=coils_dict[labeli]["vertices"][1], 
-                                                    n_refine=None, 
-                                                    R=coils_dict[labeli]["refine_mode"])
-            coords_i = [filaments[:,0], filaments[:,1]]
-            normalization_for_refined_passive_i = len(filaments)
+        coords_i = coils_dict[labeli]["coords"]
     
         for j, labelj in enumerate(coils_order):
             if j >= i:
+                coords_j = coils_dict[labelj]["coords"]
+                
 
-                try:
-                    coords_j = coils_dict[labelj]["coords"]
-                    normalization_for_refined_passive_j = 1
-                except:
-                    filaments, area = generate_refinement(R=coils_dict[labelj]["vertices"][0], 
-                                                            Z=coils_dict[labelj]["vertices"][1], 
-                                                            n_refine=None, 
-                                                            R=coils_dict[labelj]["refine_mode"])
-                    coords_j = [filaments[:,0], filaments[:,1]]
-                    normalization_for_refined_passive_j = len(filaments)
-
-                greenm = Greens(
+                greenm = Greens_with_depth(
                                 coords_i[0][np.newaxis, :],
                                 coords_i[1][np.newaxis, :],
                                 coords_j[0][:, np.newaxis],
-                                coords_j[1][:, np.newaxis]
-                                # ,
-                                # np.array([coils_dict[labeli]["dR"]])[:, np.newaxis],
-                                # np.array([coils_dict[labeli]["dZ"]])[:, np.newaxis],
+                                coords_j[1][:, np.newaxis],
+                                np.array([coils_dict[labeli]["dR"]])[:, np.newaxis],
+                                np.array([coils_dict[labeli]["dZ"]])[:, np.newaxis],
                                 )
 
                 greenm *= coils_dict[labelj]["polarity"][:, np.newaxis]
@@ -144,15 +122,11 @@ def calculate_all(coils_dict):
                 greenm *= coils_dict[labeli]["polarity"][np.newaxis, :]
                 greenm *= coils_dict[labeli]["multiplier"][np.newaxis, :]
                 coil_self_ind[i, j] = np.sum(greenm)
-                # now normalise!
-                coil_self_ind[i, j] /= (normalization_for_refined_passive_i * normalization_for_refined_passive_j)
                 coil_self_ind[j, i] = coil_self_ind[i, j]
 
         # resistance = 2pi * (resistivity/area) * (number of loops * mean_radius)
-        # voltages in terms of total applied voltage
-        coil_resist[i] = coils_dict[labeli]["resistivity"] * np.sum(
-            coils_dict[labeli]["coords"][0]
-        )
+        # note the multiplier is used as refined passives have number of loops = 1
+        coil_resist[i] = coils_dict[labeli]["resistivity"] * coils_dict[labeli]["multiplier"][0] * np.sum(coords_i[0])
     coil_self_ind *= 2 * np.pi
     coil_resist *= 2 * np.pi
 

@@ -4,13 +4,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy.signal import convolve2d
 
-from . import machine_config
 from . import nk_solver as nk_solver
 from .circuit_eq_metal import metal_currents
 from .circuit_eq_plasma import plasma_current
 from .GSstaticsolver import NKGSsolver
 from .linear_solve import linear_solver
-from .machine_config import coils_order
 from .simplified_solve import simplified_solver_J1
 
 # from . import extrapolate
@@ -117,6 +115,11 @@ class nl_solver:
         dZ = eq.Z[0, 1] - eq.Z[0, 0]
         self.dRdZ = dR * dZ
 
+        # store coils numbers and names
+        self.n_active_coils = eq.tokamak.n_active_coils
+        self.n_coils = eq.tokamak.n_coils
+        self.coils_order = list(eq.tokamak.coils_dict.keys())
+
         # instantiating static GS solver (Newton-Krylov) on eq's domain
         self.NK = NKGSsolver(eq)
 
@@ -183,9 +186,9 @@ class nl_solver:
         # self.vessel_currents_vec is the vector of tokamak coil currents (not normal modes)
         # initial self.vessel_currents_vec values are taken from eq.tokamak
         # does not include plasma current
-        vessel_currents_vec = np.zeros(machine_config.n_coils)
+        vessel_currents_vec = np.zeros(self.n_coils)
         eq_currents = eq.tokamak.getCurrents()
-        for i, labeli in enumerate(coils_order):
+        for i, labeli in enumerate(self.coils_order):
             vessel_currents_vec[i] = eq_currents[labeli]
         self.vessel_currents_vec = vessel_currents_vec.copy()
 
@@ -264,8 +267,8 @@ class nl_solver:
             self.selected_modes_mask = np.linalg.norm(self.dIydI, axis=0) > min_dIy_dI
             self.selected_modes_mask = np.concatenate(
                 (
-                    np.ones(machine_config.n_active_coils),
-                    self.selected_modes_mask[machine_config.n_active_coils : -1],
+                    np.ones(self.n_active_coils),
+                    self.selected_modes_mask[self.n_active_coils : -1],
                     np.ones(1),
                 )
             ).astype(bool)
@@ -276,7 +279,7 @@ class nl_solver:
             self.selected_modes_mask = np.concatenate(
                 (
                     self.selected_modes_mask[:-1],
-                    np.zeros(machine_config.n_coils - self.n_metal_modes),
+                    np.zeros(self.n_coils - self.n_metal_modes),
                 )
             ).astype(bool)
             self.remove_modes(self.selected_modes_mask)
@@ -817,7 +820,7 @@ class nl_solver:
             Initial equilibrium. eq.tokamak is used to extract current values.
         """
         eq_currents = eq.tokamak.getCurrents()
-        for i, labeli in enumerate(coils_order):
+        for i, labeli in enumerate(self.coils_order):
             self.vessel_currents_vec[i] = eq_currents[labeli]
 
     def build_current_vec(self, eq, profile):
@@ -864,21 +867,17 @@ class nl_solver:
 
         # generate random noise on vessel normal modes only
         if noise_vec is None:
-            noise_vec = np.random.randn(
-                self.n_metal_modes - machine_config.n_active_coils
-            )
+            noise_vec = np.random.randn(self.n_metal_modes - self.n_active_coils)
             noise_vec *= noise_level
-            noise_vec = np.concatenate(
-                (np.zeros(machine_config.n_active_coils), noise_vec)
-            )
+            noise_vec = np.concatenate((np.zeros(self.n_active_coils), noise_vec))
             self.noise_vec = noise_vec
 
         # calculate vessel noise from noise_vec and assign
         self.vessel_currents_vec += self.evol_metal_curr.IdtoIvessel(Id=noise_vec)
-        for i, labeli in enumerate(coils_order[machine_config.n_active_coils :]):
+        for i, labeli in enumerate(self.coils_order[self.n_active_coils :]):
             # runs on passive only
             eq.tokamak[labeli].current = self.vessel_currents_vec[
-                i + machine_config.n_active_coils
+                i + self.n_active_coils
             ]
 
     def initialize_from_ICs(
@@ -1102,7 +1101,7 @@ class nl_solver:
         self.vessel_currents_vec = self.evol_metal_curr.IdtoIvessel(
             Id=currents_vec[:-1]
         )
-        for i, labeli in enumerate(coils_order):
+        for i, labeli in enumerate(self.coils_order):
             eq.tokamak[labeli].current = self.vessel_currents_vec[i]
 
     def assign_currents_solve_GS(self, currents_vec, rtol_NK, record_for_updates=False):

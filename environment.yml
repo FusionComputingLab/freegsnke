@@ -9,3 +9,4 @@ dependencies:
   - matplotlib=3.5.3
   - numba=0.55.2
   - h5py=3.7.0
+  - deepdiff

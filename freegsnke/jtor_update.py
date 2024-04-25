@@ -477,7 +477,7 @@ class ConstrainPaxisIp(freegs.jtor.ConstrainPaxisIp):
         
         return alpha, beta
 
-class Fiesta_Topiol(freegs.jtor.Fiesta_Topiol):
+class Fiesta_Topeol(freegs.jtor.Fiesta_Topeol):
     """FreeGS profile class with a few modifications, to:
     - retain memory of critical point calculation;
     - deal with limiter plasma configurations
@@ -693,7 +693,7 @@ class Lao85(freegs.jtor.Lao85):
         )
         return self.jtor
     
-    def Topeol_parameters(self, nn=100, max_it=100, tol=1e-5, calculate_betap=False, calculate_paxis=False):
+    def Topeol_parameters(self, nn=100, max_it=100, tol=1e-5):
         """Fids best combination of 
         (alpha_m, alpha_n, beta_0)
         to instantiate a Topeol profile object as similar as possible to self
@@ -706,21 +706,14 @@ class Lao85(freegs.jtor.Lao85):
             maximum number of iterations in the optimization
         tol : float
             iterations stop when change in the optimised parameters in smaller than tol
-        calculate_betap : bool
-            if True, calculate beta_p value to instantiate ConstrainBetapIp profile object
-            Note that this is available only after the profile has been used in a forward solve
-        calculate_betap : bool
-            if True, calculate p_axis value to instantiate ConstrainPaxisIp profile object
-            Note that this is available only after the profile has been used in a forward solve
         """
 
         x = np.linspace(1/(100*nn),1-1/(100*nn),nn)
         tp = self.pprime(x)
         tf = self.ffprime(x)/mu0
 
-        pars = Topeol_opt(tf, tp, x)
+        pars = Topeol_opt(tp, tf, x, max_it, tol,)
 
-        # if calculate_betap:
         return pars
 
 

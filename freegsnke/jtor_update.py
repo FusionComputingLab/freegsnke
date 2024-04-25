@@ -9,6 +9,7 @@ def Lao_parameters_finder(pn_, pprime_, ffprime_, n_alpha, n_beta, alpha_logic=T
     """Finds best fitting alpha, beta parameters for a Lao85 profile,
     to reproduce the input pprime_ and ffprime_
     n_alpha and n_beta represent the number of free parameters 
+    Simple linear fit.
 
     Parameters
     ----------
@@ -63,6 +64,8 @@ def Lao_parameters_finder(pn_, pprime_, ffprime_, n_alpha, n_beta, alpha_logic=T
 
     return alpha, beta
 
+
+# Functions for the Lao85.Topeol_parameters optimiser
 def Topeol_std(x, alpha_m, alpha_n, beta_0):
     return (1-x**alpha_m)**alpha_n
 

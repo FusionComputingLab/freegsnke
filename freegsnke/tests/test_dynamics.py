@@ -12,7 +12,7 @@ os.environ["PASSIVE_COILS_PATH"] = "./machine_configs/MAST-U/passive_coils.pickl
 os.environ["WALL_PATH"] = "./machine_configs/MAST-U/wall.pickle"
 os.environ["LIMITER_PATH"] = "./machine_configs/MAST-U/limiter.pickle"
 
-from freegsnke import build_machine, faster_shape, machine_config
+from freegsnke import build_machine, faster_shape
 
 
 @pytest.fixture()

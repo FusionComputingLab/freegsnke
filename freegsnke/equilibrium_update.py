@@ -1,15 +1,15 @@
 import os
 import pickle
 
-import freegs
+import freegsfast
 import numpy as np
 from scipy import interpolate
 
 from . import limiter_func
 
 
-class Equilibrium(freegs.equilibrium.Equilibrium):
-    """FreeGS equilibrium class with optional initialization."""
+class Equilibrium(freegsfast.equilibrium.Equilibrium):
+    """FreeGSFast equilibrium class with optional initialization."""
 
     def __init__(self, *args, **kwargs):
         """Instantiates the object."""

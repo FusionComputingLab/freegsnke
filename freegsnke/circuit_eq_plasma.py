@@ -1,5 +1,5 @@
 import numpy as np
-from freegs.gradshafranov import Greens
+from freegsfast.gradshafranov import Greens
 
 
 class plasma_current:

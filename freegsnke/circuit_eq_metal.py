@@ -1,5 +1,5 @@
 import numpy as np
-from freegs.gradshafranov import Greens
+from freegsfast.gradshafranov import Greens
 
 from . import machine_config, normal_modes
 from .implicit_euler import implicit_euler_solver

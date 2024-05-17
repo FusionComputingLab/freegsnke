@@ -2,7 +2,7 @@ import os
 import time
 from copy import deepcopy
 
-import freegs
+import freegsfast
 import numpy as np
 import pytest
 from IPython.display import clear_output, display

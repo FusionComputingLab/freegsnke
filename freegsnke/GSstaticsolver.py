@@ -1,8 +1,8 @@
 from copy import deepcopy
 
-import freegs
+import freegsfast
 import numpy as np
-from freegs.gradshafranov import Greens
+from freegsfast.gradshafranov import Greens
 
 from . import nk_solver as nk_solver
 
@@ -15,7 +15,7 @@ class NKGSsolver:
     class nk_solver.
 
     The solution domain is set at instantiation time, through the
-    input freeGS equilibrium object.
+    input FreeGSFast equilibrium object.
 
     The non-linear solver itself is called using the 'solve' method.
     """
@@ -29,7 +29,7 @@ class NKGSsolver:
 
         Parameters
         ----------
-        eq : a freeGS equilibrium object.
+        eq : a freegsfast equilibrium object.
              The domain grid defined by (eq.R, eq.Z) is the solution domain
              adopted for the GS problems. Calls to the nonlinear solver will
              use the grid domain set at instantiation time. Re-instantiation
@@ -61,10 +61,10 @@ class NKGSsolver:
         self.nksolver = nk_solver.nksolver(problem_dimension=self.nx * self.ny)
 
         # linear solver for del*Psi=RHS with fixed RHS
-        self.linear_GS_solver = freegs.multigrid.createVcycle(
+        self.linear_GS_solver = freegsfast.multigrid.createVcycle(
             nx,
             ny,
-            freegs.gradshafranov.GSsparse4thOrder(
+            freegsfast.gradshafranov.GSsparse4thOrder(
                 eq.R[0, 0], eq.R[-1, 0], eq.Z[0, 0], eq.Z[0, -1]
             ),
             nlevels=1,
@@ -99,7 +99,7 @@ class NKGSsolver:
         self.greenfunc = greenfunc * zeros * self.dRdZ
 
         # RHS/Jtor
-        self.rhs_before_jtor = -freegs.gradshafranov.mu0 * eq.R
+        self.rhs_before_jtor = -freegsfast.gradshafranov.mu0 * eq.R
 
     def freeboundary(self, plasma_psi, tokamak_psi, profiles, rel_psi_error):
         """Imposes boundary conditions on set of boundary points.
@@ -111,7 +111,7 @@ class NKGSsolver:
         tokamak_psi : np.array of size eq.nx*eq.ny
             magnetic flux due to the tokamak alone, including all metal currents,
             in both active coils and passive structures
-        profiles : freeGS profile object
+        profiles : freegsfast profile object
             profile object describing target plasma properties,
             used to calculate current density jtor
         """
@@ -158,7 +158,7 @@ class NKGSsolver:
         tokamak_psi : np.array of size eq.nx*eq.ny
             magnetic flux due to the tokamak alone, including all metal currents,
             in both active coils and passive structures
-        profiles : freeGS profile object
+        profiles : freegsfast profile object
             profile object describing target plasma properties,
             used to calculate current density jtor
 
@@ -179,9 +179,9 @@ class NKGSsolver:
 
         Parameters
         ----------
-        eq : freeGS equilibrium object
+        eq : freegsfast equilibrium object
             Equilibrium on which to record values
-        profiles : freeGS profile object
+        profiles : freegsfast profile object
             Profiles object which has been used to calculate Jtor.
         """
         eq.xpt = np.copy(profiles.xpt)
@@ -216,7 +216,7 @@ class NKGSsolver:
     ):
         """The method that actually solves the forward GS problem.
 
-        A forward problem is specified by the 2 freeGS objects eq and profiles.
+        A forward problem is specified by the 2 freegsfast objects eq and profiles.
         The first specifies the metal currents (throught eq.tokamak)
         and the second specifies the desired plasma properties
         (i.e. plasma current and profile functions).
@@ -226,10 +226,10 @@ class NKGSsolver:
 
         Parameters
         ----------
-        eq : freeGS equilibrium object
+        eq : freegsfast equilibrium object
             Used to extract the assigned metal currents, which in turn are
             used to calculate the according self.tokamak_psi
-        profiles : freeGS profile object
+        profiles : freegsfast profile object
             Specifies the target properties of the plasma.
             These are used to calculate Jtor(psi)
         target_relative_tolerance : float
@@ -360,17 +360,17 @@ class NKGSsolver:
 
     #     Parameters
     #     ----------
-    #     eq : freeGS equilibrium object
+    #     eq : freegsfast equilibrium object
     #         Used to extract the assigned metal currents, which in turn are
     #         used to calculate the according self.tokamak_psi
-    #     profiles : freeGS profile object
+    #     profiles : freegsfast profile object
     #         Specifies the target properties of the plasma.
     #         These are used to calculate Jtor(psi)
     #     target_relative_tolerance : float
     #         NK iterations are interrupted when this criterion is
     #         satisfied. Relative convergence
-    #     constrain : freeGS constrain object
-    #         specifies the desired constraints on the configuration of magnetic flux (xpoints and isoflux, as in FreeGS)
+    #     constrain : freegsfast constrain object
+    #         specifies the desired constraints on the configuration of magnetic flux (xpoints and isoflux, as in FreeGSFast)
     #     max_solving_iterations : int
     #         NK iterations are interrupted when this limit is surpassed
     #     Picard_handover : float
@@ -450,7 +450,7 @@ class NKGSsolver:
 
     #         # update eq with new solution
     #         eq.plasma_psi = trial_plasma_psi.reshape(self.nx, self.ny).copy()
-    #         # adjust coil currents, using freeGS leastsquares
+    #         # adjust coil currents, using freegsfast leastsquares
     #         constrain(eq)
     #         # update tokamak_psi accordingly
     #         self.tokamak_psi = (eq.tokamak.calcPsiFromGreens(pgreen=eq._pgreen)).reshape(-1)
@@ -506,26 +506,26 @@ class NKGSsolver:
         verbose=False,
     ):
         """The method to solve the GS problems, both forward and inverse.
-        Syntax is analogous to freeGS:
+        Syntax is analogous to FreeGSFast:
             - an inverse solve is specified by the 'constrain' input,
-            which includes the desired constraints on the configuration of magnetic flux (xpoints and isoflux, as in FreeGS).
-            The optimization over the coil currents uses the freeGS implementation, as a simple regularised least square problem.
+            which includes the desired constraints on the configuration of magnetic flux (xpoints and isoflux, as in FreeGSFast).
+            The optimization over the coil currents uses the FreeGSFast implementation, as a simple regularised least square problem.
             - a forward solve has constrain=None. Please see forward_solve for details.
 
 
         Parameters
         ----------
-        eq : freeGS equilibrium object
+        eq : freegsfast equilibrium object
             Used to extract the assigned metal currents, which in turn are
             used to calculate the according self.tokamak_psi
-        profiles : freeGS profile object
+        profiles : freegsfast profile object
             Specifies the target properties of the plasma.
             These are used to calculate Jtor(psi)
         target_relative_tolerance : float
             NK iterations are interrupted when this criterion is
             satisfied. Relative convergence
-        constrain : freeGS constrain object
-            specifies the desired constraints on the configuration of magnetic flux (xpoints and isoflux, as in FreeGS)
+        constrain : freegsfast constrain object
+            specifies the desired constraints on the configuration of magnetic flux (xpoints and isoflux, as in FreeGSFast)
         max_solving_iterations : int
             NK iterations are interrupted when this limit is surpassed
         Picard_handover : float
@@ -580,7 +580,7 @@ class NKGSsolver:
             )
 
         else:
-            freegs.solve(
+            freegsfast.solve(
                 eq,
                 profiles,
                 constrain,

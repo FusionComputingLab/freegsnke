@@ -44,13 +44,13 @@ class nl_solver:
 
         Parameters
         ----------
-        profiles : FreeGS profile Object
+        profiles : FreeGSFast profile Object
             Profile function of the initial equilibrium.
             This will be used to set up the linearization used by the linear solver.
             It can be changed later by initializing a new set of initial conditions.
             Note however that, to change either the tokamak or limiter properties
             it will be necessary to instantiate a new evolution object.
-        eq : FreeGS equilibrium Object
+        eq : FreeGSFast equilibrium Object
             Initial equilibrium. This is used to set the domain/grid properties
             as well as the tokamak/machine properties.
             Furthermore, eq will be used to set up the linearization used by the linear solver.
@@ -430,7 +430,7 @@ class nl_solver:
 
         Parameters
         ----------
-        profiles : FreeGS profile object
+        profiles : FreeGSFast profile object
             The profile object of the initial condition equilibrium, i.e. the linearization point.
         rtol_NK : float
             Relative tolerance to be used in the static GS problems.
@@ -490,7 +490,7 @@ class nl_solver:
 
         Parameters
         ----------
-        profiles : FreeGS profile object
+        profiles : FreeGSFast profile object
             The profile object of the initial condition equilibrium, i.e. the linearization point.
         rtol_NK : float
             Relative tolerance to be used in the static GS problems.
@@ -646,9 +646,9 @@ class nl_solver:
 
         Parameters
         ----------
-        eq : FreeGS equilibrium Object
+        eq : FreeGSFast equilibrium Object
             Equilibrium around which to linearise.
-        profile : FreeGS profile Object
+        profile : FreeGSFast profile Object
             Profile properties of the equilibrium around which to linearise.
         dIydI : np.array
             input Jacobian, enter where available, otherwise this will be calculated here
@@ -797,9 +797,9 @@ class nl_solver:
 
         Parameters
         ----------
-        profiles : FreeGS profile Object
+        profiles : FreeGSFast profile Object
             Profile function of the initial equilibrium.
-            Can handle both freeGS profile types ConstrainPaxisIp and ConstrainBetapIp.
+            Can handle both freeGSFast profile types ConstrainPaxisIp and ConstrainBetapIp.
         """
         self.fvac = profiles.fvac
         self.alpha_m = profiles.alpha_m
@@ -816,7 +816,7 @@ class nl_solver:
 
         Parameters
         ----------
-        eq : FreeGS equilibrium Object
+        eq : FreeGSFast equilibrium Object
             Initial equilibrium. eq.tokamak is used to extract current values.
         """
         eq_currents = eq.tokamak.getCurrents()
@@ -830,9 +830,9 @@ class nl_solver:
 
         Parameters
         ----------
-        profile : FreeGS profile Object
+        profile : FreeGSFast profile Object
             Profile function of the initial equilibrium. Used to extract the value of the total plasma current.
-        eq : FreeGS equilibrium Object
+        eq : FreeGSFast equilibrium Object
             Initial equilibrium. Used to extract the value of all metal currents.
         """
         # gets metal currents, note these are before mode truncation!
@@ -854,7 +854,7 @@ class nl_solver:
 
         Parameters
         ----------
-        eq : FreeGS equilibrium Object
+        eq : FreeGSFast equilibrium Object
             Equilibrium to which noise is added and assigned.
         noise_level : float
             Standard deviation of the noise in terms of vessel normal modes' currents.
@@ -903,9 +903,9 @@ class nl_solver:
 
         Parameters
         ----------
-        eq : FreeGS equilibrium Object
+        eq : FreeGSFast equilibrium Object
             Initial equilibrium. This assigns all initial metal currents.
-        profiles : FreeGS profile Object
+        profiles : FreeGSFast profile Object
             Profile function of the initial equilibrium. This assigns the initial total plasma current.
             Note that this assigns the profile properties,
             for instance p_on_axis and profile coefficients (alpha_m, alpha_n).
@@ -1087,9 +1087,9 @@ class nl_solver:
         ----------
         currents_vec : np.array
             Input current values to be assigned.
-        eq : FreeGS equilibrium Object
+        eq : FreeGSFast equilibrium Object
             Equilibrium object to be modified.
-        profiles : FreeGS profile Object
+        profiles : FreeGSFast profile Object
             Profile object to be modified.
         """
 
@@ -1130,7 +1130,7 @@ class nl_solver:
         ----------
         currents_vec : np.array
             vector of all extensive currents (normal modes + plasma current)
-        profiles : freeGS profile obj
+        profiles : FreeGSFast profile obj
             profile used to build the equilibrium to be recorded
         """
         self.record_currents_pars = np.vstack(
@@ -1175,7 +1175,7 @@ class nl_solver:
         ----------
         currents_vec : np.array
             Input current values to be assigned. Format as in self.assign_currents.
-        profiles : FreeGS profile Object
+        profiles : FreeGSFast profile Object
             profile from which to fetch the profile parameters
 
         Returns

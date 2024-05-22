@@ -24,6 +24,9 @@ stages:
     - mkdir -p ~/.ssh
     - chmod 700 ~/.ssh
 
+    # Add GitHub to the known hosts
+    - ssh-keyscan -H github.com >> ~/.ssh/known_hosts
+
     # Set the git username and email
     - git config --global user.email "george.holt@stfc.ac.uk"
     - git config --global user.name "George Holt"

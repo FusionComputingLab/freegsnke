@@ -1,14 +1,14 @@
-import freegs
+import freegsfast
 import matplotlib.pyplot as plt
 import numpy as np
-from freegs.gradshafranov import Greens, GreensBr, GreensBz, mu0
+from freegsfast.gradshafranov import Greens, GreensBr, GreensBz, mu0
 from matplotlib.patches import Polygon
 
 from .refine_passive import find_area, generate_refinement
 
 
-class PassiveStructure(freegs.coil.Coil):
-    """Inherits from freegs.coil.Coil.
+class PassiveStructure(freegsfast.coil.Coil):
+    """Inherits from freegsfast.coil.Coil.
     Object to implement passive structures.
     Rather than listing large number of filaments it builds the
     relevant green function matrix to distribute currents uniformly.
@@ -22,7 +22,7 @@ class PassiveStructure(freegs.coil.Coil):
         min_refine_per_length,
         refine_mode="G",
     ):
-        """Instantiates the Machine, same as freegs.machine.Machine.
+        """Instantiates the Machine, same as freegsfast.machine.Machine.
 
         Parameters
         ----------

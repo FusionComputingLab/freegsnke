@@ -2,9 +2,9 @@ import os
 import pickle
 
 import numpy as np
-from freegs.coil import Coil
-from freegs.machine import Circuit, Solenoid, Wall
-from freegs.multi_coil import MultiCoil
+from freegsfast.coil import Coil
+from freegsfast.machine import Circuit, Solenoid, Wall
+from freegsfast.multi_coil import MultiCoil
 
 from .machine_update import Machine
 from .magnetic_probes import Probes

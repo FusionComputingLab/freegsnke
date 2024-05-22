@@ -1,6 +1,6 @@
 import os
 
-import freegs
+import freegsfast
 import numpy as np
 import pytest
 
@@ -19,7 +19,7 @@ def create_machine():
     # Creates equilibrium object and initializes it with
     # a "good" solution
     # plasma_psi = np.loadtxt('plasma_psi_example.txt')
-    eq = freegs.Equilibrium(
+    eq = freegsfast.Equilibrium(
         tokamak=tokamak,
         # domains can be changed
         Rmin=0.1,

@@ -3,12 +3,12 @@ import sys
 import time
 from copy import deepcopy
 
-import freegs
+import freegsfast
 import matplotlib.pyplot as plt
 import numpy as np
 import pytest
-from freegs.critical import find_critical
-from freegs.plotting import plotConstraints
+from freegsfast.critical import find_critical
+from freegsfast.plotting import plotConstraints
 from IPython.display import clear_output, display
 from matplotlib.widgets import Slider
 
@@ -25,8 +25,8 @@ def create_machine():
     # Create the machine, which specifies coil locations
     # and equilibrium, specifying the domain to solve over
     # this has to be either
-    # freegs.machine.MASTU(), in which case:
-    # tokamak = freegs.machine.MASTU()
+    # freegsfast.machine.MASTU(), in which case:
+    # tokamak = freegsfast.machine.MASTU()
     # or
     # MASTU_coils.MASTU_wpass()
     # from freegsnke import MASTU_coils
@@ -93,7 +93,9 @@ def create_machine():
     eq.tokamak["P6"].control = False
     eq.tokamak["Solenoid"].control = False
 
-    constrain = freegs.control.constrain(xpoints=xpoints, gamma=5e-6, isoflux=isoflux)
+    constrain = freegsfast.control.constrain(
+        xpoints=xpoints, gamma=5e-6, isoflux=isoflux
+    )
     constrain(eq)
 
     return eq, profiles, constrain
@@ -125,7 +127,7 @@ def create_test_files_static_solve(create_machine):
     eq.tokamak["Solenoid"].control = False
     eq.tokamak["Solenoid"].current = 15000
 
-    freegs.solve(
+    freegsfast.solve(
         eq,  # The equilibrium to adjust
         profiles,  # The plasma profiles
         constrain,  # Plasma control constraints
@@ -164,7 +166,7 @@ def test_static_solve(create_machine):
     eq.tokamak["Solenoid"].control = False
     eq.tokamak["Solenoid"].current = 15000
 
-    freegs.solve(
+    freegsfast.solve(
         eq,  # The equilibrium to adjust
         profiles,  # The plasma profiles
         constrain,  # Plasma control constraints

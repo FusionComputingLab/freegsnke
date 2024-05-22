@@ -1,7 +1,7 @@
-import freegs
+import freegsfast
 import numpy as np
-from freegs import critical
-from freegs.gradshafranov import mu0
+from freegsfast import critical
+from freegsfast.gradshafranov import mu0
 
 from . import limiter_func
 
@@ -262,8 +262,8 @@ def Topeol_opt(tp, tf, x, max_it, tol):
     return new_pars
 
 
-class ConstrainBetapIp(freegs.jtor.ConstrainBetapIp):
-    """FreeGS profile class with a few modifications, to:
+class ConstrainBetapIp(freegsfast.jtor.ConstrainBetapIp):
+    """FreeGSFast profile class with a few modifications, to:
     - retain memory of critical point calculation;
     - deal with limiter plasma configurations
 
@@ -274,9 +274,9 @@ class ConstrainBetapIp(freegs.jtor.ConstrainBetapIp):
 
          Parameters
         ----------
-        eq : freeGS Equilibrium object
+        eq : freegsfast Equilibrium object
             Specifies the domain properties
-        limiter : freeGS.machine.Wall object
+        limiter : freegsfast.machine.Wall object
             Specifies the limiter contour points.
             Only set if a limiter different from eq.tokamak.limiter is to be used.
         """
@@ -392,8 +392,8 @@ class ConstrainBetapIp(freegs.jtor.ConstrainBetapIp):
         return alpha, beta
 
 
-class ConstrainPaxisIp(freegs.jtor.ConstrainPaxisIp):
-    """FreeGS profile class with a few modifications, to:
+class ConstrainPaxisIp(freegsfast.jtor.ConstrainPaxisIp):
+    """FreeGSFast profile class with a few modifications, to:
     - retain memory of critical point calculation;
     - deal with limiter plasma configurations
 
@@ -404,9 +404,9 @@ class ConstrainPaxisIp(freegs.jtor.ConstrainPaxisIp):
 
         Parameters
         ----------
-        eq : freeGS Equilibrium object
+        eq : freegsfast Equilibrium object
             Specifies the domain properties
-        limiter : freeGS.machine.Wall object
+        limiter : freegsfast.machine.Wall object
             Specifies the limiter contour points
             Only set if a limiter different from eq.tokamak.limiter is to be used.
 
@@ -524,8 +524,8 @@ class ConstrainPaxisIp(freegs.jtor.ConstrainPaxisIp):
         return alpha, beta
 
 
-class Fiesta_Topeol(freegs.jtor.Fiesta_Topeol):
-    """FreeGS profile class with a few modifications, to:
+class Fiesta_Topeol(freegsfast.jtor.Fiesta_Topeol):
+    """FreeGSFast profile class with a few modifications, to:
     - retain memory of critical point calculation;
     - deal with limiter plasma configurations
 
@@ -536,9 +536,9 @@ class Fiesta_Topeol(freegs.jtor.Fiesta_Topeol):
 
         Parameters
         ----------
-        eq : freeGS Equilibrium object
+        eq : freegsfast Equilibrium object
             Specifies the domain properties
-        limiter : freeGS.machine.Wall object
+        limiter : freegsfast.machine.Wall object
             Specifies the limiter contour points
             Only set if a limiter different from eq.tokamak.limiter is to be used.
 
@@ -650,7 +650,7 @@ class Fiesta_Topeol(freegs.jtor.Fiesta_Topeol):
         return alpha, beta
 
 
-class Lao85(freegs.jtor.Lao85):
+class Lao85(freegsfast.jtor.Lao85):
     """FreeGS profile class with a few modifications, to:
     - retain memory of critical point calculation;
     - deal with limiter plasma configurations
@@ -662,9 +662,9 @@ class Lao85(freegs.jtor.Lao85):
 
         Parameters
         ----------
-        eq : freeGS Equilibrium object
+        eq : freegsfast Equilibrium object
             Specifies the domain properties
-        limiter : freeGS.machine.Wall object
+        limiter : freegsfast.machine.Wall object
             Specifies the limiter contour points
             Only set if a limiter different from eq.tokamak.limiter is to be used.
 

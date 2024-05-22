@@ -25,7 +25,7 @@ stages:
     - chmod 700 ~/.ssh
 
     # Set the git username and email
-    - git config --global user.email "george.holt@stfc.ac.uk
+    - git config --global user.email "george.holt@stfc.ac.uk"
     - git config --global user.name "George Holt"
 
     # Install the conda environment

@@ -1,5 +1,4 @@
 pytest
-notebook
 pre-commit
 black==24.1.1
 isort==5.13.2

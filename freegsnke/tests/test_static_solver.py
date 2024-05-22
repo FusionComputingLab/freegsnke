@@ -93,7 +93,9 @@ def create_machine():
     eq.tokamak["P6"].control = False
     eq.tokamak["Solenoid"].control = False
 
-    constrain = freegsfast.control.constrain(xpoints=xpoints, gamma=5e-6, isoflux=isoflux)
+    constrain = freegsfast.control.constrain(
+        xpoints=xpoints, gamma=5e-6, isoflux=isoflux
+    )
     constrain(eq)
 
     return eq, profiles, constrain

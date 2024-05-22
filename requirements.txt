@@ -3,4 +3,4 @@ numpy~=1.22
 matplotlib~=3.5
 h5py~=3.7
 deepdiff~=7.0
-freegsfast @ git+https://github.com/farscape-project/freegsfast.git@main
+freegsfast @ git+ssh://git@github.com/farscape-project/freegsfast.git@main

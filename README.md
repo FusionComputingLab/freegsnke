@@ -12,26 +12,32 @@ It is recommended to read this page in its entirety before attempting to install
 or run FreeGSNKE.
 
 ## Installation
-Building from source is currently the only supported installation method and
-requires a working conda installation (for example, through
-[Miniforge](https://github.com/conda-forge/miniforge)).
+Building from source is currently the only supported installation method and follows these broad steps, which are detailed below:
+1. Get access to FreeGSFast.
+2. Set up a Python environment.
+3. Install FreeGSNKE.
 
-1. Clone this repository and `cd` into the created directory.
-2. Set up the conda environment with the command `conda env create -f
-   environment.yml`. This creates a conda environment called `freegsnke` with
-   the dependencies of FreeGSFast and FreeGSNKE.
-3. Activate this environment with `conda activate freegsnke`.
-4. Clone [FreeGSFast](https://github.com/farscape-project/freegsfast) into a
-   directory that is not within the FreeGSNKE repository and `cd` into it.
-5. Install FreeGSFast locally with `pip install .`.  
-**Note** You don't need to follow the installation instructions in the
-FreeGSFast installation directory when installing FreeGSFast as a FreeGSNKE
-dependency. Simply run `pip install .` from the FreeGSFast repository with the
-`freegsnke` conda environment active to install it. Furthermore, the
-FreeGSFast dependencies have already been installed in step 2 so do not need
-to be installed again.
-1. `cd` back to the `freegsnke` repository directory and install this package by
-   running `pip install .` from the repository home directory.
+The steps will be significantly simplified in the future when FreeGSFast is made public.
+
+### Get access to FreeGSFast
+
+FreeGSNKE is built on top of [FreeGSFast](https://github.com/farscape-project/freegsfast), which is a fork of FreeGS with some performance improvements. Currently, FreeGSFast is in a private repository on the FARSCAPE GitHub, so some extra configuration is required.
+
+Once you have access to the FreeGSFast repository, add an SSH key to your GitHub account by following the instructions [here](https://docs.github.com/en/authentication/connecting-to-github-with-ssh/adding-a-new-ssh-key-to-your-github-account).
+
+### Set up a Python environment
+
+The recommended way to install FreeGSNKE is to use a virtual environment using, for example, conda or venv. Below are instructions for setting up a conda environment.
+
+1. Install the latest [Miniforge](https://github.com/conda-forge/miniforge) distribution for your operating system.
+2. Create a new conda environment with the command `conda create -n freegsnke python=3.10`.
+3. Activate the new environment with `conda activate freegsnke`.
+
+### Install FreeGSNKE
+
+1. Clone the FreeGSNKE repository with `git clone git@gitlab.stfc.ac.uk:farscape-ws3/freegsnke.git` or `git clone https://gitlab.stfc.ac.uk/farscape-ws3/freegsnke.git`.
+2. `cd` into the FreeGSNKE directory.
+3. Install FreeGSNKE and its dependencies with `pip install .`.
 
 If you are planning to develop FreeGSNKE, see the below section on contributing
 code.
@@ -97,11 +103,7 @@ If the issue is a feature improvement request:
 To make code contributions, please do so via merge request.
 
 In place of the final step in [installation](#installation), run `pip install -e
-.` from the FreeGSNKE root directory to install FreeGSNKE in editable mode.
-
-Development dependencies are located in `requirements-dev.txt` and can be
-installed into the `freegsnke` conda environment with `python -m pip install -r
-requirements-dev.txt`.
+.[dev]` from the FreeGSNKE root directory to install FreeGSNKE in editable mode, including the optional development dependencies.
 
 Several tests are implemented with [pytest](https://docs.pytest.org/en), which
 are run as part of the GitLab CI/CD pipelines, but you can run these locally

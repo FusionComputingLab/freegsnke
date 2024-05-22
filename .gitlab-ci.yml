@@ -6,15 +6,39 @@ stages:
 
 .before_script_tests:
   before_script:
-    - export PIP_CACHE_DIR="/opt/cache/pip"
-    - mamba env create -f environment.yml
-    - source activate  
-    - conda activate freegsnke
-    - pip install git+https://${FREEGSFAST_CI_TOKEN}@github.com/farscape-project/freegsfast
-    - pip install -e .
-    - python -m pip install -r requirements-dev.txt
     - apt-get update
     - apt-get -y install build-essential
+
+    # Install SSH agent if not already installed
+    - 'command -v ssh-agent >/dev/null || ( apt-get update -y && apt-get install openssh-client -y )'
+
+    # Run ssh-agent (inside the build environment)
+    - eval $(ssh-agent -s)
+
+    # Give the right permissions, otherwise ssh-add will refuse to add files
+    # Add the SSH key stored in SSH_PRIVATE_KEY file type CI/CD variable to the agent store
+    - chmod 400 "$SSH_PRIVATE_KEY"
+    - ssh-add "$SSH_PRIVATE_KEY"
+    
+    # Create the SSH directory and give it the right permissions
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+
+    # Add GitHub to the known hosts
+    - ssh-keyscan -H github.com >> ~/.ssh/known_hosts
+
+    # Set the git username and email
+    - git config --global user.email "george.holt@stfc.ac.uk"
+    - git config --global user.name "George Holt"
+
+    # Install the conda environment
+    - export PIP_CACHE_DIR="/opt/cache/pip"
+    - source activate  
+    - conda create -n freegsnke python=3.10
+    - conda activate freegsnke
+
+    # Install the package
+    - pip install -e .[dev]
 
 Core tests:
   stage: test

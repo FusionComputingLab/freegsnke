@@ -129,4 +129,4 @@ as pre-commit hook).
 
 ## Reference
 
-A paper describing FreeGSNKE is currently in review.
+N. C. Amorisco, *et al*, "FreeGSNKE: A Python-based dynamic free-boundary toroidal plasma equilibrium solver", Physics of Plasmas **31** 042517 (2024) DOI: [10.1063/5.0188467](https://doi.org/10.1063/5.0188467)

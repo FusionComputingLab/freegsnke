@@ -9,6 +9,7 @@ authors = [
     {name = "Nicola Amorisco", email = "nicola.amorisco@stfc.ac.uk"},
     {name = "George Holt", email = "george.holt@stfc.ac.uk"},
     {name = "Adriano Agnello", email = "adriano.agnello@stfc.ac.uk"},
+    {name = "Matthijs Mars"}
 ]
 description = "Evolutive free boundary Grad-Shafranov solver for tokamak plasma equilibrium"
 readme = "README.md"

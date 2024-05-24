@@ -103,7 +103,7 @@ If the issue is a feature improvement request:
 To make code contributions, please do so via merge request.
 
 In place of the final step in [installation](#installation), run `pip install -e
-.[dev]` from the FreeGSNKE root directory to install FreeGSNKE in editable mode, including the optional development dependencies.
+".[dev]"` from the FreeGSNKE root directory to install FreeGSNKE in editable mode, including the optional development dependencies.
 
 Several tests are implemented with [pytest](https://docs.pytest.org/en), which
 are run as part of the GitLab CI/CD pipelines, but you can run these locally

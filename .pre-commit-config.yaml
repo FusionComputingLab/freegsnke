@@ -10,12 +10,3 @@ repos:
     hooks:
       - id: isort
         name: isort (python)
-
-  - repo: local
-    hooks:
-      - id: clear-jupyter-output
-        name: Clear jupyter notebooks outputs
-        language: system
-        entry: jupyter nbconvert --clear-output --inplace
-        files: \.ipynb$
-        stages: [commit]

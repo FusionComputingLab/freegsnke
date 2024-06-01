@@ -1,4 +1,4 @@
-name: freegsnke
+name: freegsnke_with_fast
 channels:
   - conda-forge
 dependencies:

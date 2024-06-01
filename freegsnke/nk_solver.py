@@ -1,5 +1,7 @@
 import numpy as np
 
+import matplotlib.pyplot as plt
+
 
 class nksolver:
     """Implementation of Newton Krylow algorithm for solving
@@ -71,6 +73,7 @@ class nksolver:
         F_function,
         args,
         step_size,
+        max_rel_step_size
     ):
         """Explores direction dx by calculating and storing residual F(x_0 + dx)
 
@@ -101,6 +104,16 @@ class nksolver:
         #     print('0 - R0', R0)
         # print('initial residual', R0)
         candidate_step = step_size * dx / np.linalg.norm(dx)
+        if max_rel_step_size:
+            del_step = np.amax(candidate_step) - np.amin(candidate_step)
+            del_x0 = np.amax(x0) - np.amin(x0)
+            if del_step/del_x0 > max_rel_step_size:
+                print('step resized!')
+                candidate_step *= np.abs(max_rel_step_size*del_x0/del_step)
+                plt.imshow(candidate_step.reshape(65,129))
+                plt.colorbar()
+                plt.title('resized step')
+                plt.show()
         candidate_x = x0 + candidate_step
         # print('candidate_step ', candidate_step)
         # if self.verbose:
@@ -169,6 +182,7 @@ class nksolver:
         clip,
         threshold,
         clip_hard,
+        max_rel_step_size=False
     ):
         """Performs the iteration of the NK solution method:
         1) explores direction dx
@@ -239,7 +253,7 @@ class nksolver:
         explore = 1
         while explore:
             this_step_size = adjusted_step_size * ((1 + self.n_it) ** scaling_with_n)
-            dx = self.Arnoldi_unit(x0, dx, R0, F_function, args, this_step_size)
+            dx = self.Arnoldi_unit(x0, dx, R0, F_function, args, this_step_size, max_rel_step_size=max_rel_step_size)
 
             not_collinear_check = 1 - np.any(
                 np.sum(

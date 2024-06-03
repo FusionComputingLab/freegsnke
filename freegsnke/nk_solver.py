@@ -110,16 +110,19 @@ class nksolver:
             if del_step/del_x0 > max_rel_step_size:
                 print('step resized!')
                 candidate_step *= np.abs(max_rel_step_size*del_x0/del_step)
-                plt.imshow(candidate_step.reshape(65,129))
-                plt.colorbar()
-                plt.title('resized step')
-                plt.show()
-        candidate_x = x0 + candidate_step
-        # print('candidate_step ', candidate_step)
-        # if self.verbose:
-        #     print('1 - R0', R0)
-        # R00 = 1.0*R0
-        R_dx = F_function(candidate_x, *args)
+                # plt.imshow(candidate_step.reshape(65,129))
+                # plt.colorbar()
+                # plt.title('resized step')
+                # plt.show()
+        res_calculated = False
+        while res_calculated is False:
+            try:
+                candidate_x = x0 + candidate_step
+                R_dx = F_function(candidate_x, *args)
+                res_calculated = True
+            except:
+                candidate_step *= .75
+
         # if self.verbose:
         #     print('2 - R0', R0)
         # print('2 - R00', R00)

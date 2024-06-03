@@ -387,22 +387,22 @@ class NKGSsolver:
                     clip=clip,
                     threshold=threshold,
                     clip_hard=clip_hard,
-                    max_rel_step_size=.1
+                    max_rel_step_size=.25
                 )
                 # print(self.nksolver.coeffs)
                 update = 1.0*self.nksolver.dx
                 # limit update size where necessary
                 del_update = np.amax(update) - np.amin(update)
-                if del_update/del_psi > 0.2:
+                if del_update/del_psi > 0.3:
                     print('trigger!')
-                    update *= np.abs(0.2*del_psi/del_update)
+                    update *= np.abs(0.3*del_psi/del_update)
                 print('NK iteration', iterations, self.nksolver.coeffs)
 
 
-            plt.imshow(update.reshape(65,129))
-            plt.colorbar()
-            plt.title('Update')
-            plt.show()
+            # plt.imshow(update.reshape(65,129))
+            # plt.colorbar()
+            # plt.title('Update')
+            # plt.show()
 
             new_residual_flag = True
             while new_residual_flag:
@@ -413,14 +413,14 @@ class NKGSsolver:
                     n_del_psi = np.amax(n_trial_plasma_psi) - np.amin(n_trial_plasma_psi)
                     new_rel_change = new_rel_change/n_del_psi
                     new_residual_flag = False
-                    plt.imshow(n_trial_plasma_psi.reshape(65,129))
-                    plt.colorbar()
-                    plt.title('n_trial_plasma_psi')
-                    plt.show()
-                    plt.imshow(new_res0.reshape(65,129))
-                    plt.colorbar()
-                    plt.title('new_residual')
-                    plt.show()
+                    # plt.imshow(n_trial_plasma_psi.reshape(65,129))
+                    # plt.colorbar()
+                    # plt.title('n_trial_plasma_psi')
+                    # plt.show()
+                    # plt.imshow(new_res0.reshape(65,129))
+                    # plt.colorbar()
+                    # plt.title('new_residual')
+                    # plt.show()
                 except:
                     update *= .75
 
@@ -432,10 +432,10 @@ class NKGSsolver:
             else:
                 print('Trigger update reduction, ', new_rel_change)
                 update *= .25
-                plt.imshow(update.reshape(65,129))
-                plt.colorbar()
-                plt.title('Update ')
-                plt.show()
+                # plt.imshow(update.reshape(65,129))
+                # plt.colorbar()
+                # plt.title('Update ')
+                # plt.show()
                 trial_plasma_psi += update
                 res0 = self.F_function(trial_plasma_psi, self.tokamak_psi, profiles)
                 rel_change = np.amax(res0) - np.amin(res0)

@@ -31,7 +31,7 @@ class Equilibrium(freegs.equilibrium.Equilibrium):
         # set up for limiter functionality
         self.limiter_handler = limiter_func.Limiter_handler(self, self.tokamak.limiter)
         self.mask_inside_limiter = self.limiter_handler.mask_inside_limiter
-        self.limiter_mask_out = self.limiter_handler.make_layer_mask(layer_size=1)
+        # self.limiter_mask_out = self.limiter_handler.make_layer_mask(layer_size=1)
 
     def psi_func(self, R, Z, *args, **kwargs):
         """Scipy interpolation of plasma function.

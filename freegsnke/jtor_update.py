@@ -779,7 +779,7 @@ class Lao85(freegs.jtor.Lao85):
                 None,
                 False,
             )
-        elif rel_psi_error < 0.02:
+        elif True: #rel_psi_error < 0.02:
             self.psi_bndry, self.limiter_core_mask, self.flag_limiter = (
                 self.limiter_handler.core_mask_limiter(
                     psi,

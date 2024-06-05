@@ -110,25 +110,33 @@ class nksolver:
             if del_step/del_x0 > max_rel_step_size:
                 print('step resized!')
                 candidate_step *= np.abs(max_rel_step_size*del_x0/del_step)
-                # plt.imshow(candidate_step.reshape(65,129))
-                # plt.colorbar()
-                # plt.title('resized step')
-                # plt.show()
+        # plt.imshow(candidate_step.reshape(65,129))
+        # plt.colorbar()
+        # plt.title('resized step')
+        # plt.show()
         res_calculated = False
         while res_calculated is False:
             try:
                 candidate_x = x0 + candidate_step
                 R_dx = F_function(candidate_x, *args)
                 res_calculated = True
+
             except:
                 candidate_step *= .75
-
+                print('candidate_step', np.linalg.norm(candidate_step))
+        # plt.imshow(args[1].jtor)
+        # plt.colorbar()
+        # plt.title('jtor')
+        # plt.show()
         # if self.verbose:
         #     print('2 - R0', R0)
         # print('2 - R00', R00)
         useful_residual = R_dx - R0
         # print('useful_residual ', R_dx)
-
+        # plt.imshow(useful_residual.reshape(65,129))
+        # plt.colorbar()
+        # plt.title('useful_residual')
+        # plt.show()
         # self.last_candidate_step = 1.0*candidate_step
         # self.last_useful_residual = 1.0*useful_residual
         # print('candidate_x ', candidate_x)
@@ -291,5 +299,6 @@ class nksolver:
                 self.n_it_tot < max_Arnoldi_iterations
             )
             explore *= self.n_it < max_n_directions
+            print('relative_unexplained_residual', self.relative_unexplained_residual)
 
             # print('dx, ', np.linalg.norm(self.dx))

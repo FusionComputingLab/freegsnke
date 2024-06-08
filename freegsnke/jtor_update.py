@@ -35,7 +35,7 @@ def Jtor_fast(Jtor_part1, Jtor_part2, core_mask_limiter, R, Z, psi, psi_bndry, m
 
     """
 
-    opt, xpt, diverted_core_mask = Jtor_part1(R, Z, psi, psi_bndry, mask_outside_limiter)
+    opt, xpt, diverted_core_mask, psi_bndry = Jtor_part1(R, Z, psi, psi_bndry, mask_outside_limiter)
 
     if diverted_core_mask is None:
             # print('no xpt')
@@ -53,7 +53,6 @@ def Jtor_fast(Jtor_part1, Jtor_part2, core_mask_limiter, R, Z, psi, psi_bndry, m
                 limiter_mask_out,
             )
         )
-        
         
     jtor = Jtor_part2(
         R, Z, psi, opt[0][2], psi_bndry, limiter_core_mask

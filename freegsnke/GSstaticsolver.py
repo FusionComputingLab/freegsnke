@@ -103,7 +103,7 @@ class NKGSsolver:
         # RHS/Jtor
         self.rhs_before_jtor = -freegs.gradshafranov.mu0 * eq.R
 
-    def freeboundary(self, plasma_psi, tokamak_psi, profiles, rel_psi_error):
+    def freeboundary(self, plasma_psi, tokamak_psi, profiles):#, rel_psi_error):
         """Imposes boundary conditions on set of boundary points.
 
         Parameters
@@ -126,7 +126,7 @@ class NKGSsolver:
             self.R,
             self.Z,
             (tokamak_psi + plasma_psi).reshape(self.nx, self.ny),
-            rel_psi_error=rel_psi_error,
+            # rel_psi_error=rel_psi_error,
         )
         self.rhs = self.rhs_before_jtor * self.jtor
 
@@ -146,7 +146,7 @@ class NKGSsolver:
         self.rhs[-1, 1 : self.ny - 1] = self.psi_boundary[-1, 1 : self.ny - 1]
         self.rhs[:, -1] = self.psi_boundary[:, -1]
 
-    def F_function(self, plasma_psi, tokamak_psi, profiles, rel_psi_error=0):
+    def F_function(self, plasma_psi, tokamak_psi, profiles):#, rel_psi_error=0):
         """Nonlinear Grad Shafranov equation written as a root problem
         F(plasma_psi) \equiv [\delta* - J](plasma_psi)
         The plasma_psi that solves the Grad Shafranov problem satisfies
@@ -170,7 +170,7 @@ class NKGSsolver:
             residual of the GS equation
         """
 
-        self.freeboundary(plasma_psi, tokamak_psi, profiles, rel_psi_error)
+        self.freeboundary(plasma_psi, tokamak_psi, profiles)#, rel_psi_error)
         residual = plasma_psi - (
             self.linear_GS_solver(self.psi_boundary, self.rhs)
         ).reshape(-1)
@@ -186,6 +186,8 @@ class NKGSsolver:
         profiles : freeGS profile object
             Profiles object which has been used to calculate Jtor.
         """
+        eq.solved = True
+
         eq.xpt = np.copy(profiles.xpt)
         eq.opt = np.copy(profiles.opt)
         eq.psi_axis = eq.opt[0, 2]
@@ -278,25 +280,26 @@ class NKGSsolver:
         trial_plasma_psi = np.copy(eq.plasma_psi).reshape(-1)
         self.tokamak_psi = (eq.tokamak.calcPsiFromGreens(pgreen=eq._pgreen)).reshape(-1)
 
+        log = []
 
         control_trial_psi = False
-        n_up = 0
+        n_up = 0. + 4*eq.solved
         # this tries to cure cases where plasma_psi is not large enough in modulus
         # causing no core mask exists
         while (control_trial_psi is False) and (n_up < 5):
             try:
                 res0 = self.F_function(trial_plasma_psi, self.tokamak_psi, profiles)
                 control_trial_psi = True
-                print('first residual found', res0, np.amax(np.abs(res0)))
+                log.append('first residual found '+str(np.amax(np.abs(res0))))
             except:
                 trial_plasma_psi /= .85
                 n_up += 1
-                print('/.85')
+                log.append('residual failed, try /.85')
         # this is in case the above did not work
         # then use standard initialization
         # and grow peak until core mask exists
         if control_trial_psi is False:
-            print('default invoked')
+            log.append('Default plasma_psi initialization and adjustment invoked')
             trial_plasma_psi = eq.create_psi_plasma_default()
             eq.adjust_psi_plasma()
             trial_plasma_psi = np.copy(eq.plasma_psi).reshape(-1)
@@ -344,7 +347,7 @@ class NKGSsolver:
 
         
 
-        print('del_psi', del_psi)
+        log.append('del_psi '+str(del_psi))
         
         self.jtor_at_start = profiles.jtor.copy()
 
@@ -355,34 +358,41 @@ class NKGSsolver:
         rel_change = ares0/del_psi
         self.relative_change = 1.0*rel_change
 
-        args = [self.tokamak_psi, profiles, rel_change]
+        args = [self.tokamak_psi, profiles]#, rel_change]
 
         starting_direction = np.copy(res0)
 
+        if verbose:
+            for x in log:
+                print(x)
+
+        log = []
         iterations = 0
         while (rel_change > target_relative_tolerance) * (
             iterations < max_solving_iterations
         ):
 
-            plt.imshow(res0.reshape(65,129))
-            plt.colorbar()
-            plt.title('residual')
-            plt.show()
-            plt.imshow(trial_plasma_psi.reshape(65,129))
-            plt.colorbar()
-            plt.title('trial_psi')
-            plt.show()
+            # plt.imshow(res0.reshape(65,129))
+            # plt.colorbar()
+            # plt.title('residual')
+            # plt.show()
+            # plt.imshow(trial_plasma_psi.reshape(65,129))
+            # plt.colorbar()
+            # plt.title('trial_psi')
+            # plt.show()
 
             if rel_change > Picard_handover or forcing_Picard:
+                log.append('Picard iteration'+str(iterations))
                 # using Picard instead of NK
                 update = -1.0*res0
                 # trial_plasma_psi -= res0
                 picard_flag = True
                 forcing_Picard = False
-                print('Picard iteration', iterations)
+                
 
 
             else:
+                log.append('NK iteration '+str(iterations))
                 picard_flag = False
                 self.nksolver.Arnoldi_iteration(
                     x0=trial_plasma_psi,  # trial_current expansion point
@@ -406,9 +416,9 @@ class NKGSsolver:
                 # limit update size where necessary
                 del_update = np.amax(update) - np.amin(update)
                 if del_update/del_psi > max_rel_update_size:
-                    print('trigger!')
+                    log.append('update > max_rel_update_size. Reduced.')
                     update *= np.abs(max_rel_update_size*del_psi/del_update)
-                print('NK iteration', iterations, self.nksolver.coeffs)
+                
 
 
             # plt.imshow(update.reshape(65,129))
@@ -434,7 +444,7 @@ class NKGSsolver:
                     # plt.title('new_residual')
                     # plt.show()
                 except:
-                    print('Trigger update reduction due to failure, *.75')
+                    log.uppend('Trigger update reduction due to failure to find an Xpoint, try *.75')
                     update *= .75
 
             if new_rel_change < 1.5*self.relative_change:
@@ -442,22 +452,23 @@ class NKGSsolver:
                 residual_collinearity = np.sum(res0*new_res0)/(np.linalg.norm(res0)*np.linalg.norm(new_res0))
                 res0 = 1.0*new_res0
                 if (residual_collinearity > .95) and (picard_flag is False):
-                    print('residual_collinearity', residual_collinearity)
+                    log.append('New starting_direction used due to collinear residuals')
+                    # print('residual_collinearity', residual_collinearity)
                     # forcing_Picard = True
                     starting_direction = np.sin(np.linspace(0,2*np.pi,65)*1.5*np.random.random())[:,np.newaxis]
                     starting_direction = starting_direction*np.sin(np.linspace(0,2*np.pi,129)*1.5*np.random.random())[np.newaxis,:]
                     starting_direction = starting_direction.reshape(-1)
                     starting_direction *= trial_plasma_psi
-                    plt.imshow(starting_direction.reshape(65,129))
-                    plt.colorbar()
-                    plt.title('new starting_direction')
-                    plt.show()
+                    # plt.imshow(starting_direction.reshape(65,129))
+                    # plt.colorbar()
+                    # plt.title('new starting_direction used!')
+                    # plt.show()
                 else:
                     starting_direction = np.copy(res0)
                 rel_change = 1.0*new_rel_change
                 del_psi = 1.0*n_del_psi
             else:
-                print('Trigger update reduction, ', new_rel_change)
+                log.append('Substantial increase in residual, update reduction triggered.')
                 update *= .25
                 # plt.imshow(update.reshape(65,129))
                 # plt.colorbar()
@@ -470,22 +481,29 @@ class NKGSsolver:
                 rel_change /= np.amax(trial_plasma_psi) - np.amin(trial_plasma_psi)
             
             self.relative_change = 1.0 * rel_change
-            args[2] = 1.0*rel_change
-            print('rel_change', rel_change)
+            # args[2] = 1.0*rel_change
+            log.append('rel_change '+str(rel_change))
+
+            if verbose:
+                for x in log:
+                    print(x)
+
+            log = []
 
             iterations += 1
+
 
         # update eq with new solution
         eq.plasma_psi = trial_plasma_psi.reshape(self.nx, self.ny).copy()
 
-        plt.imshow(res0.reshape(65,129))
-        plt.colorbar()
-        plt.title('residual')
-        plt.show()
-        plt.imshow(trial_plasma_psi.reshape(65,129))
-        plt.colorbar()
-        plt.title('trial_psi')
-        plt.show()
+        # plt.imshow(res0.reshape(65,129))
+        # plt.colorbar()
+        # plt.title('residual')
+        # plt.show()
+        # plt.imshow(trial_plasma_psi.reshape(65,129))
+        # plt.colorbar()
+        # plt.title('trial_psi')
+        # plt.show()
 
         self.port_critical(eq=eq, profiles=profiles)
 

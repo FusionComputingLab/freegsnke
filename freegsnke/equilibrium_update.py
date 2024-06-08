@@ -30,10 +30,12 @@ class Equilibrium(freegs.equilibrium.Equilibrium):
         self.Rnxh = self.R[self.nxh, 0]
         self.Znyh = self.Z[0, self.nyh]
 
+        self.solved = False
+
         # set up for limiter functionality
         self.limiter_handler = limiter_func.Limiter_handler(self, self.tokamak.limiter)
         self.mask_inside_limiter = self.limiter_handler.mask_inside_limiter
-        # self.limiter_mask_out = self.limiter_handler.make_layer_mask(layer_size=1)
+        self.mask_outside_limiter = 2*np.logical_not(self.mask_inside_limiter).astype(float)
 
     def adjust_psi_plasma(self, ):
         """Scales the psi_plasma initialization so to ensure a viable O-point
@@ -109,13 +111,6 @@ class Equilibrium(freegs.equilibrium.Equilibrium):
 
         else:
             return
-
-
-
-            
-            
-
-
 
 
 

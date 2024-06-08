@@ -108,7 +108,7 @@ class nksolver:
             del_step = np.amax(candidate_step) - np.amin(candidate_step)
             del_x0 = np.amax(x0) - np.amin(x0)
             if del_step/del_x0 > max_rel_step_size:
-                print('step resized!')
+                # print('step resized!')
                 candidate_step *= np.abs(max_rel_step_size*del_x0/del_step)
         # plt.imshow(candidate_step.reshape(65,129))
         # plt.colorbar()
@@ -123,7 +123,7 @@ class nksolver:
 
             except:
                 candidate_step *= .75
-                print('candidate_step', np.linalg.norm(candidate_step))
+                # print('candidate_step', np.linalg.norm(candidate_step))
         # plt.imshow(args[1].jtor)
         # plt.colorbar()
         # plt.title('jtor')
@@ -299,6 +299,6 @@ class nksolver:
                 self.n_it_tot < max_Arnoldi_iterations
             )
             explore *= self.n_it < max_n_directions
-            print('relative_unexplained_residual', self.relative_unexplained_residual)
+            # print('relative_unexplained_residual', self.relative_unexplained_residual)
 
             # print('dx, ', np.linalg.norm(self.dx))

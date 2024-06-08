@@ -6,63 +6,71 @@ from freegs.gradshafranov import mu0
 from . import switch_profile as swp
 from . import limiter_func
 
+class Jtor_universal:
 
-def Jtor_fast(Jtor_part1, Jtor_part2, core_mask_limiter, R, Z, psi, psi_bndry, mask_outside_limiter, limiter_mask_out):
-    """Universal function that calculates the plasma current distribution
-    over the different types of profile parametrizations.
+    def Jtor_build(self, Jtor_part1, Jtor_part2, core_mask_limiter, R, Z, psi, psi_bndry, mask_outside_limiter, limiter_mask_out):
+        """Universal function that calculates the plasma current distribution
+        over the different types of profile parametrizations.
 
-    Parameters
-    ----------
-    Jtor_part1 : method
-        method from the freegsfast Profile class
-        returns opt, xpt, diverted_core_mask
-    Jtor_part2 : method
-        method from each individual profile class
-        returns jtor itself
-    core_mask_limiter : method
-        method of the limiter_handles class
-        returns the refined core_mask where jtor>0 accounting for the limiter
-     R : np.ndarray
-            R coordinates of the grid points
-    Z : np.ndarray
-        Z coordinates of the grid points
-    psi : np.ndarray
-        Poloidal field flux / 2*pi at each grid points (as returned by FreeGS.Equilibrium.psi())
-    psi_bndry : float, optional
-        Value of the poloidal field flux at the boundary of the plasma (last closed flux surface), by default None
-    mask_outside_limiter : np.ndarray
-        Mask of points outside the limiter, if any, optional
+        Parameters
+        ----------
+        Jtor_part1 : method
+            method from the freegsfast Profile class
+            returns opt, xpt, diverted_core_mask
+        Jtor_part2 : method
+            method from each individual profile class
+            returns jtor itself
+        core_mask_limiter : method
+            method of the limiter_handles class
+            returns the refined core_mask where jtor>0 accounting for the limiter
+        R : np.ndarray
+                R coordinates of the grid points
+        Z : np.ndarray
+            Z coordinates of the grid points
+        psi : np.ndarray
+            Poloidal field flux / 2*pi at each grid points (as returned by FreeGS.Equilibrium.psi())
+        psi_bndry : float, optional
+            Value of the poloidal field flux at the boundary of the plasma (last closed flux surface), by default None
+        mask_outside_limiter : np.ndarray
+            Mask of points outside the limiter, if any, optional
 
-    """
+        """
 
-    opt, xpt, diverted_core_mask, psi_bndry = Jtor_part1(R, Z, psi, psi_bndry, mask_outside_limiter)
+        opt, xpt, diverted_core_mask, psi_bndry = Jtor_part1(R, Z, psi, psi_bndry, mask_outside_limiter)
 
-    if diverted_core_mask is None:
-            # print('no xpt')
+        if diverted_core_mask is None:
+                # print('no xpt')
+                psi_bndry, limiter_core_mask, flag_limiter = (
+                    psi_bndry,
+                    None,
+                    False,
+                )
+        else:
             psi_bndry, limiter_core_mask, flag_limiter = (
-                psi_bndry,
-                None,
-                False,
+                core_mask_limiter(
+                    psi,
+                    psi_bndry,
+                    diverted_core_mask,
+                    limiter_mask_out,
+                )
             )
-    else:
-        psi_bndry, limiter_core_mask, flag_limiter = (
-            core_mask_limiter(
-                psi,
-                psi_bndry,
-                diverted_core_mask,
-                limiter_mask_out,
-            )
+            
+        jtor = Jtor_part2(
+            R, Z, psi, opt[0][2], psi_bndry, limiter_core_mask
         )
-        
-    jtor = Jtor_part2(
-        R, Z, psi, opt[0][2], psi_bndry, limiter_core_mask
-    )
-    return jtor, opt, xpt, psi_bndry, diverted_core_mask, limiter_core_mask, flag_limiter
+        return jtor, opt, xpt, psi_bndry, diverted_core_mask, limiter_core_mask, flag_limiter
 
-    
+    def Jtor(self, R, Z, psi, psi_bndry=None):
+        self.jtor, self.opt, self.xpt, self.psi_bndry, self.diverted_core_mask, self.limiter_core_mask, self.flag_limiter = self.Jtor_build(self.Jtor_part1, 
+                         self.Jtor_part2, 
+                         self.limiter_handler.core_mask_limiter, 
+                         R, Z, psi, psi_bndry, 
+                         self.mask_outside_limiter, 
+                         self.limiter_mask_out)
+        return self.jtor
 
 
-class ConstrainBetapIp(freegs.jtor.ConstrainBetapIp):
+class ConstrainBetapIp(freegs.jtor.ConstrainBetapIp, Jtor_universal):
     """FreeGS profile class with a few modifications, to:
     - retain memory of critical point calculation;
     - deal with limiter plasma configurations
@@ -111,48 +119,48 @@ class ConstrainBetapIp(freegs.jtor.ConstrainBetapIp):
         self.alpha_m = alpha_m
         self.alpha_n = alpha_n
 
-    def _Jtor(self, R, Z, psi, psi_bndry=None, rel_psi_error=0):
-        """Replaces the original FreeGS Jtor method if FreeGSfast is not available."""
-        self.jtor = super().Jtor(R, Z, psi, psi_bndry)
-        self.opt, self.xpt = critical.find_critical(R, Z, psi)
+    # def _Jtor(self, R, Z, psi, psi_bndry=None, rel_psi_error=0):
+    #     """Replaces the original FreeGS Jtor method if FreeGSfast is not available."""
+    #     self.jtor = super().Jtor(R, Z, psi, psi_bndry)
+    #     self.opt, self.xpt = critical.find_critical(R, Z, psi)
 
-        self.diverted_core_mask = self.jtor > 0
-        self.psi_bndry, mask, self.limiter_flag = (
-            self.limiter_handler.core_mask_limiter(
-                psi,
-                self.xpt[0][2],
-                self.diverted_core_mask,
-                self.limiter_mask_out,
-            )
-        )
-        self.jtor = super().Jtor(R, Z, psi, self.psi_bndry)
-        return self.jtor
+    #     self.diverted_core_mask = self.jtor > 0
+    #     self.psi_bndry, mask, self.limiter_flag = (
+    #         self.limiter_handler.core_mask_limiter(
+    #             psi,
+    #             self.xpt[0][2],
+    #             self.diverted_core_mask,
+    #             self.limiter_mask_out,
+    #         )
+    #     )
+    #     self.jtor = super().Jtor(R, Z, psi, self.psi_bndry)
+    #     return self.jtor
 
-    def Jtor_fast(self, R, Z, psi, psi_bndry=None, rel_psi_error=0):
-        """Used when FreeGSfast is available."""
-        self.diverted_core_mask = super().Jtor_part1(R, Z, psi, psi_bndry)
-        if self.diverted_core_mask is None:
-            # print('no xpt')
-            self.psi_bndry, self.limiter_core_mask, self.flag_limiter = (
-                psi_bndry,
-                None,
-                False,
-            )
-        elif rel_psi_error < 0.02:
-            self.psi_bndry, self.limiter_core_mask, self.flag_limiter = (
-                self.limiter_handler.core_mask_limiter(
-                    psi,
-                    self.psi_bndry,
-                    self.diverted_core_mask,
-                    self.limiter_mask_out,
-                )
-            )
-        else:
-            self.limiter_core_mask = self.diverted_core_mask.copy()
-        self.jtor = super().Jtor_part2(
-            R, Z, psi, self.psi_bndry, self.limiter_core_mask
-        )
-        return self.jtor
+    # def Jtor_fast(self, R, Z, psi, psi_bndry=None, rel_psi_error=0):
+    #     """Used when FreeGSfast is available."""
+    #     self.diverted_core_mask = super().Jtor_part1(R, Z, psi, psi_bndry)
+    #     if self.diverted_core_mask is None:
+    #         # print('no xpt')
+    #         self.psi_bndry, self.limiter_core_mask, self.flag_limiter = (
+    #             psi_bndry,
+    #             None,
+    #             False,
+    #         )
+    #     elif rel_psi_error < 0.02:
+    #         self.psi_bndry, self.limiter_core_mask, self.flag_limiter = (
+    #             self.limiter_handler.core_mask_limiter(
+    #                 psi,
+    #                 self.psi_bndry,
+    #                 self.diverted_core_mask,
+    #                 self.limiter_mask_out,
+    #             )
+    #         )
+    #     else:
+    #         self.limiter_core_mask = self.diverted_core_mask.copy()
+    #     self.jtor = super().Jtor_part2(
+    #         R, Z, psi, self.psi_bndry, self.limiter_core_mask
+    #     )
+    #     return self.jtor
 
     def Lao_parameters(
         self, n_alpha, n_beta, alpha_logic=True, beta_logic=True, Ip_logic=True, nn=100
@@ -182,7 +190,7 @@ class ConstrainBetapIp(freegs.jtor.ConstrainBetapIp):
         return alpha, beta
 
 
-class ConstrainPaxisIp(freegs.jtor.ConstrainPaxisIp):
+class ConstrainPaxisIp(freegs.jtor.ConstrainPaxisIp, Jtor_universal):
     """FreeGS profile class with a few modifications, to:
     - retain memory of critical point calculation;
     - deal with limiter plasma configurations
@@ -217,10 +225,10 @@ class ConstrainPaxisIp(freegs.jtor.ConstrainPaxisIp):
             ) > 0
         self.mask_outside_limiter = (2*self.mask_outside_limiter).astype(float)
 
-        if not hasattr(self, "fast"):
-            self.Jtor = self._Jtor
-        else:
-            self.Jtor = self.Jtor_fast
+        # if not hasattr(self, "fast"):
+        #     self.Jtor = self._Jtor
+        # else:
+        #     self.Jtor = self.Jtor_fast
 
     def get_pars(
         self,
@@ -238,72 +246,72 @@ class ConstrainPaxisIp(freegs.jtor.ConstrainPaxisIp):
         self.alpha_m = alpha_m
         self.alpha_n = alpha_n
 
-    def _Jtor(self, R, Z, psi, psi_bndry=None, rel_psi_error=0):
-        """Replaces the original FreeGS Jtor method if FreeGSfast is not available."""
-        self.jtor = super().Jtor(R, Z, psi, psi_bndry)
-        self.opt, self.xpt = critical.find_critical(R, Z, psi)
+    # def _Jtor(self, R, Z, psi, psi_bndry=None, rel_psi_error=0):
+    #     """Replaces the original FreeGS Jtor method if FreeGSfast is not available."""
+    #     self.jtor = super().Jtor(R, Z, psi, psi_bndry)
+    #     self.opt, self.xpt = critical.find_critical(R, Z, psi)
 
-        self.diverted_core_mask = self.jtor > 0
-        self.psi_bndry, mask, self.limiter_flag = (
-            self.limiter_handler.core_mask_limiter(
-                psi,
-                self.xpt[0][2],
-                self.diverted_core_mask,
-                self.limiter_mask_out,
-            )
-        )
-        self.jtor = super().Jtor(R, Z, psi, self.psi_bndry)
-        return self.jtor
+    #     self.diverted_core_mask = self.jtor > 0
+    #     self.psi_bndry, mask, self.limiter_flag = (
+    #         self.limiter_handler.core_mask_limiter(
+    #             psi,
+    #             self.xpt[0][2],
+    #             self.diverted_core_mask,
+    #             self.limiter_mask_out,
+    #         )
+    #     )
+    #     self.jtor = super().Jtor(R, Z, psi, self.psi_bndry)
+    #     return self.jtor
 
-    def Jtor_fast(self, R, Z, psi, psi_bndry=None, rel_psi_error=0):
-        """Used when FreeGSfast is available."""
+    # def Jtor_fast(self, R, Z, psi, psi_bndry=None, rel_psi_error=0):
+    #     """Used when FreeGSfast is available."""
 
-        opt, xpt = super().Jtor_part1(R, Z, psi, psi_bndry)
+    #     opt, xpt = super().Jtor_part1(R, Z, psi, psi_bndry)
 
-        if psi_bndry is not None:
-            self.diverted_core_mask = critical.inside_mask(R, Z, psi, opt, xpt, self.mask_outside_limiter, psi_bndry)
-        elif xpt:
-            psi_bndry = xpt[0][2]
-            self.diverted_core_mask = critical.inside_mask(R, Z, psi, opt, xpt, self.mask_outside_limiter, psi_bndry)
-        else:
-            # No X-points
-            psi_bndry = psi[0, 0]
-            self.diverted_core_mask = None
+    #     if psi_bndry is not None:
+    #         self.diverted_core_mask = critical.inside_mask(R, Z, psi, opt, xpt, self.mask_outside_limiter, psi_bndry)
+    #     elif xpt:
+    #         psi_bndry = xpt[0][2]
+    #         self.diverted_core_mask = critical.inside_mask(R, Z, psi, opt, xpt, self.mask_outside_limiter, psi_bndry)
+    #     else:
+    #         # No X-points
+    #         psi_bndry = psi[0, 0]
+    #         self.diverted_core_mask = None
 
-        psi_axis = opt[0][2]
-        # # check correct sorting between psi_axis and psi_bndry
-        if (psi_axis-psi_bndry)*self.Ip < 0:
-            raise ValueError("Incorrect critical points! Likely due to not suitable psi_plasma")
+    #     psi_axis = opt[0][2]
+    #     # # check correct sorting between psi_axis and psi_bndry
+    #     if (psi_axis-psi_bndry)*self.Ip < 0:
+    #         raise ValueError("Incorrect critical points! Likely due to not suitable psi_plasma")
 
-        # added with respect to original Jtor
-        self.xpt = xpt
-        self.opt = opt
-        self.psi_bndry = psi_bndry
-        self.psi_axis = psi_axis
+    #     # added with respect to original Jtor
+    #     self.xpt = xpt
+    #     self.opt = opt
+    #     self.psi_bndry = psi_bndry
+    #     self.psi_axis = psi_axis
 
-        if self.diverted_core_mask is None:
-            # print('no xpt')
-            self.psi_bndry, self.limiter_core_mask, self.flag_limiter = (
-                psi_bndry,
-                None,
-                False,
-            )
-        elif rel_psi_error < 0.02:
-            self.psi_bndry, self.limiter_core_mask, self.flag_limiter = (
-                self.limiter_handler.core_mask_limiter(
-                    psi,
-                    self.psi_bndry,
-                    self.diverted_core_mask,
-                    self.limiter_mask_out,
-                )
-            )
-        else:
-            self.limiter_core_mask = self.diverted_core_mask.copy()
+    #     if self.diverted_core_mask is None:
+    #         # print('no xpt')
+    #         self.psi_bndry, self.limiter_core_mask, self.flag_limiter = (
+    #             psi_bndry,
+    #             None,
+    #             False,
+    #         )
+    #     elif rel_psi_error < 0.02:
+    #         self.psi_bndry, self.limiter_core_mask, self.flag_limiter = (
+    #             self.limiter_handler.core_mask_limiter(
+    #                 psi,
+    #                 self.psi_bndry,
+    #                 self.diverted_core_mask,
+    #                 self.limiter_mask_out,
+    #             )
+    #         )
+    #     else:
+    #         self.limiter_core_mask = self.diverted_core_mask.copy()
 
-        self.jtor = super().Jtor_part2(
-            R, Z, psi, self.psi_bndry, self.limiter_core_mask
-        )
-        return self.jtor
+    #     self.jtor = super().Jtor_part2(
+    #         R, Z, psi, self.psi_bndry, self.limiter_core_mask
+    #     )
+    #     return self.jtor
 
     def Lao_parameters(
         self, n_alpha, n_beta, alpha_logic=True, beta_logic=True, Ip_logic=True, nn=100
@@ -333,7 +341,7 @@ class ConstrainPaxisIp(freegs.jtor.ConstrainPaxisIp):
         return alpha, beta
 
 
-class Fiesta_Topeol(freegs.jtor.Fiesta_Topeol):
+class Fiesta_Topeol(freegs.jtor.Fiesta_Topeol, Jtor_universal):
     """FreeGS profile class with a few modifications, to:
     - retain memory of critical point calculation;
     - deal with limiter plasma configurations
@@ -368,10 +376,10 @@ class Fiesta_Topeol(freegs.jtor.Fiesta_Topeol):
             ) > 0
         self.mask_outside_limiter = (2*self.mask_outside_limiter).astype(float)
 
-        if not hasattr(self, "fast"):
-            self.Jtor = self._Jtor
-        else:
-            self.Jtor = self.Jtor_fast
+        # if not hasattr(self, "fast"):
+        #     self.Jtor = self._Jtor
+        # else:
+        #     self.Jtor = self.Jtor_fast
 
     def assign_profile_parameter(self, Beta0):
         """Assigns to the profile object a new value of the profile parameter paxis"""
@@ -383,71 +391,71 @@ class Fiesta_Topeol(freegs.jtor.Fiesta_Topeol):
         self.alpha_m = alpha_m
         self.alpha_n = alpha_n
 
-    def _Jtor(self, R, Z, psi, psi_bndry=None, rel_psi_error=0):
-        """Replaces the original FreeGS Jtor method if FreeGSfast is not available."""
-        self.jtor = super().Jtor(R, Z, psi, psi_bndry)
-        self.opt, self.xpt = critical.find_critical(R, Z, psi)
+    # def _Jtor(self, R, Z, psi, psi_bndry=None, rel_psi_error=0):
+    #     """Replaces the original FreeGS Jtor method if FreeGSfast is not available."""
+    #     self.jtor = super().Jtor(R, Z, psi, psi_bndry)
+    #     self.opt, self.xpt = critical.find_critical(R, Z, psi)
 
-        self.diverted_core_mask = self.jtor > 0
-        self.psi_bndry, mask, self.limiter_flag = (
-            self.limiter_handler.core_mask_limiter(
-                psi,
-                self.xpt[0][2],
-                self.diverted_core_mask,
-                self.limiter_mask_out,
-            )
-        )
-        self.jtor = super().Jtor(R, Z, psi, self.psi_bndry)
-        return self.jtor
+    #     self.diverted_core_mask = self.jtor > 0
+    #     self.psi_bndry, mask, self.limiter_flag = (
+    #         self.limiter_handler.core_mask_limiter(
+    #             psi,
+    #             self.xpt[0][2],
+    #             self.diverted_core_mask,
+    #             self.limiter_mask_out,
+    #         )
+    #     )
+    #     self.jtor = super().Jtor(R, Z, psi, self.psi_bndry)
+    #     return self.jtor
 
-    def Jtor_fast(self, R, Z, psi, psi_bndry=None, rel_psi_error=0):
-        """Used when FreeGSfast is available."""
-        opt, xpt = super().Jtor_part1(R, Z, psi, psi_bndry)
+    # def Jtor_fast(self, R, Z, psi, psi_bndry=None, rel_psi_error=0):
+    #     """Used when FreeGSfast is available."""
+    #     opt, xpt = super().Jtor_part1(R, Z, psi, psi_bndry)
 
-        if psi_bndry is not None:
-            self.diverted_core_mask = critical.inside_mask(R, Z, psi, opt, xpt, self.mask_outside_limiter, psi_bndry)
-        elif xpt:
-            psi_bndry = xpt[0][2]
-            self.diverted_core_mask = critical.inside_mask(R, Z, psi, opt, xpt, self.mask_outside_limiter, psi_bndry)
-        else:
-            # No X-points
-            psi_bndry = psi[0, 0]
-            self.diverted_core_mask = None
+    #     if psi_bndry is not None:
+    #         self.diverted_core_mask = critical.inside_mask(R, Z, psi, opt, xpt, self.mask_outside_limiter, psi_bndry)
+    #     elif xpt:
+    #         psi_bndry = xpt[0][2]
+    #         self.diverted_core_mask = critical.inside_mask(R, Z, psi, opt, xpt, self.mask_outside_limiter, psi_bndry)
+    #     else:
+    #         # No X-points
+    #         psi_bndry = psi[0, 0]
+    #         self.diverted_core_mask = None
 
-        psi_axis = opt[0][2]
-        # # check correct sorting between psi_axis and psi_bndry
-        if (psi_axis-psi_bndry)*self.Ip < 0:
-            raise ValueError("Incorrect critical points! Likely due to not suitable psi_plasma")
+    #     psi_axis = opt[0][2]
+    #     # # check correct sorting between psi_axis and psi_bndry
+    #     if (psi_axis-psi_bndry)*self.Ip < 0:
+    #         raise ValueError("Incorrect critical points! Likely due to not suitable psi_plasma")
 
-        # added with respect to original Jtor
-        self.xpt = xpt
-        self.opt = opt
-        self.psi_bndry = psi_bndry
-        self.psi_axis = psi_axis
+    #     # added with respect to original Jtor
+    #     self.xpt = xpt
+    #     self.opt = opt
+    #     self.psi_bndry = psi_bndry
+    #     self.psi_axis = psi_axis
 
-        if self.diverted_core_mask is None:
-            # print('no xpt')
-            self.psi_bndry, self.limiter_core_mask, self.flag_limiter = (
-                psi_bndry,
-                None,
-                False,
-            )
-        elif rel_psi_error < 0.02:
-            self.psi_bndry, self.limiter_core_mask, self.flag_limiter = (
-                self.limiter_handler.core_mask_limiter(
-                    psi,
-                    self.psi_bndry,
-                    self.diverted_core_mask,
-                    self.limiter_mask_out,
-                )
-            )
-        else:
-            self.limiter_core_mask = self.diverted_core_mask.copy()
+    #     if self.diverted_core_mask is None:
+    #         # print('no xpt')
+    #         self.psi_bndry, self.limiter_core_mask, self.flag_limiter = (
+    #             psi_bndry,
+    #             None,
+    #             False,
+    #         )
+    #     elif rel_psi_error < 0.02:
+    #         self.psi_bndry, self.limiter_core_mask, self.flag_limiter = (
+    #             self.limiter_handler.core_mask_limiter(
+    #                 psi,
+    #                 self.psi_bndry,
+    #                 self.diverted_core_mask,
+    #                 self.limiter_mask_out,
+    #             )
+    #         )
+    #     else:
+    #         self.limiter_core_mask = self.diverted_core_mask.copy()
 
-        self.jtor = super().Jtor_part2(
-            R, Z, psi, self.psi_bndry, self.limiter_core_mask
-        )
-        return self.jtor
+    #     self.jtor = super().Jtor_part2(
+    #         R, Z, psi, self.psi_bndry, self.limiter_core_mask
+    #     )
+    #     return self.jtor
 
     def Lao_parameters(
         self, n_alpha, n_beta, alpha_logic=True, beta_logic=True, Ip_logic=True, nn=100
@@ -477,7 +485,7 @@ class Fiesta_Topeol(freegs.jtor.Fiesta_Topeol):
         return alpha, beta
 
 
-class Lao85(freegs.jtor.Lao85):
+class Lao85(freegs.jtor.Lao85, Jtor_universal):
     """FreeGS profile class with a few modifications, to:
     - retain memory of critical point calculation;
     - deal with limiter plasma configurations
@@ -523,81 +531,81 @@ class Lao85(freegs.jtor.Lao85):
         self.beta = beta
         self.profile_parameter = [alpha, beta]
 
-    def _Jtor(self, R, Z, psi, psi_bndry=None, rel_psi_error=0):
-        """Replaces the original FreeGS Jtor method if FreeGSfast is not available."""
-        self.jtor = super().Jtor(R, Z, psi, psi_bndry)
-        self.opt, self.xpt = critical.find_critical(R, Z, psi)
+    # def _Jtor(self, R, Z, psi, psi_bndry=None, rel_psi_error=0):
+    #     """Replaces the original FreeGS Jtor method if FreeGSfast is not available."""
+    #     self.jtor = super().Jtor(R, Z, psi, psi_bndry)
+    #     self.opt, self.xpt = critical.find_critical(R, Z, psi)
 
-        self.diverted_core_mask = self.jtor > 0
-        self.psi_bndry, mask, self.limiter_flag = (
-            self.limiter_handler.core_mask_limiter(
-                psi,
-                self.xpt[0][2],
-                self.diverted_core_mask,
-                self.limiter_mask_out,
-            )
-        )
-        self.jtor = super().Jtor(R, Z, psi, self.psi_bndry)
-        return self.jtor
+    #     self.diverted_core_mask = self.jtor > 0
+    #     self.psi_bndry, mask, self.limiter_flag = (
+    #         self.limiter_handler.core_mask_limiter(
+    #             psi,
+    #             self.xpt[0][2],
+    #             self.diverted_core_mask,
+    #             self.limiter_mask_out,
+    #         )
+    #     )
+    #     self.jtor = super().Jtor(R, Z, psi, self.psi_bndry)
+    #     return self.jtor
 
-    def Jtor_fast_old(self, R, Z, psi, psi_bndry=None, rel_psi_error=0):
-        """Used when FreeGSfast is available."""
+    # def Jtor_fast_old(self, R, Z, psi, psi_bndry=None, rel_psi_error=0):
+    #     """Used when FreeGSfast is available."""
 
-        opt, xpt = super().Jtor_part1(R, Z, psi, psi_bndry)
+    #     opt, xpt = super().Jtor_part1(R, Z, psi, psi_bndry)
 
-        if psi_bndry is not None:
-            self.diverted_core_mask = critical.inside_mask(R, Z, psi, opt, xpt, self.mask_outside_limiter, psi_bndry)
-        elif xpt:
-            psi_bndry = xpt[0][2]
-            psi_axis = opt[0][2]
-            # # check correct sorting between psi_axis and psi_bndry
-            if (psi_axis-psi_bndry)*self.Ip < 0:
-                raise ValueError("Incorrect critical points! Likely due to not suitable psi_plasma")
-            self.diverted_core_mask = critical.inside_mask(R, Z, psi, opt, xpt, self.mask_outside_limiter, psi_bndry)
-        else:
-            # No X-points
-            psi_bndry = psi[0, 0]
-            self.diverted_core_mask = None
+    #     if psi_bndry is not None:
+    #         self.diverted_core_mask = critical.inside_mask(R, Z, psi, opt, xpt, self.mask_outside_limiter, psi_bndry)
+    #     elif xpt:
+    #         psi_bndry = xpt[0][2]
+    #         psi_axis = opt[0][2]
+    #         # # check correct sorting between psi_axis and psi_bndry
+    #         if (psi_axis-psi_bndry)*self.Ip < 0:
+    #             raise ValueError("Incorrect critical points! Likely due to not suitable psi_plasma")
+    #         self.diverted_core_mask = critical.inside_mask(R, Z, psi, opt, xpt, self.mask_outside_limiter, psi_bndry)
+    #     else:
+    #         # No X-points
+    #         psi_bndry = psi[0, 0]
+    #         self.diverted_core_mask = None
 
         
-        # added with respect to original Jtor
-        self.xpt = xpt
-        self.opt = opt
-        self.psi_bndry = psi_bndry
-        self.psi_axis = psi_axis
+    #     # added with respect to original Jtor
+    #     self.xpt = xpt
+    #     self.opt = opt
+    #     self.psi_bndry = psi_bndry
+    #     self.psi_axis = psi_axis
 
-        if self.diverted_core_mask is None:
-            # print('no xpt')
-            self.psi_bndry, self.limiter_core_mask, self.flag_limiter = (
-                psi_bndry,
-                None,
-                False,
-            )
-        elif True: #rel_psi_error < 0.02:
-            self.psi_bndry, self.limiter_core_mask, self.flag_limiter = (
-                self.limiter_handler.core_mask_limiter(
-                    psi,
-                    self.psi_bndry,
-                    self.diverted_core_mask,
-                    self.limiter_mask_out,
-                )
-            )
-        else:
-            self.limiter_core_mask = self.diverted_core_mask.copy()
+    #     if self.diverted_core_mask is None:
+    #         # print('no xpt')
+    #         self.psi_bndry, self.limiter_core_mask, self.flag_limiter = (
+    #             psi_bndry,
+    #             None,
+    #             False,
+    #         )
+    #     elif True: #rel_psi_error < 0.02:
+    #         self.psi_bndry, self.limiter_core_mask, self.flag_limiter = (
+    #             self.limiter_handler.core_mask_limiter(
+    #                 psi,
+    #                 self.psi_bndry,
+    #                 self.diverted_core_mask,
+    #                 self.limiter_mask_out,
+    #             )
+    #         )
+    #     else:
+    #         self.limiter_core_mask = self.diverted_core_mask.copy()
 
-        self.jtor = super().Jtor_part2(
-            R, Z, psi, self.psi_bndry, self.limiter_core_mask
-        )
-        return self.jtor
+    #     self.jtor = super().Jtor_part2(
+    #         R, Z, psi, self.psi_bndry, self.limiter_core_mask
+    #     )
+    #     return self.jtor
     
-    def Jtor(self, R, Z, psi, psi_bndry=None, rel_psi_error=0):
-        self.jtor, self.opt, self.xpt, self.psi_bndry, self.diverted_core_mask, self.limiter_core_mask, self.flag_limiter = Jtor_fast(self.Jtor_part1, 
-                         self.Jtor_part2, 
-                         self.limiter_handler.core_mask_limiter, 
-                         R, Z, psi, psi_bndry, 
-                         self.mask_outside_limiter, 
-                         self.limiter_mask_out)
-        return self.jtor
+    # def Jtor(self, R, Z, psi, psi_bndry=None):
+    #     self.jtor, self.opt, self.xpt, self.psi_bndry, self.diverted_core_mask, self.limiter_core_mask, self.flag_limiter = Jtor_fast(self.Jtor_part1, 
+    #                      self.Jtor_part2, 
+    #                      self.limiter_handler.core_mask_limiter, 
+    #                      R, Z, psi, psi_bndry, 
+    #                      self.mask_outside_limiter, 
+    #                      self.limiter_mask_out)
+    #     return self.jtor
 
 
     def Topeol_parameters(self, nn=100, max_it=100, tol=1e-5):

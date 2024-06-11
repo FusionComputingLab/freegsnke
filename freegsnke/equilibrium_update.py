@@ -3,7 +3,7 @@ import pickle
 
 import freegsfast
 import numpy as np
-from freegs import critical
+from freegsfast import critical
 from scipy import interpolate
 
 from . import limiter_func

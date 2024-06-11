@@ -96,7 +96,7 @@ class Limiter_handler:
         Returns
         -------
         layer_mask : np.ndarray
-            Mask of the points outside the mask within a distance of `layer_size` 
+            Mask of the points outside the mask within a distance of `layer_size`
         """
 
         layer_mask = np.zeros(
@@ -308,9 +308,9 @@ class Limiter_handler:
                 id_psi_max_out[0], id_psi_max_out[1], psi
             )
             psi_on_limiter = np.amax(interpolated_on_limiter)
-            if psi_on_limiter>psi_bndry:
+            if psi_on_limiter > psi_bndry:
                 self.flag_limiter = True
-                psi_bndry = 1.0*psi_on_limiter
+                psi_bndry = 1.0 * psi_on_limiter
                 core_mask = (psi > psi_bndry) * core_mask
 
         return psi_bndry, core_mask, self.flag_limiter

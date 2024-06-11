@@ -1,6 +1,5 @@
-import numpy as np
-
 import matplotlib.pyplot as plt
+import numpy as np
 
 
 class nksolver:
@@ -73,7 +72,7 @@ class nksolver:
         F_function,
         args,
         step_size,
-        max_rel_step_size
+        max_rel_step_size,
     ):
         """Explores direction dx by calculating and storing residual F(x_0 + dx)
 
@@ -107,9 +106,9 @@ class nksolver:
         if max_rel_step_size:
             del_step = np.amax(candidate_step) - np.amin(candidate_step)
             del_x0 = np.amax(x0) - np.amin(x0)
-            if del_step/del_x0 > max_rel_step_size:
+            if del_step / del_x0 > max_rel_step_size:
                 # print('step resized!')
-                candidate_step *= np.abs(max_rel_step_size*del_x0/del_step)
+                candidate_step *= np.abs(max_rel_step_size * del_x0 / del_step)
         # plt.imshow(candidate_step.reshape(65,129))
         # plt.colorbar()
         # plt.title('resized step')
@@ -122,7 +121,7 @@ class nksolver:
                 res_calculated = True
 
             except:
-                candidate_step *= .75
+                candidate_step *= 0.75
                 # print('candidate_step', np.linalg.norm(candidate_step))
         # plt.imshow(args[1].jtor)
         # plt.colorbar()
@@ -193,7 +192,7 @@ class nksolver:
         clip,
         threshold,
         clip_hard,
-        max_rel_step_size=False
+        max_rel_step_size=False,
     ):
         """Performs the iteration of the NK solution method:
         1) explores direction dx
@@ -264,7 +263,15 @@ class nksolver:
         explore = 1
         while explore:
             this_step_size = adjusted_step_size * ((1 + self.n_it) ** scaling_with_n)
-            dx = self.Arnoldi_unit(x0, dx, R0, F_function, args, this_step_size, max_rel_step_size=max_rel_step_size)
+            dx = self.Arnoldi_unit(
+                x0,
+                dx,
+                R0,
+                F_function,
+                args,
+                this_step_size,
+                max_rel_step_size=max_rel_step_size,
+            )
 
             not_collinear_check = 1 - np.any(
                 np.sum(

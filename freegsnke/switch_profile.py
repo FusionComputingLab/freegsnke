@@ -1,7 +1,6 @@
 import numpy as np
 
 
-
 def Lao_parameters_finder(
     pn_,
     pprime_,
@@ -256,4 +255,3 @@ def Topeol_opt(tp, tf, x, max_it, tol):
     if it == max_it:
         print("Optimization failed to converge in", max_it, "iterations.")
     return new_pars
-

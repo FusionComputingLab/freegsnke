@@ -3,12 +3,24 @@ import numpy as np
 from freegs import critical
 from freegs.gradshafranov import mu0
 
-from . import switch_profile as swp
 from . import limiter_func
+from . import switch_profile as swp
+
 
 class Jtor_universal:
 
-    def Jtor_build(self, Jtor_part1, Jtor_part2, core_mask_limiter, R, Z, psi, psi_bndry, mask_outside_limiter, limiter_mask_out):
+    def Jtor_build(
+        self,
+        Jtor_part1,
+        Jtor_part2,
+        core_mask_limiter,
+        R,
+        Z,
+        psi,
+        psi_bndry,
+        mask_outside_limiter,
+        limiter_mask_out,
+    ):
         """Universal function that calculates the plasma current distribution
         over the different types of profile parametrizations.
 
@@ -36,37 +48,56 @@ class Jtor_universal:
 
         """
 
-        opt, xpt, diverted_core_mask, psi_bndry = Jtor_part1(R, Z, psi, psi_bndry, mask_outside_limiter)
+        opt, xpt, diverted_core_mask, psi_bndry = Jtor_part1(
+            R, Z, psi, psi_bndry, mask_outside_limiter
+        )
 
         if diverted_core_mask is None:
-                # print('no xpt')
-                psi_bndry, limiter_core_mask, flag_limiter = (
-                    psi_bndry,
-                    None,
-                    False,
-                )
-        else:
+            # print('no xpt')
             psi_bndry, limiter_core_mask, flag_limiter = (
-                core_mask_limiter(
-                    psi,
-                    psi_bndry,
-                    diverted_core_mask,
-                    limiter_mask_out,
-                )
+                psi_bndry,
+                None,
+                False,
             )
-            
-        jtor = Jtor_part2(
-            R, Z, psi, opt[0][2], psi_bndry, limiter_core_mask
+        else:
+            psi_bndry, limiter_core_mask, flag_limiter = core_mask_limiter(
+                psi,
+                psi_bndry,
+                diverted_core_mask,
+                limiter_mask_out,
+            )
+
+        jtor = Jtor_part2(R, Z, psi, opt[0][2], psi_bndry, limiter_core_mask)
+        return (
+            jtor,
+            opt,
+            xpt,
+            psi_bndry,
+            diverted_core_mask,
+            limiter_core_mask,
+            flag_limiter,
         )
-        return jtor, opt, xpt, psi_bndry, diverted_core_mask, limiter_core_mask, flag_limiter
 
     def Jtor(self, R, Z, psi, psi_bndry=None):
-        self.jtor, self.opt, self.xpt, self.psi_bndry, self.diverted_core_mask, self.limiter_core_mask, self.flag_limiter = self.Jtor_build(self.Jtor_part1, 
-                         self.Jtor_part2, 
-                         self.limiter_handler.core_mask_limiter, 
-                         R, Z, psi, psi_bndry, 
-                         self.mask_outside_limiter, 
-                         self.limiter_mask_out)
+        (
+            self.jtor,
+            self.opt,
+            self.xpt,
+            self.psi_bndry,
+            self.diverted_core_mask,
+            self.limiter_core_mask,
+            self.flag_limiter,
+        ) = self.Jtor_build(
+            self.Jtor_part1,
+            self.Jtor_part2,
+            self.limiter_handler.core_mask_limiter,
+            R,
+            Z,
+            psi,
+            psi_bndry,
+            self.mask_outside_limiter,
+            self.limiter_mask_out,
+        )
         return self.jtor
 
 
@@ -95,13 +126,15 @@ class ConstrainBetapIp(freegs.jtor.ConstrainBetapIp, Jtor_universal):
             self.limiter_handler = eq.limiter_handler
         else:
             self.limiter_handler = limiter_func.Limiter_handler(eq, limiter)
-        
+
         self.mask_inside_limiter = self.limiter_handler.mask_inside_limiter
         self.mask_outside_limiter = np.logical_not(self.mask_inside_limiter)
-        self.limiter_mask_out = self.limiter_handler.make_layer_mask(self.mask_outside_limiter, layer_size=1)
-       
+        self.limiter_mask_out = self.limiter_handler.make_layer_mask(
+            self.mask_outside_limiter, layer_size=1
+        )
+
         # this is used in critical.inside_mask
-        self.mask_outside_limiter = (2*self.mask_outside_limiter).astype(float)
+        self.mask_outside_limiter = (2 * self.mask_outside_limiter).astype(float)
 
     def get_pars(
         self,
@@ -216,14 +249,19 @@ class ConstrainPaxisIp(freegs.jtor.ConstrainPaxisIp, Jtor_universal):
             self.limiter_handler = eq.limiter_handler
         else:
             self.limiter_handler = limiter_func.Limiter_handler(eq, limiter)
-        
+
         self.mask_inside_limiter = self.limiter_handler.mask_inside_limiter
         self.mask_outside_limiter = np.logical_not(self.mask_inside_limiter)
-        self.limiter_mask_out = self.limiter_handler.make_layer_mask(self.mask_outside_limiter, layer_size=1)
+        self.limiter_mask_out = self.limiter_handler.make_layer_mask(
+            self.mask_outside_limiter, layer_size=1
+        )
         self.limiter_mask_for_plotting = (
-                self.mask_inside_limiter + self.limiter_handler.make_layer_mask(self.mask_inside_limiter, layer_size=1)
-            ) > 0
-        self.mask_outside_limiter = (2*self.mask_outside_limiter).astype(float)
+            self.mask_inside_limiter
+            + self.limiter_handler.make_layer_mask(
+                self.mask_inside_limiter, layer_size=1
+            )
+        ) > 0
+        self.mask_outside_limiter = (2 * self.mask_outside_limiter).astype(float)
 
         # if not hasattr(self, "fast"):
         #     self.Jtor = self._Jtor
@@ -367,14 +405,19 @@ class Fiesta_Topeol(freegs.jtor.Fiesta_Topeol, Jtor_universal):
             self.limiter_handler = eq.limiter_handler
         else:
             self.limiter_handler = limiter_func.Limiter_handler(eq, limiter)
-        
+
         self.mask_inside_limiter = self.limiter_handler.mask_inside_limiter
         self.mask_outside_limiter = np.logical_not(self.mask_inside_limiter)
-        self.limiter_mask_out = self.limiter_handler.make_layer_mask(self.mask_outside_limiter, layer_size=1)
+        self.limiter_mask_out = self.limiter_handler.make_layer_mask(
+            self.mask_outside_limiter, layer_size=1
+        )
         self.limiter_mask_for_plotting = (
-                self.mask_inside_limiter + self.limiter_handler.make_layer_mask(self.mask_inside_limiter, layer_size=1)
-            ) > 0
-        self.mask_outside_limiter = (2*self.mask_outside_limiter).astype(float)
+            self.mask_inside_limiter
+            + self.limiter_handler.make_layer_mask(
+                self.mask_inside_limiter, layer_size=1
+            )
+        ) > 0
+        self.mask_outside_limiter = (2 * self.mask_outside_limiter).astype(float)
 
         # if not hasattr(self, "fast"):
         #     self.Jtor = self._Jtor
@@ -511,14 +554,19 @@ class Lao85(freegs.jtor.Lao85, Jtor_universal):
             self.limiter_handler = eq.limiter_handler
         else:
             self.limiter_handler = limiter_func.Limiter_handler(eq, limiter)
-        
+
         self.mask_inside_limiter = self.limiter_handler.mask_inside_limiter
         self.mask_outside_limiter = np.logical_not(self.mask_inside_limiter)
-        self.limiter_mask_out = self.limiter_handler.make_layer_mask(self.mask_outside_limiter, layer_size=1)
+        self.limiter_mask_out = self.limiter_handler.make_layer_mask(
+            self.mask_outside_limiter, layer_size=1
+        )
         self.limiter_mask_for_plotting = (
-                self.mask_inside_limiter + self.limiter_handler.make_layer_mask(self.mask_inside_limiter, layer_size=1)
-            ) > 0
-        self.mask_outside_limiter = (2*self.mask_outside_limiter).astype(float)
+            self.mask_inside_limiter
+            + self.limiter_handler.make_layer_mask(
+                self.mask_inside_limiter, layer_size=1
+            )
+        ) > 0
+        self.mask_outside_limiter = (2 * self.mask_outside_limiter).astype(float)
 
         # if not hasattr(self, "fast"):
         #     self.Jtor = self._Jtor
@@ -567,7 +615,6 @@ class Lao85(freegs.jtor.Lao85, Jtor_universal):
     #         psi_bndry = psi[0, 0]
     #         self.diverted_core_mask = None
 
-        
     #     # added with respect to original Jtor
     #     self.xpt = xpt
     #     self.opt = opt
@@ -597,16 +644,15 @@ class Lao85(freegs.jtor.Lao85, Jtor_universal):
     #         R, Z, psi, self.psi_bndry, self.limiter_core_mask
     #     )
     #     return self.jtor
-    
+
     # def Jtor(self, R, Z, psi, psi_bndry=None):
-    #     self.jtor, self.opt, self.xpt, self.psi_bndry, self.diverted_core_mask, self.limiter_core_mask, self.flag_limiter = Jtor_fast(self.Jtor_part1, 
-    #                      self.Jtor_part2, 
-    #                      self.limiter_handler.core_mask_limiter, 
-    #                      R, Z, psi, psi_bndry, 
-    #                      self.mask_outside_limiter, 
+    #     self.jtor, self.opt, self.xpt, self.psi_bndry, self.diverted_core_mask, self.limiter_core_mask, self.flag_limiter = Jtor_fast(self.Jtor_part1,
+    #                      self.Jtor_part2,
+    #                      self.limiter_handler.core_mask_limiter,
+    #                      R, Z, psi, psi_bndry,
+    #                      self.mask_outside_limiter,
     #                      self.limiter_mask_out)
     #     return self.jtor
-
 
     def Topeol_parameters(self, nn=100, max_it=100, tol=1e-5):
         """Fids best combination of

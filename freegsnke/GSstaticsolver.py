@@ -444,7 +444,7 @@ class NKGSsolver:
                     # plt.title('new_residual')
                     # plt.show()
                 except:
-                    log.uppend('Trigger update reduction due to failure to find an Xpoint, try *.75')
+                    log.append('Trigger update reduction due to failure to find an Xpoint, try *.75')
                     update *= .75
 
             if new_rel_change < 1.5*self.relative_change:

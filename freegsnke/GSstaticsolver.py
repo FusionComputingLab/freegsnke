@@ -456,12 +456,12 @@ class NKGSsolver:
                     # print('residual_collinearity', residual_collinearity)
                     # forcing_Picard = True
                     starting_direction = np.sin(
-                        np.linspace(0, 2 * np.pi, 65) * 1.5 * np.random.random()
+                        np.linspace(0, 2 * np.pi, self.nx) * 1.5 * np.random.random()
                     )[:, np.newaxis]
                     starting_direction = (
                         starting_direction
                         * np.sin(
-                            np.linspace(0, 2 * np.pi, 129) * 1.5 * np.random.random()
+                            np.linspace(0, 2 * np.pi, self.ny) * 1.5 * np.random.random()
                         )[np.newaxis, :]
                     )
                     starting_direction = starting_direction.reshape(-1)

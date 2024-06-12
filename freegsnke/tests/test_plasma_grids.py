@@ -38,6 +38,7 @@ def create_machine():
 def plasma_domain_masks(create_machine):
     tokamak, eq = create_machine
     limiter_handler = limiter_func.Limiter_handler(eq, tokamak.limiter)
+    limiter_handler.make_layer_mask(limiter_handler.mask_inside_limiter)
     return (
         limiter_handler.mask_inside_limiter,
         limiter_handler.layer_mask,

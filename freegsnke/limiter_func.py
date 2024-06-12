@@ -33,7 +33,7 @@ class Limiter_handler:
         self.build_mask_inside_limiter()
         self.limiter_points()
         self.extract_plasma_pts()
-        self.make_layer_mask()
+        # self.make_layer_mask()
 
     def extract_plasma_pts(
         self,
@@ -85,8 +85,8 @@ class Limiter_handler:
         mask_inside_limiter = mask_inside_limiter.reshape(self.nx, self.ny)
         self.mask_inside_limiter = mask_inside_limiter
 
-    def make_layer_mask(self, layer_size=3):
-        """Creates a mask for the points just outside the reduced domain, with a width=`layer_size`
+    def make_layer_mask(self, mask, layer_size=3):
+        """Creates a mask for the points just outside the input mask, with a width=`layer_size`
 
         Parameters
         ----------
@@ -96,7 +96,7 @@ class Limiter_handler:
         Returns
         -------
         layer_mask : np.ndarray
-            Mask of the points outside the limiter within a distance of `layer_size` from the limiter
+            Mask of the points outside the mask within a distance of `layer_size`
         """
 
         layer_mask = np.zeros(
@@ -105,11 +105,11 @@ class Limiter_handler:
 
         for i in np.arange(-layer_size, layer_size + 1) + layer_size:
             for j in np.arange(-layer_size, layer_size + 1) + layer_size:
-                layer_mask[i : i + self.nx, j : j + self.ny] += self.mask_inside_limiter
+                layer_mask[i : i + self.nx, j : j + self.ny] += mask
         layer_mask = layer_mask[
             layer_size : layer_size + self.nx, layer_size : layer_size + self.ny
         ]
-        layer_mask *= 1 - self.mask_inside_limiter
+        layer_mask *= 1 - mask
         layer_mask = (layer_mask > 0).astype(bool)
         self.layer_mask = layer_mask
 
@@ -275,7 +275,7 @@ class Limiter_handler:
             This is the result of FreeGSFast's critical.core_mask
             Same size as psi.
         limiter_mask_out : np.array
-            The mask identifying the border of the limiter, including only points 'outside it', not accessible to the plasma.
+            The mask identifying the border of the limiter, including points just inside it, the 'last' accessible to the plasma.
             Same size as psi.
 
 
@@ -293,9 +293,9 @@ class Limiter_handler:
 
         offending_mask = (core_mask * limiter_mask_out).astype(bool)
         self.offending_mask = offending_mask
-        flag_limiter = np.any(offending_mask)
+        self.flag_limiter = False
 
-        if flag_limiter:
+        if np.any(offending_mask):
             # psi_max_out = np.amax(psi[offending_mask])
             # psi_max_in = np.amax(psi[(core_mask * limiter_mask_in).astype(bool)])
             # psi_bndry = linear_coeff*psi_max_out + (1-linear_coeff)*psi_max_in
@@ -307,10 +307,13 @@ class Limiter_handler:
             interpolated_on_limiter = self.interp_on_limiter_points(
                 id_psi_max_out[0], id_psi_max_out[1], psi
             )
-            psi_bndry = np.amax(interpolated_on_limiter)
-            core_mask = (psi > psi_bndry) * core_mask
+            psi_on_limiter = np.amax(interpolated_on_limiter)
+            if psi_on_limiter > psi_bndry:
+                self.flag_limiter = True
+                psi_bndry = 1.0 * psi_on_limiter
+                core_mask = (psi > psi_bndry) * core_mask
 
-        return psi_bndry, core_mask, flag_limiter
+        return psi_bndry, core_mask, self.flag_limiter
 
     def Iy_from_jtor(self, jtor):
         """Generates 1d vector of plasma current values at the grid points of the reduced plasma domain.

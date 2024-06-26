@@ -804,12 +804,16 @@ class nl_solver:
             Can handle both freeGSFast profile types ConstrainPaxisIp and ConstrainBetapIp.
         """
         self.fvac = profiles.fvac
-        self.alpha_m = profiles.alpha_m
-        self.alpha_n = profiles.alpha_n
-        if hasattr(profiles, "paxis"):
-            self.profile_parameter = profiles.paxis
-        else:
-            self.profile_parameter = profiles.betap
+
+        # this is a patch to make temporarily compatible with Lao profiles
+        self.get_number_of_profile_pars(profiles)
+        if self.n_profile_pars > 0:
+            self.alpha_m = profiles.alpha_m
+            self.alpha_n = profiles.alpha_n
+            if hasattr(profiles, "paxis"):
+                self.profile_parameter = profiles.paxis
+            else:
+                self.profile_parameter = profiles.betap
 
     def get_vessel_currents(self, eq):
         """Uses the input equilibrium to extract values for all metal currents,
@@ -1571,7 +1575,7 @@ class nl_solver:
         self.profile_change_flag = 0
         # patching for Lao profile: this if is a temporary fix!
         if self.n_profile_pars:
-            
+
             self.d_profile_pars = np.zeros(3)
             if profile_parameter is not None:
                 if profile_parameter != self.profiles1.profile_parameter:

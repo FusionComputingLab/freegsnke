@@ -698,22 +698,24 @@ class nl_solver:
 
         # build/update dIydpars
         # Note this assumes 3 free profile parameters at the moment!
-        if dIydpars is None:
-            if self.dIydpars_ICs is None:
-                print("I'm building the linearization wrt the profile parameters.")
-                self.dIydpars = np.zeros((self.plasma_domain_size, 3))
-                self.final_dpars_record = np.zeros(3)
+        if self.n_profile_pars > 0: 
+            if dIydpars is None:
+                if self.dIydpars_ICs is None:
+                    print("I'm building the linearization wrt the profile parameters.")
+                    self.dIydpars = np.zeros((self.plasma_domain_size, 3))
+                    self.final_dpars_record = np.zeros(3)
 
-                self.prepare_build_dIydpars(
-                    profile, rtol_NK, target_dIy, starting_dpars
-                )
-                self.build_dIydIpars(profile, rtol_NK, verbose)
-                self.dIydpars_ICs = np.copy(self.dIydpars)
+                    self.prepare_build_dIydpars(
+                        profile, rtol_NK, target_dIy, starting_dpars
+                    )
+                    self.build_dIydIpars(profile, rtol_NK, verbose)
+                    self.dIydpars_ICs = np.copy(self.dIydpars)
+                else:
+                    self.dIydpars = np.copy(self.dIydpars_ICs)
             else:
-                self.dIydpars = np.copy(self.dIydpars_ICs)
-        else:
-            self.dIydpars = dIydpars
-            self.dIydpars_ICs = np.copy(self.dIydpars)
+                self.dIydpars = dIydpars
+                self.dIydpars_ICs = np.copy(self.dIydpars)
+        
 
     def set_plasma_resistivity(self, plasma_resistivity):
         """Function to set the resistivity of the plasma.
@@ -1154,6 +1156,9 @@ class nl_solver:
 
     def get_number_of_profile_pars(self, profiles):
         """Queries the profile function to establish the number of independent parameters."""
+        # linearization not currently set up for profiles outside the Topeol family
+        # temporarily patching this for Lao profiles by removing the forcing term 
+        # that appears in the linearization as a consequence of changes in the profiles.
         self.n_profile_pars = np.size(profiles.get_pars())
 
     def reset_records_for_linearization_update(
@@ -1564,31 +1569,34 @@ class nl_solver:
             with respect to the previous timestep. Set here desired values otherwise.
         """
         self.profile_change_flag = 0
-        self.d_profile_pars = np.zeros(3)
-        if profile_parameter is not None:
-            if profile_parameter != self.profiles1.profile_parameter:
-                self.profile_change_flag += 1
-                self.d_profile_pars[2] = (
-                    profile_parameter - self.profiles1.profile_parameter
-                )
-                self.profiles1.assign_profile_parameter(profile_parameter)
-                self.profiles2.assign_profile_parameter(profile_parameter)
-        if profile_coefficients is not None:
-            if (
-                profile_coefficients[0] != self.profiles1.alpha_m
-                or profile_coefficients[1] != self.profiles1.alpha_n
-            ):
-                self.profile_change_flag += 1
-                self.d_profile_pars[0] = (
-                    profile_coefficients[0] - self.profiles1.alpha_m
-                )
-                self.d_profile_pars[1] = (
-                    profile_coefficients[1] - self.profiles1.alpha_n
-                )
-                self.profiles1.alpha_m = profile_coefficients[0]
-                self.profiles1.alpha_n = profile_coefficients[1]
-                self.profiles2.alpha_m = profile_coefficients[0]
-                self.profiles2.alpha_n = profile_coefficients[1]
+        # patching for Lao profile: this if is a temporary fix!
+        if self.n_profile_pars:
+            
+            self.d_profile_pars = np.zeros(3)
+            if profile_parameter is not None:
+                if profile_parameter != self.profiles1.profile_parameter:
+                    self.profile_change_flag += 1
+                    self.d_profile_pars[2] = (
+                        profile_parameter - self.profiles1.profile_parameter
+                    )
+                    self.profiles1.assign_profile_parameter(profile_parameter)
+                    self.profiles2.assign_profile_parameter(profile_parameter)
+            if profile_coefficients is not None:
+                if (
+                    profile_coefficients[0] != self.profiles1.alpha_m
+                    or profile_coefficients[1] != self.profiles1.alpha_n
+                ):
+                    self.profile_change_flag += 1
+                    self.d_profile_pars[0] = (
+                        profile_coefficients[0] - self.profiles1.alpha_m
+                    )
+                    self.d_profile_pars[1] = (
+                        profile_coefficients[1] - self.profiles1.alpha_n
+                    )
+                    self.profiles1.alpha_m = profile_coefficients[0]
+                    self.profiles1.alpha_n = profile_coefficients[1]
+                    self.profiles2.alpha_m = profile_coefficients[0]
+                    self.profiles2.alpha_n = profile_coefficients[1]
         # print(self.profiles2.alpha_m, self.profiles2.alpha_n, self.profiles2.profile_parameter)
 
     def nlstepper(

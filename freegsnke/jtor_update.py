@@ -579,6 +579,14 @@ class Lao85(freegsfast.jtor.Lao85, Jtor_universal):
         self.beta = beta
         self.profile_parameter = [alpha, beta]
 
+    def get_pars(
+        self,
+    ):
+        """Fetches all profile parameters and returns them in a single array"""
+        # This is a temporary fix that allows the linearization to work on lao profiles
+        # Changes in the profile are ignored in the linearised dynamics
+        return np.array([])
+
     # def _Jtor(self, R, Z, psi, psi_bndry=None, rel_psi_error=0):
     #     """Replaces the original FreeGS Jtor method if FreeGSfast is not available."""
     #     self.jtor = super().Jtor(R, Z, psi, psi_bndry)

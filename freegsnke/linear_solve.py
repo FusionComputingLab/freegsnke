@@ -84,6 +84,8 @@ class linear_solver:
         self.forcing = np.zeros(self.n_independent_vars + 1)
         self.profile_forcing = np.zeros(self.n_independent_vars + 1)
 
+        self.dIydpars = None
+
     def reset_timesteps(self, max_internal_timestep, full_timestep):
         """Resets the integration timesteps, calling self.solver.set_timesteps
 
@@ -183,10 +185,11 @@ class linear_solver:
 
         # build necessary terms to incorporate forcing term from variations of the profile parameters
         # MIdot + RI = V - self.Vm1Rm12Mey_plus@self.dIydpars@d_profile_pars_dt
-        Pm1Rm1Mey_plus = np.concatenate(
-            (self.Pm1Rm1Mey, JMyy[np.newaxis] / nRp), axis=0
-        )
-        self.forcing_pars_matrix = np.matmul(Pm1Rm1Mey_plus, self.dIydpars)
+        if self.dIydpars is not None:
+            Pm1Rm1Mey_plus = np.concatenate(
+                (self.Pm1Rm1Mey, JMyy[np.newaxis] / nRp), axis=0
+            )
+            self.forcing_pars_matrix = np.matmul(Pm1Rm1Mey_plus, self.dIydpars)
 
     def stepper(self, It, active_voltage_vec, d_profile_pars_dt=None):
         """Executes the time advancement. Uses the implicit_euler instance.

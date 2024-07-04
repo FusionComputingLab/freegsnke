@@ -1,5 +1,5 @@
 import numpy as np
-from freegsfast.gradshafranov import Greens
+from freegsfast.gradshafranov import Greens, GreensBr, GreensBz
 
 from . import machine_config, normal_modes
 from .implicit_euler import implicit_euler_solver
@@ -104,8 +104,8 @@ class metal_currents:
         # where Lambda is such that Lambda**(-1) = Rm1 M
         # Note Lambda is not diagonal because of active/passive mode coupling
         # although the modes of used for the passive structures diagonalise the isolated dynamics of the walls
-        self.Lambdam1 = self.Pm1 @ normal_modes.rm1l_non_symm @ self.P
-        self.Lambda = self.Pm1 @ normal_modes.lm1r @ self.P
+        self.Lambdam1 = self.Pm1 @ (normal_modes.rm1l_non_symm @ self.P)
+        # self.Lambda = self.Pm1 @ normal_modes.lm1r @ self.P
 
         self.R = machine_config.coil_resist
         self.Rm1 = machine_config.coil_resist**-1
@@ -356,6 +356,96 @@ class metal_currents:
             mey[j] = np.sum(greenm, axis=-1)
         return 2 * np.pi * mey
 
+
+    def Mey_f(
+        self,
+        green_f
+    ):
+        """Calculates the matrix of Br inductances between plasma grid points and all vessel coils
+
+        Parameters
+        ----------
+        plasma_pts : np.ndarray
+            Array with R and Z coordinates of all the points inside the limiter
+
+        Returns
+        -------
+        Mey : np.ndarray
+            Array of mutual inductances between plasma grid points and all vessel coils
+        """
+        coils_dict = machine_config.coils_dict
+        mey = np.zeros((machine_config.n_coils, len(self.plasma_pts)))
+        for j, labelj in enumerate(machine_config.coils_order):
+            greenm = green_f(
+                self.plasma_pts[:, 0, np.newaxis],
+                self.plasma_pts[:, 1, np.newaxis],
+                coils_dict[labelj]["coords"][0][np.newaxis, :],
+                coils_dict[labelj]["coords"][1][np.newaxis, :],
+            )
+            greenm *= coils_dict[labelj]["polarity"][np.newaxis, :]
+            greenm *= coils_dict[labelj]["multiplier"][np.newaxis, :]
+            mey[j] = np.sum(greenm, axis=-1)
+        return 2 * np.pi * mey
+    
+    def Mey_Bz(
+        self,
+    ):
+        """Calculates the matrix of Bz inductances between plasma grid points and all vessel coils
+
+        Parameters
+        ----------
+        plasma_pts : np.ndarray
+            Array with R and Z coordinates of all the points inside the limiter
+
+        Returns
+        -------
+        Mey : np.ndarray
+            Array of mutual inductances between plasma grid points and all vessel coils
+        """
+        coils_dict = machine_config.coils_dict
+        mey = np.zeros((machine_config.n_coils, len(self.plasma_pts)))
+        for j, labelj in enumerate(machine_config.coils_order):
+            greenm = GreensBz(
+                self.plasma_pts[:, 0, np.newaxis],
+                self.plasma_pts[:, 1, np.newaxis],
+                coils_dict[labelj]["coords"][0][np.newaxis, :],
+                coils_dict[labelj]["coords"][1][np.newaxis, :],
+            )
+            greenm *= coils_dict[labelj]["polarity"][np.newaxis, :]
+            greenm *= coils_dict[labelj]["multiplier"][np.newaxis, :]
+            mey[j] = np.sum(greenm, axis=-1)
+        return 2 * np.pi * mey
+    
+    def Mey_Bz(
+        self,
+    ):
+        """Calculates the matrix of Bz inductances between plasma grid points and all vessel coils
+
+        Parameters
+        ----------
+        plasma_pts : np.ndarray
+            Array with R and Z coordinates of all the points inside the limiter
+
+        Returns
+        -------
+        Mey : np.ndarray
+            Array of mutual inductances between plasma grid points and all vessel coils
+        """
+        coils_dict = machine_config.coils_dict
+        mey = np.zeros((machine_config.n_coils, len(self.plasma_pts)))
+        for j, labelj in enumerate(machine_config.coils_order):
+            greenm = GreensBz(
+                self.plasma_pts[:, 0, np.newaxis],
+                self.plasma_pts[:, 1, np.newaxis],
+                coils_dict[labelj]["coords"][0][np.newaxis, :],
+                coils_dict[labelj]["coords"][1][np.newaxis, :],
+            )
+            greenm *= coils_dict[labelj]["polarity"][np.newaxis, :]
+            greenm *= coils_dict[labelj]["multiplier"][np.newaxis, :]
+            mey[j] = np.sum(greenm, axis=-1)
+        return 2 * np.pi * mey
+    
+    
     # def current_residual(self, Itpdt, Iddot, forcing_term):
     #     """Calculates the residual of the circuit equation in normal modes.
 

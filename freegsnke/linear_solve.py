@@ -56,10 +56,16 @@ class linear_solver:
         self.full_timestep = full_timestep
         self.plasma_norm_factor = plasma_norm_factor
 
-        self.n_independent_vars = np.shape(Lambdam1)[0]
+        
+
+        if Lambdam1 is None:
+            self.Lambdam1 = Pm1 @ (Rm1 @ (machine_config.coil_self_ind @ (Pm1.T)))
+        else:
+            self.Lambdam1 = Lambdam1
+        self.n_independent_vars = np.shape(self.Lambdam1)[0]
+
         self.Mmatrix = np.eye(self.n_independent_vars + 1)
 
-        self.Lambdam1 = Lambdam1
         self.Pm1 = Pm1
         self.Rm1 = Rm1
         self.Pm1Rm1 = Pm1 @ Rm1

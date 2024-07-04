@@ -356,11 +356,7 @@ class metal_currents:
             mey[j] = np.sum(greenm, axis=-1)
         return 2 * np.pi * mey
 
-
-    def Mey_f(
-        self,
-        green_f
-    ):
+    def Mey_f(self, green_f):
         """Calculates the matrix of Br inductances between plasma grid points and all vessel coils
 
         Parameters
@@ -386,7 +382,7 @@ class metal_currents:
             greenm *= coils_dict[labelj]["multiplier"][np.newaxis, :]
             mey[j] = np.sum(greenm, axis=-1)
         return 2 * np.pi * mey
-    
+
     def Mey_Bz(
         self,
     ):
@@ -415,7 +411,7 @@ class metal_currents:
             greenm *= coils_dict[labelj]["multiplier"][np.newaxis, :]
             mey[j] = np.sum(greenm, axis=-1)
         return 2 * np.pi * mey
-    
+
     def Mey_Bz(
         self,
     ):
@@ -444,8 +440,7 @@ class metal_currents:
             greenm *= coils_dict[labelj]["multiplier"][np.newaxis, :]
             mey[j] = np.sum(greenm, axis=-1)
         return 2 * np.pi * mey
-    
-    
+
     # def current_residual(self, Itpdt, Iddot, forcing_term):
     #     """Calculates the residual of the circuit equation in normal modes.
 

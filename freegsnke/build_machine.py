@@ -68,7 +68,9 @@ def tokamak(refine_mode="G", group_filaments=True):
     for coil_name in active_coils:
         if coil_name == "Solenoid":
             # Add the solenoid if any
-            multicoil = MultiCoil(active_coils["Solenoid"]["R"], active_coils["Solenoid"]["Z"])
+            multicoil = MultiCoil(
+                active_coils["Solenoid"]["R"], active_coils["Solenoid"]["Z"]
+            )
             multicoil.dR = active_coils["Solenoid"]["dR"]
             multicoil.dZ = active_coils["Solenoid"]["dZ"]
             coils.append(
@@ -86,7 +88,7 @@ def tokamak(refine_mode="G", group_filaments=True):
                     ),
                 ),
             )
-            
+
         else:
             # Add active coils
             circuit_list = []
@@ -111,7 +113,6 @@ def tokamak(refine_mode="G", group_filaments=True):
                     Circuit(circuit_list),
                 )
             )
-
 
     coils_dict = build_active_coil_dict(active_coils=active_coils)
     coils_list = list(coils_dict.keys())

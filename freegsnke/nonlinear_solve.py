@@ -296,7 +296,8 @@ class nl_solver:
             else:
                 print(
                     "No unstable modes found.",
-                    "Either plasma is stable or, more likely, it is Alfven unstable (i.e. not enough stabilization from any metal structures).")
+                    "Either plasma is stable or, more likely, it is Alfven unstable (i.e. not enough stabilization from any metal structures).",
+                )
                 print(
                     "Try adding more passive modes by increasing the input values of max_mode_frequency and/or by reducing min_dIy_dI.",
                 )
@@ -456,10 +457,8 @@ class nl_solver:
         )
         self.assign_currents_solve_GS(current_, rtol_NK)
         dIy_0 = self.limiter_handler.Iy_from_jtor(self.profiles2.jtor) - self.Iy
-        rel_ndIy_0 = np.linalg.norm(dIy_0)/self.nIy
-        self.final_dpars_record[0] = (
-            starting_dpars[0] * target_dIy / rel_ndIy_0
-        )
+        rel_ndIy_0 = np.linalg.norm(dIy_0) / self.nIy
+        self.final_dpars_record[0] = starting_dpars[0] * target_dIy / rel_ndIy_0
 
         # vary alpha_n
         self.check_and_change_profiles(
@@ -470,10 +469,8 @@ class nl_solver:
         )
         self.assign_currents_solve_GS(current_, rtol_NK)
         dIy_0 = self.limiter_handler.Iy_from_jtor(self.profiles2.jtor) - self.Iy
-        rel_ndIy_0 = np.linalg.norm(dIy_0)/self.nIy
-        self.final_dpars_record[1] = (
-            starting_dpars[1] * target_dIy / rel_ndIy_0
-        )
+        rel_ndIy_0 = np.linalg.norm(dIy_0) / self.nIy
+        self.final_dpars_record[1] = starting_dpars[1] * target_dIy / rel_ndIy_0
 
         # vary paxis or betap
         self.check_and_change_profiles(
@@ -482,12 +479,9 @@ class nl_solver:
         )
         self.assign_currents_solve_GS(current_, rtol_NK)
         dIy_0 = self.limiter_handler.Iy_from_jtor(self.profiles2.jtor) - self.Iy
-        rel_ndIy_0 = np.linalg.norm(dIy_0)/self.nIy
+        rel_ndIy_0 = np.linalg.norm(dIy_0) / self.nIy
         self.final_dpars_record[2] = (
-            starting_dpars[2]
-            * profiles.profile_parameter
-            * target_dIy
-            / rel_ndIy_0
+            starting_dpars[2] * profiles.profile_parameter * target_dIy / rel_ndIy_0
         )
 
     def build_dIydIpars(self, profiles, rtol_NK, verbose=False):
@@ -586,7 +580,7 @@ class nl_solver:
 
         dIy_0 = self.limiter_handler.Iy_from_jtor(self.profiles2.jtor) - self.Iy
 
-        rel_ndIy_0 = np.linalg.norm(dIy_0)/self.nIy
+        rel_ndIy_0 = np.linalg.norm(dIy_0) / self.nIy
         final_dI = starting_dI * target_dIy / rel_ndIy_0
         final_dI = np.clip(final_dI, min_curr, max_curr)
         self.final_dI_record[j] = final_dI
@@ -608,7 +602,7 @@ class nl_solver:
             This is a 1d vector including all grid points in reduced domain, as from plasma_domain_mask.
         """
 
-        final_dI = 1.0*self.final_dI_record[j]
+        final_dI = 1.0 * self.final_dI_record[j]
         self.current_at_last_linearization[j] = self.currents_vec[j]
 
         current_ = np.copy(self.currents_vec)
@@ -682,13 +676,13 @@ class nl_solver:
             self.Iy = self.limiter_handler.Iy_from_jtor(profile.jtor).copy()
             self.nIy = np.linalg.norm(self.Iy)
 
-        self.R0 = np.sum(eq.R*profile.jtor)/np.sum(profile.jtor)
-        self.Z0 = np.sum(eq.Z*profile.jtor)/np.sum(profile.jtor)
+        self.R0 = np.sum(eq.R * profile.jtor) / np.sum(profile.jtor)
+        self.Z0 = np.sum(eq.Z * profile.jtor) / np.sum(profile.jtor)
         self.dRZdI = np.zeros((2, self.n_metal_modes + 1))
 
         if starting_dI is None:
-            starting_dI = np.abs(self.currents_vec.copy())*target_dIy
-            starting_dI[:-1] = np.where(starting_dI[:-1]>10, starting_dI[:-1], 10)
+            starting_dI = np.abs(self.currents_vec.copy()) * target_dIy
+            starting_dI[:-1] = np.where(starting_dI[:-1] > 10, starting_dI[:-1], 10)
 
         # build/update dIydI
         if dIydI is None:
@@ -701,16 +695,19 @@ class nl_solver:
                 self.final_dI_record = np.zeros(self.n_metal_modes + 1)
 
                 for j in self.arange_currents:
-                    print('direction', j,'initial current shift', starting_dI[j])
+                    print("direction", j, "initial current shift", starting_dI[j])
                     self.prepare_build_dIydI_j(j, rtol_NK, target_dIy, starting_dI[j])
 
                 for j in self.arange_currents:
                     self.dIydI[:, j] = self.build_dIydI_j(j, rtol_NK, verbose)
-                    R0 = np.sum(eq.R*self.profiles2.jtor)/np.sum(self.profiles2.jtor)
-                    Z0 = np.sum(eq.Z*self.profiles2.jtor)/np.sum(self.profiles2.jtor)
-                    self.dRZdI[0,j] = (R0 - self.R0)/self.final_dI_record[j]
-                    self.dRZdI[1,j] = (Z0 - self.Z0)/self.final_dI_record[j]
-                
+                    R0 = np.sum(eq.R * self.profiles2.jtor) / np.sum(
+                        self.profiles2.jtor
+                    )
+                    Z0 = np.sum(eq.Z * self.profiles2.jtor) / np.sum(
+                        self.profiles2.jtor
+                    )
+                    self.dRZdI[0, j] = (R0 - self.R0) / self.final_dI_record[j]
+                    self.dRZdI[1, j] = (Z0 - self.Z0) / self.final_dI_record[j]
 
                 self.dIydI_ICs = np.copy(self.dIydI)
             else:
@@ -721,7 +718,7 @@ class nl_solver:
 
         # build/update dIydpars
         # Note this assumes 3 free profile parameters at the moment!
-        if self.n_profile_pars > 0: 
+        if self.n_profile_pars > 0:
             if dIydpars is None:
                 if self.dIydpars_ICs is None:
                     print("I'm building the linearization wrt the profile parameters.")
@@ -738,7 +735,6 @@ class nl_solver:
             else:
                 self.dIydpars = dIydpars
                 self.dIydpars_ICs = np.copy(self.dIydpars)
-        
 
     def set_plasma_resistivity(self, plasma_resistivity):
         """Function to set the resistivity of the plasma.
@@ -1181,7 +1177,7 @@ class nl_solver:
     def get_number_of_profile_pars(self, profiles):
         """Queries the profile function to establish the number of independent parameters."""
         # linearization not currently set up for profiles outside the Topeol family
-        # temporarily patching this for Lao profiles by removing the forcing term 
+        # temporarily patching this for Lao profiles by removing the forcing term
         # that appears in the linearization as a consequence of changes in the profiles.
         self.n_profile_pars = np.size(profiles.get_pars())
 

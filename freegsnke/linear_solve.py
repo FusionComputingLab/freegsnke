@@ -56,8 +56,6 @@ class linear_solver:
         self.full_timestep = full_timestep
         self.plasma_norm_factor = plasma_norm_factor
 
-        
-
         if Lambdam1 is None:
             self.Lambdam1 = Pm1 @ (Rm1 @ (machine_config.coil_self_ind @ (Pm1.T)))
         else:

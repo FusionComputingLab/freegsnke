@@ -7,6 +7,8 @@ tmp
 __pycache__
 .DS_Store
 .vscode
+examples/*.py
+examples/*.geqdsk
 examples/*.mat
 examples/Geof*
 examples/*.pdf

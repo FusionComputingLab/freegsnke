@@ -26,6 +26,7 @@ packages = ["freegsnke"]
 [tool.setuptools.dynamic]
 dependencies = {file = ["requirements.txt"]}
 optional-dependencies.dev =  { file = ["requirements-dev.txt"] }
+optional-dependencies.freegsfast = { file = ["requirements-freegsfast.txt"] }
 
 [project.urls]
 Homepage = "https://gitlab.stfc.ac.uk/farscape-ws3/freegsnke"

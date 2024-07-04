@@ -37,7 +37,9 @@ The recommended way to install FreeGSNKE is to use a virtual environment using, 
 
 1. Clone the FreeGSNKE repository with `git clone git@gitlab.stfc.ac.uk:farscape-ws3/freegsnke.git` or `git clone https://gitlab.stfc.ac.uk/farscape-ws3/freegsnke.git`.
 2. `cd` into the FreeGSNKE directory.
-3. Install FreeGSNKE and its dependencies with `pip install .`.
+3. Install FreeGSNKE and its dependencies with `pip install ".[freegsfast]"`.
+
+The `freegsfast` extra installs FreeGSFast, which is required for FreeGSNKE to run.
 
 If you are planning to develop FreeGSNKE, see the below section on contributing
 code.
@@ -103,7 +105,9 @@ If the issue is a feature improvement request:
 To make code contributions, please do so via merge request.
 
 In place of the final step in [installation](#installation), run `pip install -e
-".[dev]"` from the FreeGSNKE root directory to install FreeGSNKE in editable mode, including the optional development dependencies.
+".[freegsfast,dev]"` from the FreeGSNKE root directory to install FreeGSNKE in editable mode, including the optional development dependencies.
+
+If you are planning to do co-development on FreeGSFast, you will need to install it in editable mode as well. This can be done by cloning the FreeGSFast repository and running `pip install -e .` from the FreeGSFast root directory, then installing FreeGSNKE in editable mode with `pip install ".[dev]"`. Notice that the `freegsfast` extra has been omitted from the FreeGSNKE installation command in this case.
 
 Several tests are implemented with [pytest](https://docs.pytest.org/en), which
 are run as part of the GitLab CI/CD pipelines, but you can run these locally

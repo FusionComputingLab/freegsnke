@@ -682,7 +682,7 @@ class nl_solver:
 
         if starting_dI is None:
             starting_dI = np.abs(self.currents_vec.copy()) * target_dIy
-            starting_dI[:-1] = np.where(starting_dI[:-1] > 10, starting_dI[:-1], 10)
+            starting_dI[:-1] = np.where(starting_dI[:-1] > 50, starting_dI[:-1], 50)
 
         # build/update dIydI
         if dIydI is None:

@@ -62,7 +62,9 @@ class linear_solver:
             self.Lambdam1 = Lambdam1
         self.n_independent_vars = np.shape(self.Lambdam1)[0]
 
-        self.Mmatrix = np.eye(self.n_independent_vars + 1)
+        self.Mmatrix = np.zeros((self.n_independent_vars + 1,self.n_independent_vars + 1))
+        self.M0matrix = np.zeros((self.n_independent_vars + 1,self.n_independent_vars + 1))
+        self.dMmatrix = np.zeros((self.n_independent_vars + 1,self.n_independent_vars + 1))
 
         self.Pm1 = Pm1
         self.Rm1 = Rm1
@@ -144,9 +146,9 @@ class linear_solver:
         """Initialises the pseudo-inductance matrix of the problem
         M\dot(x) + Rx = forcing from the linearisation Jacobian.
 
-                \Lambda^-1 + P^-1R^-1Mey A        P^-1R^-1Mey B
-        M = (                                                       )
-                J(Myy A + MyeP)/Rp                J Myy B/Rp
+                          \Lambda^-1 + P^-1R^-1Mey A        P^-1R^-1Mey B
+        M = M0 + dM =  (                                                       )
+                           J(Myy A + MyeP)/Rp                J Myy B/Rp
 
         This also builds the forcing:
                     P^-1R^-1 Voltage         P^-1R^-1Mey
@@ -168,24 +170,25 @@ class linear_solver:
             * self.plasma_norm_factor
         )
 
-        # build the state matrix M (MIdot + RI = V)
-        self.Mmatrix[: self.n_independent_vars, : self.n_independent_vars] = np.copy(
+        self.M0matrix[: self.n_independent_vars, : self.n_independent_vars] = np.copy(
             self.Lambdam1
         )
-        self.Mmatrix[: self.n_independent_vars, : self.n_independent_vars] += np.matmul(
+        self.dMmatrix[: self.n_independent_vars, : self.n_independent_vars] = np.matmul(
             self.Pm1Rm1Mey, self.dIydI[:, :-1]
         )
 
-        self.Mmatrix[:-1, -1] = np.dot(self.Pm1Rm1Mey, self.dIydI[:, -1])
+        self.dMmatrix[:-1, -1] = np.dot(self.Pm1Rm1Mey, self.dIydI[:, -1])
 
-        mat = np.matmul(self.Myy, self.dIydI[:, :-1]).T
-        mat += self.MyeP_T
-        self.Mmatrix[-1, :-1] = np.dot(mat, self.hatIy0)
+        self.dMmatrix[-1, :-1] = np.dot(np.matmul(self.Myy, self.dIydI[:, :-1]).T, self.hatIy0)
+        self.M0matrix[-1, :-1] = np.dot(self.MyeP_T, self.hatIy0)
 
         JMyy = np.dot(self.Myy, self.hatIy0)
-        self.Mmatrix[-1, -1] = np.dot(self.dIydI[:, -1], JMyy)
+        self.dMmatrix[-1, -1] = np.dot(self.dIydI[:, -1], JMyy)
 
-        self.Mmatrix[-1, :] /= nRp
+        self.dMmatrix[-1, :] /= nRp
+        self.M0matrix[-1, :] /= nRp
+
+        self.Mmatrix = self.M0matrix + self.dMmatrix
 
         # build necessary terms to incorporate forcing term from variations of the profile parameters
         # MIdot + RI = V - self.Vm1Rm12Mey_plus@self.dIydpars@d_profile_pars_dt
@@ -229,7 +232,7 @@ class linear_solver:
         ----------
         parameters are passed in as object attributes
         """
-        self.all_timescales = np.sort(np.linalg.eig(self.Mmatrix)[0])
+        self.all_timescales = np.sort(np.linalg.eigvals(self.Mmatrix))
         mask = self.all_timescales < 0
         self.growth_rates = self.all_timescales[mask]
 

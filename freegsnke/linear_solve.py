@@ -62,9 +62,15 @@ class linear_solver:
             self.Lambdam1 = Lambdam1
         self.n_independent_vars = np.shape(self.Lambdam1)[0]
 
-        self.Mmatrix = np.zeros((self.n_independent_vars + 1,self.n_independent_vars + 1))
-        self.M0matrix = np.zeros((self.n_independent_vars + 1,self.n_independent_vars + 1))
-        self.dMmatrix = np.zeros((self.n_independent_vars + 1,self.n_independent_vars + 1))
+        self.Mmatrix = np.zeros(
+            (self.n_independent_vars + 1, self.n_independent_vars + 1)
+        )
+        self.M0matrix = np.zeros(
+            (self.n_independent_vars + 1, self.n_independent_vars + 1)
+        )
+        self.dMmatrix = np.zeros(
+            (self.n_independent_vars + 1, self.n_independent_vars + 1)
+        )
 
         self.Pm1 = Pm1
         self.Rm1 = Rm1
@@ -179,7 +185,9 @@ class linear_solver:
 
         self.dMmatrix[:-1, -1] = np.dot(self.Pm1Rm1Mey, self.dIydI[:, -1])
 
-        self.dMmatrix[-1, :-1] = np.dot(np.matmul(self.Myy, self.dIydI[:, :-1]).T, self.hatIy0)
+        self.dMmatrix[-1, :-1] = np.dot(
+            np.matmul(self.Myy, self.dIydI[:, :-1]).T, self.hatIy0
+        )
         self.M0matrix[-1, :-1] = np.dot(self.MyeP_T, self.hatIy0)
 
         JMyy = np.dot(self.Myy, self.hatIy0)

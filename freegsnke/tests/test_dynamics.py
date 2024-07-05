@@ -90,7 +90,7 @@ def create_machine():
         plasma_resistivity=5e-7,
         automatic_timestep=False,
         mode_removal=True,
-        min_dIy_dI=.1,
+        min_dIy_dI=0.1,
     )
     return tokamak, eq, profiles, stepping
 
@@ -185,11 +185,11 @@ def test_linearised_stepper(create_machine):
         / 2
     )  # 1/2 of the pixel size
 
-    true_o_point = np.array([9.49e-01, .03])
+    true_o_point = np.array([9.49e-01, 0.03])
     true_x_point = np.array([0.599, 1.08])
 
     assert np.all(
-        np.abs((stepping.eq1.opt[0,:2] - true_o_point)) < leeway
+        np.abs((stepping.eq1.opt[0, :2] - true_o_point)) < leeway
     ), "O-point location deviates more than 1/2 of pixel size."
     assert np.all(
         np.abs((stepping.eq1.xpt[0, :2] - true_x_point)) < leeway
@@ -275,7 +275,7 @@ def test_non_linear_stepper(create_machine):
         / 2
     )  # 1/2 of the pixel size
 
-    true_o_point = np.array([9.49e-01, .03])
+    true_o_point = np.array([9.49e-01, 0.03])
     true_x_point = np.array([0.599, 1.08])
 
     assert np.all(

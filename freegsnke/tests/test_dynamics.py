@@ -12,7 +12,7 @@ os.environ["PASSIVE_COILS_PATH"] = "./machine_configs/MAST-U/passive_coils.pickl
 os.environ["WALL_PATH"] = "./machine_configs/MAST-U/wall.pickle"
 os.environ["LIMITER_PATH"] = "./machine_configs/MAST-U/limiter.pickle"
 
-from freegsfast import faster_shape
+# from freegsfast import faster_shape
 
 from freegsnke import build_machine
 
@@ -69,7 +69,7 @@ def create_machine():
             -1786.696839741781,
             93.17532977532858,
             -4057.3992383452764,
-            0.00000000e00,
+            -100,
         ]
     )
     keys = list(eq.tokamak.getCurrents().keys())
@@ -90,18 +90,18 @@ def create_machine():
         plasma_resistivity=5e-7,
         automatic_timestep=False,
         mode_removal=True,
-        min_dIy_dI=1,
+        min_dIy_dI=0.1,
     )
     return tokamak, eq, profiles, stepping
 
 
 def test_linearised_growth_rate(create_machine):
     tokamak, eq, profiles, stepping = create_machine
-
+    true_GR = 0.0634
     # check that
     assert (
-        abs((stepping.linearised_sol.growth_rates[0] + 0.0338) / 0.0338) < 1e-3
-    ), f"Growth rate deviates { abs((stepping.linearised_sol.growth_rates[0]+0.0338)/0.0338)}% from baseline"
+        abs((stepping.linearised_sol.growth_rates[0] + true_GR) / true_GR) < 1e-3
+    ), f"Growth rate deviates { abs((stepping.linearised_sol.growth_rates[0]+true_GR)/true_GR)}% from baseline"
 
 
 def test_linearised_stepper(create_machine):
@@ -123,13 +123,17 @@ def test_linearised_stepper(create_machine):
     #  threshold_svd=.15)
     # eqs = deepcopy(stepping.eq1)
 
-    history_currents = [stepping.currents_vec]
-    history_equilibria = [deepcopy(stepping.eq1)]
-    shapes = faster_shape.shapes_f(stepping.eq1, stepping.profiles1)
-    history_width = [shapes[0]]
-    history_o_points = shapes[1]
-    history_elongation = [shapes[2]]
+    # history_currents = [stepping.currents_vec]
+    # history_equilibria = [deepcopy(stepping.eq1)]
+    # shapes = faster_shape.shapes_f(stepping.eq1, stepping.profiles1)
+    # history_width = [shapes[0]]
+    # history_o_points = shapes[1]
+    # history_o_points = [stepping.eq1.opt[0]]
+    # history_elongation = [shapes[2]]
     # history_dJs = [stepping.dJ]
+
+    history_o_points = [eq.opt[0]]
+    history_x_points = [eq.xpt[0]]
 
     counter = 0
     max_count = 10
@@ -154,19 +158,22 @@ def test_linearised_stepper(create_machine):
 
         t += stepping.dt_step
         history_times.append(t)
-        shapes = faster_shape.shapes_f(stepping.eq2, stepping.profiles2)
+        # shapes = faster_shape.shapes_f(stepping.eq2, stepping.profiles2)
 
-        history_currents.append(stepping.currents_vec)
-        history_equilibria.append(deepcopy(stepping.eq2))
-        history_width.append(shapes[0])
-        history_o_points = np.append(history_o_points, shapes[1], axis=0)
-        history_elongation.append(shapes[2])
+        # history_currents.append(stepping.currents_vec)
+        # history_equilibria.append(deepcopy(stepping.eq2))
+        # history_width.append(shapes[0])
+        # history_o_points.append(stepping.eq1.opt[0])
+        # history_o_points = np.array(history_o_points)
+        # history_elongation.append(shapes[2])
         # history_dJs.append(stepping.dJ)
+        history_o_points = np.append(history_o_points, [stepping.eq1.opt[0]], axis=0)
+        history_x_points = np.append(history_x_points, [stepping.eq1.xpt[0]], axis=0)
         counter += 1
 
-    history_currents = np.array(history_currents)
-    history_times = np.array(history_times)
-    history_o_points = np.array(history_o_points)
+    # history_currents = np.array(history_currents)
+    # history_times = np.array(history_times)
+    # history_o_points = np.array(history_o_points)
 
     leeway = (
         np.array(
@@ -178,11 +185,11 @@ def test_linearised_stepper(create_machine):
         / 2
     )  # 1/2 of the pixel size
 
-    true_o_point = np.array([9.48478048e-01, 8.45681774e-04])
-    true_x_point = np.array([0.59286636, 1.07637788])
+    true_o_point = np.array([9.49e-01, 0.03])
+    true_x_point = np.array([0.599, 1.08])
 
     assert np.all(
-        np.abs((history_o_points[-1, :2] - true_o_point)) < leeway
+        np.abs((stepping.eq1.opt[0, :2] - true_o_point)) < leeway
     ), "O-point location deviates more than 1/2 of pixel size."
     assert np.all(
         np.abs((stepping.eq1.xpt[0, :2] - true_x_point)) < leeway
@@ -199,21 +206,23 @@ def test_non_linear_stepper(create_machine):
     t = 0
     history_times = [t]
     t_per_step = []
-
     # use the following to reset stepping.eq1 to a new IC
     stepping.initialize_from_ICs(eq, profiles, noise_level=0)
-    # noise_vec=stepping.noise_vec,)
+    #  noise_level=.001,
+    #  noise_vec=None,
     #  update_linearization=False,
     #  update_n_steps=12,
     #  threshold_svd=.15)
     # eqs = deepcopy(stepping.eq1)
 
-    history_currents = [stepping.currents_vec]
-    history_equilibria = [deepcopy(stepping.eq1)]
-    shapes = faster_shape.shapes_f(stepping.eq1, stepping.profiles1)
-    history_width = [shapes[0]]
-    history_o_points = shapes[1]
-    history_elongation = [shapes[2]]
+    # history_currents = [stepping.currents_vec]
+    # history_equilibria = [deepcopy(stepping.eq1)]
+    # # shapes = faster_shape.shapes_f(stepping.eq1, stepping.profiles1)
+    # # history_width = [shapes[0]]
+    # # history_o_points = shapes[1]
+    history_o_points = [stepping.eq1.opt[0]]
+    history_x_points = [stepping.eq1.xpt[0]]
+    # history_elongation = [shapes[2]]
     # history_dJs = [stepping.dJ]
 
     counter = 0
@@ -239,19 +248,22 @@ def test_non_linear_stepper(create_machine):
 
         t += stepping.dt_step
         history_times.append(t)
-        shapes = faster_shape.shapes_f(stepping.eq2, stepping.profiles2)
+        # shapes = faster_shape.shapes_f(stepping.eq2, stepping.profiles2)
 
-        history_currents.append(stepping.currents_vec)
-        history_equilibria.append(deepcopy(stepping.eq2))
-        history_width.append(shapes[0])
-        history_o_points = np.append(history_o_points, shapes[1], axis=0)
-        history_elongation.append(shapes[2])
+        # history_currents.append(stepping.currents_vec)
+        # history_equilibria.append(deepcopy(stepping.eq2))
+        # # history_width.append(shapes[0])
+        # history_o_points.append(stepping.eq1.opt[0])
+        # history_o_points = np.array(history_o_points)
+        # history_elongation.append(shapes[2])
         # history_dJs.append(stepping.dJ)
+        history_o_points = np.append(history_o_points, [stepping.eq1.opt[0]], axis=0)
+        history_x_points = np.append(history_x_points, [stepping.eq1.xpt[0]], axis=0)
         counter += 1
 
-    history_currents = np.array(history_currents)
-    history_times = np.array(history_times)
-    history_o_points = np.array(history_o_points)
+    # history_currents = np.array(history_currents)
+    # history_times = np.array(history_times)
+    # history_o_points = np.array(history_o_points)
 
     leeway = (
         np.array(
@@ -262,8 +274,9 @@ def test_non_linear_stepper(create_machine):
         )
         / 2
     )  # 1/2 of the pixel size
-    true_o_point = np.array([0.9473678, 0.00254919])
-    true_x_point = np.array([0.59251894, 1.07629889])
+
+    true_o_point = np.array([9.49e-01, 0.03])
+    true_x_point = np.array([0.599, 1.08])
 
     assert np.all(
         np.abs((history_o_points[-1, :2] - true_o_point)) < leeway

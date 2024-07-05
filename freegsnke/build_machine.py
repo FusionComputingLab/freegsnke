@@ -43,7 +43,8 @@ with open(limiter_path, "rb") as f:
     limiter = pickle.load(f)
 
 if "Solenoid" not in active_coils:
-    raise ValueError("No Solenoid in active coils. Must be capitalised Solenoid.")
+    # raise ValueError("No Solenoid in active coils. Must be capitalised Solenoid.")
+    print("No coil named Solenoid among the active coils.")
 
 
 def tokamak(refine_mode="G", group_filaments=True):
@@ -63,30 +64,33 @@ def tokamak(refine_mode="G", group_filaments=True):
     -------
     FreeGSNKE tokamak machine object.
     """
-
-    # Add the solenoid
-    multicoil = MultiCoil(active_coils["Solenoid"]["R"], active_coils["Solenoid"]["Z"])
-    multicoil.dR = active_coils["Solenoid"]["dR"]
-    multicoil.dZ = active_coils["Solenoid"]["dZ"]
-    coils = [
-        (
-            "Solenoid",
-            Circuit(
-                [
-                    (
-                        "Solenoid",
-                        multicoil,
-                        float(active_coils["Solenoid"]["polarity"])
-                        * float(active_coils["Solenoid"]["multiplier"]),
-                    ),
-                ]
-            ),
-        ),
-    ]
-
-    # Add remaining active coils
+    coils = []
     for coil_name in active_coils:
-        if not coil_name == "Solenoid":
+        if coil_name == "Solenoid":
+            # Add the solenoid if any
+            multicoil = MultiCoil(
+                active_coils["Solenoid"]["R"], active_coils["Solenoid"]["Z"]
+            )
+            multicoil.dR = active_coils["Solenoid"]["dR"]
+            multicoil.dZ = active_coils["Solenoid"]["dZ"]
+            coils.append(
+                (
+                    "Solenoid",
+                    Circuit(
+                        [
+                            (
+                                "Solenoid",
+                                multicoil,
+                                float(active_coils["Solenoid"]["polarity"])
+                                * float(active_coils["Solenoid"]["multiplier"]),
+                            ),
+                        ]
+                    ),
+                ),
+            )
+
+        else:
+            # Add active coils
             circuit_list = []
             for ind in active_coils[coil_name]:
                 multicoil = MultiCoil(

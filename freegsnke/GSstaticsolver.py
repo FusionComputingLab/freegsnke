@@ -203,7 +203,7 @@ class NKGSsolver:
         eq,
         profiles,
         target_relative_tolerance,
-        max_solving_iterations=50,
+        max_solving_iterations=100,
         Picard_handover=0.07,
         step_size=2.5,
         scaling_with_n=-1.2,

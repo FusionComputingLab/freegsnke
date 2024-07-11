@@ -188,11 +188,7 @@ class nksolver:
         scaling_with_n,
         target_relative_unexplained_residual,
         max_n_directions,  # max number of basis vectors (must be less than number of modes + 1)
-        max_Arnoldi_iterations,
-        max_collinearity,
         clip,
-        threshold,
-        clip_hard,
     ):
         """Performs the iteration of the NK solution method:
         1) explores direction dx
@@ -276,10 +272,8 @@ class nksolver:
 
         explore = 1
         while explore:
-            print(self.n_it)
             # build Arnoldi update
             dx = self.Arnoldi_unit(x0, dx, R0, F_function, args)
-            print(self.Omega[-1,0])
 
             explore = (self.n_it < max_n_directions)
             self.explained_residual = np.abs(self.Omega[-1,0])

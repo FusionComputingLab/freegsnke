@@ -280,6 +280,10 @@ class nksolver:
                 )
                 > max_collinearity
             )
+            print('collinearities', np.sum(
+                    self.Gn[:, : self.n_it] * self.Gn[:, self.n_it : self.n_it + 1],
+                    axis=0,
+                ))
             self.n_it_tot += 1
             if not_collinear_check:
                 self.n_it += 1
@@ -299,6 +303,8 @@ class nksolver:
                     self.relative_unexplained_residual
                     > target_relative_unexplained_residual
                 )
+                print('relative_unexplained_residual', self.relative_unexplained_residual)
+                print('coeffs', self.coeffs)
             # else:
             #     print('collinear!, rejected', self.n_it)
 

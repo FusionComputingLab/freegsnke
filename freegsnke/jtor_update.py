@@ -129,9 +129,7 @@ class ConstrainBetapIp(freegsfast.jtor.ConstrainBetapIp, Jtor_universal):
 
         self.mask_inside_limiter = self.limiter_handler.mask_inside_limiter
         self.mask_outside_limiter = np.logical_not(self.mask_inside_limiter)
-        self.limiter_mask_out = self.limiter_handler.make_layer_mask(
-            self.mask_outside_limiter, layer_size=1
-        )
+        self.limiter_mask_out = self.limiter_handler.limiter_mask_out
 
         # this is used in critical.inside_mask
         self.mask_outside_limiter = (2 * self.mask_outside_limiter).astype(float)
@@ -252,9 +250,7 @@ class ConstrainPaxisIp(freegsfast.jtor.ConstrainPaxisIp, Jtor_universal):
 
         self.mask_inside_limiter = self.limiter_handler.mask_inside_limiter
         self.mask_outside_limiter = np.logical_not(self.mask_inside_limiter)
-        self.limiter_mask_out = self.limiter_handler.make_layer_mask(
-            self.mask_outside_limiter, layer_size=1
-        )
+        self.limiter_mask_out = self.limiter_handler.limiter_mask_out
         self.limiter_mask_for_plotting = (
             self.mask_inside_limiter
             + self.limiter_handler.make_layer_mask(
@@ -408,9 +404,7 @@ class Fiesta_Topeol(freegsfast.jtor.Fiesta_Topeol, Jtor_universal):
 
         self.mask_inside_limiter = self.limiter_handler.mask_inside_limiter
         self.mask_outside_limiter = np.logical_not(self.mask_inside_limiter)
-        self.limiter_mask_out = self.limiter_handler.make_layer_mask(
-            self.mask_outside_limiter, layer_size=1
-        )
+        self.limiter_mask_out = self.limiter_handler.limiter_mask_out
         self.limiter_mask_for_plotting = (
             self.mask_inside_limiter
             + self.limiter_handler.make_layer_mask(
@@ -557,9 +551,7 @@ class Lao85(freegsfast.jtor.Lao85, Jtor_universal):
 
         self.mask_inside_limiter = self.limiter_handler.mask_inside_limiter
         self.mask_outside_limiter = np.logical_not(self.mask_inside_limiter)
-        self.limiter_mask_out = self.limiter_handler.make_layer_mask(
-            self.mask_outside_limiter, layer_size=1
-        )
+        self.limiter_mask_out = self.limiter_handler.limiter_mask_out
         self.limiter_mask_for_plotting = (
             self.mask_inside_limiter
             + self.limiter_handler.make_layer_mask(

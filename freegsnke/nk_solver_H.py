@@ -142,8 +142,16 @@ class nksolver:
 
         """
         # build residual
-        candidate_x = x0 + dx
-        R_dx = np.copy(F_function(candidate_x, *args))
+        # candidate_x = x0 + dx
+        res_calculated = False
+        while res_calculated is False:
+            try:
+                candidate_x = x0 + dx
+                R_dx = F_function(candidate_x, *args)
+                res_calculated = True
+            except:
+                dx *= 0.75
+        # R_dx = np.copy(F_function(candidate_x, *args))
         useful_residual = R_dx - R0
         self.G[:,self.n_it] = useful_residual
         

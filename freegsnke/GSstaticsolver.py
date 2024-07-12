@@ -306,12 +306,12 @@ class NKGSsolver:
         Picard_handover=0.15,
         step_size=2.5,
         scaling_with_n=-1.2,
-        target_relative_unexplained_residual=0.1,
+        target_relative_unexplained_residual=0.3,
         max_n_directions=12,
         clip=10,
         verbose=False,
         max_rel_step_size=0.25,
-        max_rel_update_size=0.3,
+        max_rel_update_size=0.2,
     ):
         """The method that actually solves the forward GS problem.
 
@@ -513,6 +513,7 @@ class NKGSsolver:
                 update = 1.0 * self.nksolver.dx
                 # limit update size where necessary
                 print('done NK update')
+                print('self.nksolver.coeffs',self.nksolver.coeffs, self.nksolver.explained_residual)
 
             del_update = np.linalg.norm(update)
             if del_update / del_psi > max_rel_update_size:
@@ -539,6 +540,7 @@ class NKGSsolver:
                     n_del_psi = np.linalg.norm(n_trial_plasma_psi)
                     new_rel_change = new_rel_change / n_del_psi
                     new_residual_flag = False
+                    print('new_rel_change', new_rel_change)
                     # plt.imshow(n_trial_plasma_psi.reshape(self.nx, self.ny))
                     # plt.colorbar()
                     # plt.title('n_trial_plasma_psi')
@@ -588,6 +590,9 @@ class NKGSsolver:
                 log.append(
                     "Increase in residual, update reduction triggered."
                 )
+                print("Increase in residual, update reduction triggered. Returning")
+                # if 
+                # return
                 update *= 0.5
                 # plt.imshow(update.reshape(self.nx, self.ny))
                 # plt.colorbar()

@@ -305,12 +305,12 @@ class NKGSsolver:
         max_solving_iterations=50,
         Picard_handover=0.15,
         step_size=2.5,
-        scaling_with_n=-1.2,
-        target_relative_unexplained_residual=0.3,
-        max_n_directions=12,
+        scaling_with_n=-1.,
+        target_relative_unexplained_residual=0.2,
+        max_n_directions=16,
         clip=10,
         verbose=False,
-        max_rel_step_size=0.25,
+        # max_rel_step_size=0.25,
         max_rel_update_size=0.2,
     ):
         """The method that actually solves the forward GS problem.
@@ -369,7 +369,7 @@ class NKGSsolver:
         """
 
         picard_flag = 0
-        forcing_Picard = False
+        # forcing_Picard = False
         trial_plasma_psi = np.copy(eq.plasma_psi).reshape(-1)
         self.tokamak_psi = (eq.tokamak.calcPsiFromGreens(pgreen=eq._pgreen)).reshape(-1)
 
@@ -477,19 +477,24 @@ class NKGSsolver:
             # plt.title('trial_psi')
             # plt.show()
 
-            if rel_change > Picard_handover or forcing_Picard:
+            if rel_change > Picard_handover:# or forcing_Picard:
                 log.append("Picard iteration" + str(iterations))
                 # using Picard instead of NK
-                res0_2d = res0.reshape(self.nx, self.ny)
-                update = -0.5*(res0_2d + res0_2d[:,::-1]).reshape(-1)
-                print('Picard update')
+               
+                if picard_flag<3:
+                    res0_2d = res0.reshape(self.nx, self.ny)
+                    update = -0.5*(res0_2d + res0_2d[:,::-1]).reshape(-1)
+                # print('Picard update')
                 # trial_plasma_psi -= res0
-                picard_flag = True
-                forcing_Picard = False
-                print('done Picard update')
+                    picard_flag += 1
+                else:
+                    update = -1.0*res0
+                    picard_flag = 1
+                # forcing_Picard = False
+                # print('done Picard update')
 
             else:
-                print('NK update')
+                # print('NK update')
                 log.append("NK iteration " + str(iterations))
                 picard_flag = False
                 self.nksolver.Arnoldi_iteration(
@@ -512,13 +517,13 @@ class NKGSsolver:
                 # print(self.nksolver.coeffs)
                 update = 1.0 * self.nksolver.dx
                 # limit update size where necessary
-                print('done NK update')
-                print('self.nksolver.coeffs',self.nksolver.coeffs, self.nksolver.explained_residual)
+                # print('done NK update')
+                # print('self.nksolver.coeffs',self.nksolver.coeffs, self.nksolver.explained_residual)
 
             del_update = np.linalg.norm(update)
             if del_update / del_psi > max_rel_update_size:
-                print("update > max_rel_update_size. Reduced.")
-                # log.append("update > max_rel_update_size. Reduced.")
+                # print("update > max_rel_update_size. Reduced.")
+                log.append("update > max_rel_update_size. Reduced.")
                 update *= np.abs(max_rel_update_size * del_psi / del_update)
 
             # plt.imshow(update.reshape(self.nx, self.ny))
@@ -528,19 +533,19 @@ class NKGSsolver:
 
             new_residual_flag = True
             while new_residual_flag:
-                print('start new_residual_flag')
+                # print('start new_residual_flag')
                 try:
                     n_trial_plasma_psi = trial_plasma_psi + update
                     new_res0 = self.F_function(
                         n_trial_plasma_psi, self.tokamak_psi, profiles
                     )
                     new_jmap = 1.0*(profiles.jtor>0)
-                    print('jmap_difference', np.sum((new_jmap-jmap)**2))
+                    # print('jmap_difference', np.sum((new_jmap-jmap)**2))
                     new_rel_change = np.linalg.norm(new_res0)
                     n_del_psi = np.linalg.norm(n_trial_plasma_psi)
                     new_rel_change = new_rel_change / n_del_psi
                     new_residual_flag = False
-                    print('new_rel_change', new_rel_change)
+                    # print('new_rel_change', new_rel_change)
                     # plt.imshow(n_trial_plasma_psi.reshape(self.nx, self.ny))
                     # plt.colorbar()
                     # plt.title('n_trial_plasma_psi')
@@ -590,7 +595,7 @@ class NKGSsolver:
                 log.append(
                     "Increase in residual, update reduction triggered."
                 )
-                print("Increase in residual, update reduction triggered. Returning")
+                # print("Increase in residual, update reduction triggered. Returning")
                 # if 
                 # return
                 update *= 0.5
@@ -798,17 +803,17 @@ class NKGSsolver:
         target_relative_tolerance,
         constrain=None,
         max_solving_iterations=50,
-        Picard_handover=0.07,
+        Picard_handover=0.1,
         blend=0.0,
-        step_size=2.5,
-        scaling_with_n=-1.2,
-        target_relative_unexplained_residual=0.25,
-        max_n_directions=8,
-        max_Arnoldi_iterations=10,
-        max_collinearity=0.99,
+        step_size=1.,
+        scaling_with_n=-1.,
+        target_relative_unexplained_residual=0.2,
+        max_n_directions=16,
+        # max_Arnoldi_iterations=10,
+        # max_collinearity=0.99,
         clip=10,
-        threshold=3,
-        clip_hard=2,
+        # threshold=3,
+        # clip_hard=2,
         verbose=False,
     ):
         """The method to solve the GS problems, both forward and inverse.
@@ -877,11 +882,11 @@ class NKGSsolver:
                 scaling_with_n,
                 target_relative_unexplained_residual,
                 max_n_directions,
-                max_Arnoldi_iterations,
-                max_collinearity,
+                # max_Arnoldi_iterations,
+                # max_collinearity,
                 clip,
-                threshold,
-                clip_hard,
+                # threshold,
+                # clip_hard,
                 verbose,
             )
 

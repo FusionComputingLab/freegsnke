@@ -310,14 +310,14 @@ class NKGSsolver:
             pass
 
         return reference_trial_psi, reference_trial_pars, ref_metric, ref_res0, None
-    
+
     def relative_norm_residual(self, res, psi):
-        return np.linalg.norm(res)/np.linalg.norm(psi)
-    
+        return np.linalg.norm(res) / np.linalg.norm(psi)
+
     def relative_del_residual(self, res, psi):
-        del_psi = (np.amax(psi)-np.amin(psi))
-        del_res = (np.amax(res)-np.amin(res))
-        return del_res/del_psi, del_psi
+        del_psi = np.amax(psi) - np.amin(psi)
+        del_res = np.amax(res) - np.amin(res)
+        return del_res / del_psi, del_psi
 
     def forward_solve(
         self,
@@ -464,8 +464,6 @@ class NKGSsolver:
         #     except:
         #         n_check = False
 
-        
-
         self.jtor_at_start = profiles.jtor.copy()
 
         # res0 = self.F_function(trial_plasma_psi, self.tokamak_psi, profiles)
@@ -568,8 +566,12 @@ class NKGSsolver:
                     )
                     # new_jmap = 1.0 * (profiles.jtor > 0)
                     # print('jmap_difference', np.sum((new_jmap-jmap)**2))
-                    new_norm_rel_change = self.relative_norm_residual(new_res0, n_trial_plasma_psi)
-                    new_rel_change, new_del_psi = self.relative_del_residual(new_res0, n_trial_plasma_psi)
+                    new_norm_rel_change = self.relative_norm_residual(
+                        new_res0, n_trial_plasma_psi
+                    )
+                    new_rel_change, new_del_psi = self.relative_del_residual(
+                        new_res0, n_trial_plasma_psi
+                    )
                     # new_rel_change = np.linalg.norm(new_res0)
                     # n_del_psi = np.linalg.norm(n_trial_plasma_psi)
                     # new_rel_change = new_rel_change / n_del_psi

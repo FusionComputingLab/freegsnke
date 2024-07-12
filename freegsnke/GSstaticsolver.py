@@ -498,9 +498,9 @@ class NKGSsolver:
                 log.append("NK iteration " + str(iterations))
                 picard_flag = False
                 self.nksolver.Arnoldi_iteration(
-                    x0=1.0*trial_plasma_psi,  # trial_current expansion point
-                    dx=1.0*starting_direction,  # first vector for current basis
-                    R0=1.0*res0,  # circuit eq. residual at trial_current expansion point: Fresidual(trial_current)
+                    x0=trial_plasma_psi.copy(),  # trial_current expansion point
+                    dx=starting_direction.copy(),  # first vector for current basis
+                    R0=res0.copy(),  # circuit eq. residual at trial_current expansion point: Fresidual(trial_current)
                     F_function=self.F_function,
                     args=args,
                     step_size=step_size,

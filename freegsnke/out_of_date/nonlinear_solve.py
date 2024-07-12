@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy.signal import convolve2d
 
-from . import nk_solver_H as nk_solver
+from . import nk_solver as nk_solver
 from .circuit_eq_metal import metal_currents
 from .circuit_eq_plasma import plasma_current
 from .GSstaticsolver import NKGSsolver
@@ -695,8 +695,7 @@ class nl_solver:
                 self.final_dI_record = np.zeros(self.n_metal_modes + 1)
 
                 for j in self.arange_currents:
-                    if verbose:
-                        print("direction", j, "initial current shift", starting_dI[j])
+                    print("direction", j, "initial current shift", starting_dI[j])
                     self.prepare_build_dIydI_j(j, rtol_NK, target_dIy, starting_dI[j])
 
                 for j in self.arange_currents:
@@ -1869,11 +1868,11 @@ class nl_solver:
                         scaling_with_n=scaling_with_n,
                         target_relative_unexplained_residual=target_relative_unexplained_residual,  # add basis vector
                         max_n_directions=max_n_directions,  # max number of basis vectors (must be less than number of modes + 1)
-                        # max_Arnoldi_iterations=max_Arnoldi_iterations,
-                        # max_collinearity=max_collinearity,
+                        max_Arnoldi_iterations=max_Arnoldi_iterations,
+                        max_collinearity=max_collinearity,
                         clip=clip,
-                        # threshold=threshold,
-                        # clip_hard=clip_hard,
+                        threshold=threshold,
+                        clip_hard=clip_hard,
                     )
 
                     # update trial_plasma_psi according to NK solution
@@ -1920,11 +1919,11 @@ class nl_solver:
                     scaling_with_n=scaling_with_n,
                     target_relative_unexplained_residual=target_relative_unexplained_residual,
                     max_n_directions=max_n_directions,
-                    # max_Arnoldi_iterations=max_Arnoldi_iterations,
-                    # max_collinearity=max_collinearity,
+                    max_Arnoldi_iterations=max_Arnoldi_iterations,
+                    max_collinearity=max_collinearity,
                     clip=clip,
-                    # threshold=threshold,
-                    # clip_hard=clip_hard,
+                    threshold=threshold,
+                    clip_hard=clip_hard,
                 )
                 # update trial_currents according to NK solution
                 self.trial_currents += self.currents_nk_solver.dx

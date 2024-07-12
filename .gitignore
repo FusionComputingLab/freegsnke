@@ -26,9 +26,6 @@ examples/basic*
 examples/machine*
 examples/example_nonlinear_ev*
 examples/static_*
-freegsnke/nonlinear_solve_*
-freegsnke/plasma_grids*
-freegsnke/newtonkrylov_*
 machine_configs/_*
 machine_configs/*/resistance_*.pickle
 machine_configs/*/resistance.pickle

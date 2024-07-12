@@ -1,12 +1,12 @@
 from copy import deepcopy
 
 import freegsfast
+import matplotlib.pyplot as plt
 import numpy as np
 from freegsfast.gradshafranov import Greens
 
 from . import nk_solver_H as nk_solver
 
-import matplotlib.pyplot as plt
 
 class NKGSsolver:
     """Solver for the non-linear forward Grad Shafranov (GS)
@@ -75,8 +75,6 @@ class NKGSsolver:
             direct=True,
         )
 
-
-
         # List of indices on the boundary
         bndry_indices = np.concatenate(
             [
@@ -105,8 +103,8 @@ class NKGSsolver:
         # RHS/Jtor
         self.rhs_before_jtor = -freegsfast.gradshafranov.mu0 * eq.R
 
-        self.angle_shift = np.linspace(0,1,4)
-        self.twopi = np.pi*2
+        self.angle_shift = np.linspace(0, 1, 4)
+        self.twopi = np.pi * 2
         # self.shifts_uncoupled = np.array([[-1,0],[0,1],[1,0],[0,-1]])
 
     def freeboundary(self, plasma_psi, tokamak_psi, profiles):  # , rel_psi_error):
@@ -206,7 +204,6 @@ class NKGSsolver:
 
         eq.tokamak_psi = self.tokamak_psi.reshape(self.nx, self.ny)
 
-    
     def calculate_explore_metric(self, trial_plasma_psi, profiles):
         """Calculates the F_function residual and normalizes
         to a 0d value for initial plasma_psi exploration
@@ -220,16 +217,15 @@ class NKGSsolver:
             used to calculate current density jtor
 
         """
-        
+
         res0 = self.F_function(trial_plasma_psi, self.tokamak_psi, profiles)
         metric, res0 = self.explore_metric(res0, trial_plasma_psi)
         plt.imshow(trial_plasma_psi.reshape(self.nx, self.ny))
         plt.colorbar()
-        plt.title('metric = '+str(metric))
+        plt.title("metric = " + str(metric))
         plt.show()
         return metric, res0
-    
-    
+
     def explore_metric(self, res0, trial_plasma_psi):
         """Calculates the F_function residual and normalizes
         to a 0d value for initial plasma_psi exploration
@@ -244,15 +240,22 @@ class NKGSsolver:
 
         """
 
-        metric = np.linalg.norm(res0)/np.linalg.norm(trial_plasma_psi)
+        metric = np.linalg.norm(res0) / np.linalg.norm(trial_plasma_psi)
         # if Jsize_coeff != None:
         #     metric -= Jsize_coeff*np.sum(profiles.jtor>0)/np.sum(profiles.mask_inside_limiter)
         return metric, res0
 
-
-    def psi_explore(self, reference_trial_psi, reference_trial_pars, profiles, std_shifts, ref_res0=None, successf_shift=None):
-        """Can perform an initial exploration of the space of gaussian plasma_psis, to find 
-        a better initial guess to start the actual solver on. Exploration 
+    def psi_explore(
+        self,
+        reference_trial_psi,
+        reference_trial_pars,
+        profiles,
+        std_shifts,
+        ref_res0=None,
+        successf_shift=None,
+    ):
+        """Can perform an initial exploration of the space of gaussian plasma_psis, to find
+        a better initial guess to start the actual solver on. Exploration
         includes the plasma_psi 'centre', normalization and exponential degree.
 
         Parameters
@@ -269,33 +272,44 @@ class NKGSsolver:
         successf_shift : np.array of size 4
             previous succesful step values for [xc, yc, norm, exp]
 
-    
+
         """
         if ref_res0 is None:
-            ref_metric, ref_res0 = self.calculate_explore_metric(reference_trial_psi, profiles)
+            ref_metric, ref_res0 = self.calculate_explore_metric(
+                reference_trial_psi, profiles
+            )
         else:
             ref_metric, ref_res0 = self.explore_metric(ref_res0, reference_trial_psi)
-        
+
         if successf_shift is not None:
-            shift = 1.0*successf_shift
+            shift = 1.0 * successf_shift
         else:
-            shift = np.random.randn(4)*std_shifts
-        
+            shift = np.random.randn(4) * std_shifts
+
         try:
             self.trial_plasma_pars = reference_trial_pars + shift
-            if self.trial_plasma_pars[0]>1:
+            if self.trial_plasma_pars[0] > 1:
                 self.trial_plasma_pars = 1
-            self.trial_plasma_psi = self.eq.create_psi_plasma_default(gpars=self.trial_plasma_pars).reshape(-1)
+            self.trial_plasma_psi = self.eq.create_psi_plasma_default(
+                gpars=self.trial_plasma_pars
+            ).reshape(-1)
 
-            metric, res0 = self.calculate_explore_metric(self.trial_plasma_psi, profiles)
-            print('metrics', metric, ref_metric)
+            metric, res0 = self.calculate_explore_metric(
+                self.trial_plasma_psi, profiles
+            )
+            print("metrics", metric, ref_metric)
             if metric < ref_metric:
-                return self.trial_plasma_psi, self.trial_plasma_pars, metric, res0, shift
+                return (
+                    self.trial_plasma_psi,
+                    self.trial_plasma_pars,
+                    metric,
+                    res0,
+                    shift,
+                )
         except:
             pass
 
         return reference_trial_psi, reference_trial_pars, ref_metric, ref_res0, None
-
 
     def forward_solve(
         self,
@@ -305,7 +319,7 @@ class NKGSsolver:
         max_solving_iterations=50,
         Picard_handover=0.15,
         step_size=2.5,
-        scaling_with_n=-1.,
+        scaling_with_n=-1.0,
         target_relative_unexplained_residual=0.2,
         max_n_directions=16,
         clip=10,
@@ -384,7 +398,7 @@ class NKGSsolver:
                 res0 = self.F_function(trial_plasma_psi, self.tokamak_psi, profiles)
                 control_trial_psi = True
                 log.append("first residual found " + str(np.linalg.norm(res0)))
-                jmap = 1.0*(profiles.jtor>0)
+                jmap = 1.0 * (profiles.jtor > 0)
             except:
                 trial_plasma_psi /= 0.8
                 n_up += 1
@@ -394,7 +408,9 @@ class NKGSsolver:
         # and grow peak until core mask exists
         if control_trial_psi is False:
             log.append("Default plasma_psi initialization and adjustment invoked")
-            eq.plasma_psi = trial_plasma_psi = eq.create_psi_plasma_default(adaptive_centre=True)
+            eq.plasma_psi = trial_plasma_psi = eq.create_psi_plasma_default(
+                adaptive_centre=True
+            )
             eq.adjust_psi_plasma()
             trial_plasma_psi = np.copy(eq.plasma_psi).reshape(-1)
             res0 = self.F_function(trial_plasma_psi, self.tokamak_psi, profiles)
@@ -458,7 +474,6 @@ class NKGSsolver:
             for x in log:
                 print(x)
 
-
         log = []
         iterations = 0
         while (rel_change > target_relative_tolerance) * (
@@ -477,18 +492,18 @@ class NKGSsolver:
             # plt.title('trial_psi')
             # plt.show()
 
-            if rel_change > Picard_handover:# or forcing_Picard:
+            if rel_change > Picard_handover:  # or forcing_Picard:
                 log.append("Picard iteration" + str(iterations))
                 # using Picard instead of NK
-               
-                if picard_flag<3:
+
+                if picard_flag < 3:
                     res0_2d = res0.reshape(self.nx, self.ny)
-                    update = -0.5*(res0_2d + res0_2d[:,::-1]).reshape(-1)
-                # print('Picard update')
-                # trial_plasma_psi -= res0
+                    update = -0.5 * (res0_2d + res0_2d[:, ::-1]).reshape(-1)
+                    # print('Picard update')
+                    # trial_plasma_psi -= res0
                     picard_flag += 1
                 else:
-                    update = -1.0*res0
+                    update = -1.0 * res0
                     picard_flag = 1
                 # forcing_Picard = False
                 # print('done Picard update')
@@ -539,7 +554,7 @@ class NKGSsolver:
                     new_res0 = self.F_function(
                         n_trial_plasma_psi, self.tokamak_psi, profiles
                     )
-                    new_jmap = 1.0*(profiles.jtor>0)
+                    new_jmap = 1.0 * (profiles.jtor > 0)
                     # print('jmap_difference', np.sum((new_jmap-jmap)**2))
                     new_rel_change = np.linalg.norm(new_res0)
                     n_del_psi = np.linalg.norm(n_trial_plasma_psi)
@@ -592,11 +607,9 @@ class NKGSsolver:
                 rel_change = 1.0 * new_rel_change
                 del_psi = 1.0 * n_del_psi
             else:
-                log.append(
-                    "Increase in residual, update reduction triggered."
-                )
+                log.append("Increase in residual, update reduction triggered.")
                 # print("Increase in residual, update reduction triggered. Returning")
-                # if 
+                # if
                 # return
                 update *= 0.5
                 # plt.imshow(update.reshape(self.nx, self.ny))
@@ -805,8 +818,8 @@ class NKGSsolver:
         max_solving_iterations=50,
         Picard_handover=0.1,
         blend=0.0,
-        step_size=1.,
-        scaling_with_n=-1.,
+        step_size=1.0,
+        scaling_with_n=-1.0,
         target_relative_unexplained_residual=0.2,
         max_n_directions=16,
         # max_Arnoldi_iterations=10,

@@ -97,9 +97,11 @@ class nksolver:
             -nR0 * self.dummy_hessenberg_residual[: self.n_it + 1],
         )
         self.coeffs = np.clip(self.coeffs, -clip, clip)
-        self.explained_residual = np.linalg.norm(np.sum(G * self.coeffs[np.newaxis, :], axis=1))/nR0
+        self.explained_residual = (
+            np.linalg.norm(np.sum(G * self.coeffs[np.newaxis, :], axis=1)) / nR0
+        )
         # self.relative_unexplained_residual = (
-            # np.linalg.norm(self.explained_residual + R0) / nR0
+        # np.linalg.norm(self.explained_residual + R0) / nR0
         # )
         # print(self.n_it, self.relative_unexplained_residual)
         # if self.relative_unexplained_residual > threshold:
@@ -153,8 +155,8 @@ class nksolver:
                 dx *= 0.75
         # R_dx = np.copy(F_function(candidate_x, *args))
         useful_residual = R_dx - R0
-        self.G[:,self.n_it] = useful_residual
-        
+        self.G[:, self.n_it] = useful_residual
+
         # append to Hessenberg matrix
         self.Hm[: self.n_it + 1, self.n_it] = np.sum(
             self.Qn[:, : self.n_it + 1] * useful_residual[:, np.newaxis], axis=0
@@ -172,18 +174,17 @@ class nksolver:
         next_candidate /= self.Hm[self.n_it + 1, self.n_it]
 
         # build the relevant Givens rotation
-        givrot = np.eye(self.n_it+2)
-        rho = np.dot(self.Omega[self.n_it], self.Hm[:self.n_it+1,self.n_it])
-        rr = (rho**2 + self.Hm[self.n_it+1, self.n_it]**2)**.5
-        givrot[-2, -2] = givrot[-1, -1] = rho/rr
-        givrot[-2, -1] = self.Hm[self.n_it+1, self.n_it]/rr
-        givrot[-1, -2] = -1.0*givrot[-2, -1]
+        givrot = np.eye(self.n_it + 2)
+        rho = np.dot(self.Omega[self.n_it], self.Hm[: self.n_it + 1, self.n_it])
+        rr = (rho**2 + self.Hm[self.n_it + 1, self.n_it] ** 2) ** 0.5
+        givrot[-2, -2] = givrot[-1, -1] = rho / rr
+        givrot[-2, -1] = self.Hm[self.n_it + 1, self.n_it] / rr
+        givrot[-1, -2] = -1.0 * givrot[-2, -1]
         # update Omega matrix
-        Omega = np.eye(self.n_it+2)
-        Omega[:-1,:-1] = 1.0*self.Omega
+        Omega = np.eye(self.n_it + 2)
+        Omega[:-1, :-1] = 1.0 * self.Omega
         self.Omega = np.matmul(givrot, Omega)
         return next_candidate  # this is norm 1
-
 
     def Arnoldi_iteration(
         self,
@@ -260,7 +261,7 @@ class nksolver:
         self.Omega = np.array([[1]])
 
         # Hessenberg matrix
-        self.Hm = np.zeros((self.max_dim+1, self.max_dim))
+        self.Hm = np.zeros((self.max_dim + 1, self.max_dim))
 
         # resize step based on residual
         adjusted_step_size = step_size * nR0
@@ -270,7 +271,7 @@ class nksolver:
         self.n_it = 0
         self.n_it_tot = 0
         this_step_size = adjusted_step_size * ((1 + self.n_it) ** scaling_with_n)
-        
+
         dx /= np.linalg.norm(dx)
         self.Qn[:, self.n_it] = np.copy(dx)
         dx *= this_step_size
@@ -283,19 +284,25 @@ class nksolver:
             # build Arnoldi update
             dx = self.Arnoldi_unit(x0, dx, R0, F_function, args)
 
-            explore = (self.n_it < max_n_directions)
-            self.explained_residual = np.abs(self.Omega[-1,0])
-            explore *= (self.explained_residual > target_relative_unexplained_residual)
-           
+            explore = self.n_it < max_n_directions
+            self.explained_residual = np.abs(self.Omega[-1, 0])
+            explore *= self.explained_residual > target_relative_unexplained_residual
+
             # prepare for next step
             if explore:
                 self.n_it += 1
                 self.Qn[:, self.n_it] = np.copy(dx)
-                this_step_size = adjusted_step_size * ((1 + self.n_it) ** scaling_with_n)
+                this_step_size = adjusted_step_size * (
+                    (1 + self.n_it) ** scaling_with_n
+                )
                 dx *= this_step_size
                 self.Q[:, self.n_it] = np.copy(dx)
 
-        self.coeffs = -nR0 * np.dot(np.linalg.inv(self.Omega[:-1]@self.Hm[:self.n_it+2, :self.n_it+1]), self.Omega[:-1,0])
+        self.coeffs = -nR0 * np.dot(
+            np.linalg.inv(self.Omega[:-1] @ self.Hm[: self.n_it + 2, : self.n_it + 1]),
+            self.Omega[:-1, 0],
+        )
         self.coeffs = np.clip(self.coeffs, -clip, clip)
-        self.dx = np.sum(self.Q[:, :self.n_it+1] * self.coeffs[np.newaxis, :], axis=1)
-
+        self.dx = np.sum(
+            self.Q[:, : self.n_it + 1] * self.coeffs[np.newaxis, :], axis=1
+        )

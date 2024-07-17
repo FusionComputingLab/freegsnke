@@ -1,3 +1,4 @@
+import warnings
 from copy import deepcopy
 
 import freegsfast
@@ -669,14 +670,12 @@ class NKGSsolver:
         if picard_flag and verbose:
             print("Picard was used instead of NK in at least 1 cycle.")
 
-        # if max_iter was hit, then message:
         if iterations >= max_solving_iterations:
-            print(
-                "failed to converge to the requested relative tolerance of {} with less than {} iterations".format(
-                    target_relative_tolerance, max_solving_iterations
-                )
+            warnings.warn(
+                f"Failed to converge to the requested relative tolerance of "
+                + f"{target_relative_tolerance} with less than {max_solving_iterations}"
+                + f"iterations. Last relative psi change: {rel_change}"
             )
-            print(f"last relative psi change = {rel_change}")
 
     # def inverse_solve(
     #     self,

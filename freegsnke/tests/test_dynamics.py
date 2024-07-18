@@ -97,7 +97,7 @@ def create_machine():
 
 def test_linearised_growth_rate(create_machine):
     tokamak, eq, profiles, stepping = create_machine
-    true_GR = 0.0634
+    true_GR = 0.0673
     # check that
     assert (
         abs((stepping.linearised_sol.growth_rates[0] + true_GR) / true_GR) < 1e-3

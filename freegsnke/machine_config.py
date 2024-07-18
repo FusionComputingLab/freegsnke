@@ -4,7 +4,7 @@ from copy import deepcopy
 
 import numpy as np
 from deepdiff import DeepDiff
-from freegsfast.gradshafranov import Greens
+from freegsfast.gradshafranov import Greens, mu0
 
 from .refine_passive import generate_refinement
 
@@ -13,13 +13,17 @@ if active_coils_path is None:
     raise ValueError("ACTIVE_COILS_PATH environment variable not set.")
 
 
-def Greens_with_depth(Rc, Zc, R, Z, dR, dZ, tol=1e-6):
-    mask = np.abs(R - Rc) < tol
-    mask *= np.abs(Z - Zc) < tol
-    small_r = np.sqrt(dR * dZ / np.pi)
-    Rc = np.where(mask, Rc - small_r / 2, Rc)
-    greens = Greens(Rc, Zc, R, Z)
-    return greens
+# def Greens_with_depth(Rc, Zc, R, Z, dR, dZ, tol=1e-6):
+#     mask = np.abs(R - Rc) < tol
+#     mask *= np.abs(Z - Zc) < tol
+#     small_r = np.sqrt(dR * dZ / np.pi)
+#     Rc = np.where(mask, Rc - small_r / 2, Rc)
+#     greens = Greens(Rc, Zc, R, Z)
+#     return greens
+
+def self_ind_circular_loop(R, r):
+    return mu0*R*(np.log(8*R/r) -.5)
+
 
 
 def check_self_inductance_and_resistance(coils_dict):
@@ -107,14 +111,22 @@ def calculate_all(coils_dict):
             if j >= i:
                 coords_j = coils_dict[labelj]["coords"]
 
-                greenm = Greens_with_depth(
+                greenm = Greens(
                     coords_i[0][np.newaxis, :],
                     coords_i[1][np.newaxis, :],
                     coords_j[0][:, np.newaxis],
                     coords_j[1][:, np.newaxis],
-                    np.array([coils_dict[labeli]["dR"]])[:, np.newaxis],
-                    np.array([coils_dict[labeli]["dZ"]])[:, np.newaxis],
+                    # np.array([coils_dict[labeli]["dR"]])[:, np.newaxis],
+                    # np.array([coils_dict[labeli]["dZ"]])[:, np.newaxis],
                 )
+
+                # Recalculate the diagonal terms of greenm using self_ind_circular_loop
+                if j==i:
+                    # The linear sum dr = dR + dZ (rather than (dR**2+dZ**2/pi)**.5 is mutuated from Fiesta)
+                    rr = np.array([coils_dict[labeli]["dR"]]) + np.array([coils_dict[labeli]["dZ"]])
+                    print(j, greenm)
+                    greenm[np.arange(len(coords_i[0])), np.arange(len(coords_i[0]))] = self_ind_circular_loop(R=coords_i[0], r=rr)/(2*np.pi)
+                    print(j, greenm)
 
                 greenm *= coils_dict[labelj]["polarity"][:, np.newaxis]
                 greenm *= coils_dict[labelj]["multiplier"][:, np.newaxis]

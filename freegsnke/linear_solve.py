@@ -171,6 +171,14 @@ class linear_solver:
         None given explicitly, they are all given by the object attributes.
 
         """
+
+        self.M0matrix = np.zeros(
+            (self.n_independent_vars + 1, self.n_independent_vars + 1)
+        )
+        self.dMmatrix = np.zeros(
+            (self.n_independent_vars + 1, self.n_independent_vars + 1)
+        )
+        
         nRp = (
             np.sum(self.plasma_resistance_1d * self.hatIy0 * self.hatIy0)
             * self.plasma_norm_factor

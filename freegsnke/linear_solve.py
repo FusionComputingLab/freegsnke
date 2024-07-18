@@ -178,7 +178,7 @@ class linear_solver:
         self.dMmatrix = np.zeros(
             (self.n_independent_vars + 1, self.n_independent_vars + 1)
         )
-        
+
         nRp = (
             np.sum(self.plasma_resistance_1d * self.hatIy0 * self.hatIy0)
             * self.plasma_norm_factor

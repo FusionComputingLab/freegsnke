@@ -21,9 +21,9 @@ if active_coils_path is None:
 #     greens = Greens(Rc, Zc, R, Z)
 #     return greens
 
-def self_ind_circular_loop(R, r):
-    return mu0*R*(np.log(8*R/r) -.5)
 
+def self_ind_circular_loop(R, r):
+    return mu0 * R * (np.log(8 * R / r) - 0.5)
 
 
 def check_self_inductance_and_resistance(coils_dict):
@@ -121,11 +121,15 @@ def calculate_all(coils_dict):
                 )
 
                 # Recalculate the diagonal terms of greenm using self_ind_circular_loop
-                if j==i:
+                if j == i:
                     # The linear sum dr = dR + dZ (rather than (dR**2+dZ**2/pi)**.5 is mutuated from Fiesta)
-                    rr = np.array([coils_dict[labeli]["dR"]]) + np.array([coils_dict[labeli]["dZ"]])
+                    rr = np.array([coils_dict[labeli]["dR"]]) + np.array(
+                        [coils_dict[labeli]["dZ"]]
+                    )
                     print(j, greenm)
-                    greenm[np.arange(len(coords_i[0])), np.arange(len(coords_i[0]))] = self_ind_circular_loop(R=coords_i[0], r=rr)/(2*np.pi)
+                    greenm[np.arange(len(coords_i[0])), np.arange(len(coords_i[0]))] = (
+                        self_ind_circular_loop(R=coords_i[0], r=rr) / (2 * np.pi)
+                    )
                     print(j, greenm)
 
                 greenm *= coils_dict[labelj]["polarity"][:, np.newaxis]

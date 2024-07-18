@@ -383,7 +383,7 @@ class metal_currents:
             mey[j] = np.sum(greenm, axis=-1)
         return 2 * np.pi * mey
 
-    def Mey_Bz(
+    def Mey_Br(
         self,
     ):
         """Calculates the matrix of Bz inductances between plasma grid points and all vessel coils
@@ -401,11 +401,11 @@ class metal_currents:
         coils_dict = machine_config.coils_dict
         mey = np.zeros((machine_config.n_coils, len(self.plasma_pts)))
         for j, labelj in enumerate(machine_config.coils_order):
-            greenm = GreensBz(
-                self.plasma_pts[:, 0, np.newaxis],
-                self.plasma_pts[:, 1, np.newaxis],
+            greenm = GreensBr(
                 coils_dict[labelj]["coords"][0][np.newaxis, :],
                 coils_dict[labelj]["coords"][1][np.newaxis, :],
+                self.plasma_pts[:, 0, np.newaxis],
+                self.plasma_pts[:, 1, np.newaxis],
             )
             greenm *= coils_dict[labelj]["polarity"][np.newaxis, :]
             greenm *= coils_dict[labelj]["multiplier"][np.newaxis, :]
@@ -431,10 +431,10 @@ class metal_currents:
         mey = np.zeros((machine_config.n_coils, len(self.plasma_pts)))
         for j, labelj in enumerate(machine_config.coils_order):
             greenm = GreensBz(
-                self.plasma_pts[:, 0, np.newaxis],
-                self.plasma_pts[:, 1, np.newaxis],
                 coils_dict[labelj]["coords"][0][np.newaxis, :],
                 coils_dict[labelj]["coords"][1][np.newaxis, :],
+                self.plasma_pts[:, 0, np.newaxis],
+                self.plasma_pts[:, 1, np.newaxis],
             )
             greenm *= coils_dict[labelj]["polarity"][np.newaxis, :]
             greenm *= coils_dict[labelj]["multiplier"][np.newaxis, :]

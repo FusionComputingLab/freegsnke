@@ -639,7 +639,7 @@ class nl_solver:
         dIydI=None,
         dIydpars=None,
         rtol_NK=1e-8,
-        target_dIy=5e-3,
+        target_dIy=1e-3,
         starting_dI=None,
         starting_dpars=(0.0002, 0.0002, 0.005),
         verbose=False,

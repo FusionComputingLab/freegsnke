@@ -185,7 +185,7 @@ class PassiveStructure(freegsfast.coil.Coil):
             fig = plt.figure()
             axis = fig.add_subplot(111)
         self.polygon = Polygon(
-            self.vertices, facecolor="grey", edgecolor="k", linewidth=2
+            self.vertices, facecolor="grey", edgecolor="k", linewidth=0.75
         )
 
         axis.add_patch(self.polygon)

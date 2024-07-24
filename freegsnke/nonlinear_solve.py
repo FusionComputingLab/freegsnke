@@ -980,8 +980,8 @@ class nl_solver:
         self.get_profiles_values(profile)
 
         # set internal copy of the equilibrium
-        self.eq1 = deepcopy(self.eq)
-        self.profiles1 = deepcopy(self.profiles)
+        self.eq1 = deepcopy(eq)
+        self.profiles1 = deepcopy(profile)
         # self.eq1 and self.profiles1 are advanced each timestep.
         # Their properties evolve according to the dynamics.
         # Note that the input eq and profile are NOT modified by the evolution object.
@@ -995,12 +995,14 @@ class nl_solver:
         self.current_at_last_linearization = np.copy(self.currents_vec)
 
         # ensure internal equilibrium is a GS solution
-        self.assign_currents_solve_GS(self.currents_vec, rtol_NK)
-        self.eq1 = deepcopy(self.eq2)
-        self.profiles1 = deepcopy(self.profiles2)
+        self.assign_currents(self.currents_vec, profile=self.profiles1, eq=self.eq1)
+        self.NK.forward_solve(self.eq1, self.profiles1, target_relative_tolerance=rtol_NK)
+        
         # self.eq2 and self.profiles2 are used when solving for the dynamics
         # they should not be used to extract properties of the evolving equilibrium
         # as these may not be accurate
+        self.eq2 = deepcopy(self.eq1)
+        self.profiles2 = deepcopy(self.profiles1)
         
 
 
@@ -1027,7 +1029,7 @@ class nl_solver:
         # build the linearization if not provided
         self.build_linearization(
             self.eq1,
-            self.profile1,
+            self.profiles1,
             dIydI,
             dIydpars,
             rtol_NK,
@@ -1762,7 +1764,7 @@ class nl_solver:
         # Solution and GS equilibrium are assigned to self.trial_currents and self.trial_plasma_psi
 
         if linear_only:
-            # assign currents and plasma flux to self.currents_vec, self.eq1 and self.profile1 and complete step
+            # assign currents and plasma flux to self.currents_vec, self.eq1 and self.profiles1 and complete step
             self.step_complete_assign(working_relative_tol_GS, from_linear=True)
 
         else:
@@ -2042,7 +2044,7 @@ class nl_solver:
         args_nk = [active_voltage_vec, self.rtol_NK]
 
         if linear_only:
-            # assign currents and plasma flux to self.currents_vec, self.eq1 and self.profile1 and complete step
+            # assign currents and plasma flux to self.currents_vec, self.eq1 and self.profiles1 and complete step
             self.step_complete_assign(working_relative_tol_GS, from_linear=True)
 
         else:
@@ -2203,7 +2205,7 @@ class nl_solver:
     #     # args_nk = [active_voltage_vec, self.rtol_NK]
 
     #     if linear_only:
-    #         # assign currents and plasma flux to self.currents_vec, self.eq1 and self.profile1 and complete step
+    #         # assign currents and plasma flux to self.currents_vec, self.eq1 and self.profiles1 and complete step
     #         self.step_complete_assign(working_relative_tol_GS, from_linear=True)
 
     #     else:
@@ -2326,7 +2328,7 @@ class nl_solver:
     #     args_nk = [active_voltage_vec, self.rtol_NK]
 
     #     if linear_only:
-    #         # assign currents and plasma flux to self.currents_vec, self.eq1 and self.profile1 and complete step
+    #         # assign currents and plasma flux to self.currents_vec, self.eq1 and self.profiles1 and complete step
     #         self.step_complete_assign(working_relative_tol_GS, from_linear=True)
 
     #     else:
@@ -2670,7 +2672,7 @@ class nl_solver:
     #     # Solution and GS equilibrium are assigned to self.trial_currents and self.trial_plasma_psi
 
     #     if linear_only:
-    #         # assign currents and plasma flux to self.currents_vec, self.eq1 and self.profile1 and complete step
+    #         # assign currents and plasma flux to self.currents_vec, self.eq1 and self.profiles1 and complete step
     #         self.step_complete_assign(working_relative_tol_GS, from_linear=True)
 
     #     else:
@@ -2972,7 +2974,7 @@ class nl_solver:
     #     # Solution and GS equilibrium are assigned to self.trial_currents and self.trial_plasma_psi
 
     #     if linear_only:
-    #         # assign currents and plasma flux to self.currents_vec, self.eq1 and self.profile1 and complete step
+    #         # assign currents and plasma flux to self.currents_vec, self.eq1 and self.profiles1 and complete step
     #         self.step_complete_assign(working_relative_tol_GS, from_linear=True)
 
     #     else:

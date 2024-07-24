@@ -996,15 +996,15 @@ class nl_solver:
 
         # ensure internal equilibrium is a GS solution
         self.assign_currents(self.currents_vec, profile=self.profiles1, eq=self.eq1)
-        self.NK.forward_solve(self.eq1, self.profiles1, target_relative_tolerance=rtol_NK)
-        
+        self.NK.forward_solve(
+            self.eq1, self.profiles1, target_relative_tolerance=rtol_NK
+        )
+
         # self.eq2 and self.profiles2 are used when solving for the dynamics
         # they should not be used to extract properties of the evolving equilibrium
         # as these may not be accurate
         self.eq2 = deepcopy(self.eq1)
         self.profiles2 = deepcopy(self.profiles1)
-        
-
 
         # self.Iy is the istantaneous 1d vector representing the plasma current distribution
         # on the reduced plasma domain, as from plasma_domain_mask
@@ -1021,7 +1021,6 @@ class nl_solver:
         # self.broad_hatIy = self.limiter_handler.hat_Iy_from_jtor(self.broad_hatIy)
 
         # set an additional internal copy of the equilibrium
-        
 
         self.time = 0
         self.step_no = -1

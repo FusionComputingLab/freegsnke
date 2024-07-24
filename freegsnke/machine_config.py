@@ -126,11 +126,11 @@ def calculate_all(coils_dict):
                     rr = np.array([coils_dict[labeli]["dR"]]) + np.array(
                         [coils_dict[labeli]["dZ"]]
                     )
-                    print(j, greenm)
+                    # print(j, greenm)
                     greenm[np.arange(len(coords_i[0])), np.arange(len(coords_i[0]))] = (
                         self_ind_circular_loop(R=coords_i[0], r=rr) / (2 * np.pi)
                     )
-                    print(j, greenm)
+                    # print(j, greenm)
 
                 greenm *= coils_dict[labelj]["polarity"][:, np.newaxis]
                 greenm *= coils_dict[labelj]["multiplier"][:, np.newaxis]

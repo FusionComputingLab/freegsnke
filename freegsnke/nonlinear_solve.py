@@ -980,20 +980,29 @@ class nl_solver:
         self.get_profiles_values(profile)
 
         # set internal copy of the equilibrium
+        self.eq1 = deepcopy(self.eq)
+        self.profiles1 = deepcopy(self.profiles)
         # self.eq1 and self.profiles1 are advanced each timestep.
         # Their properties evolve according to the dynamics.
         # Note that the input eq and profile are NOT modified by the evolution object.
-        self.eq1 = deepcopy(eq)
-        self.profiles1 = deepcopy(profile)
+        # extract all initial current values currents
 
         # Perturb passive structures when desired
         if (noise_level > 0) or (noise_vec is not None):
             self.assign_vessel_noise(self.eq1, noise_level, noise_vec)
 
-        # ensure input equilibrium is a GS solution
-        self.NK.forward_solve(
-            self.eq1, self.profiles1, target_relative_tolerance=rtol_NK
-        )
+        self.build_current_vec(self.eq1, self.profiles1)
+        self.current_at_last_linearization = np.copy(self.currents_vec)
+
+        # ensure internal equilibrium is a GS solution
+        self.assign_currents_solve_GS(self.currents_vec, rtol_NK)
+        self.eq1 = deepcopy(self.eq2)
+        self.profiles1 = deepcopy(self.profiles2)
+        # self.eq2 and self.profiles2 are used when solving for the dynamics
+        # they should not be used to extract properties of the evolving equilibrium
+        # as these may not be accurate
+        
+
 
         # self.Iy is the istantaneous 1d vector representing the plasma current distribution
         # on the reduced plasma domain, as from plasma_domain_mask
@@ -1010,23 +1019,15 @@ class nl_solver:
         # self.broad_hatIy = self.limiter_handler.hat_Iy_from_jtor(self.broad_hatIy)
 
         # set an additional internal copy of the equilibrium
-        # self.eq2 and self.profiles2 are used when solving for the dynamics
-        # they should not be used to extract properties of the evolving equilibrium
-        # as these may not be accurate
-        self.eq2 = deepcopy(self.eq1)
-        self.profiles2 = deepcopy(self.profiles1)
-
-        # extract all initial current values currents
-        self.build_current_vec(self.eq1, self.profiles1)
-        self.current_at_last_linearization = np.copy(self.currents_vec)
+        
 
         self.time = 0
         self.step_no = -1
 
         # build the linearization if not provided
         self.build_linearization(
-            eq,
-            profile,
+            self.eq1,
+            self.profile1,
             dIydI,
             dIydpars,
             rtol_NK,

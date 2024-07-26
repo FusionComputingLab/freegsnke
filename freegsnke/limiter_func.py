@@ -147,6 +147,7 @@ class Limiter_handler:
                 fine_points.append(points)
         fine_points = np.concatenate(fine_points, axis=0)
 
+        # finds the grid vertex with coords just below each of the fine_points along the limiter
         Rvals = self.eqR[:, 0]
         Ridxs = np.sum(Rvals[np.newaxis, :] < fine_points[:, :1], axis=1) - 1
         Zvals = self.eqZ[0, :]
@@ -154,11 +155,12 @@ class Limiter_handler:
         self.grid_per_limiter_fine_point = np.concatenate(
             (Ridxs[:, np.newaxis], Zidxs[:, np.newaxis]), axis=-1
         )
-        self.limiter_mask_out = np.zeros_like(self.eqR)
-        self.limiter_mask_out[
-            self.grid_per_limiter_fine_point[:, 0],
-            self.grid_per_limiter_fine_point[:, 1],
-        ] = 1
+        self.limiter_mask_out = self.make_layer_mask(np.logical_not(self.mask_inside_limiter), 1)
+        # self.limiter_mask_out = np.zeros_like(self.eqR)
+        # self.limiter_mask_out[
+        #     self.grid_per_limiter_fine_point[:, 0],
+        #     self.grid_per_limiter_fine_point[:, 1],
+        # ] = 1
 
         self.fine_point_per_cell = {}
         self.fine_point_per_cell_R = {}

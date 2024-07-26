@@ -155,7 +155,9 @@ class Limiter_handler:
         self.grid_per_limiter_fine_point = np.concatenate(
             (Ridxs[:, np.newaxis], Zidxs[:, np.newaxis]), axis=-1
         )
-        self.limiter_mask_out = self.make_layer_mask(np.logical_not(self.mask_inside_limiter), 1)
+        self.limiter_mask_out = self.make_layer_mask(
+            np.logical_not(self.mask_inside_limiter), 1
+        )
         # self.limiter_mask_out = np.zeros_like(self.eqR)
         # self.limiter_mask_out[
         #     self.grid_per_limiter_fine_point[:, 0],

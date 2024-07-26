@@ -663,6 +663,7 @@ def get_machine_data(
 							 }
 						)
 				else:
+					group_area = np.sum(coil_data['dr']*coil_data['dz'])
 					for i in range(0, len(coil_data['r'])):
 						passive_coils.append(
 							{"R": coil_data['r'][i], 

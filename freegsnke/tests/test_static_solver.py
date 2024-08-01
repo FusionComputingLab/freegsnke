@@ -12,11 +12,11 @@ from freegsfast.plotting import plotConstraints
 from IPython.display import clear_output, display
 from matplotlib.widgets import Slider
 
-os.environ["ACTIVE_COILS_PATH"] = "./machine_configs/MAST-U/test_active_coils.pickle"
-os.environ["PASSIVE_COILS_PATH"] = "./machine_configs/MAST-U/test_passive_coils.pickle"
-os.environ["WALL_PATH"] = "./machine_configs/MAST-U/test_wall.pickle"
-os.environ["LIMITER_PATH"] = "./machine_configs/MAST-U/test_limiter.pickle"
-os.environ["PROBE_PATH"] = "./machine_configs/MAST-U/test_magnetic_probes.pickle"
+os.environ["ACTIVE_COILS_PATH"] = "./machine_configs/test/active_coils.pickle"
+os.environ["PASSIVE_COILS_PATH"] = "./machine_configs/test/passive_coils.pickle"
+os.environ["WALL_PATH"] = "./machine_configs/test/wall.pickle"
+os.environ["LIMITER_PATH"] = "./machine_configs/test/limiter.pickle"
+os.environ["PROBE_PATH"] = "./machine_configs/test/magnetic_probes.pickle"
 
 from freegsnke import build_machine
 

@@ -8,6 +8,7 @@ os.environ["ACTIVE_COILS_PATH"] = "./machine_configs/MAST-U/test_active_coils.pi
 os.environ["PASSIVE_COILS_PATH"] = "./machine_configs/MAST-U/test_passive_coils.pickle"
 os.environ["WALL_PATH"] = "./machine_configs/MAST-U/test_wall.pickle"
 os.environ["LIMITER_PATH"] = "./machine_configs/MAST-U/test_limiter.pickle"
+os.environ["PROBE_PATH"] = "./machine_configs/MAST-U/test_magnetic_probes.pickle"
 
 import freegsnke.jtor_update as jtor
 from freegsnke import build_machine

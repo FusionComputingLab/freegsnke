@@ -27,7 +27,6 @@ examples/machine*
 examples/example_nonlinear_ev*
 examples/static_*
 machine_configs/_*
-machine_configs/MAST-U/MAST-U_*
 machine_configs/*/resistance_*.pickle
 machine_configs/*/resistance.pickle
 machine_configs/*/self_inductance.pickle

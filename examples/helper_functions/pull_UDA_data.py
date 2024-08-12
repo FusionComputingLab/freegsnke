@@ -732,6 +732,25 @@ def load_efit_times_and_status(
     status = client.get('/epm/equilibriumstatusinteger', shot)
     
     return status.time.data, status.data
+    
+    
+# ------------
+# ------------
+def load_efit_times_and_status_splines(
+	client, 
+	shot=45425
+	):
+    """
+    Extract the shot status (converged or not) and times from the EFIT data.
+
+    """
+    
+    # load data 
+    status = client.get('/epq/equilibriumstatusinteger', shot)
+    
+    return status.time.data, status.data
+    
+    
 
 # ------------
 # ------------
@@ -824,6 +843,109 @@ def load_static_solver_inputs(
                 
     return Ip, fvac, alpha, beta, alpha_logic, beta_logic, currents, currents_nonsym, currents_discrepancy
     
+
+
+# ------------
+# ------------
+def load_static_solver_inputs_splines(
+	client,
+	shot=45425, 
+	zero_passives=False
+    ):
+    """
+    Extract the EFIT++ data required for the static solve. 
+    
+    """
+
+    # load data     
+    Ip = client.get('/epq/input/constraints/plasmacurrent/computed', shot).data                           # plasma current
+    fvac = client.get('/epq/input/bvacradiusproduct', shot).data                                          # fvac
+    pp_coeffs = client.get('/epq/output/numericaldetails/degreesoffreedom/pprimecoeffs', shot).data       # pprime coefficients (contains values at knots, second deriv. values at knots)
+    ffp_coeffs = client.get('/epq/output/numericaldetails/degreesoffreedom/ffprimecoeffs', shot).data     # ffprime coefficients (contains values at knots, second deriv. values at knots)
+    pp_values = pp_coeffs[:,0::2]                    # every second element (starting from zero) is the value at a knot
+    pp_values_2nd = pp_coeffs[:,1::2]                # every second element (starting from one) is the value of the second deriv. at a knot
+    ffp_values = ffp_coeffs[:,0::2]                  # every second element (starting from zero) is the value at a knot
+    ffp_values_2nd = ffp_coeffs[:,1::2]              # every second element (starting from one) is the value of the second deriv. at a knot
+
+    pp_tension = client.get('/epq/input/numericalcontrols/pp/tens', shot).data                            # pprime tension value
+    ffp_tension = client.get('/epq/input/numericalcontrols/ffp/tens', shot).data                          # ffprime tension value
+    pp_knots_raw = client.get('/epq/input/numericalcontrols/pp/knt', shot).data                               # pprime knot locations
+    ffp_knots_raw = client.get('/epq/input/numericalcontrols/ffp/knt', shot).data                             # ffprime knot locations
+    pp_knots = pp_knots_raw[:,pp_knots_raw[0,:] > -1]
+    ffp_knots = ffp_knots_raw[:,ffp_knots_raw[0,:] > -1]
+
+    # active coil\passive structure currents need to be done carefully
+    current_labels = client.get('/epq/input/constraints/pfcircuits/shortname', shot).data          # active/passive coil current names
+    currents_values = client.get('/epq/input/constraints/pfcircuits/computed', shot).data          # active/passive coil current values
+            
+    # Active coils
+    currents = {}
+    currents_nonsym = {}
+    currents_discrepancy = {}
+
+    with open('../machine_configs/MAST-U//MAST-U_active_coils.pickle', 'rb') as file:
+        active_coils = pickle.load(file)
+		
+    efit_names = current_labels[0:24]   # active coil names in efit
+    
+    # loop through active coil names in freegsnke to set them with UDA data
+    for active_coil_name in active_coils.keys():
+        
+        # special cases for specific coil names
+        if active_coil_name == "Solenoid":
+            # find indices for Solenoid coils in efit_names
+            indices = [i for i, efit_name in enumerate(efit_names) if "p1" in efit_name]
+            currents["Solenoid"] = currents_values[:, indices[0]] if indices else None
+            currents_nonsym["Solenoid"] = currents_values[:, indices[0]] if indices else None
+            currents_discrepancy["Solenoid"] = 0.0
+        else:
+            # find indices for other coils in efit_names
+            indices = [i for i, efit_name in enumerate(efit_names) if active_coil_name in efit_name]
+            if indices:
+                polarity = np.sign(currents_values[:, indices[0]])
+                average_current = np.sum(np.abs(currents_values[:, indices]), axis=1) / len(indices)
+                currents[active_coil_name] = polarity*average_current
+                currents_discrepancy[active_coil_name] = polarity*np.abs(np.abs(currents_values[:, indices[0]]) - average_current)
+                for j in indices:
+                    currents_nonsym[efit_names[j]] = currents_values[:, j]
+
+            else:
+                currents[active_coil_name] = None
+
+	# passive structures
+    with open('../machine_configs/MAST-U//MAST-U_passive_coils.pickle', 'rb') as file:
+        passive_coils = pickle.load(file)
+        
+    # Passive structures
+    for i in range(0, len(passive_coils)):
+        coil = passive_coils[i]
+        
+        if "efitGroup" in coil:
+            group_name = coil['efitGroup']
+            ind = current_labels.tolist().index(group_name)
+            
+            if zero_passives:
+                currents[coil["name"]] = 0.0
+                currents_nonsym[coil["name"]] = 0.0
+            else:
+                currents[coil["name"]] = currents_values[:,ind]*coil["current_multiplier"]
+                currents_nonsym[coil["name"]] = currents_values[:,ind]*coil["current_multiplier"]
+                # currents[coil["name"]] = efit_currents['currents_input'][t,ind]
+        else:
+            group_name = coil['element']
+            ind = current_labels.tolist().index(group_name)
+            if zero_passives:
+                currents[coil["name"]] = 0.0
+                currents_nonsym[coil["name"]] = 0.0
+            else:
+                currents[coil["name"]] = currents_values[:,ind]*coil["current_multiplier"]
+                currents_nonsym[coil["name"]] = currents_values[:,ind]*coil["current_multiplier"]
+                # currents[coil["name"]] = efit_currents['currents_input'][t,ind]
+
+                
+    return Ip, fvac, pp_knots, ffp_knots, pp_values, ffp_values, pp_values_2nd, ffp_values_2nd, pp_tension, ffp_tension, currents, currents_nonsym, currents_discrepancy
+    
+    
     
 # ------------ 
 def extract_EFIT_outputs(
@@ -851,14 +973,39 @@ def extract_EFIT_outputs(
     ffprime = client.get('/epm/output/fluxfunctionprofiles/ffprime', shot).data[time_indices]                                     # toroidal current density profile
     strike_points = np.array([client.get('/epm/output/separatrixgeometry/strikepointr', shot).data[time_indices], 
                               client.get('/epm/output/separatrixgeometry/strikepointz', shot).data[time_indices]]).T              # strikepoint coords
-    
-
-        
+       
     return psi_total, psi_axis, psi_boundary, jtor, magnetic_axis, midplane_inner_outer_radii, x_points, pprime, ffprime, strike_points
     
 
+# ------------ 
+def extract_EFIT_outputs_splines(
+    client,
+	shot,
+    time_indices
+	):
+    """
+    Load EFIT++ output data for chosen targets below at time indices required.
 
-
+    """
+    
+    # load data     
+    psi_total = client.get('/epq/output/profiles2d/poloidalflux', shot).data[time_indices,:,:]                                   # total poloidal flux (units= Webers/2*pi)
+    psi_axis = client.get('/epq/output/globalparameters/psiaxis', shot).data[time_indices]                                       # flux on magnetic axis
+    psi_boundary = client.get('/epq/output/globalparameters/psiboundary', shot).data[time_indices]                               # flux on plasma boundary
+    jtor = client.get('/epq/output/profiles2d/jphi', shot).data[time_indices,:,:]                                                # plasma current density
+    magnetic_axis = np.array([client.get('/epq/output/globalparameters/magneticaxis/r', shot).data[time_indices],
+                             client.get('/epq/output/globalparameters/magneticaxis/z', shot).data[time_indices]]).T               # magnetic axis coords
+    midplane_inner_outer_radii = np.array([client.get('/epq/output/separatrixgeometry/rmidplanein', shot).data[time_indices],
+                                           client.get('/epq/output/separatrixgeometry/rmidplaneout', shot).data[time_indices]]).T # midplane inner/outer radii coords
+    x_points = np.array([client.get('/epq/output/separatrixgeometry/xpointr', shot).data[time_indices],
+                         client.get('/epq/output/separatrixgeometry/xpointz', shot).data[time_indices]]).T                        # x-points in flux field
+    pprime = client.get('/epq/output/fluxfunctionprofiles/staticpprime', shot).data[time_indices]                                 # pressure profile function
+    ffprime = client.get('/epq/output/fluxfunctionprofiles/ffprime', shot).data[time_indices]                                     # toroidal current density profile
+    strike_points = np.array([client.get('/epq/output/separatrixgeometry/strikepointr', shot).data[time_indices], 
+                              client.get('/epq/output/separatrixgeometry/strikepointz', shot).data[time_indices]]).T              # strikepoint coords
+       
+    return psi_total, psi_axis, psi_boundary, jtor, magnetic_axis, midplane_inner_outer_radii, x_points, pprime, ffprime, strike_points
+    
 
 
 

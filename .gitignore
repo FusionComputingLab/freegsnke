@@ -36,3 +36,4 @@ docs/_build
 docs/api
 docs/notebooks
 build/
+examples/.virtual_documents/*

@@ -1,7 +1,7 @@
-import freegsfast
+import freegs4e
 import numpy as np
-from freegsfast import critical
-from freegsfast.gradshafranov import mu0
+from freegs4e import critical
+from freegs4e.gradshafranov import mu0
 
 from . import limiter_func
 from . import switch_profile as swp
@@ -27,7 +27,7 @@ class Jtor_universal:
         Parameters
         ----------
         Jtor_part1 : method
-            method from the freegsfast Profile class
+            method from the freegs4e Profile class
             returns opt, xpt, diverted_core_mask
         Jtor_part2 : method
             method from each individual profile class
@@ -101,7 +101,7 @@ class Jtor_universal:
         return self.jtor
 
 
-class ConstrainBetapIp(freegsfast.jtor.ConstrainBetapIp, Jtor_universal):
+class ConstrainBetapIp(freegs4e.jtor.ConstrainBetapIp, Jtor_universal):
     """FreeGS profile class with a few modifications, to:
     - retain memory of critical point calculation;
     - deal with limiter plasma configurations
@@ -113,9 +113,9 @@ class ConstrainBetapIp(freegsfast.jtor.ConstrainBetapIp, Jtor_universal):
 
          Parameters
         ----------
-        eq : freegsfast Equilibrium object
+        eq : freegs4e Equilibrium object
             Specifies the domain properties
-        limiter : freegsfast.machine.Wall object
+        limiter : freegs4e.machine.Wall object
             Specifies the limiter contour points.
             Only set here if a limiter different from eq.tokamak.limiter is to be used.
         """
@@ -151,7 +151,7 @@ class ConstrainBetapIp(freegsfast.jtor.ConstrainBetapIp, Jtor_universal):
         self.alpha_n = alpha_n
 
     # def _Jtor(self, R, Z, psi, psi_bndry=None, rel_psi_error=0):
-    #     """Replaces the original FreeGS Jtor method if FreeGSfast is not available."""
+    #     """Replaces the original FreeGS Jtor method if FreeGS4E is not available."""
     #     self.jtor = super().Jtor(R, Z, psi, psi_bndry)
     #     self.opt, self.xpt = critical.find_critical(R, Z, psi)
 
@@ -168,7 +168,7 @@ class ConstrainBetapIp(freegsfast.jtor.ConstrainBetapIp, Jtor_universal):
     #     return self.jtor
 
     # def Jtor_fast(self, R, Z, psi, psi_bndry=None, rel_psi_error=0):
-    #     """Used when FreeGSfast is available."""
+    #     """Used when FreeGS4E is available."""
     #     self.diverted_core_mask = super().Jtor_part1(R, Z, psi, psi_bndry)
     #     if self.diverted_core_mask is None:
     #         # print('no xpt')
@@ -221,8 +221,8 @@ class ConstrainBetapIp(freegsfast.jtor.ConstrainBetapIp, Jtor_universal):
         return alpha, beta
 
 
-class ConstrainPaxisIp(freegsfast.jtor.ConstrainPaxisIp, Jtor_universal):
-    """FreeGSFast profile class with a few modifications, to:
+class ConstrainPaxisIp(freegs4e.jtor.ConstrainPaxisIp, Jtor_universal):
+    """FreeGS4E profile class with a few modifications, to:
     - retain memory of critical point calculation;
     - deal with limiter plasma configurations
 
@@ -233,9 +233,9 @@ class ConstrainPaxisIp(freegsfast.jtor.ConstrainPaxisIp, Jtor_universal):
 
         Parameters
         ----------
-        eq : freegsfast Equilibrium object
+        eq : freegs4e Equilibrium object
             Specifies the domain properties
-        limiter : freegsfast.machine.Wall object
+        limiter : freegs4e.machine.Wall object
             Specifies the limiter contour points
             Only set if a limiter different from eq.tokamak.limiter is to be used.
 
@@ -281,7 +281,7 @@ class ConstrainPaxisIp(freegsfast.jtor.ConstrainPaxisIp, Jtor_universal):
         self.alpha_n = alpha_n
 
     # def _Jtor(self, R, Z, psi, psi_bndry=None, rel_psi_error=0):
-    #     """Replaces the original FreeGS Jtor method if FreeGSfast is not available."""
+    #     """Replaces the original FreeGS Jtor method if FreeGS4E is not available."""
     #     self.jtor = super().Jtor(R, Z, psi, psi_bndry)
     #     self.opt, self.xpt = critical.find_critical(R, Z, psi)
 
@@ -298,7 +298,7 @@ class ConstrainPaxisIp(freegsfast.jtor.ConstrainPaxisIp, Jtor_universal):
     #     return self.jtor
 
     # def Jtor_fast(self, R, Z, psi, psi_bndry=None, rel_psi_error=0):
-    #     """Used when FreeGSfast is available."""
+    #     """Used when FreeGS4E is available."""
 
     #     opt, xpt = super().Jtor_part1(R, Z, psi, psi_bndry)
 
@@ -375,7 +375,7 @@ class ConstrainPaxisIp(freegsfast.jtor.ConstrainPaxisIp, Jtor_universal):
         return alpha, beta
 
 
-class Fiesta_Topeol(freegsfast.jtor.Fiesta_Topeol, Jtor_universal):
+class Fiesta_Topeol(freegs4e.jtor.Fiesta_Topeol, Jtor_universal):
     """FreeGS profile class with a few modifications, to:
     - retain memory of critical point calculation;
     - deal with limiter plasma configurations
@@ -387,9 +387,9 @@ class Fiesta_Topeol(freegsfast.jtor.Fiesta_Topeol, Jtor_universal):
 
         Parameters
         ----------
-        eq : freegsfast Equilibrium object
+        eq : freegs4e Equilibrium object
             Specifies the domain properties
-        limiter : freegsfast.machine.Wall object
+        limiter : freegs4e.machine.Wall object
             Specifies the limiter contour points
             Only set if a limiter different from eq.tokamak.limiter is to be used.
 
@@ -429,7 +429,7 @@ class Fiesta_Topeol(freegsfast.jtor.Fiesta_Topeol, Jtor_universal):
         self.alpha_n = alpha_n
 
     # def _Jtor(self, R, Z, psi, psi_bndry=None, rel_psi_error=0):
-    #     """Replaces the original FreeGS Jtor method if FreeGSfast is not available."""
+    #     """Replaces the original FreeGS Jtor method if FreeGS4E is not available."""
     #     self.jtor = super().Jtor(R, Z, psi, psi_bndry)
     #     self.opt, self.xpt = critical.find_critical(R, Z, psi)
 
@@ -446,7 +446,7 @@ class Fiesta_Topeol(freegsfast.jtor.Fiesta_Topeol, Jtor_universal):
     #     return self.jtor
 
     # def Jtor_fast(self, R, Z, psi, psi_bndry=None, rel_psi_error=0):
-    #     """Used when FreeGSfast is available."""
+    #     """Used when FreeGS4E is available."""
     #     opt, xpt = super().Jtor_part1(R, Z, psi, psi_bndry)
 
     #     if psi_bndry is not None:
@@ -522,7 +522,7 @@ class Fiesta_Topeol(freegsfast.jtor.Fiesta_Topeol, Jtor_universal):
         return alpha, beta
 
 
-class Lao85(freegsfast.jtor.Lao85, Jtor_universal):
+class Lao85(freegs4e.jtor.Lao85, Jtor_universal):
     """FreeGS profile class with a few modifications, to:
     - retain memory of critical point calculation;
     - deal with limiter plasma configurations
@@ -534,9 +534,9 @@ class Lao85(freegsfast.jtor.Lao85, Jtor_universal):
 
         Parameters
         ----------
-        eq : freegsfast Equilibrium object
+        eq : freegs4e Equilibrium object
             Specifies the domain properties
-        limiter : freegsfast.machine.Wall object
+        limiter : freegs4e.machine.Wall object
             Specifies the limiter contour points
             Only set if a limiter different from eq.tokamak.limiter is to be used.
 
@@ -580,7 +580,7 @@ class Lao85(freegsfast.jtor.Lao85, Jtor_universal):
         return np.array([])
 
     # def _Jtor(self, R, Z, psi, psi_bndry=None, rel_psi_error=0):
-    #     """Replaces the original FreeGS Jtor method if FreeGSfast is not available."""
+    #     """Replaces the original FreeGS Jtor method if FreeGS4E is not available."""
     #     self.jtor = super().Jtor(R, Z, psi, psi_bndry)
     #     self.opt, self.xpt = critical.find_critical(R, Z, psi)
 
@@ -597,7 +597,7 @@ class Lao85(freegsfast.jtor.Lao85, Jtor_universal):
     #     return self.jtor
 
     # def Jtor_fast_old(self, R, Z, psi, psi_bndry=None, rel_psi_error=0):
-    #     """Used when FreeGSfast is available."""
+    #     """Used when FreeGS4E is available."""
 
     #     opt, xpt = super().Jtor_part1(R, Z, psi, psi_bndry)
 

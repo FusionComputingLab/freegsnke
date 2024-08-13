@@ -6,16 +6,16 @@ Machine description code courtesy of Geof Cunningham, modified by Kamran Pentlan
 
 """
 
-import pyuda
-import numpy as np
 import math
 import pickle
-import matplotlib.pyplot as plt
-from scipy.interpolate import interp1d
 from collections import Counter
-import shapely as sh
-from freegsfast import critical
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pyuda
 import scipy as sp
+import shapely as sh
+from freegs4e import critical
 from numpy import (
     abs,
     amax,
@@ -32,887 +32,975 @@ from numpy import (
     sum,
     zeros,
 )
-
-
+from scipy.interpolate import interp1d
 
 # --------------------------------
 # MACHINE DESCRIPTION DATA
 # recovers the machine description data and builds the required pickle files for FreeGSNKE
 
+
 def get_machine_data(
-	shot=45425,             # choose a shot
-	split_passives=True     # True = model passive structures as parallelograms (recommended), False = model as point current sources
-	): 
-	
-	
-	# pull data from pyUDA client
-	client = pyuda.Client()
+    shot=45425,  # choose a shot
+    split_passives=True,  # True = model passive structures as parallelograms (recommended), False = model as point current sources
+):
 
-	# store data in dictionary form
-	data = {}
+    # pull data from pyUDA client
+    client = pyuda.Client()
 
-	# limiter structure
-	limiter = client.geometry('/limiter/efit', shot)
-	data['geometry_limiter'] = dict(r=limiter.data.R, z=limiter.data.Z)
+    # store data in dictionary form
+    data = {}
 
-	# active poloidal field coil geometry data
-	pfcoil = client.geometry('/magnetics/pfcoil', shot)
-	dict2 = {}
-	for child in pfcoil.data.children:
-		dict1 = {}
-		for grandchild in child.children:
-			dict0 = None
-			try:
-				# print(vars(grandchild))
-				material = grandchild.material
-				# Is there a better method for this? - maybe do like Lucy did with efitGroups
-				coordinates = grandchild.children[1]
-				r = coordinates.centreR
-				z = coordinates.centreZ
-				dr = coordinates.dR
-				dz = coordinates.dZ
-				turns = coordinates.effectiveTurnCount
-				dict0 = dict(r=r, z=z, dr=dr, dz=dz, turns=turns)
-			except AttributeError as err:
-				print(err)
-			dict2[child.name] = dict0
-	data['geometry_pfcoil'] = dict2
+    # limiter structure
+    limiter = client.geometry("/limiter/efit", shot)
+    data["geometry_limiter"] = dict(r=limiter.data.R, z=limiter.data.Z)
 
-	# passive structure geometry data
-	passive = client.geometry('/passive/efit', shot)
+    # active poloidal field coil geometry data
+    pfcoil = client.geometry("/magnetics/pfcoil", shot)
+    dict2 = {}
+    for child in pfcoil.data.children:
+        dict1 = {}
+        for grandchild in child.children:
+            dict0 = None
+            try:
+                # print(vars(grandchild))
+                material = grandchild.material
+                # Is there a better method for this? - maybe do like Lucy did with efitGroups
+                coordinates = grandchild.children[1]
+                r = coordinates.centreR
+                z = coordinates.centreZ
+                dr = coordinates.dR
+                dz = coordinates.dZ
+                turns = coordinates.effectiveTurnCount
+                dict0 = dict(r=r, z=z, dr=dr, dz=dz, turns=turns)
+            except AttributeError as err:
+                print(err)
+            dict2[child.name] = dict0
+    data["geometry_pfcoil"] = dict2
 
-	dict2 = {}
-	for child in passive.data.children:
-		dict1 = None
-		try:
-			coordinates = child.children[0]
-			r = coordinates.centreR
-			z = coordinates.centreZ
-			dr = coordinates.dR
-			dz = coordinates.dZ
-			ang1 = coordinates.shapeAngle1
-			ang2 = coordinates.shapeAngle2
-			rho = coordinates.resistivity
-			dict1 = dict(r=r, z=z, dr=dr, dz=dz, ang1=ang1, ang2=ang2, rho=rho)
-			try:
-				efitGroup = coordinates.efitGroup
-				elementLabels = coordinates.elementLabels
-				# print(efitGroup)
-				# print(elementLabels)
-				dict1['efitGroup'] = efitGroup
-				dict1['elementLabels'] = elementLabels
-			except AttributeError as err:
-				pass
-		# not everything is in a group, for example the coil cases (not grouped) and tiles (not used)
-		except AttributeError as err:
-			print(err)
-		if dict1 is not None:
-			dict2[child.name] = dict1
-	data['geometry_passive'] = dict2
+    # passive structure geometry data
+    passive = client.geometry("/passive/efit", shot)
 
+    dict2 = {}
+    for child in passive.data.children:
+        dict1 = None
+        try:
+            coordinates = child.children[0]
+            r = coordinates.centreR
+            z = coordinates.centreZ
+            dr = coordinates.dR
+            dz = coordinates.dZ
+            ang1 = coordinates.shapeAngle1
+            ang2 = coordinates.shapeAngle2
+            rho = coordinates.resistivity
+            dict1 = dict(r=r, z=z, dr=dr, dz=dz, ang1=ang1, ang2=ang2, rho=rho)
+            try:
+                efitGroup = coordinates.efitGroup
+                elementLabels = coordinates.elementLabels
+                # print(efitGroup)
+                # print(elementLabels)
+                dict1["efitGroup"] = efitGroup
+                dict1["elementLabels"] = elementLabels
+            except AttributeError as err:
+                pass
+        # not everything is in a group, for example the coil cases (not grouped) and tiles (not used)
+        except AttributeError as err:
+            print(err)
+        if dict1 is not None:
+            dict2[child.name] = dict1
+    data["geometry_passive"] = dict2
 
-	# magnetic probe data(fluxloop and pickups)
+    # magnetic probe data(fluxloop and pickups)
 
-	# efit poloidal field coil magnetics data (pickup coils)
-	pickup_names = client.get('/epm/input/constraints/magneticprobes/shortname', shot).data
-	#pickup_target = client.get('/epm/input/constraints/magneticprobes/target', shot).data
-	#pickup_computed = client.get('/epm/input/constraints/magneticprobes/computed', shot).data
+    # efit poloidal field coil magnetics data (pickup coils)
+    pickup_names = client.get(
+        "/epm/input/constraints/magneticprobes/shortname", shot
+    ).data
+    # pickup_target = client.get('/epm/input/constraints/magneticprobes/target', shot).data
+    # pickup_computed = client.get('/epm/input/constraints/magneticprobes/computed', shot).data
 
-	pickup_geom_data = client.geometry("/magnetics/pickup", shot) # extracts geometry data (cause it's weird)
-	pickup_list = []
-	get_coils(pickup_geom_data.data, pickup_list)
+    pickup_geom_data = client.geometry(
+        "/magnetics/pickup", shot
+    )  # extracts geometry data (cause it's weird)
+    pickup_list = []
+    get_coils(pickup_geom_data.data, pickup_list)
 
-	data['pickups'] = dict(names=pickup_names, geometry_datar=pickup_list) #, input_values=pickup_target, output_values=pickup_computed)
+    data["pickups"] = dict(
+        names=pickup_names, geometry_datar=pickup_list
+    )  # , input_values=pickup_target, output_values=pickup_computed)
 
-	#pickup_r = client.get('/epm/input/constraints/magneticprobes/rcentre', shot).data
-	#pickup_z = client.get('/epm/input/constraints/magneticprobes/zcentre', shot).data
-	#pickup_phi = client.get('/epm/input/constraints/magneticprobes/toroidalangle', shot).data
+    # pickup_r = client.get('/epm/input/constraints/magneticprobes/rcentre', shot).data
+    # pickup_z = client.get('/epm/input/constraints/magneticprobes/zcentre', shot).data
+    # pickup_phi = client.get('/epm/input/constraints/magneticprobes/toroidalangle', shot).data
 
+    # efit fluxloop magnetics data
+    flux_names = client.get("/epm/input/constraints/fluxloops/shortname", shot).data
+    flux_r = client.get("/epm/input/constraints/fluxloops/rvalues", shot).data
+    flux_z = client.get("/epm/input/constraints/fluxloops/zvalues", shot).data
+    # flux_target = client.get('/epm/input/constraints/fluxloops/target', shot).data
+    # flux_computed = client.get('/epm/input/constraints/fluxloops/computed', shot).data
 
-	# efit fluxloop magnetics data
-	flux_names = client.get('/epm/input/constraints/fluxloops/shortname', shot).data
-	flux_r = client.get('/epm/input/constraints/fluxloops/rvalues', shot).data
-	flux_z = client.get('/epm/input/constraints/fluxloops/zvalues', shot).data
-	#flux_target = client.get('/epm/input/constraints/fluxloops/target', shot).data
-	#flux_computed = client.get('/epm/input/constraints/fluxloops/computed', shot).data
+    data["fluxloops"] = dict(
+        names=flux_names, r=flux_r, z=flux_z
+    )  # , input_values=flux_target, output_values=flux_computed)
 
-	data['fluxloops'] = dict(names=flux_names, r=flux_r, z=flux_z) #, input_values=flux_target, output_values=flux_computed)
+    # BUILD THE PICKLE FILES FROM THE DATA IN THE ABOVE DICTIONARY
 
-	# BUILD THE PICKLE FILES FROM THE DATA IN THE ABOVE DICTIONARY
-	
-	# default global machine quantities that may not be present in UDA data
-	eta_copper = 1.55e-8  # resistivity in Ohm*m, for active coils
-	eta_steel = 5.5e-7    # in Ohm*m, for passive structures
-	
-	
-	# ------------
-	# ACTIVE COILS
-	active_coils_uda = data['geometry_pfcoil']
-	
-	# extract data into required form
-	active_coils = {}
-	
-	# coil definitions (do not modify)
-	Solenoid = {
-		"R": np.hstack((active_coils_uda['p1_inner']['r'],active_coils_uda['p1_outer']['r'])),
-		"Z": np.hstack((active_coils_uda['p1_inner']['z'],active_coils_uda['p1_outer']['z'])),
-		"dR": np.mean(np.hstack((active_coils_uda['p1_inner']['dr'],active_coils_uda['p1_outer']['dr']))),
-		"dZ": np.mean(np.hstack((active_coils_uda['p1_inner']['dz'],active_coils_uda['p1_outer']['dz']))),
-		"polarity": 1,
-		"resistivity": eta_copper,
-		"multiplier": 0.5,
-	}
-	
-	
-	px_upper = {
-		"R": active_coils_uda['px_upper']['r'],
-		"Z": active_coils_uda['px_upper']['z'],
-		"dR": np.mean(active_coils_uda['px_upper']['dr']),
-		"dZ": np.mean(active_coils_uda['px_upper']['dz']),
-		"resistivity": eta_copper,
-		"polarity": 1,
-		"multiplier": 1,
-	}
-	
-	
-	px_lower = {
-		"R": active_coils_uda['px_lower']['r'],
-		"Z": active_coils_uda['px_lower']['z'],
-		"dR": np.mean(active_coils_uda['px_lower']['dr']),
-		"dZ": np.mean(active_coils_uda['px_lower']['dz']),
-		"resistivity": eta_copper,
-		"polarity": 1,
-		"multiplier": 1,
-	}
-	
-	
-	d1_upper = {
-		"R": active_coils_uda['d1_upper']['r'],
-		"Z": active_coils_uda['d1_upper']['z'],
-		"dR": np.mean(active_coils_uda['d1_upper']['dr']),
-		"dZ": np.mean(active_coils_uda['d1_upper']['dz']),
-		"resistivity": eta_copper,
-		"polarity": 1,
-		"multiplier": 1,
-	}
-	
-	
-	d1_lower = {
-		"R": active_coils_uda['d1_lower']['r'],
-		"Z": active_coils_uda['d1_lower']['z'],
-		"dR": np.mean(active_coils_uda['d1_lower']['dr']),
-		"dZ": np.mean(active_coils_uda['d1_lower']['dz']),
-		"resistivity": eta_copper,
-		"polarity": 1,
-		"multiplier": 1,
-	}
-	
-	
-	d2_upper = {
-		"R": active_coils_uda['d2_upper']['r'],
-		"Z": active_coils_uda['d2_upper']['z'],
-		"dR": np.mean(active_coils_uda['d2_upper']['dr']),
-		"dZ": np.mean(active_coils_uda['d2_upper']['dz']),
-		"resistivity": eta_copper,
-		"polarity": 1,
-		"multiplier": 1,
-	}
-	
-	
-	d2_lower = {
-		"R": active_coils_uda['d2_lower']['r'],
-		"Z": active_coils_uda['d2_lower']['z'],
-		"dR": np.mean(active_coils_uda['d2_lower']['dr']),
-		"dZ": np.mean(active_coils_uda['d2_lower']['dz']),
-		"resistivity": eta_copper,
-		"polarity": 1,
-		"multiplier": 1,
-	}
-	
-	
-	d3_upper = {
-		"R": active_coils_uda['d3_upper']['r'],
-		"Z": active_coils_uda['d3_upper']['z'],
-		"dR": np.mean(active_coils_uda['d3_upper']['dr']),
-		"dZ": np.mean(active_coils_uda['d3_upper']['dz']),
-		"resistivity": eta_copper,
-		"polarity": 1,
-		"multiplier": 1,
-	}
-	
-	
-	d3_lower = {
-		"R": active_coils_uda['d3_lower']['r'],
-		"Z": active_coils_uda['d3_lower']['z'],
-		"dR": np.mean(active_coils_uda['d3_lower']['dr']),
-		"dZ": np.mean(active_coils_uda['d3_lower']['dz']),
-		"resistivity": eta_copper,
-		"polarity": 1,
-		"multiplier": 1,
-	}
-	
-	
-	dp_upper = {
-		"R": active_coils_uda['dp_upper']['r'],
-		"Z": active_coils_uda['dp_upper']['z'],
-		"dR": np.mean(active_coils_uda['dp_upper']['dr']),
-		"dZ": np.mean(active_coils_uda['dp_upper']['dz']),
-		"resistivity": eta_copper,
-		"polarity": 1,
-		"multiplier": 1,
-	}
-	
-	
-	dp_lower = {
-		"R": active_coils_uda['dp_lower']['r'],
-		"Z": active_coils_uda['dp_lower']['z'],
-		"dR": np.mean(active_coils_uda['dp_lower']['dr']),
-		"dZ": np.mean(active_coils_uda['dp_lower']['dz']),
-		"resistivity": eta_copper,
-		"polarity": 1,
-		"multiplier": 1,
-	}
-	
-	
-	d5_upper = {
-		"R": active_coils_uda['d5_upper']['r'],
-		"Z": active_coils_uda['d5_upper']['z'],
-		"dR": np.mean(active_coils_uda['d5_upper']['dr']),
-		"dZ": np.mean(active_coils_uda['d5_upper']['dz']),
-		"resistivity": eta_copper,
-		"polarity": 1,
-		"multiplier": 1,
-	}
-	
-	
-	d5_lower = {
-		"R": active_coils_uda['d5_lower']['r'],
-		"Z": active_coils_uda['d5_lower']['z'],
-		"dR": np.mean(active_coils_uda['d5_lower']['dr']),
-		"dZ": np.mean(active_coils_uda['d5_lower']['dz']),
-		"resistivity": eta_copper,
-		"polarity": 1,
-		"multiplier": 1,
-	}
-	
-	
-	d6_upper = {
-		"R": active_coils_uda['d6_upper']['r'],
-		"Z": active_coils_uda['d6_upper']['z'],
-		"dR": np.mean(active_coils_uda['d6_upper']['dr']),
-		"dZ": np.mean(active_coils_uda['d6_upper']['dz']),
-		"resistivity": eta_copper,
-		"polarity": 1,
-		"multiplier": 1,
-	}
-	
-	
-	d6_lower = {
-		"R": active_coils_uda['d6_lower']['r'],
-		"Z": active_coils_uda['d6_lower']['z'],
-		"dR": np.mean(active_coils_uda['d6_lower']['dr']),
-		"dZ": np.mean(active_coils_uda['d6_lower']['dz']),
-		"resistivity": eta_copper,
-		"polarity": 1,
-		"multiplier": 1,
-	}
-	
-	
-	d7_upper = {
-		"R": active_coils_uda['d7_upper']['r'],
-		"Z": active_coils_uda['d7_upper']['z'],
-		"dR": np.mean(active_coils_uda['d7_upper']['dr']),
-		"dZ": np.mean(active_coils_uda['d7_upper']['dz']),
-		"resistivity": eta_copper,
-		"polarity": 1,
-		"multiplier": 1,
-	}
-	
-	 
-	d7_lower = {
-		"R": active_coils_uda['d7_lower']['r'],
-		"Z": active_coils_uda['d7_lower']['z'],
-		"dR": np.mean(active_coils_uda['d7_lower']['dr']),
-		"dZ": np.mean(active_coils_uda['d7_lower']['dz']),
-		"resistivity": eta_copper,
-		"polarity": 1,
-		"multiplier": 1,
-	}
-	
-	 
-	p4_upper = {
-		"R": active_coils_uda['p4_upper']['r'],
-		"Z": active_coils_uda['p4_upper']['z'],
-		"dR": np.mean(active_coils_uda['p4_upper']['dr']),
-		"dZ": np.mean(active_coils_uda['p4_upper']['dz']),
-		"resistivity": eta_copper,
-		"polarity": 1,
-		"multiplier": 1,
-	}
-	
-	 
-	p4_lower = {
-		"R": active_coils_uda['p4_lower']['r'],
-		"Z": active_coils_uda['p4_lower']['z'],
-		"dR": np.mean(active_coils_uda['p4_lower']['dr']),
-		"dZ": np.mean(active_coils_uda['p4_lower']['dz']),
-		"resistivity": eta_copper,
-		"polarity": 1,
-		"multiplier": 1,
-	}
-	
-	 
-	p5_upper = {
-		"R": active_coils_uda['p5_upper']['r'],
-		"Z": active_coils_uda['p5_upper']['z'],
-		"dR": np.mean(active_coils_uda['p5_upper']['dr']),
-		"dZ": np.mean(active_coils_uda['p5_upper']['dz']),
-		"resistivity": eta_copper,
-		"polarity": 1,
-		"multiplier": 1,
-	}
-	
-	 
-	p5_lower = {
-		"R": active_coils_uda['p5_lower']['r'],
-		"Z": active_coils_uda['p5_lower']['z'],
-		"dR": np.mean(active_coils_uda['p5_lower']['dr']),
-		"dZ": np.mean(active_coils_uda['p5_lower']['dz']),
-		"resistivity": eta_copper,
-		"polarity": 1,
-		"multiplier": 1,
-	}
-	
-	 
-	p6_upper = {
-		"R": active_coils_uda['p6_upper']['r'],
-		"Z": active_coils_uda['p6_upper']['z'],
-		"dR": np.mean(active_coils_uda['p6_upper']['dr']),
-		"dZ": np.mean(active_coils_uda['p6_upper']['dz']),
-		"resistivity": eta_copper,
-		"polarity": 1,
-		"multiplier": 1,
-	}
-	
-	# note the reversed polarity here 
-	p6_lower = {
-		"R": active_coils_uda['p6_lower']['r'],
-		"Z": active_coils_uda['p6_lower']['z'],
-		"dR": np.mean(active_coils_uda['p6_lower']['dr']),
-		"dZ": np.mean(active_coils_uda['p6_lower']['dz']),
-		"resistivity": eta_copper,
-		"polarity": -1,
-		"multiplier": 1,
-	}
-  
-	
-	
-	# define symmetric active coils dictionary
-	active_coils = {}
-	
-	active_coils["Solenoid"] = Solenoid
+    # default global machine quantities that may not be present in UDA data
+    eta_copper = 1.55e-8  # resistivity in Ohm*m, for active coils
+    eta_steel = 5.5e-7  # in Ohm*m, for passive structures
 
-	active_coils["px"] = {}
-	active_coils["px"]["1"] = px_upper
-	active_coils["px"]["2"] = px_lower
+    # ------------
+    # ACTIVE COILS
+    active_coils_uda = data["geometry_pfcoil"]
 
-	active_coils["d1"] = {}
-	active_coils["d1"]["1"] = d1_upper
-	active_coils["d1"]["2"] = d1_lower
+    # extract data into required form
+    active_coils = {}
 
-	active_coils["d2"] = {}
-	active_coils["d2"]["1"] = d2_upper
-	active_coils["d2"]["2"] = d2_lower
+    # coil definitions (do not modify)
+    Solenoid = {
+        "R": np.hstack(
+            (active_coils_uda["p1_inner"]["r"], active_coils_uda["p1_outer"]["r"])
+        ),
+        "Z": np.hstack(
+            (active_coils_uda["p1_inner"]["z"], active_coils_uda["p1_outer"]["z"])
+        ),
+        "dR": np.mean(
+            np.hstack(
+                (active_coils_uda["p1_inner"]["dr"], active_coils_uda["p1_outer"]["dr"])
+            )
+        ),
+        "dZ": np.mean(
+            np.hstack(
+                (active_coils_uda["p1_inner"]["dz"], active_coils_uda["p1_outer"]["dz"])
+            )
+        ),
+        "polarity": 1,
+        "resistivity": eta_copper,
+        "multiplier": 0.5,
+    }
 
-	active_coils["d3"] = {}
-	active_coils["d3"]["1"] = d3_upper
-	active_coils["d3"]["2"] = d3_lower
+    px_upper = {
+        "R": active_coils_uda["px_upper"]["r"],
+        "Z": active_coils_uda["px_upper"]["z"],
+        "dR": np.mean(active_coils_uda["px_upper"]["dr"]),
+        "dZ": np.mean(active_coils_uda["px_upper"]["dz"]),
+        "resistivity": eta_copper,
+        "polarity": 1,
+        "multiplier": 1,
+    }
 
-	active_coils["dp"] = {}
-	active_coils["dp"]["1"] = dp_upper
-	active_coils["dp"]["2"] = dp_lower
+    px_lower = {
+        "R": active_coils_uda["px_lower"]["r"],
+        "Z": active_coils_uda["px_lower"]["z"],
+        "dR": np.mean(active_coils_uda["px_lower"]["dr"]),
+        "dZ": np.mean(active_coils_uda["px_lower"]["dz"]),
+        "resistivity": eta_copper,
+        "polarity": 1,
+        "multiplier": 1,
+    }
 
-	active_coils["d5"] = {}
-	active_coils["d5"]["1"] = d5_upper
-	active_coils["d5"]["2"] = d5_lower
+    d1_upper = {
+        "R": active_coils_uda["d1_upper"]["r"],
+        "Z": active_coils_uda["d1_upper"]["z"],
+        "dR": np.mean(active_coils_uda["d1_upper"]["dr"]),
+        "dZ": np.mean(active_coils_uda["d1_upper"]["dz"]),
+        "resistivity": eta_copper,
+        "polarity": 1,
+        "multiplier": 1,
+    }
 
-	active_coils["d6"] = {}
-	active_coils["d6"]["1"] = d6_upper
-	active_coils["d6"]["2"] = d6_lower
+    d1_lower = {
+        "R": active_coils_uda["d1_lower"]["r"],
+        "Z": active_coils_uda["d1_lower"]["z"],
+        "dR": np.mean(active_coils_uda["d1_lower"]["dr"]),
+        "dZ": np.mean(active_coils_uda["d1_lower"]["dz"]),
+        "resistivity": eta_copper,
+        "polarity": 1,
+        "multiplier": 1,
+    }
 
-	active_coils["d7"] = {}
-	active_coils["d7"]["1"] = d7_upper
-	active_coils["d7"]["2"] = d7_lower
+    d2_upper = {
+        "R": active_coils_uda["d2_upper"]["r"],
+        "Z": active_coils_uda["d2_upper"]["z"],
+        "dR": np.mean(active_coils_uda["d2_upper"]["dr"]),
+        "dZ": np.mean(active_coils_uda["d2_upper"]["dz"]),
+        "resistivity": eta_copper,
+        "polarity": 1,
+        "multiplier": 1,
+    }
 
-	active_coils["p4"] = {}
-	active_coils["p4"]["1"] = p4_upper
-	active_coils["p4"]["2"] = p4_lower
+    d2_lower = {
+        "R": active_coils_uda["d2_lower"]["r"],
+        "Z": active_coils_uda["d2_lower"]["z"],
+        "dR": np.mean(active_coils_uda["d2_lower"]["dr"]),
+        "dZ": np.mean(active_coils_uda["d2_lower"]["dz"]),
+        "resistivity": eta_copper,
+        "polarity": 1,
+        "multiplier": 1,
+    }
 
-	active_coils["p5"] = {}
-	active_coils["p5"]["1"] = p5_upper
-	active_coils["p5"]["2"] = p5_lower
+    d3_upper = {
+        "R": active_coils_uda["d3_upper"]["r"],
+        "Z": active_coils_uda["d3_upper"]["z"],
+        "dR": np.mean(active_coils_uda["d3_upper"]["dr"]),
+        "dZ": np.mean(active_coils_uda["d3_upper"]["dz"]),
+        "resistivity": eta_copper,
+        "polarity": 1,
+        "multiplier": 1,
+    }
 
-	active_coils["p6"] = {}
-	active_coils["p6"]["1"] = p6_upper
-	active_coils["p6"]["2"] = p6_lower
+    d3_lower = {
+        "R": active_coils_uda["d3_lower"]["r"],
+        "Z": active_coils_uda["d3_lower"]["z"],
+        "dR": np.mean(active_coils_uda["d3_lower"]["dr"]),
+        "dZ": np.mean(active_coils_uda["d3_lower"]["dz"]),
+        "resistivity": eta_copper,
+        "polarity": 1,
+        "multiplier": 1,
+    }
 
-	# save data: this pickle file can be used when a symmetric MAST-U machine
-	# description is required.
-	pickle.dump(active_coils, open("../machine_configs/MAST-U/MAST-U_active_coils.pickle", "wb"))
+    dp_upper = {
+        "R": active_coils_uda["dp_upper"]["r"],
+        "Z": active_coils_uda["dp_upper"]["z"],
+        "dR": np.mean(active_coils_uda["dp_upper"]["dr"]),
+        "dZ": np.mean(active_coils_uda["dp_upper"]["dz"]),
+        "resistivity": eta_copper,
+        "polarity": 1,
+        "multiplier": 1,
+    }
 
-	
+    dp_lower = {
+        "R": active_coils_uda["dp_lower"]["r"],
+        "Z": active_coils_uda["dp_lower"]["z"],
+        "dR": np.mean(active_coils_uda["dp_lower"]["dr"]),
+        "dZ": np.mean(active_coils_uda["dp_lower"]["dz"]),
+        "resistivity": eta_copper,
+        "polarity": 1,
+        "multiplier": 1,
+    }
 
-	# define non-symmetric active coils dictionary
-	active_coils_nonsym = {}
-	
-	active_coils_nonsym["Solenoid"] = Solenoid
+    d5_upper = {
+        "R": active_coils_uda["d5_upper"]["r"],
+        "Z": active_coils_uda["d5_upper"]["z"],
+        "dR": np.mean(active_coils_uda["d5_upper"]["dr"]),
+        "dZ": np.mean(active_coils_uda["d5_upper"]["dz"]),
+        "resistivity": eta_copper,
+        "polarity": 1,
+        "multiplier": 1,
+    }
 
-	active_coils_nonsym["px_upper"] = {}
-	active_coils_nonsym["px_upper"]["1"] = px_upper
-	active_coils_nonsym["px_lower"] = {}
-	active_coils_nonsym["px_lower"]["1"] = px_lower
+    d5_lower = {
+        "R": active_coils_uda["d5_lower"]["r"],
+        "Z": active_coils_uda["d5_lower"]["z"],
+        "dR": np.mean(active_coils_uda["d5_lower"]["dr"]),
+        "dZ": np.mean(active_coils_uda["d5_lower"]["dz"]),
+        "resistivity": eta_copper,
+        "polarity": 1,
+        "multiplier": 1,
+    }
 
-	active_coils_nonsym["d1_upper"] = {}
-	active_coils_nonsym["d1_upper"]["1"] = d1_upper
-	active_coils_nonsym["d1_lower"] = {}
-	active_coils_nonsym["d1_lower"]["1"] = d1_lower
+    d6_upper = {
+        "R": active_coils_uda["d6_upper"]["r"],
+        "Z": active_coils_uda["d6_upper"]["z"],
+        "dR": np.mean(active_coils_uda["d6_upper"]["dr"]),
+        "dZ": np.mean(active_coils_uda["d6_upper"]["dz"]),
+        "resistivity": eta_copper,
+        "polarity": 1,
+        "multiplier": 1,
+    }
 
-	active_coils_nonsym["d2_upper"] = {}
-	active_coils_nonsym["d2_upper"]["1"] = d2_upper
-	active_coils_nonsym["d2_lower"] = {}
-	active_coils_nonsym["d2_lower"]["1"] = d2_lower
+    d6_lower = {
+        "R": active_coils_uda["d6_lower"]["r"],
+        "Z": active_coils_uda["d6_lower"]["z"],
+        "dR": np.mean(active_coils_uda["d6_lower"]["dr"]),
+        "dZ": np.mean(active_coils_uda["d6_lower"]["dz"]),
+        "resistivity": eta_copper,
+        "polarity": 1,
+        "multiplier": 1,
+    }
 
-	active_coils_nonsym["d3_upper"] = {}
-	active_coils_nonsym["d3_upper"]["1"] = d3_upper
-	active_coils_nonsym["d3_lower"] = {}
-	active_coils_nonsym["d3_lower"]["1"] = d3_lower
+    d7_upper = {
+        "R": active_coils_uda["d7_upper"]["r"],
+        "Z": active_coils_uda["d7_upper"]["z"],
+        "dR": np.mean(active_coils_uda["d7_upper"]["dr"]),
+        "dZ": np.mean(active_coils_uda["d7_upper"]["dz"]),
+        "resistivity": eta_copper,
+        "polarity": 1,
+        "multiplier": 1,
+    }
 
-	active_coils_nonsym["dp_upper"] = {}
-	active_coils_nonsym["dp_upper"]["1"] = dp_upper
-	active_coils_nonsym["dp_lower"] = {}
-	active_coils_nonsym["dp_lower"]["1"] = dp_lower
+    d7_lower = {
+        "R": active_coils_uda["d7_lower"]["r"],
+        "Z": active_coils_uda["d7_lower"]["z"],
+        "dR": np.mean(active_coils_uda["d7_lower"]["dr"]),
+        "dZ": np.mean(active_coils_uda["d7_lower"]["dz"]),
+        "resistivity": eta_copper,
+        "polarity": 1,
+        "multiplier": 1,
+    }
 
-	active_coils_nonsym["d5_upper"] = {}
-	active_coils_nonsym["d5_upper"]["1"] = d5_upper
-	active_coils_nonsym["d5_lower"] = {}
-	active_coils_nonsym["d5_lower"]["1"] = d5_lower
+    p4_upper = {
+        "R": active_coils_uda["p4_upper"]["r"],
+        "Z": active_coils_uda["p4_upper"]["z"],
+        "dR": np.mean(active_coils_uda["p4_upper"]["dr"]),
+        "dZ": np.mean(active_coils_uda["p4_upper"]["dz"]),
+        "resistivity": eta_copper,
+        "polarity": 1,
+        "multiplier": 1,
+    }
 
-	active_coils_nonsym["d6_upper"] = {}
-	active_coils_nonsym["d6_upper"]["1"] = d6_upper
-	active_coils_nonsym["d6_lower"] = {}
-	active_coils_nonsym["d6_lower"]["1"] = d6_lower
+    p4_lower = {
+        "R": active_coils_uda["p4_lower"]["r"],
+        "Z": active_coils_uda["p4_lower"]["z"],
+        "dR": np.mean(active_coils_uda["p4_lower"]["dr"]),
+        "dZ": np.mean(active_coils_uda["p4_lower"]["dz"]),
+        "resistivity": eta_copper,
+        "polarity": 1,
+        "multiplier": 1,
+    }
 
-	active_coils_nonsym["d7_upper"] = {}
-	active_coils_nonsym["d7_upper"]["1"] = d7_upper
-	active_coils_nonsym["d7_lower"] = {}
-	active_coils_nonsym["d7_lower"]["1"] = d7_lower
+    p5_upper = {
+        "R": active_coils_uda["p5_upper"]["r"],
+        "Z": active_coils_uda["p5_upper"]["z"],
+        "dR": np.mean(active_coils_uda["p5_upper"]["dr"]),
+        "dZ": np.mean(active_coils_uda["p5_upper"]["dz"]),
+        "resistivity": eta_copper,
+        "polarity": 1,
+        "multiplier": 1,
+    }
 
-	active_coils_nonsym["p4_upper"] = {}
-	active_coils_nonsym["p4_upper"]["1"] = p4_upper
-	active_coils_nonsym["p4_lower"] = {}
-	active_coils_nonsym["p4_lower"]["1"] = p4_lower
+    p5_lower = {
+        "R": active_coils_uda["p5_lower"]["r"],
+        "Z": active_coils_uda["p5_lower"]["z"],
+        "dR": np.mean(active_coils_uda["p5_lower"]["dr"]),
+        "dZ": np.mean(active_coils_uda["p5_lower"]["dz"]),
+        "resistivity": eta_copper,
+        "polarity": 1,
+        "multiplier": 1,
+    }
 
-	active_coils_nonsym["p5_upper"] = {}
-	active_coils_nonsym["p5_upper"]["1"] = p5_upper
-	active_coils_nonsym["p5_lower"] = {}
-	active_coils_nonsym["p5_lower"]["1"] = p5_lower
+    p6_upper = {
+        "R": active_coils_uda["p6_upper"]["r"],
+        "Z": active_coils_uda["p6_upper"]["z"],
+        "dR": np.mean(active_coils_uda["p6_upper"]["dr"]),
+        "dZ": np.mean(active_coils_uda["p6_upper"]["dz"]),
+        "resistivity": eta_copper,
+        "polarity": 1,
+        "multiplier": 1,
+    }
 
-	active_coils_nonsym["p6_upper"] = {}
-	active_coils_nonsym["p6_upper"]["1"] = p6_upper
-	active_coils_nonsym["p6_lower"] = {}
-	active_coils_nonsym["p6_lower"]["1"] = p6_lower
-	active_coils_nonsym["p6_lower"]["1"]["polarity"] = 1
+    # note the reversed polarity here
+    p6_lower = {
+        "R": active_coils_uda["p6_lower"]["r"],
+        "Z": active_coils_uda["p6_lower"]["z"],
+        "dR": np.mean(active_coils_uda["p6_lower"]["dr"]),
+        "dZ": np.mean(active_coils_uda["p6_lower"]["dz"]),
+        "resistivity": eta_copper,
+        "polarity": -1,
+        "multiplier": 1,
+    }
 
-	# save data: this pickle file can be used when a non-symmetric MAST-U machine
-	# description is required.
-	pickle.dump(active_coils_nonsym, open("../machine_configs/MAST-U/MAST-U_active_coils_nonsym.pickle", "wb"))
-	
-	# ------------
-	# LIMITER/WALL
-	limiter_uda = data['geometry_limiter']
-	
-	# extract data into required form
-	limiter = []
-	for i in range(len(limiter_uda['r'])):
-		limiter.append({
-			"R": limiter_uda['r'][i], 
-			"Z": limiter_uda['z'][i]
-			}
-			)
-		
-	# save
-	pickle.dump(limiter, open("../machine_configs/MAST-U/MAST-U_limiter.pickle", "wb"))
-	
-	# save: here we set the wall to be the same as the MAST-U limiter. 
-	pickle.dump(limiter, open("../machine_configs/MAST-U/MAST-U_wall.pickle", "wb"))
-	
-	
-	
-	# ------------
-	# PASSIVE STRUCTURES
-	passive_coils_uda = data['geometry_passive']
-	
-	# strucutres to be excluded from simulations (as they're not in EFIT)
-	excluded_structures = ['centrecolumn_tiles', 
-					'div_tiles_lower', 
-					'div_tiles_upper', 
-					'nose_baffle_tiles_upper', 
-					'nose_baffle_tiles_lower', 
-					'cryopump_upper', 
-					'cryopump_lower']
-	
-					 
-	# calculate the total area for each non-excluded EFIT group
-	# --> this is for assigning the passive currents  later on(see further below)
-	group_total_area = {}
-	for name in passive_coils_uda.keys():          
-		if name not in excluded_structures:
-			coil_data = passive_coils_uda[name]
-		
-			if "elementLabels" in coil_data:           # do this for the EFIT group passives only
-				for i in range(0, len(coil_data['r'])):
-						
-					group = coil_data["efitGroup"][i]
-					area = coil_data["dr"][i] * coil_data["dz"][i]
-					
-					if group in group_total_area:
-						group_total_area[group] += area
-					else:
-						group_total_area[group] = area
-	
-	
-	# extract data into required dictionary form
-	passive_coils = []
-	
-	# if 'True', we pass the parallelogram  vertices to FreeGSNKE so they can be
-	# optionally sub-divided further for better modelling 
-	if split_passives:
-		for name in passive_coils_uda.keys():        
-			if name not in excluded_structures:                
-				coil_data = passive_coils_uda[name]
-				
-				if "elementLabels" in coil_data:
-					for i in range(0, len(coil_data['r'])):
-						
-						temp = get_element_vertices(
-							coil_data['r'][i],
-							coil_data['z'][i], 
-							coil_data['dr'][i], 
-							coil_data['dz'][i],
-							coil_data['ang1'][i],
-							coil_data['ang2'][i], 
-							version=0.0, 
-							close_shape=False
-							)
-						
-						passive_coils.append(
-							{"R": temp[0], 
-							"Z": temp[1], 
-							"resistivity": coil_data['rho'],
-							 "efitGroup": coil_data['efitGroup'][i], 
-							 "element": name, 
-							 "name": coil_data['elementLabels'][i], 
-							 "current_multiplier": coil_data['dr'][i]*coil_data['dz'][i]/group_total_area[coil_data['efitGroup'][i]],
-							 }
-						)
-				else:
-					group_area = np.sum(coil_data['dr']*coil_data['dz'])
-					for i in range(0, len(coil_data['r'])):
-						
-						temp = get_element_vertices(
-							coil_data['r'][i],
-							coil_data['z'][i], 
-							coil_data['dr'][i], 
-							coil_data['dz'][i],
-							coil_data['ang1'][i],
-							coil_data['ang2'][i], 
-							version=0.0, 
-							close_shape=False
-							)
-						
-						
-						passive_coils.append(
-							{"R": temp[0], 
-							"Z": temp[1], 
-							"resistivity": coil_data['rho'], 
-							 "element": name, 
-							 "name": name + f"_{i}", 
-							 "current_multiplier": coil_data['dr'][i]*coil_data['dz'][i]/group_area,
-							 }
-						)
-						
-	# if 'False', we pass each parallelogram centre coords and lengths to 
-	# FreeGSNKE
-	else:
-		for name in passive_coils_uda.keys():          
-			# these passive structures are not used in EFIT 
-			if name not in excluded_structures:
-				
-				coil_data = passive_coils_uda[name]
-				if "elementLabels" in coil_data:
-					for i in range(0, len(coil_data['r'])):   
-						passive_coils.append(
-							{"R": coil_data['r'][i], 
-							"Z": coil_data['z'][i], 
-							"dR": coil_data['dr'][i], 
-							"dZ": coil_data['dz'][i], 
-							"resistivity": coil_data['rho'],
-							 "efitGroup": coil_data['efitGroup'][i], 
-							 "element": name, "name": coil_data['elementLabels'][i], 
-							 "current_multiplier": coil_data['dr'][i]*coil_data['dz'][i]/group_total_area[coil_data['efitGroup'][i]],
-							 }
-						)
-				else:
-					group_area = np.sum(coil_data['dr']*coil_data['dz'])
-					for i in range(0, len(coil_data['r'])):
-						passive_coils.append(
-							{"R": coil_data['r'][i], 
-							"Z": coil_data['z'][i], 
-							"dR": coil_data['dr'][i], 
-							"dZ": coil_data['dz'][i], 
-							"resistivity": coil_data['rho'], 
-							 "element": name, 
-							 "name": name + f"_{i}", 
-							 "current_multiplier": coil_data['dr'][i]*coil_data['dz'][i]/group_area,
-							 }
-						)
+    # define symmetric active coils dictionary
+    active_coils = {}
 
-	# save data              
-	pickle.dump(passive_coils, open("../machine_configs/MAST-U/MAST-U_passive_coils.pickle", "wb"))
-	
+    active_coils["Solenoid"] = Solenoid
 
-	# ------------
-	# MAGNETIC PROBES
-	
-	# data
-	fluxloops_uda = data['fluxloops']
-	
-	# extract data into required form
-	flux_loops = []
-	for i in range(len(fluxloops_uda['r'])):
-		flux_loops.append({
-			"name": fluxloops_uda['names'][i],
-			"position": np.array([fluxloops_uda['r'][i][0], fluxloops_uda['z'][i][0]])
-			}
-			)
-		
-	# data
-	pickups_uda = data['pickups']
-	
-	# extract data into required form
-	pickups = []
-	for i in range(len(pickups_uda['names'])):
-		pickups.append({
-			"name": pickups_uda['geometry_datar'][i]['name'],
-			"orientation": pickups_uda['geometry_datar'][i]['orientation'],
-			"orientation_vector": pickups_uda['geometry_datar'][i]['orientation_vector'],
-			"position": pickups_uda['geometry_datar'][i]['position'],
-			}
-			) 
-		   
-	# save
-	pickle.dump({"flux_loops": flux_loops, "pickups": pickups}, open("../machine_configs/MAST-U/MAST-U_magnetic_probes.pickle", "wb"))
-		
-	# DONE
-	print('MAST-U geometry data successfully extracted and pickle files built.')
+    active_coils["px"] = {}
+    active_coils["px"]["1"] = px_upper
+    active_coils["px"]["2"] = px_lower
+
+    active_coils["d1"] = {}
+    active_coils["d1"]["1"] = d1_upper
+    active_coils["d1"]["2"] = d1_lower
+
+    active_coils["d2"] = {}
+    active_coils["d2"]["1"] = d2_upper
+    active_coils["d2"]["2"] = d2_lower
+
+    active_coils["d3"] = {}
+    active_coils["d3"]["1"] = d3_upper
+    active_coils["d3"]["2"] = d3_lower
+
+    active_coils["dp"] = {}
+    active_coils["dp"]["1"] = dp_upper
+    active_coils["dp"]["2"] = dp_lower
+
+    active_coils["d5"] = {}
+    active_coils["d5"]["1"] = d5_upper
+    active_coils["d5"]["2"] = d5_lower
+
+    active_coils["d6"] = {}
+    active_coils["d6"]["1"] = d6_upper
+    active_coils["d6"]["2"] = d6_lower
+
+    active_coils["d7"] = {}
+    active_coils["d7"]["1"] = d7_upper
+    active_coils["d7"]["2"] = d7_lower
+
+    active_coils["p4"] = {}
+    active_coils["p4"]["1"] = p4_upper
+    active_coils["p4"]["2"] = p4_lower
+
+    active_coils["p5"] = {}
+    active_coils["p5"]["1"] = p5_upper
+    active_coils["p5"]["2"] = p5_lower
+
+    active_coils["p6"] = {}
+    active_coils["p6"]["1"] = p6_upper
+    active_coils["p6"]["2"] = p6_lower
+
+    # save data: this pickle file can be used when a symmetric MAST-U machine
+    # description is required.
+    pickle.dump(
+        active_coils, open("../machine_configs/MAST-U/MAST-U_active_coils.pickle", "wb")
+    )
+
+    # define non-symmetric active coils dictionary
+    active_coils_nonsym = {}
+
+    active_coils_nonsym["Solenoid"] = Solenoid
+
+    active_coils_nonsym["px_upper"] = {}
+    active_coils_nonsym["px_upper"]["1"] = px_upper
+    active_coils_nonsym["px_lower"] = {}
+    active_coils_nonsym["px_lower"]["1"] = px_lower
+
+    active_coils_nonsym["d1_upper"] = {}
+    active_coils_nonsym["d1_upper"]["1"] = d1_upper
+    active_coils_nonsym["d1_lower"] = {}
+    active_coils_nonsym["d1_lower"]["1"] = d1_lower
+
+    active_coils_nonsym["d2_upper"] = {}
+    active_coils_nonsym["d2_upper"]["1"] = d2_upper
+    active_coils_nonsym["d2_lower"] = {}
+    active_coils_nonsym["d2_lower"]["1"] = d2_lower
+
+    active_coils_nonsym["d3_upper"] = {}
+    active_coils_nonsym["d3_upper"]["1"] = d3_upper
+    active_coils_nonsym["d3_lower"] = {}
+    active_coils_nonsym["d3_lower"]["1"] = d3_lower
+
+    active_coils_nonsym["dp_upper"] = {}
+    active_coils_nonsym["dp_upper"]["1"] = dp_upper
+    active_coils_nonsym["dp_lower"] = {}
+    active_coils_nonsym["dp_lower"]["1"] = dp_lower
+
+    active_coils_nonsym["d5_upper"] = {}
+    active_coils_nonsym["d5_upper"]["1"] = d5_upper
+    active_coils_nonsym["d5_lower"] = {}
+    active_coils_nonsym["d5_lower"]["1"] = d5_lower
+
+    active_coils_nonsym["d6_upper"] = {}
+    active_coils_nonsym["d6_upper"]["1"] = d6_upper
+    active_coils_nonsym["d6_lower"] = {}
+    active_coils_nonsym["d6_lower"]["1"] = d6_lower
+
+    active_coils_nonsym["d7_upper"] = {}
+    active_coils_nonsym["d7_upper"]["1"] = d7_upper
+    active_coils_nonsym["d7_lower"] = {}
+    active_coils_nonsym["d7_lower"]["1"] = d7_lower
+
+    active_coils_nonsym["p4_upper"] = {}
+    active_coils_nonsym["p4_upper"]["1"] = p4_upper
+    active_coils_nonsym["p4_lower"] = {}
+    active_coils_nonsym["p4_lower"]["1"] = p4_lower
+
+    active_coils_nonsym["p5_upper"] = {}
+    active_coils_nonsym["p5_upper"]["1"] = p5_upper
+    active_coils_nonsym["p5_lower"] = {}
+    active_coils_nonsym["p5_lower"]["1"] = p5_lower
+
+    active_coils_nonsym["p6_upper"] = {}
+    active_coils_nonsym["p6_upper"]["1"] = p6_upper
+    active_coils_nonsym["p6_lower"] = {}
+    active_coils_nonsym["p6_lower"]["1"] = p6_lower
+    active_coils_nonsym["p6_lower"]["1"]["polarity"] = 1
+
+    # save data: this pickle file can be used when a non-symmetric MAST-U machine
+    # description is required.
+    pickle.dump(
+        active_coils_nonsym,
+        open("../machine_configs/MAST-U/MAST-U_active_coils_nonsym.pickle", "wb"),
+    )
+
+    # ------------
+    # LIMITER/WALL
+    limiter_uda = data["geometry_limiter"]
+
+    # extract data into required form
+    limiter = []
+    for i in range(len(limiter_uda["r"])):
+        limiter.append({"R": limiter_uda["r"][i], "Z": limiter_uda["z"][i]})
+
+    # save
+    pickle.dump(limiter, open("../machine_configs/MAST-U/MAST-U_limiter.pickle", "wb"))
+
+    # save: here we set the wall to be the same as the MAST-U limiter.
+    pickle.dump(limiter, open("../machine_configs/MAST-U/MAST-U_wall.pickle", "wb"))
+
+    # ------------
+    # PASSIVE STRUCTURES
+    passive_coils_uda = data["geometry_passive"]
+
+    # strucutres to be excluded from simulations (as they're not in EFIT)
+    excluded_structures = [
+        "centrecolumn_tiles",
+        "div_tiles_lower",
+        "div_tiles_upper",
+        "nose_baffle_tiles_upper",
+        "nose_baffle_tiles_lower",
+        "cryopump_upper",
+        "cryopump_lower",
+    ]
+
+    # calculate the total area for each non-excluded EFIT group
+    # --> this is for assigning the passive currents  later on(see further below)
+    group_total_area = {}
+    for name in passive_coils_uda.keys():
+        if name not in excluded_structures:
+            coil_data = passive_coils_uda[name]
+
+            if "elementLabels" in coil_data:  # do this for the EFIT group passives only
+                for i in range(0, len(coil_data["r"])):
+
+                    group = coil_data["efitGroup"][i]
+                    area = coil_data["dr"][i] * coil_data["dz"][i]
+
+                    if group in group_total_area:
+                        group_total_area[group] += area
+                    else:
+                        group_total_area[group] = area
+
+    # extract data into required dictionary form
+    passive_coils = []
+
+    # if 'True', we pass the parallelogram  vertices to FreeGSNKE so they can be
+    # optionally sub-divided further for better modelling
+    if split_passives:
+        for name in passive_coils_uda.keys():
+            if name not in excluded_structures:
+                coil_data = passive_coils_uda[name]
+
+                if "elementLabels" in coil_data:
+                    for i in range(0, len(coil_data["r"])):
+
+                        temp = get_element_vertices(
+                            coil_data["r"][i],
+                            coil_data["z"][i],
+                            coil_data["dr"][i],
+                            coil_data["dz"][i],
+                            coil_data["ang1"][i],
+                            coil_data["ang2"][i],
+                            version=0.0,
+                            close_shape=False,
+                        )
+
+                        passive_coils.append(
+                            {
+                                "R": temp[0],
+                                "Z": temp[1],
+                                "resistivity": coil_data["rho"],
+                                "efitGroup": coil_data["efitGroup"][i],
+                                "element": name,
+                                "name": coil_data["elementLabels"][i],
+                                "current_multiplier": coil_data["dr"][i]
+                                * coil_data["dz"][i]
+                                / group_total_area[coil_data["efitGroup"][i]],
+                            }
+                        )
+                else:
+                    group_area = np.sum(coil_data["dr"] * coil_data["dz"])
+                    for i in range(0, len(coil_data["r"])):
+
+                        temp = get_element_vertices(
+                            coil_data["r"][i],
+                            coil_data["z"][i],
+                            coil_data["dr"][i],
+                            coil_data["dz"][i],
+                            coil_data["ang1"][i],
+                            coil_data["ang2"][i],
+                            version=0.0,
+                            close_shape=False,
+                        )
+
+                        passive_coils.append(
+                            {
+                                "R": temp[0],
+                                "Z": temp[1],
+                                "resistivity": coil_data["rho"],
+                                "element": name,
+                                "name": name + f"_{i}",
+                                "current_multiplier": coil_data["dr"][i]
+                                * coil_data["dz"][i]
+                                / group_area,
+                            }
+                        )
+
+    # if 'False', we pass each parallelogram centre coords and lengths to
+    # FreeGSNKE
+    else:
+        for name in passive_coils_uda.keys():
+            # these passive structures are not used in EFIT
+            if name not in excluded_structures:
+
+                coil_data = passive_coils_uda[name]
+                if "elementLabels" in coil_data:
+                    for i in range(0, len(coil_data["r"])):
+                        passive_coils.append(
+                            {
+                                "R": coil_data["r"][i],
+                                "Z": coil_data["z"][i],
+                                "dR": coil_data["dr"][i],
+                                "dZ": coil_data["dz"][i],
+                                "resistivity": coil_data["rho"],
+                                "efitGroup": coil_data["efitGroup"][i],
+                                "element": name,
+                                "name": coil_data["elementLabels"][i],
+                                "current_multiplier": coil_data["dr"][i]
+                                * coil_data["dz"][i]
+                                / group_total_area[coil_data["efitGroup"][i]],
+                            }
+                        )
+                else:
+                    group_area = np.sum(coil_data["dr"] * coil_data["dz"])
+                    for i in range(0, len(coil_data["r"])):
+                        passive_coils.append(
+                            {
+                                "R": coil_data["r"][i],
+                                "Z": coil_data["z"][i],
+                                "dR": coil_data["dr"][i],
+                                "dZ": coil_data["dz"][i],
+                                "resistivity": coil_data["rho"],
+                                "element": name,
+                                "name": name + f"_{i}",
+                                "current_multiplier": coil_data["dr"][i]
+                                * coil_data["dz"][i]
+                                / group_area,
+                            }
+                        )
+
+    # save data
+    pickle.dump(
+        passive_coils,
+        open("../machine_configs/MAST-U/MAST-U_passive_coils.pickle", "wb"),
+    )
+
+    # ------------
+    # MAGNETIC PROBES
+
+    # data
+    fluxloops_uda = data["fluxloops"]
+
+    # extract data into required form
+    flux_loops = []
+    for i in range(len(fluxloops_uda["r"])):
+        flux_loops.append(
+            {
+                "name": fluxloops_uda["names"][i],
+                "position": np.array(
+                    [fluxloops_uda["r"][i][0], fluxloops_uda["z"][i][0]]
+                ),
+            }
+        )
+
+    # data
+    pickups_uda = data["pickups"]
+
+    # extract data into required form
+    pickups = []
+    for i in range(len(pickups_uda["names"])):
+        pickups.append(
+            {
+                "name": pickups_uda["geometry_datar"][i]["name"],
+                "orientation": pickups_uda["geometry_datar"][i]["orientation"],
+                "orientation_vector": pickups_uda["geometry_datar"][i][
+                    "orientation_vector"
+                ],
+                "position": pickups_uda["geometry_datar"][i]["position"],
+            }
+        )
+
+    # save
+    pickle.dump(
+        {"flux_loops": flux_loops, "pickups": pickups},
+        open("../machine_configs/MAST-U/MAST-U_magnetic_probes.pickle", "wb"),
+    )
+
+    # DONE
+    print("MAST-U geometry data successfully extracted and pickle files built.")
 
 
 # ------------
 # ------------
-def load_efit_times_and_status(
-	client, 
-	shot=45425
-	):
+def load_efit_times_and_status(client, shot=45425):
     """
     Extract the shot status (converged or not) and times from the EFIT data.
 
     """
-    
-    # load data 
-    status = client.get('/epm/equilibriumstatusinteger', shot)
-    
+
+    # load data
+    status = client.get("/epm/equilibriumstatusinteger", shot)
+
     return status.time.data, status.data
 
+
 # ------------
 # ------------
-def load_static_solver_inputs(
-	client,
-	shot=45425, 
-	zero_passives=False
-    ):
+def load_static_solver_inputs(client, shot=45425, zero_passives=False):
     """
-    Extract the EFIT++ data required for the static solve. 
-    
+    Extract the EFIT++ data required for the static solve.
+
     """
 
-    # load data     
-    Ip = client.get('/epm/input/constraints/plasmacurrent/computed', shot).data                           # plasma current
-    fvac = client.get('/epm/input/bvacradiusproduct', shot).data                                          # fvac
-    alpha = client.get('/epm/output/numericaldetails/degreesoffreedom/pprimecoeffs', shot).data           # pprime coefficients
-    beta = client.get('/epm/output/numericaldetails/degreesoffreedom/ffprimecoeffs', shot).data           # ffprime coefficients
-    alpha_logic = client.get('/epm/input/numericalcontrols/pp/edge', shot).data                           # pprime logical 
-    beta_logic = client.get('/epm/input/numericalcontrols/ffp/edge', shot).data                           # ffprime logical
-        
+    # load data
+    Ip = client.get(
+        "/epm/input/constraints/plasmacurrent/computed", shot
+    ).data  # plasma current
+    fvac = client.get("/epm/input/bvacradiusproduct", shot).data  # fvac
+    alpha = client.get(
+        "/epm/output/numericaldetails/degreesoffreedom/pprimecoeffs", shot
+    ).data  # pprime coefficients
+    beta = client.get(
+        "/epm/output/numericaldetails/degreesoffreedom/ffprimecoeffs", shot
+    ).data  # ffprime coefficients
+    alpha_logic = client.get(
+        "/epm/input/numericalcontrols/pp/edge", shot
+    ).data  # pprime logical
+    beta_logic = client.get(
+        "/epm/input/numericalcontrols/ffp/edge", shot
+    ).data  # ffprime logical
+
     # active coil\passive structure currents need to be done carefully
-    current_labels = client.get('/epm/input/constraints/pfcircuits/shortname', shot).data          # active/passive coil current names
-    currents_values = client.get('/epm/input/constraints/pfcircuits/computed', shot).data          # active/passive coil current values
-            
+    current_labels = client.get(
+        "/epm/input/constraints/pfcircuits/shortname", shot
+    ).data  # active/passive coil current names
+    currents_values = client.get(
+        "/epm/input/constraints/pfcircuits/computed", shot
+    ).data  # active/passive coil current values
+
     # Active coils
     currents = {}
     currents_nonsym = {}
     currents_discrepancy = {}
 
-    with open('../machine_configs/MAST-U//MAST-U_active_coils.pickle', 'rb') as file:
+    with open("../machine_configs/MAST-U//MAST-U_active_coils.pickle", "rb") as file:
         active_coils = pickle.load(file)
-		
-    efit_names = current_labels[0:24]   # active coil names in efit
-    
+
+    efit_names = current_labels[0:24]  # active coil names in efit
+
     # loop through active coil names in freegsnke to set them with UDA data
     for active_coil_name in active_coils.keys():
-        
+
         # special cases for specific coil names
         if active_coil_name == "Solenoid":
             # find indices for Solenoid coils in efit_names
             indices = [i for i, efit_name in enumerate(efit_names) if "p1" in efit_name]
             currents["Solenoid"] = currents_values[:, indices[0]] if indices else None
-            currents_nonsym["Solenoid"] = currents_values[:, indices[0]] if indices else None
+            currents_nonsym["Solenoid"] = (
+                currents_values[:, indices[0]] if indices else None
+            )
             currents_discrepancy["Solenoid"] = 0.0
         else:
             # find indices for other coils in efit_names
-            indices = [i for i, efit_name in enumerate(efit_names) if active_coil_name in efit_name]
+            indices = [
+                i
+                for i, efit_name in enumerate(efit_names)
+                if active_coil_name in efit_name
+            ]
             if indices:
                 polarity = np.sign(currents_values[:, indices[0]])
-                average_current = np.sum(np.abs(currents_values[:, indices]), axis=1) / len(indices)
-                currents[active_coil_name] = polarity*average_current
-                currents_discrepancy[active_coil_name] = polarity*np.abs(np.abs(currents_values[:, indices[0]]) - average_current)
+                average_current = np.sum(
+                    np.abs(currents_values[:, indices]), axis=1
+                ) / len(indices)
+                currents[active_coil_name] = polarity * average_current
+                currents_discrepancy[active_coil_name] = polarity * np.abs(
+                    np.abs(currents_values[:, indices[0]]) - average_current
+                )
                 for j in indices:
                     currents_nonsym[efit_names[j]] = currents_values[:, j]
 
             else:
                 currents[active_coil_name] = None
 
-	# passive structures
-    with open('../machine_configs/MAST-U//MAST-U_passive_coils.pickle', 'rb') as file:
+    # passive structures
+    with open("../machine_configs/MAST-U//MAST-U_passive_coils.pickle", "rb") as file:
         passive_coils = pickle.load(file)
-        
+
     # Passive structures
     for i in range(0, len(passive_coils)):
         coil = passive_coils[i]
-        
+
         if "efitGroup" in coil:
-            group_name = coil['efitGroup']
+            group_name = coil["efitGroup"]
             ind = current_labels.tolist().index(group_name)
-            
+
             if zero_passives:
                 currents[coil["name"]] = 0.0
                 currents_nonsym[coil["name"]] = 0.0
             else:
-                currents[coil["name"]] = currents_values[:,ind]*coil["current_multiplier"]
-                currents_nonsym[coil["name"]] = currents_values[:,ind]*coil["current_multiplier"]
+                currents[coil["name"]] = (
+                    currents_values[:, ind] * coil["current_multiplier"]
+                )
+                currents_nonsym[coil["name"]] = (
+                    currents_values[:, ind] * coil["current_multiplier"]
+                )
                 # currents[coil["name"]] = efit_currents['currents_input'][t,ind]
         else:
-            group_name = coil['element']
+            group_name = coil["element"]
             ind = current_labels.tolist().index(group_name)
             if zero_passives:
                 currents[coil["name"]] = 0.0
                 currents_nonsym[coil["name"]] = 0.0
             else:
-                currents[coil["name"]] = currents_values[:,ind]*coil["current_multiplier"]
-                currents_nonsym[coil["name"]] = currents_values[:,ind]*coil["current_multiplier"]
+                currents[coil["name"]] = (
+                    currents_values[:, ind] * coil["current_multiplier"]
+                )
+                currents_nonsym[coil["name"]] = (
+                    currents_values[:, ind] * coil["current_multiplier"]
+                )
                 # currents[coil["name"]] = efit_currents['currents_input'][t,ind]
 
-                
-    return Ip, fvac, alpha, beta, alpha_logic, beta_logic, currents, currents_nonsym, currents_discrepancy
-    
-    
-# ------------ 
-def extract_EFIT_outputs(
-    client,
-	shot,
-    time_indices
-	):
+    return (
+        Ip,
+        fvac,
+        alpha,
+        beta,
+        alpha_logic,
+        beta_logic,
+        currents,
+        currents_nonsym,
+        currents_discrepancy,
+    )
+
+
+# ------------
+def extract_EFIT_outputs(client, shot, time_indices):
     """
     Load EFIT++ output data for chosen targets below at time indices required.
 
     """
-    
-    # load data     
-    psi_total = client.get('/epm/output/profiles2d/poloidalflux', shot).data[time_indices,:,:]                                   # total poloidal flux (units= Webers/2*pi)
-    psi_axis = client.get('/epm/output/globalparameters/psiaxis', shot).data[time_indices]                                       # flux on magnetic axis
-    psi_boundary = client.get('/epm/output/globalparameters/psiboundary', shot).data[time_indices]                               # flux on plasma boundary
-    jtor = client.get('/epm/output/profiles2d/jphi', shot).data[time_indices,:,:]                                                # plasma current density
-    magnetic_axis = np.array([client.get('/epm/output/globalparameters/magneticaxis/r', shot).data[time_indices],
-                             client.get('/epm/output/globalparameters/magneticaxis/z', shot).data[time_indices]]).T               # magnetic axis coords
-    midplane_inner_outer_radii = np.array([client.get('/epm/output/separatrixgeometry/rmidplanein', shot).data[time_indices],
-                                           client.get('/epm/output/separatrixgeometry/rmidplaneout', shot).data[time_indices]]).T # midplane inner/outer radii coords
-    x_points = np.array([client.get('/epm/output/separatrixgeometry/xpointr', shot).data[time_indices],
-                         client.get('/epm/output/separatrixgeometry/xpointz', shot).data[time_indices]]).T                        # x-points in flux field
-    pprime = client.get('/epm/output/fluxfunctionprofiles/staticpprime', shot).data[time_indices]                                 # pressure profile function
-    ffprime = client.get('/epm/output/fluxfunctionprofiles/ffprime', shot).data[time_indices]                                     # toroidal current density profile
-    strike_points = np.array([client.get('/epm/output/separatrixgeometry/strikepointr', shot).data[time_indices], 
-                              client.get('/epm/output/separatrixgeometry/strikepointz', shot).data[time_indices]]).T              # strikepoint coords
-    
 
-        
-    return psi_total, psi_axis, psi_boundary, jtor, magnetic_axis, midplane_inner_outer_radii, x_points, pprime, ffprime, strike_points
-    
+    # load data
+    psi_total = client.get("/epm/output/profiles2d/poloidalflux", shot).data[
+        time_indices, :, :
+    ]  # total poloidal flux (units= Webers/2*pi)
+    psi_axis = client.get("/epm/output/globalparameters/psiaxis", shot).data[
+        time_indices
+    ]  # flux on magnetic axis
+    psi_boundary = client.get("/epm/output/globalparameters/psiboundary", shot).data[
+        time_indices
+    ]  # flux on plasma boundary
+    jtor = client.get("/epm/output/profiles2d/jphi", shot).data[
+        time_indices, :, :
+    ]  # plasma current density
+    magnetic_axis = np.array(
+        [
+            client.get("/epm/output/globalparameters/magneticaxis/r", shot).data[
+                time_indices
+            ],
+            client.get("/epm/output/globalparameters/magneticaxis/z", shot).data[
+                time_indices
+            ],
+        ]
+    ).T  # magnetic axis coords
+    midplane_inner_outer_radii = np.array(
+        [
+            client.get("/epm/output/separatrixgeometry/rmidplanein", shot).data[
+                time_indices
+            ],
+            client.get("/epm/output/separatrixgeometry/rmidplaneout", shot).data[
+                time_indices
+            ],
+        ]
+    ).T  # midplane inner/outer radii coords
+    x_points = np.array(
+        [
+            client.get("/epm/output/separatrixgeometry/xpointr", shot).data[
+                time_indices
+            ],
+            client.get("/epm/output/separatrixgeometry/xpointz", shot).data[
+                time_indices
+            ],
+        ]
+    ).T  # x-points in flux field
+    pprime = client.get("/epm/output/fluxfunctionprofiles/staticpprime", shot).data[
+        time_indices
+    ]  # pressure profile function
+    ffprime = client.get("/epm/output/fluxfunctionprofiles/ffprime", shot).data[
+        time_indices
+    ]  # toroidal current density profile
+    strike_points = np.array(
+        [
+            client.get("/epm/output/separatrixgeometry/strikepointr", shot).data[
+                time_indices
+            ],
+            client.get("/epm/output/separatrixgeometry/strikepointz", shot).data[
+                time_indices
+            ],
+        ]
+    ).T  # strikepoint coords
 
-
-
-
-
-
-
-
-
-
-
-
-
-
+    return (
+        psi_total,
+        psi_axis,
+        psi_boundary,
+        jtor,
+        magnetic_axis,
+        midplane_inner_outer_radii,
+        x_points,
+        pprime,
+        ffprime,
+        strike_points,
+    )
 
 
 # --------------------------------
 # ADDITIONAL FUNCTIONS
 
+
 # ------------
 def get_coil_info(coil_list, coil):
-	# Given a coil recovers the coil position and orientation data into 
-	# a dictionary and appends it to a list of coils.
+    # Given a coil recovers the coil position and orientation data into
+    # a dictionary and appends it to a list of coils.
 
-	# Get coil location
-	coordinates = coil['data']['coordinate']
-	position = np.array( [ coordinates.r, coordinates.phi, coordinates.z ] )
+    # Get coil location
+    coordinates = coil["data"]["coordinate"]
+    position = np.array([coordinates.r, coordinates.phi, coordinates.z])
 
-	# Get coil orientation
-	vector = coil['data']['orientation']['unit_vector'] 
-	orientation = np.array( [ vector.r, vector.phi, vector.z ] )
+    # Get coil orientation
+    vector = coil["data"]["orientation"]["unit_vector"]
+    orientation = np.array([vector.r, vector.phi, vector.z])
 
-	# Create coil dictionary
-	coil_dict = { 'name'               : coil.name,
-				  'position'           : position,
-				  'orientation'        : coil['data']['orientation'].measurement_direction, 
-				  'orientation_vector' : orientation }
+    # Create coil dictionary
+    coil_dict = {
+        "name": coil.name,
+        "position": position,
+        "orientation": coil["data"]["orientation"].measurement_direction,
+        "orientation_vector": orientation,
+    }
 
-	coil_list.append( coil_dict )
-			
-# ------------
-def get_coils(data, coil_list): 
-	# Recovers the data for all the pickup coils.
+    coil_list.append(coil_dict)
 
-
-	child_names = [child.name for child in data.children]
-
-	if 'data' in child_names:
-		get_coil_info(coil_list, data )
-	else:
-		for child in data.children:
-			get_coils( child, coil_list )
 
 # ------------
-def get_element_vertices(centreR, centreZ, dR, dZ, a1, a2, version=0.1, close_shape=False):
+def get_coils(data, coil_list):
+    # Recovers the data for all the pickup coils.
+
+    child_names = [child.name for child in data.children]
+
+    if "data" in child_names:
+        get_coil_info(coil_list, data)
+    else:
+        for child in data.children:
+            get_coils(child, coil_list)
+
+
+# ------------
+def get_element_vertices(
+    centreR, centreZ, dR, dZ, a1, a2, version=0.1, close_shape=False
+):
     """
-    Convert EFIT description of rectangles / parallelograms to vertices (used 
+    Convert EFIT description of rectangles / parallelograms to vertices (used
     passive structures).
 
                 xxxx     ---             xxxxxxxxxxx
@@ -933,34 +1021,48 @@ def get_element_vertices(centreR, centreZ, dR, dZ, a1, a2, version=0.1, close_sh
     :param version: geometry version (backwards compatibilty for bug in < V0.1
     :param close_shape: Repeat first vertex to close the shape if set to True
     :return:
-        
+
     Code courtesy of Lucy Kogan (UKAEA)
 
     """
-    
+
     if a1 == 0.0 and a2 == 0.0:
         # Rectangle
-        rr = [centreR - dR / 2.0, centreR - dR / 2.0, centreR + dR / 2.0, centreR + dR / 2.0]
-        zz = [centreZ - dZ / 2.0, centreZ + dZ / 2.0, centreZ + dZ / 2.0, centreZ - dZ / 2.0]
+        rr = [
+            centreR - dR / 2.0,
+            centreR - dR / 2.0,
+            centreR + dR / 2.0,
+            centreR + dR / 2.0,
+        ]
+        zz = [
+            centreZ - dZ / 2.0,
+            centreZ + dZ / 2.0,
+            centreZ + dZ / 2.0,
+            centreZ - dZ / 2.0,
+        ]
     elif version == 0.1:
         # Parallelogram
-        Lx1 = (math.cos(math.radians(a1)) * dR)
-        Lx2 = (math.sin(math.radians(a2)) * dZ)
+        Lx1 = math.cos(math.radians(a1)) * dR
+        Lx2 = math.sin(math.radians(a2)) * dZ
         Lx = Lx1 + Lx2
 
-        Lz1 = (math.sin(math.radians(a1)) * dR)
-        Lz2 = (math.cos(math.radians(a2)) * dZ)
+        Lz1 = math.sin(math.radians(a1)) * dR
+        Lz2 = math.cos(math.radians(a2)) * dZ
         Lz = Lz1 + Lz2
 
-        rr = [centreR - Lx / 2,        # A
-              centreR - Lx / 2 + Lx2,  # B
-              centreR + Lx / 2,        # C
-              centreR - Lx / 2 + Lx1]  # D
+        rr = [
+            centreR - Lx / 2,  # A
+            centreR - Lx / 2 + Lx2,  # B
+            centreR + Lx / 2,  # C
+            centreR - Lx / 2 + Lx1,
+        ]  # D
 
-        zz = [centreZ - Lz / 2,
-              centreZ - Lz / 2 + Lz2,
-              centreZ + Lz / 2,
-              centreZ - Lz / 2 + Lz1]
+        zz = [
+            centreZ - Lz / 2,
+            centreZ - Lz / 2 + Lz2,
+            centreZ + Lz / 2,
+            centreZ - Lz / 2 + Lz1,
+        ]
     else:
         # Parallelogram (different definitions of dR, dZ, angle1 and angle2)
         a1_tan = 0.0
@@ -971,15 +1073,19 @@ def get_element_vertices(centreR, centreZ, dR, dZ, a1, a2, version=0.1, close_sh
         if a2 > 0.0:
             a2_tan = 1.0 / np.tan(a2 * np.pi / 180.0)
 
-        rr = [centreR - dR/2.0 - dZ/2.0 * a2_tan,
-              centreR + dR/2.0 - dZ/2.0 * a2_tan,
-              centreR + dR/2.0 + dZ/2.0 * a2_tan,
-              centreR - dR/2.0 + dZ/2.0 * a2_tan]
+        rr = [
+            centreR - dR / 2.0 - dZ / 2.0 * a2_tan,
+            centreR + dR / 2.0 - dZ / 2.0 * a2_tan,
+            centreR + dR / 2.0 + dZ / 2.0 * a2_tan,
+            centreR - dR / 2.0 + dZ / 2.0 * a2_tan,
+        ]
 
-        zz = [centreZ - dZ/2.0 - dR/2.0 * a1_tan,
-              centreZ - dZ/2.0 + dR/2.0 * a1_tan,
-              centreZ + dZ/2.0 + dR/2.0 * a1_tan,
-              centreZ + dZ/2.0 - dR/2.0 * a1_tan]
+        zz = [
+            centreZ - dZ / 2.0 - dR / 2.0 * a1_tan,
+            centreZ - dZ / 2.0 + dR / 2.0 * a1_tan,
+            centreZ + dZ / 2.0 + dR / 2.0 * a1_tan,
+            centreZ + dZ / 2.0 - dR / 2.0 * a1_tan,
+        ]
 
     if close_shape:
         rr.append(rr[0])
@@ -999,39 +1105,41 @@ def find_strikepoints(R, Z, psi_total, psi_boundary, limiter):
         - limiter/wall coordinates (N x 2)
 
     """
-    
+
     # find contour object for psi_boundary
     cs = plt.contour(R, Z, psi_total, levels=[psi_boundary])
-    plt.close() # this isn't the most elegant but we don't need the plot itself
-    
+    plt.close()  # this isn't the most elegant but we don't need the plot itself
+
     # for each item in the contour object there's a list of points in (r,z) (i.e. a line)
     psi_boundary_lines = []
     for i, item in enumerate(cs.allsegs[0]):
         psi_boundary_lines.append(item)
-    
-    
+
     # use the shapely package to find where each psi_boundary_line intersects the limiter (or not)
     strikes = []
     curve1 = sh.LineString(limiter)
     for j, line in enumerate(psi_boundary_lines):
         curve2 = sh.LineString(line)
-    
+
         # find the intersection points
         intersection = curve2.intersection(curve1)
-    
+
         # extract intersection points
-        if intersection.geom_type == 'Point':
+        if intersection.geom_type == "Point":
             strikes.append(np.squeeze(np.array(intersection.xy).T))
-        elif intersection.geom_type == 'MultiPoint':
-            strikes.append(np.squeeze(np.array([geom.xy for geom in intersection.geoms])))
+        elif intersection.geom_type == "MultiPoint":
+            strikes.append(
+                np.squeeze(np.array([geom.xy for geom in intersection.geoms]))
+            )
 
     # check how many strikepoints
     if len(strikes) == 0:
         out = None
     else:
         out = np.concatenate(strikes, axis=0)
-        
+
     return out
+
 
 # ------------
 def Separatrix(R, Z, psi, ntheta, psival=1.0, theta_grid=None, input_opoint=None):
@@ -1076,7 +1184,9 @@ def Separatrix(R, Z, psi, ntheta, psival=1.0, theta_grid=None, input_opoint=None
     if any(abs(theta_grid - xpoint_theta) < TOLERANCE):
         # warn("Theta grid too close to X-point, shifting by half-step")
         # print('Im shifting the grid!')
-        theta_grid += dtheta / 2 * np.ones(ntheta) * (abs(theta_grid - xpoint_theta) < TOLERANCE)
+        theta_grid += (
+            dtheta / 2 * np.ones(ntheta) * (abs(theta_grid - xpoint_theta) < TOLERANCE)
+        )
 
     isoflux = []
     for theta in theta_grid:
@@ -1093,13 +1203,15 @@ def Separatrix(R, Z, psi, ntheta, psival=1.0, theta_grid=None, input_opoint=None
         )
         isoflux.append((r, z))
 
-    threshold = 0.1 # exlude points this far away from other nearest point
+    threshold = 0.1  # exlude points this far away from other nearest point
     points = np.array(isoflux)
     distances = sp.spatial.distance.cdist(points, points)
-    min_distances = np.min(np.where(distances == 0, np.inf, distances), axis=1)  # Exclude distances to itself
+    min_distances = np.min(
+        np.where(distances == 0, np.inf, distances), axis=1
+    )  # Exclude distances to itself
     far_points = np.where(min_distances > threshold)[0]
     points[far_points] = None
-    
+
     return points, theta_grid
 
 
@@ -1146,18 +1258,22 @@ def find_psisurface(psifunc, R, Z, r0, z0, r1, z1, psival=1.0, n=100):
 
     return r, z
 
+
 # ------------
 def max_euclidean_distance(points1, points2):
     """
     Calculate the maximum Euclidean distance between corresponding points in two sets.
     Exclude points with 'None' values.
     """
-    valid_indices = np.logical_not(np.any(np.isnan(points1), axis=1) | np.any(np.isnan(points2), axis=1))
+    valid_indices = np.logical_not(
+        np.any(np.isnan(points1), axis=1) | np.any(np.isnan(points2), axis=1)
+    )
     points1_valid = points1[valid_indices]
     points2_valid = points2[valid_indices]
     if len(points1_valid) == 0 or len(points2_valid) == 0:
         return np.nan
-    return np.max(np.sqrt(np.sum((points1_valid - points2_valid)**2, axis=1)))
+    return np.max(np.sqrt(np.sum((points1_valid - points2_valid) ** 2, axis=1)))
+
 
 # ------------
 def median_euclidean_distance(points1, points2):
@@ -1165,19 +1281,22 @@ def median_euclidean_distance(points1, points2):
     Calculate the maximum Euclidean distance between corresponding points in two sets.
     Exclude points with 'None' values.
     """
-    valid_indices = np.logical_not(np.any(np.isnan(points1), axis=1) | np.any(np.isnan(points2), axis=1))
+    valid_indices = np.logical_not(
+        np.any(np.isnan(points1), axis=1) | np.any(np.isnan(points2), axis=1)
+    )
     points1_valid = points1[valid_indices]
     points2_valid = points2[valid_indices]
     if len(points1_valid) == 0 or len(points2_valid) == 0:
         return np.nan
-    return np.median(np.sqrt(np.sum((points1_valid - points2_valid)**2, axis=1)))
+    return np.median(np.sqrt(np.sum((points1_valid - points2_valid) ** 2, axis=1)))
 
-# ------------ 
+
+# ------------
 def separatrix_areas(separatrix_1, separatrix_2):
     """
-    This function can be used to find the poloidal area of each separatrix given 
+    This function can be used to find the poloidal area of each separatrix given
     and the similiarity of the two as calculated using equation 8 in Bardsely et al
-    2024 (Nuclear Fusion) ("Decoupled magnetic control of spherical tokamak 
+    2024 (Nuclear Fusion) ("Decoupled magnetic control of spherical tokamak
     divertors via vacuum harmonic constraints"). Inputs:
         - separatrix_1 (and 2): np.array of (n x 2) (r,z) points
     """
@@ -1185,16 +1304,15 @@ def separatrix_areas(separatrix_1, separatrix_2):
     # create Polygon objects from the points using Shapely package
     polygon1 = sh.Polygon(separatrix_1).convex_hull
     polygon2 = sh.Polygon(separatrix_2).convex_hull
-    
+
     # calculate union and intersection of the two polygons
     union_polygon = polygon1.union(polygon2)
     intersection_polygon = polygon1.intersection(polygon2)
-    
+
     # Calculate the area of the non-overlapping regions
     non_overlapping_area = union_polygon.area - intersection_polygon.area
 
     # metric from paper
-    eta = non_overlapping_area/(polygon1.area + polygon2.area)
-    
-    return eta, polygon1, polygon2
+    eta = non_overlapping_area / (polygon1.area + polygon2.area)
 
+    return eta, polygon1, polygon2

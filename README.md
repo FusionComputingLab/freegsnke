@@ -1,8 +1,8 @@
 # FreeGSNKE: Free-boundary Grad-Shafranov Newton-Krylov Evolve
 
 FreeGSNKE (pronounced "free-gee-snake") is an evolutive tokamak plasma
-equilibrium simulator. It builds on
-[FreeGS](https://github.com/bendudson/freegs) and adds new capabilities. In
+equilibrium simulator. It builds on [FreeGS4e](https://github.com/freegs4e/freegs4e) (which is a fork of
+[FreeGS](https://github.com/bendudson/freegs)) and adds new capabilities. In
 particular, FreeGSNKE includes:
 - A Newton-Krylov method to replace the Picard method in the Grad-Shafranov
   solver.
@@ -12,20 +12,10 @@ It is recommended to read this page in its entirety before attempting to install
 or run FreeGSNKE.
 
 ## Installation
-Building from source is currently the only supported installation method and follows these broad steps, which are detailed below:
-1. Get access to FreeGSFast.
-2. Set up a Python environment.
-3. Install FreeGSNKE.
 
-The steps will be significantly simplified in the future when FreeGSFast is made public.
+Building from source is currently the only supported installation method.
 
-### Get access to FreeGSFast
-
-FreeGSNKE is built on top of [FreeGSFast](https://github.com/farscape-project/freegsfast), which is a fork of FreeGS with some performance improvements. Currently, FreeGSFast is in a private repository on the FARSCAPE GitHub, so some extra configuration is required.
-
-Once you have access to the FreeGSFast repository, add an SSH key to your GitHub account by following the instructions [here](https://docs.github.com/en/authentication/connecting-to-github-with-ssh/adding-a-new-ssh-key-to-your-github-account).
-
-### Set up a Python environment
+### 1. Set up a Python environment
 
 The recommended way to install FreeGSNKE is to use a virtual environment using, for example, conda or venv. Below are instructions for setting up a conda environment.
 
@@ -33,13 +23,13 @@ The recommended way to install FreeGSNKE is to use a virtual environment using, 
 2. Create a new conda environment with the command `conda create -n freegsnke python=3.10`.
 3. Activate the new environment with `conda activate freegsnke`.
 
-### Install FreeGSNKE
+### 2. Install FreeGSNKE
 
 1. Clone the FreeGSNKE repository with `git clone git@gitlab.stfc.ac.uk:farscape-ws3/freegsnke.git` or `git clone https://gitlab.stfc.ac.uk/farscape-ws3/freegsnke.git`.
 2. `cd` into the FreeGSNKE directory.
-3. Install FreeGSNKE and its dependencies with `pip install ".[freegsfast]"`.
+3. Install FreeGSNKE and its dependencies with `pip install ".[freegs4e]"`.
 
-The `freegsfast` extra installs FreeGSFast, which is required for FreeGSNKE to run.
+The `freegs4e` extra installs [FreeGS4E](https://github.com/freegs4e/freegs4e), which is required for FreeGSNKE to run.
 
 If you are planning to develop FreeGSNKE, see the below section on contributing
 code.
@@ -105,13 +95,13 @@ If the issue is a feature improvement request:
 To make code contributions, please do so via merge request.
 
 In place of the final step in [installation](#installation), run `pip install -e
-".[freegsfast,dev]"` from the FreeGSNKE root directory to install FreeGSNKE in editable mode, including the optional development dependencies.
+".[freegs4e,dev]"` from the FreeGSNKE root directory to install FreeGSNKE in editable mode, including the optional development dependencies.
 
-If you are planning to do co-development on FreeGSFast, you will need to install it in editable mode as well. This can be done by cloning the FreeGSFast repository and running `pip install -e .` from the FreeGSFast root directory, then installing FreeGSNKE in editable mode with `pip install ".[dev]"`. Notice that the `freegsfast` extra has been omitted from the FreeGSNKE installation command in this case.
+If you are planning to do co-development on FreeGS4E, you will need to install it in editable mode as well. This can be done by cloning the FreeGS4E repository and following its development installation instructions, then installing FreeGSNKE in editable mode with `pip install ".[dev]"`. Notice that the `freegs4e` extra has been omitted from the FreeGSNKE installation command in this case.
 
 Several tests are implemented with [pytest](https://docs.pytest.org/en), which
 are run as part of the GitLab CI/CD pipelines, but you can run these locally
-before submitting a merge request to see if they're likely to pass.
+before submitting a merge request to see if they will pass.
 
 If your bug fix or feature addition includes a change to how FreeGSNKE
 fundamentally works or a change to the API, be sure to document this
@@ -123,7 +113,7 @@ changing examples, where appropriate.
 
 Pre-commit hooks are available in `.pre-commit-config.yaml`, including Black and
 isort formatting. The [pre-commit](https://pre-commit.com/) library is included
-in `requirements-dev.txt`. To install the pre-commit hooks, run `pre-commit
+in `requirements-dev.txt`, which are installed using the `dev` extra (i.e. `pip install -e ".[dev]"`). To install the pre-commit hooks, run `pre-commit
 install` from the root FreeGSNKE directory.
 
 Any Jupyter notebooks tracked by the repository should not include cell outputs.

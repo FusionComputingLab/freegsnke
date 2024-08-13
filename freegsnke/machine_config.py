@@ -4,7 +4,7 @@ from copy import deepcopy
 
 import numpy as np
 from deepdiff import DeepDiff
-from freegsfast.gradshafranov import Greens, mu0
+from freegs4e.gradshafranov import Greens, mu0
 
 from .refine_passive import generate_refinement
 

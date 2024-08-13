@@ -1,1 +1,0 @@
-freegsfast @ git+ssh://git@github.com/farscape-project/freegsfast.git@main

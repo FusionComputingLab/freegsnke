@@ -1,16 +1,16 @@
 import os
 import pickle
 
-import freegsfast
+import freegs4e
 import numpy as np
-from freegsfast import critical
+from freegs4e import critical
 from scipy import interpolate
 
 from . import limiter_func
 
 
-class Equilibrium(freegsfast.equilibrium.Equilibrium):
-    """FreeGSFast equilibrium class with optional initialization."""
+class Equilibrium(freegs4e.equilibrium.Equilibrium):
+    """FreeGS4E equilibrium class with optional initialization."""
 
     def __init__(self, *args, **kwargs):
         """Instantiates the object."""

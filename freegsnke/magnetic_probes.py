@@ -8,7 +8,7 @@ import pickle
 
 import numpy as np
 from deepdiff import DeepDiff
-from freegsfast.gradshafranov import Greens, GreensBr, GreensBz
+from freegs4e.gradshafranov import Greens, GreensBr, GreensBz
 
 
 class Probes:

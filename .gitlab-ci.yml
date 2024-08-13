@@ -38,7 +38,7 @@ stages:
     - conda activate freegsnke
 
     # Install the package
-    - pip install -e .[dev,freegsfast]
+    - pip install -e .[dev,freegs4e]
 
 Core tests:
   stage: test

@@ -2,7 +2,7 @@ import os
 import time
 from copy import deepcopy
 
-import freegsfast
+import freegs4e
 import numpy as np
 import pytest
 from IPython.display import clear_output, display
@@ -13,7 +13,7 @@ os.environ["WALL_PATH"] = "./machine_configs/test/wall.pickle"
 os.environ["LIMITER_PATH"] = "./machine_configs/test/limiter.pickle"
 os.environ["PROBE_PATH"] = "./machine_configs/test/magnetic_probes.pickle"
 
-# from freegsfast import faster_shape
+# from freegs4e import faster_shape
 
 from freegsnke import build_machine
 

@@ -13,7 +13,7 @@ authors = [
 ]
 description = "Evolutive free boundary Grad-Shafranov solver for tokamak plasma equilibrium"
 readme = "README.md"
-requires-python = ">=3.6"
+requires-python = ">=3.9"
 classifiers = [
     "Programming Language :: Python :: 3",
     "Operating System :: OS Independent"

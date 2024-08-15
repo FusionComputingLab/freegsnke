@@ -626,15 +626,17 @@ class NKGSsolver:
                 del_psi = 1.0 * new_del_psi
             else:
                 log.append("Increase in residual, update reduction triggered.")
-                reduce_by = self.relative_change/rel_change
+                reduce_by = self.relative_change / rel_change
                 new_residual_flag = True
                 while new_residual_flag:
                     try:
-                        n_trial_plasma_psi = trial_plasma_psi + update*reduce_by
-                        res0 = self.F_function(n_trial_plasma_psi, self.tokamak_psi, profiles)
+                        n_trial_plasma_psi = trial_plasma_psi + update * reduce_by
+                        res0 = self.F_function(
+                            n_trial_plasma_psi, self.tokamak_psi, profiles
+                        )
                         new_residual_flag = False
                     except:
-                        reduce_by *= .75
+                        reduce_by *= 0.75
 
                 starting_direction = np.copy(res0)
                 trial_plasma_psi = n_trial_plasma_psi.copy()

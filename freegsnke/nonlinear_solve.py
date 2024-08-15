@@ -257,7 +257,15 @@ class nl_solver:
         # initialize and set up the linearization
         # input value for dIydI is used when available
         # no noise is added to normal modes
-        if automatic_timestep + mode_removal + linearize:
+        if automatic_timestep == False:
+            automatic_timestep_flag = False
+        else:
+            if len(automatic_timestep) != 2:
+                raise ValueError(
+                    "The automatic_timestep input has not been set to False, but an appropriate input has not been provided. Please revise."
+                )
+            automatic_timestep_flag = True
+        if automatic_timestep_flag + mode_removal + linearize:
             self.initialize_from_ICs(
                 eq, profiles, rtol_NK=1e-7, noise_level=0, dIydI=dIydI, verbose=verbose
             )
@@ -285,7 +293,7 @@ class nl_solver:
             self.remove_modes(self.selected_modes_mask)
 
         # check if input equilibrium and associated linearization have an instability, and its timescale
-        if automatic_timestep + mode_removal + linearize:
+        if automatic_timestep_flag + mode_removal + linearize:
             self.linearised_sol.calculate_linear_growth_rate()
             if len(self.linearised_sol.growth_rates):
                 print(
@@ -304,7 +312,7 @@ class nl_solver:
 
         # if automatic_timestep, reset the timestep accordingly,
         # note that this requires having found an instability
-        if automatic_timestep is None or automatic_timestep is False:
+        if automatic_timestep_flag is False:
             print(
                 "The solver's timestep was set at",
                 self.dt_step,

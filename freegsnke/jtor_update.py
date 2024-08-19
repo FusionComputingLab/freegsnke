@@ -8,7 +8,6 @@ from . import switch_profile as swp
 
 
 class Jtor_universal:
-
     def Jtor_build(
         self,
         Jtor_part1,
@@ -682,7 +681,7 @@ class Lao85(freegs4e.jtor.Lao85, Jtor_universal):
         )
 
         return pars
-    
+
 
 class TensionSpline(freegs4e.jtor.TensionSpline, Jtor_universal):
     """FreeGS profile class with a few modifications, to:
@@ -704,8 +703,17 @@ class TensionSpline(freegs4e.jtor.TensionSpline, Jtor_universal):
 
         """
         super().__init__(*args, **kwargs)
-        self.profile_parameter = [self.pp_knots, self.pp_values, self.pp_values_2, self.pp_sigma, self.ffp_knots, self.ffp_values, self.ffp_values_2, self.ffp_sigma]
-        
+        self.profile_parameter = [
+            self.pp_knots,
+            self.pp_values,
+            self.pp_values_2,
+            self.pp_sigma,
+            self.ffp_knots,
+            self.ffp_values,
+            self.ffp_values_2,
+            self.ffp_sigma,
+        ]
+
         if limiter is None:
             self.limiter_handler = eq.limiter_handler
         else:
@@ -727,8 +735,18 @@ class TensionSpline(freegs4e.jtor.TensionSpline, Jtor_universal):
         # else:
         #     self.Jtor = self.Jtor_fast
 
-    def assign_profile_parameter(self, pp_knots, pp_values, pp_values_2, pp_sigma, ffp_knots, ffp_values, ffp_values_2, ffp_sigma):
-        """Assigns to the profile object new values for the profile parameters """
+    def assign_profile_parameter(
+        self,
+        pp_knots,
+        pp_values,
+        pp_values_2,
+        pp_sigma,
+        ffp_knots,
+        ffp_values,
+        ffp_values_2,
+        ffp_sigma,
+    ):
+        """Assigns to the profile object new values for the profile parameters"""
         self.pp_knots = pp_knots
         self.pp_values = pp_values
         self.pp_values_2 = pp_values_2
@@ -736,9 +754,18 @@ class TensionSpline(freegs4e.jtor.TensionSpline, Jtor_universal):
         self.ffp_knots = ffp_knots
         self.ffp_values = ffp_values
         self.ffp_values_2 = ffp_values_2
-        self.ffp_sigma= ffp_sigma
+        self.ffp_sigma = ffp_sigma
 
-        self.profile_parameter = [pp_knots, pp_values, pp_values_2, pp_sigma, ffp_knots, ffp_values, ffp_values_2, ffp_sigma]
+        self.profile_parameter = [
+            pp_knots,
+            pp_values,
+            pp_values_2,
+            pp_sigma,
+            ffp_knots,
+            ffp_values,
+            ffp_values_2,
+            ffp_sigma,
+        ]
 
     def get_pars(
         self,

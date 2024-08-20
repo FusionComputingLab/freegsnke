@@ -767,6 +767,7 @@ class TensionSpline(freegs4e.jtor.TensionSpline, Jtor_universal):
             ffp_sigma,
         ]
 
+
     def get_pars(
         self,
     ):

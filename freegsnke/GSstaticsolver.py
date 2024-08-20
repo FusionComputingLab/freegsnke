@@ -835,7 +835,7 @@ class NKGSsolver:
         max_solving_iterations=50,
         Picard_handover=0.1,
         blend=0.0,
-        step_size=1.0,
+        step_size=2.0,
         scaling_with_n=-1.0,
         target_relative_unexplained_residual=0.2,
         max_n_directions=16,

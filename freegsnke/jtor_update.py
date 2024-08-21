@@ -8,7 +8,6 @@ from . import switch_profile as swp
 
 
 class Jtor_universal:
-
     def Jtor_build(
         self,
         Jtor_part1,
@@ -682,3 +681,96 @@ class Lao85(freegs4e.jtor.Lao85, Jtor_universal):
         )
 
         return pars
+
+
+class TensionSpline(freegs4e.jtor.TensionSpline, Jtor_universal):
+    """FreeGS profile class with a few modifications, to:
+    - retain memory of critical point calculation;
+    - deal with limiter plasma configurations
+
+    """
+
+    def __init__(self, eq, limiter=None, *args, **kwargs):
+        """Instantiates the object.
+
+        Parameters
+        ----------
+        eq : freegs4e Equilibrium object
+            Specifies the domain properties
+        limiter : freegs4e.machine.Wall object
+            Specifies the limiter contour points
+            Only set if a limiter different from eq.tokamak.limiter is to be used.
+
+        """
+        super().__init__(*args, **kwargs)
+        self.profile_parameter = [
+            self.pp_knots,
+            self.pp_values,
+            self.pp_values_2,
+            self.pp_sigma,
+            self.ffp_knots,
+            self.ffp_values,
+            self.ffp_values_2,
+            self.ffp_sigma,
+        ]
+
+        if limiter is None:
+            self.limiter_handler = eq.limiter_handler
+        else:
+            self.limiter_handler = limiter_func.Limiter_handler(eq, limiter)
+
+        self.mask_inside_limiter = self.limiter_handler.mask_inside_limiter
+        self.mask_outside_limiter = np.logical_not(self.mask_inside_limiter)
+        self.limiter_mask_out = self.limiter_handler.limiter_mask_out
+        self.limiter_mask_for_plotting = (
+            self.mask_inside_limiter
+            + self.limiter_handler.make_layer_mask(
+                self.mask_inside_limiter, layer_size=1
+            )
+        ) > 0
+        self.mask_outside_limiter = (2 * self.mask_outside_limiter).astype(float)
+
+        # if not hasattr(self, "fast"):
+        #     self.Jtor = self._Jtor
+        # else:
+        #     self.Jtor = self.Jtor_fast
+
+    def assign_profile_parameter(
+        self,
+        pp_knots,
+        pp_values,
+        pp_values_2,
+        pp_sigma,
+        ffp_knots,
+        ffp_values,
+        ffp_values_2,
+        ffp_sigma,
+    ):
+        """Assigns to the profile object new values for the profile parameters"""
+        self.pp_knots = pp_knots
+        self.pp_values = pp_values
+        self.pp_values_2 = pp_values_2
+        self.pp_sigma = pp_sigma
+        self.ffp_knots = ffp_knots
+        self.ffp_values = ffp_values
+        self.ffp_values_2 = ffp_values_2
+        self.ffp_sigma = ffp_sigma
+
+        self.profile_parameter = [
+            pp_knots,
+            pp_values,
+            pp_values_2,
+            pp_sigma,
+            ffp_knots,
+            ffp_values,
+            ffp_values_2,
+            ffp_sigma,
+        ]
+
+    def get_pars(
+        self,
+    ):
+        """Fetches all profile parameters and returns them in a single array"""
+        # This is a temporary fix that allows the linearization to work on lao profiles
+        # Changes in the profile are ignored in the linearised dynamics
+        return np.array([])

@@ -34,6 +34,7 @@ class nl_solver:
         blend_hatJ=0,
         dIydI=None,
         dIydpars=None,
+        target_dIy=1e-3,
         automatic_timestep=False,
         mode_removal=True,
         linearize=True,
@@ -267,7 +268,7 @@ class nl_solver:
             automatic_timestep_flag = True
         if automatic_timestep_flag + mode_removal + linearize:
             self.initialize_from_ICs(
-                eq, profiles, rtol_NK=1e-7, noise_level=0, dIydI=dIydI, verbose=verbose
+                eq, profiles, rtol_NK=1e-7, noise_level=0, dIydI=dIydI, target_dIy=target_dIy, verbose=verbose
             )
 
         # remove passive normal modes that do not affect the plasma
@@ -923,6 +924,7 @@ class nl_solver:
         noise_vec=None,
         dIydI=None,
         dIydpars=None,
+        target_dIy=1e-3,
         update_linearization=False,
         update_n_steps=16,
         threshold_svd=0.1,
@@ -1040,6 +1042,7 @@ class nl_solver:
             dIydI,
             dIydpars,
             rtol_NK,
+            target_dIy=target_dIy,
             verbose=verbose,
         )
 

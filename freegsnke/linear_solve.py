@@ -184,19 +184,25 @@ class linear_solver:
             * self.plasma_norm_factor
         )
 
+        # metal-metal before plasma
         self.M0matrix[: self.n_independent_vars, : self.n_independent_vars] = np.copy(
             self.Lambdam1
         )
+        # metal-metal plasma-mediated
         self.dMmatrix[: self.n_independent_vars, : self.n_independent_vars] = np.matmul(
             self.Pm1Rm1Mey, self.dIydI[:, :-1]
         )
 
+        # plasma to metal
         self.dMmatrix[:-1, -1] = np.dot(self.Pm1Rm1Mey, self.dIydI[:, -1])
 
+        # metal to plasma
+        self.M0matrix[-1, :-1] = np.dot(self.MyeP_T, self.hatIy0)
+        # metal to plasma plasma-mediated
         self.dMmatrix[-1, :-1] = np.dot(
             np.matmul(self.Myy, self.dIydI[:, :-1]).T, self.hatIy0
         )
-        self.M0matrix[-1, :-1] = np.dot(self.MyeP_T, self.hatIy0)
+        
 
         JMyy = np.dot(self.Myy, self.hatIy0)
         self.dMmatrix[-1, -1] = np.dot(self.dIydI[:, -1], JMyy)

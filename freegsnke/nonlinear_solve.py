@@ -219,7 +219,7 @@ class nl_solver:
         # set up NK solver for the currents
         self.currents_nk_solver = nk_solver.nksolver(
             self.extensive_currents_dim, verbose=True
-        )  # , verbose=True)
+        )  
 
         # set up unique NK solver for the full vector of unknowns
         self.full_nk_solver = nk_solver.nksolver(
@@ -273,6 +273,7 @@ class nl_solver:
 
         # remove passive normal modes that do not affect the plasma
         if mode_removal:
+            # currently, axes of dIydI are ordered by characteristic scale after the active coils, up to threshold max_mode_frequency
             self.selected_modes_mask = np.linalg.norm(self.dIydI, axis=0) > min_dIy_dI
             self.selected_modes_mask = np.concatenate(
                 (
@@ -283,8 +284,8 @@ class nl_solver:
             ).astype(bool)
             self.dIydI = self.dIydI[:, self.selected_modes_mask]
             self.dIydI_ICs = np.copy(self.dIydI)
-            # self.updated_dIydI = np.copy(self.dIydI)
-            # self.ddIyddI = self.ddIyddI[self.selected_modes_mask]
+            
+            # rebuild mask of selected modes with respect to list of all modes, to be used by evolve_metal_currents
             self.selected_modes_mask = np.concatenate(
                 (
                     self.selected_modes_mask[:-1],

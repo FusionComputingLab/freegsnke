@@ -305,8 +305,8 @@ class nl_solver:
             self.linearised_sol.calculate_linear_growth_rate()
             if len(self.linearised_sol.growth_rates):
                 print(
-                    "This equilibrium has a linear growth rate of 1/",
-                    abs(self.linearised_sol.growth_rates[0]),
+                    "The linear growth rate of this equilibrium corresponds to a characteristic timescale of",
+                    abs(self.linearised_sol.instability_timescale),
                     "s",
                 )
             else:

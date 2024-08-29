@@ -219,7 +219,7 @@ class nl_solver:
         # set up NK solver for the currents
         self.currents_nk_solver = nk_solver.nksolver(
             self.extensive_currents_dim, verbose=True
-        )  
+        )
 
         # set up unique NK solver for the full vector of unknowns
         self.full_nk_solver = nk_solver.nksolver(
@@ -268,7 +268,13 @@ class nl_solver:
             automatic_timestep_flag = True
         if automatic_timestep_flag + mode_removal + linearize:
             self.initialize_from_ICs(
-                eq, profiles, rtol_NK=1e-7, noise_level=0, dIydI=dIydI, target_dIy=target_dIy, verbose=verbose
+                eq,
+                profiles,
+                rtol_NK=1e-7,
+                noise_level=0,
+                dIydI=dIydI,
+                target_dIy=target_dIy,
+                verbose=verbose,
             )
 
         # remove passive normal modes that do not affect the plasma
@@ -284,7 +290,7 @@ class nl_solver:
             ).astype(bool)
             self.dIydI = self.dIydI[:, self.selected_modes_mask]
             self.dIydI_ICs = np.copy(self.dIydI)
-            
+
             # rebuild mask of selected modes with respect to list of all modes, to be used by evolve_metal_currents
             self.selected_modes_mask = np.concatenate(
                 (

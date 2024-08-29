@@ -202,7 +202,6 @@ class linear_solver:
         self.dMmatrix[-1, :-1] = np.dot(
             np.matmul(self.Myy, self.dIydI[:, :-1]).T, self.hatIy0
         )
-        
 
         JMyy = np.dot(self.Myy, self.hatIy0)
         self.dMmatrix[-1, -1] = np.dot(self.dIydI[:, -1], JMyy)
@@ -255,13 +254,15 @@ class linear_solver:
         parameters are passed in as object attributes
         """
         self.all_timescales = np.sort(np.linalg.eigvals(self.Mmatrix))
-        self.all_timescales_const_Ip = np.sort(np.linalg.eigvals(self.Mmatrix[:-1,:-1]))
+        self.all_timescales_const_Ip = np.sort(
+            np.linalg.eigvals(self.Mmatrix[:-1, :-1])
+        )
         mask = self.all_timescales < 0
         self.instability_timescale = self.all_timescales[mask]
-        self.growth_rates = 1/self.instability_timescale
+        self.growth_rates = 1 / self.instability_timescale
         mask = self.all_timescales_const_Ip < 0
         self.instability_timescale_const_Ip = self.all_timescales_const_Ip[mask]
-        self.growth_rates_const_Ip = 1/self.instability_timescale_const_Ip
+        self.growth_rates_const_Ip = 1 / self.instability_timescale_const_Ip
 
     def build_dIydall(self, mask=None):
         """Builds full Jacobian including both extensive currents and profile pars"""

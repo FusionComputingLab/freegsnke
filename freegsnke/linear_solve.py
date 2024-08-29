@@ -258,10 +258,10 @@ class linear_solver:
             np.linalg.eigvals(self.Mmatrix[:-1, :-1])
         )
         mask = self.all_timescales < 0
-        self.instability_timescale = self.all_timescales[mask]
+        self.instability_timescale = -self.all_timescales[mask]
         self.growth_rates = 1 / self.instability_timescale
         mask = self.all_timescales_const_Ip < 0
-        self.instability_timescale_const_Ip = self.all_timescales_const_Ip[mask]
+        self.instability_timescale_const_Ip = -self.all_timescales_const_Ip[mask]
         self.growth_rates_const_Ip = 1 / self.instability_timescale_const_Ip
 
     def build_dIydall(self, mask=None):

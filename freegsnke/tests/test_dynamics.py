@@ -102,7 +102,7 @@ def test_linearised_growth_rate(create_machine):
     # check that
     assert (
         abs((stepping.linearised_sol.instability_timescale[0] + true_GR) / true_GR) < 1e-3
-    ), f"Growth rate deviates { abs((stepping.linearised_sol.growth_rates[0]+true_GR)/true_GR)}% from baseline"
+    ), f"Growth rate deviates { abs((stepping.linearised_sol.growth_rates[0]-true_GR)/true_GR)}% from baseline"
 
 
 def test_linearised_stepper(create_machine):

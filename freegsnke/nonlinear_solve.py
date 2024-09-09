@@ -34,6 +34,7 @@ class nl_solver:
         blend_hatJ=0,
         dIydI=None,
         dIydpars=None,
+        target_dIy=1e-3,
         automatic_timestep=False,
         mode_removal=True,
         linearize=True,
@@ -218,7 +219,7 @@ class nl_solver:
         # set up NK solver for the currents
         self.currents_nk_solver = nk_solver.nksolver(
             self.extensive_currents_dim, verbose=True
-        )  # , verbose=True)
+        )
 
         # set up unique NK solver for the full vector of unknowns
         self.full_nk_solver = nk_solver.nksolver(
@@ -267,11 +268,18 @@ class nl_solver:
             automatic_timestep_flag = True
         if automatic_timestep_flag + mode_removal + linearize:
             self.initialize_from_ICs(
-                eq, profiles, rtol_NK=1e-7, noise_level=0, dIydI=dIydI, verbose=verbose
+                eq,
+                profiles,
+                rtol_NK=1e-7,
+                noise_level=0,
+                dIydI=dIydI,
+                target_dIy=target_dIy,
+                verbose=verbose,
             )
 
         # remove passive normal modes that do not affect the plasma
         if mode_removal:
+            # currently, axes of dIydI are ordered by characteristic scale after the active coils, up to threshold max_mode_frequency
             self.selected_modes_mask = np.linalg.norm(self.dIydI, axis=0) > min_dIy_dI
             self.selected_modes_mask = np.concatenate(
                 (
@@ -282,8 +290,8 @@ class nl_solver:
             ).astype(bool)
             self.dIydI = self.dIydI[:, self.selected_modes_mask]
             self.dIydI_ICs = np.copy(self.dIydI)
-            # self.updated_dIydI = np.copy(self.dIydI)
-            # self.ddIyddI = self.ddIyddI[self.selected_modes_mask]
+
+            # rebuild mask of selected modes with respect to list of all modes, to be used by evolve_metal_currents
             self.selected_modes_mask = np.concatenate(
                 (
                     self.selected_modes_mask[:-1],
@@ -297,8 +305,8 @@ class nl_solver:
             self.linearised_sol.calculate_linear_growth_rate()
             if len(self.linearised_sol.growth_rates):
                 print(
-                    "This equilibrium has a linear growth rate of 1/",
-                    abs(self.linearised_sol.growth_rates[0]),
+                    "The linear growth rate of this equilibrium corresponds to a characteristic timescale of",
+                    self.linearised_sol.instability_timescale,
                     "s",
                 )
             else:
@@ -923,6 +931,7 @@ class nl_solver:
         noise_vec=None,
         dIydI=None,
         dIydpars=None,
+        target_dIy=1e-3,
         update_linearization=False,
         update_n_steps=16,
         threshold_svd=0.1,
@@ -1040,6 +1049,7 @@ class nl_solver:
             dIydI,
             dIydpars,
             rtol_NK,
+            target_dIy=target_dIy,
             verbose=verbose,
         )
 

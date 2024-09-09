@@ -69,6 +69,7 @@ class metal_currents:
         equation based on the maximum frequency of the modes.
         """
         selected_modes_mask = normal_modes.w_passive < self.max_mode_frequency
+        # selected_modes_mask = [True,...,True, False,...,False]
         self.selected_modes_mask = np.concatenate(
             (np.ones(self.n_active_coils).astype(bool), selected_modes_mask)
         )
@@ -101,16 +102,12 @@ class metal_currents:
         self.Pm1 = (self.P).T
 
         # Equation is Lambda**(-1)Iddot + I = F
-        # where Lambda is such that Lambda**(-1) = Rm1 M
         # Note Lambda is not diagonal because of active/passive mode coupling
         # although the modes of used for the passive structures diagonalise the isolated dynamics of the walls
         self.Lambdam1 = self.Pm1 @ (normal_modes.rm1l_non_symm @ self.P)
-        # self.Lambda = self.Pm1 @ normal_modes.lm1r @ self.P
 
         self.R = machine_config.coil_resist
         self.Rm1 = machine_config.coil_resist**-1
-        # self.R12 = machine_config.coil_resist**0.5
-        # self.Rm12 = machine_config.coil_resist**-0.5
         # R, Rm1 are vectors rather than matrices!
 
         self.solver = implicit_euler_solver(

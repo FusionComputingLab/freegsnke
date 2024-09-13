@@ -1,6 +1,6 @@
 import freegs4e
 import numpy as np
-from freegs4e import critical
+from freegs4e import critical, jtor
 from freegs4e.gradshafranov import mu0
 
 from . import limiter_func
@@ -100,7 +100,7 @@ class Jtor_universal:
         return self.jtor
 
 
-class ConstrainBetapIp(freegs4e.jtor.ConstrainBetapIp, Jtor_universal):
+class ConstrainBetapIp(jtor.ConstrainBetapIp, Jtor_universal):
     """FreeGS profile class with a few modifications, to:
     - retain memory of critical point calculation;
     - deal with limiter plasma configurations
@@ -220,7 +220,7 @@ class ConstrainBetapIp(freegs4e.jtor.ConstrainBetapIp, Jtor_universal):
         return alpha, beta
 
 
-class ConstrainPaxisIp(freegs4e.jtor.ConstrainPaxisIp, Jtor_universal):
+class ConstrainPaxisIp(jtor.ConstrainPaxisIp, Jtor_universal):
     """FreeGS4E profile class with a few modifications, to:
     - retain memory of critical point calculation;
     - deal with limiter plasma configurations
@@ -374,7 +374,7 @@ class ConstrainPaxisIp(freegs4e.jtor.ConstrainPaxisIp, Jtor_universal):
         return alpha, beta
 
 
-class Fiesta_Topeol(freegs4e.jtor.Fiesta_Topeol, Jtor_universal):
+class Fiesta_Topeol(jtor.Fiesta_Topeol, Jtor_universal):
     """FreeGS profile class with a few modifications, to:
     - retain memory of critical point calculation;
     - deal with limiter plasma configurations
@@ -521,7 +521,7 @@ class Fiesta_Topeol(freegs4e.jtor.Fiesta_Topeol, Jtor_universal):
         return alpha, beta
 
 
-class Lao85(freegs4e.jtor.Lao85, Jtor_universal):
+class Lao85(jtor.Lao85, Jtor_universal):
     """FreeGS profile class with a few modifications, to:
     - retain memory of critical point calculation;
     - deal with limiter plasma configurations
@@ -683,7 +683,7 @@ class Lao85(freegs4e.jtor.Lao85, Jtor_universal):
         return pars
 
 
-class TensionSpline(freegs4e.jtor.TensionSpline, Jtor_universal):
+class TensionSpline(jtor.TensionSpline, Jtor_universal):
     """FreeGS profile class with a few modifications, to:
     - retain memory of critical point calculation;
     - deal with limiter plasma configurations

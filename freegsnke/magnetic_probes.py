@@ -525,3 +525,22 @@ class Probes:
             pickup_pol_pl = np.sum(greens_pl * plasma_current, axis=(0, 1))
 
         return pickup_pol_coil + pickup_pol_pl + pickup_tor
+
+    def plot(self, axis=None, show=True, floops=True, pickups=True):
+        """
+        Plot the magnetic probes.
+
+        axis     - Specify the axis on which to plot
+        show     - Call matplotlib.pyplot.show() before returning
+        floops   - Plot the fluxloops
+        pickups  - Plot the pickup coils
+
+        Returns
+        -------
+
+        axis  object from Matplotlib
+
+        """
+        from freegs4e.plotting import plotProbes
+
+        return plotProbes(self, axis=axis, show=show, floops=floops, pickups=pickups)

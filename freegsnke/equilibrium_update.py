@@ -3,13 +3,13 @@ import pickle
 
 import freegs4e
 import numpy as np
-from freegs4e import critical
+from freegs4e import critical, equilibrium
 from scipy import interpolate
 
 from . import limiter_func
 
 
-class Equilibrium(freegs4e.equilibrium.Equilibrium):
+class Equilibrium(equilibrium.Equilibrium):
     """FreeGS4E equilibrium class with optional initialization."""
 
     def __init__(self, *args, **kwargs):

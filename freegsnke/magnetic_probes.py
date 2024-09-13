@@ -526,7 +526,7 @@ class Probes:
 
         return pickup_pol_coil + pickup_pol_pl + pickup_tor
 
-    def plot(self, axis=None, show=True, floops=True, pickups=True):
+    def plot(self, axis=None, show=True, floops=True, pickups=True, pickups_scale=0.05):
         """
         Plot the magnetic probes.
 
@@ -543,4 +543,11 @@ class Probes:
         """
         from freegs4e.plotting import plotProbes
 
-        return plotProbes(self, axis=axis, show=show, floops=floops, pickups=pickups)
+        return plotProbes(
+            self,
+            axis=axis,
+            show=show,
+            floops=floops,
+            pickups=pickups,
+            pickups_scale=pickups_scale,
+        )

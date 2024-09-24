@@ -329,7 +329,7 @@ class nl_solver:
         else:
             if len(self.linearised_sol.growth_rates):
                 dt_step = abs(
-                    self.linearised_sol.growth_rates[0] * automatic_timestep[0]
+                    self.linearised_sol.instability_timescale[0] * automatic_timestep[0]
                 )
                 self.reset_timestep(
                     full_timestep=dt_step,

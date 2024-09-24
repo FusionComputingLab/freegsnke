@@ -321,7 +321,7 @@ class metal_currents:
             Currents at time t+dt.
         """
         forcing = self.forcing_term(active_voltage_vec, Iydot)
-        It = self.solver(It, forcing)
+        It = self.solver.full_stepper(It, forcing)
         return It
 
     def Mey(

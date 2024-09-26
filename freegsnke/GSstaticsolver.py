@@ -319,7 +319,6 @@ class NKGSsolver:
         del_psi = np.amax(psi) - np.amin(psi)
         del_res = np.amax(res) - np.amin(res)
         return del_res / del_psi, del_psi
-    
 
     def forward_solve(
         self,
@@ -502,9 +501,9 @@ class NKGSsolver:
                     new_rel_change, new_del_psi = self.relative_del_residual(
                         new_res0, n_trial_plasma_psi
                     )
-                   
+
                     new_residual_flag = False
-                    
+
                 except:
                     log.append(
                         "Trigger update reduction due to failure to find an Xpoint, try *.75"
@@ -519,11 +518,15 @@ class NKGSsolver:
                     )
                     res0 = 1.0 * new_res0
                     if (residual_collinearity > 0.9) and (picard_flag is False):
-                        log.append("New starting_direction used due to collinear residuals")
+                        log.append(
+                            "New starting_direction used due to collinear residuals"
+                        )
                         # print('residual_collinearity', residual_collinearity)
                         # forcing_Picard = True
                         starting_direction = np.sin(
-                            np.linspace(0, 2 * np.pi, self.nx) * 1.5 * np.random.random()
+                            np.linspace(0, 2 * np.pi, self.nx)
+                            * 1.5
+                            * np.random.random()
                         )[:, np.newaxis]
                         starting_direction = (
                             starting_direction
@@ -535,7 +538,7 @@ class NKGSsolver:
                         )
                         starting_direction = starting_direction.reshape(-1)
                         starting_direction *= trial_plasma_psi
-                        
+
                     else:
                         starting_direction = np.copy(res0)
                 except:
@@ -596,23 +599,27 @@ class NKGSsolver:
         for i, coil in enumerate(self.control_coils):
             current_vec[i] = eq.tokamak[coil].current
         return current_vec
-    
+
     def assign_currents(self, eq, current_vec):
         # coils = list(eq.tokamak.getCurrents().keys())
         for i, coil in enumerate(self.control_coils):
-            eq.tokamak[coil].current = current_vec[i] 
+            eq.tokamak[coil].current = current_vec[i]
 
     def update_currents(self, constrain, eq, profiles):
-        aux_tokamak_psi = (eq.tokamak.calcPsiFromGreens(pgreen=eq._pgreen))
+        aux_tokamak_psi = eq.tokamak.calcPsiFromGreens(pgreen=eq._pgreen)
         constrain(eq)
-        self.tokamak_psi = (eq.tokamak.calcPsiFromGreens(pgreen=eq._pgreen))
+        self.tokamak_psi = eq.tokamak.calcPsiFromGreens(pgreen=eq._pgreen)
 
-        if hasattr(profiles, 'limiter_core_mask'):
-            norm_delta = np.linalg.norm((self.tokamak_psi-aux_tokamak_psi)[profiles.limiter_core_mask])/np.linalg.norm((self.tokamak_psi+aux_tokamak_psi)[profiles.limiter_core_mask])
+        if hasattr(profiles, "limiter_core_mask"):
+            norm_delta = np.linalg.norm(
+                (self.tokamak_psi - aux_tokamak_psi)[profiles.limiter_core_mask]
+            ) / np.linalg.norm(
+                (self.tokamak_psi + aux_tokamak_psi)[profiles.limiter_core_mask]
+            )
         else:
             norm_delta = 1
-        print('norm_delta', norm_delta)
-        
+        print("norm_delta", norm_delta)
+
         return norm_delta
 
     def inverse_solve(
@@ -630,7 +637,7 @@ class NKGSsolver:
         clip=10,
         verbose=False,
         max_rel_update_size=0.2,
-        forward_tolerance_increase=5
+        forward_tolerance_increase=5,
     ):
         """Inverse solver using the NK implementation.
 
@@ -686,7 +693,7 @@ class NKGSsolver:
         forward_tolerance_increase : float
             after coil currents are updated, the interleaved forward problems
             are requested to converge to a tolerance that is tighter by a factor
-            forward_tolerance_increase with respect to the change in flux caused 
+            forward_tolerance_increase with respect to the change in flux caused
             by the current updates over the plasma core
         verbose : bool
             flag to allow warning messages when Picard is used instead of NK
@@ -694,29 +701,33 @@ class NKGSsolver:
         """
 
         self.control_coils = list(eq.tokamak.getCurrents().keys())
-        control_mask = np.arange(len(self.control_coils))[np.array([eq.tokamak[coil].control for coil in self.control_coils])]
+        control_mask = np.arange(len(self.control_coils))[
+            np.array([eq.tokamak[coil].control for coil in self.control_coils])
+        ]
         self.control_coils = [self.control_coils[i] for i in control_mask]
         self.len_control_coils = len(self.control_coils)
 
         # use freegs4e Picard solver for initial steps to a shallow tolerance
         freegs4e.solve(
-                eq,
-                profiles,
-                constrain,
-                rtol=4e-2,
-                show=False,
-                blend=0.0,
-            )
+            eq,
+            profiles,
+            constrain,
+            rtol=4e-2,
+            show=False,
+            blend=0.0,
+        )
 
         iterations = 0
         rel_change_full = 1
 
-        while (rel_change_full>target_relative_tolerance)*(iterations<max_solving_iterations):
+        while (rel_change_full > target_relative_tolerance) * (
+            iterations < max_solving_iterations
+        ):
             norm_delta = self.update_currents(constrain, eq, profiles)
             self.forward_solve(
                 eq,
                 profiles,
-                target_relative_tolerance=norm_delta/forward_tolerance_increase,
+                target_relative_tolerance=norm_delta / forward_tolerance_increase,
                 max_solving_iterations=max_iter_per_update,
                 Picard_handover=Picard_handover,
                 step_size=step_size,
@@ -726,9 +737,9 @@ class NKGSsolver:
                 verbose=verbose,
                 max_rel_update_size=max_rel_update_size,
             )
-            rel_change_full = 1.0*self.relative_change
+            rel_change_full = 1.0 * self.relative_change
             iterations += 1
-        
+
         if iterations >= max_solving_iterations:
             warnings.warn(
                 f"Inverse solve failed to converge to the requested relative tolerance of "
@@ -736,7 +747,6 @@ class NKGSsolver:
                 + f"iterations. Last relative psi change: {rel_change_full}"
                 + f"Last current change caused a relative update of tokamak_psi in the core of: {norm_delta}"
             )
-
 
     def solve(
         self,
@@ -753,7 +763,7 @@ class NKGSsolver:
         max_n_directions=16,
         clip=10,
         verbose=False,
-        forward_tolerance_increase=5
+        forward_tolerance_increase=5,
     ):
         """The method to solve the GS problems, both forward and inverse.
             - an inverse solve is specified by the 'constrain' input,
@@ -803,7 +813,7 @@ class NKGSsolver:
         forward_tolerance_increase : float
             after coil currents are updated, the interleaved forward problems
             are requested to converge to a tolerance that is tighter by a factor
-            forward_tolerance_increase with respect to the change in flux caused 
+            forward_tolerance_increase with respect to the change in flux caused
             by the current updates over the plasma core
         verbose : bool
             flag to allow warning message in case of failed convergence within requested max_solving_iterations

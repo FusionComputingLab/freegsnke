@@ -522,7 +522,7 @@ class Probes:
             pickup_pol_coil = np.sum(
                 self.greens_B_coils_oriented * coil_current, axis=0
             )
-            pickup_pol_pl = np.sum(greens_pl * plasma_current, axis=(0, 1))
+            pickup_pol_pl = np.sum(greens_pl * plasma_current, axis=(0))
 
         return pickup_pol_coil + pickup_pol_pl + pickup_tor
 

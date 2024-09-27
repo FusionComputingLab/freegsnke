@@ -448,7 +448,7 @@ class Probes:
                 greens_pl = self.greens_br_plasma_pickup[eq_key]
                 print("new equilibrium grid - computed new greens functions")
             br_coil = np.sum(self.greens_br_coils_pickup * coil_currents, axis=0)
-            br_plasma = np.sum(greens_pl * plasma_current, axis=(0, 1))
+            br_plasma = np.sum(greens_pl * plasma_current, axis=(0))
         return br_coil + br_plasma
 
     def Bz(self, eq, probe="pickups"):
@@ -472,7 +472,7 @@ class Probes:
                 print("new equilibrium grid - computed new greens functions")
 
             bz_coil = np.sum(self.greens_bz_coils_pickup * coil_currents, axis=0)
-            bz_plasma = np.sum(greens_pl * plasma_current, axis=(0, 1))
+            bz_plasma = np.sum(greens_pl * plasma_current, axis=(0))
         return bz_coil + bz_plasma
 
     def Btor(self, eq, probe="pickups"):

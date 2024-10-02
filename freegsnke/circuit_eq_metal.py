@@ -63,6 +63,7 @@ class metal_currents:
         else:
             self.coil_resist = machine_config.coil_resist
         self.Rm1 = 1.0 / self.coil_resist
+        self.R = self.coil_resist
         if coil_self_ind != None:
             if np.shape(coil_resist) != self.n_coils**2:
                 raise ValueError(

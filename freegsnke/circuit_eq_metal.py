@@ -2,8 +2,8 @@ import numpy as np
 from freegs4e.gradshafranov import Greens, GreensBr, GreensBz
 
 from . import machine_config
-from .normal_modes import mode_decomposition
 from .implicit_euler import implicit_euler_solver
+from .normal_modes import mode_decomposition
 
 
 class metal_currents:
@@ -53,18 +53,21 @@ class metal_currents:
         self.n_coils = len(machine_config.coil_self_ind)
         self.n_active_coils = machine_config.n_active_coils
 
-
         # prepare resistance and inductance data
-        if coil_resist!=None:
-            if len(coil_resist)!=self.n_coils:
-                raise ValueError('Resistance vector provided is not compatible with machine description')
+        if coil_resist != None:
+            if len(coil_resist) != self.n_coils:
+                raise ValueError(
+                    "Resistance vector provided is not compatible with machine description"
+                )
             self.coil_resist = coil_resist
         else:
             self.coil_resist = machine_config.coil_resis
-        self.Rm1 = 1./self.coil_resist
-        if coil_self_ind!=None:
-            if np.shape(coil_resist)!=self.n_coils**2:
-                raise ValueError('Mutual inductance matrix provided is not compatible with machine description')
+        self.Rm1 = 1.0 / self.coil_resist
+        if coil_self_ind != None:
+            if np.shape(coil_resist) != self.n_coils**2:
+                raise ValueError(
+                    "Mutual inductance matrix provided is not compatible with machine description"
+                )
             self.coil_self_ind = coil_self_ind
         else:
             self.coil_self_ind = machine_config.coil_self_ind
@@ -76,10 +79,12 @@ class metal_currents:
         self.full_timestep = full_timestep
 
         if flag_vessel_eig:
-            self.normal_modes = mode_decomposition(coil_resist=self.coil_resist,
-                                                    coil_self_ind=self.coil_self_ind,
-                                                    n_coils=self.n_coils,
-                                                    n_active_coils=self.n_active_coils)
+            self.normal_modes = mode_decomposition(
+                coil_resist=self.coil_resist,
+                coil_self_ind=self.coil_self_ind,
+                n_coils=self.n_coils,
+                n_active_coils=self.n_active_coils,
+            )
             self.max_mode_frequency = max_mode_frequency
             self.make_selected_mode_mask_from_max_freq()
             self.initialize_for_eig(self.selected_modes_mask)

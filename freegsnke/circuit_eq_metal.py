@@ -1,7 +1,8 @@
 import numpy as np
 from freegs4e.gradshafranov import Greens, GreensBr, GreensBz
 
-from . import machine_config, normal_modes
+from . import machine_config
+from .normal_modes import mode_decomposition
 from .implicit_euler import implicit_euler_solver
 
 
@@ -27,6 +28,14 @@ class metal_currents:
         Maximum internal timestep for implicit euler solver. Defaults to .0001.
     full_timestep : float
         Full timestep for implicit euler solver. Defaults to .0001.
+    coil_resist : np.array
+        1d array of resistance values for all machine conducting elements,
+        including both active coils and passive structures
+        If None, the values calculated in machine_config will be sourced and used
+    coil_self_ind : np.array
+        2d matrix of mutual inductances between all pairs of machine conducting elements,
+        including both active coils and passive structures
+        If None, the values calculated in machine_config will be sourced and used
     """
 
     def __init__(
@@ -37,10 +46,28 @@ class metal_currents:
         max_mode_frequency=1,
         max_internal_timestep=0.0001,
         full_timestep=0.0001,
+        coil_resist=None,
+        coil_self_ind=None,
     ):
 
         self.n_coils = len(machine_config.coil_self_ind)
         self.n_active_coils = machine_config.n_active_coils
+
+
+        # prepare resistance and inductance data
+        if coil_resist!=None:
+            if len(coil_resist)!=self.n_coils:
+                raise ValueError('Resistance vector provided is not compatible with machine description')
+            self.coil_resist = coil_resist
+        else:
+            self.coil_resist = machine_config.coil_resis
+        self.Rm1 = 1./self.coil_resist
+        if coil_self_ind!=None:
+            if np.shape(coil_resist)!=self.n_coils**2:
+                raise ValueError('Mutual inductance matrix provided is not compatible with machine description')
+            self.coil_self_ind = coil_self_ind
+        else:
+            self.coil_self_ind = machine_config.coil_self_ind
 
         self.flag_vessel_eig = flag_vessel_eig
         self.flag_plasma = flag_plasma
@@ -49,6 +76,10 @@ class metal_currents:
         self.full_timestep = full_timestep
 
         if flag_vessel_eig:
+            self.normal_modes = mode_decomposition(coil_resist=self.coil_resist,
+                                                    coil_self_ind=self.coil_self_ind,
+                                                    n_coils=self.n_coils,
+                                                    n_active_coils=self.n_active_coils)
             self.max_mode_frequency = max_mode_frequency
             self.make_selected_mode_mask_from_max_freq()
             self.initialize_for_eig(self.selected_modes_mask)
@@ -68,7 +99,7 @@ class metal_currents:
         """Creates a mask for the vessel normal modes to include in the circuit
         equation based on the maximum frequency of the modes.
         """
-        selected_modes_mask = normal_modes.w_passive < self.max_mode_frequency
+        selected_modes_mask = self.normal_modes.w_passive < self.max_mode_frequency
         # selected_modes_mask = [True,...,True, False,...,False]
         self.selected_modes_mask = np.concatenate(
             (np.ones(self.n_active_coils).astype(bool), selected_modes_mask)
@@ -98,16 +129,16 @@ class metal_currents:
         # Id = Pm1 I
         # so to change base to truncated modes
         # I = P Id
-        self.P = (normal_modes.Pmatrix)[:, selected_modes_mask]
+        self.P = (self.normal_modes.Pmatrix)[:, selected_modes_mask]
         self.Pm1 = (self.P).T
 
         # Equation is Lambda**(-1)Iddot + I = F
         # Note Lambda is not diagonal because of active/passive mode coupling
         # although the modes of used for the passive structures diagonalise the isolated dynamics of the walls
-        self.Lambdam1 = self.Pm1 @ (normal_modes.rm1l_non_symm @ self.P)
+        self.Lambdam1 = self.Pm1 @ (self.normal_modes.rm1l_non_symm @ self.P)
 
-        self.R = machine_config.coil_resist
-        self.Rm1 = machine_config.coil_resist**-1
+        # self.R = machine_config.coil_resist
+        # self.Rm1 = machine_config.coil_resist**-1
         # R, Rm1 are vectors rather than matrices!
 
         self.solver = implicit_euler_solver(
@@ -125,9 +156,9 @@ class metal_currents:
     def initialize_for_no_eig(self):
         """Initializes the metal currents object for the case where vessel
         eigenmodes are not used."""
-        self.n_independent_vars = self.n_coils
-        self.M = machine_config.coil_self_ind
-        self.Mm1 = normal_modes.Mm1
+        # self.n_independent_vars = self.n_coils
+        # self.M = machine_config.coil_self_ind
+        # self.Mm1 = normal_modes.Mm1
         # self.R = np.diag(machine_config.coil_resist)
         # self.Rm1 = 1 / machine_config.coil_resist  # it's a vector!
         # self.Mm1R = self.Mm1 @ self.R
@@ -135,8 +166,8 @@ class metal_currents:
 
         # Equation is MIdot + RI = F
         self.solver = implicit_euler_solver(
-            Mmatrix=self.M,
-            Rmatrix=np.diag(self.R),
+            Mmatrix=self.coil_self_ind,
+            Rmatrix=np.diag(self.coil_resist),
             max_internal_timestep=self.max_internal_timestep,
             full_timestep=self.full_timestep,
         )

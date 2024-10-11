@@ -448,7 +448,7 @@ class Probes:
                 greens_pl = self.greens_br_plasma_pickup[eq_key]
                 print("new equilibrium grid - computed new greens functions")
             br_coil = np.sum(self.greens_br_coils_pickup * coil_currents, axis=0)
-            br_plasma = np.sum(greens_pl * plasma_current, axis=(0, 1))
+            br_plasma = np.sum(greens_pl * plasma_current, axis=(0))
         return br_coil + br_plasma
 
     def Bz(self, eq, probe="pickups"):
@@ -472,7 +472,7 @@ class Probes:
                 print("new equilibrium grid - computed new greens functions")
 
             bz_coil = np.sum(self.greens_bz_coils_pickup * coil_currents, axis=0)
-            bz_plasma = np.sum(greens_pl * plasma_current, axis=(0, 1))
+            bz_plasma = np.sum(greens_pl * plasma_current, axis=(0))
         return bz_coil + bz_plasma
 
     def Btor(self, eq, probe="pickups"):
@@ -522,6 +522,32 @@ class Probes:
             pickup_pol_coil = np.sum(
                 self.greens_B_coils_oriented * coil_current, axis=0
             )
-            pickup_pol_pl = np.sum(greens_pl * plasma_current, axis=(0, 1))
+            pickup_pol_pl = np.sum(greens_pl * plasma_current, axis=(0))
 
         return pickup_pol_coil + pickup_pol_pl + pickup_tor
+
+    def plot(self, axis=None, show=True, floops=True, pickups=True, pickups_scale=0.05):
+        """
+        Plot the magnetic probes.
+
+        axis     - Specify the axis on which to plot
+        show     - Call matplotlib.pyplot.show() before returning
+        floops   - Plot the fluxloops
+        pickups  - Plot the pickup coils
+
+        Returns
+        -------
+
+        axis  object from Matplotlib
+
+        """
+        from freegs4e.plotting import plotProbes
+
+        return plotProbes(
+            self,
+            axis=axis,
+            show=show,
+            floops=floops,
+            pickups=pickups,
+            pickups_scale=pickups_scale,
+        )

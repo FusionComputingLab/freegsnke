@@ -504,7 +504,7 @@ class NKGSsolver:
             # plt.show()
 
             if rel_change > Picard_handover:  # or forcing_Picard:
-                log.append("Picard iteration" + str(iterations))
+                log.append("Picard iteration " + str(iterations))
                 # using Picard instead of NK
 
                 if picard_flag < 3:

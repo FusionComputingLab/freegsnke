@@ -262,11 +262,11 @@ class nl_solver:
 
         # self.dIydpars is the Jacobian of the plasma current distribution
         # with respect to the independent profile parameters (alpha_m, alpha_n, paxis OR betap)
-        self.dIydpars_ICs = dIydpars
-        self.dIydpars = dIydpars
+        # self.dIydpars_ICs = dIydpars
+        # self.dIydpars = dIydpars
 
-        self.get_number_of_profile_pars(profiles)
-        self.get_number_of_independent_pars()
+        # self.get_number_of_profile_pars(profiles)
+        # self.get_number_of_independent_pars()
 
         # initialize and set up the linearization
         # input value for dIydI is used when available
@@ -284,7 +284,7 @@ class nl_solver:
                 eq,
                 profiles,
                 rtol_NK=1e-7,
-                noise_level=0,
+                # noise_level=0,
                 dIydI=dIydI,
                 target_dIy=target_dIy,
                 verbose=verbose,
@@ -430,10 +430,12 @@ class nl_solver:
         )
 
         self.linearised_sol.set_linearization_point(
-            dIydI=self.dIydI, dIydpars=self.dIydpars, hatIy0=self.broad_hatIy
+            dIydI=self.dIydI, 
+            # dIydpars=self.dIydpars, 
+            hatIy0=self.broad_hatIy
         )
 
-        self.get_number_of_independent_pars()
+        # self.get_number_of_independent_pars()
 
     def set_linear_solution(self, active_voltage_vec, d_profile_pars_dt=None):
         """Uses the solver of the linearised problem to set up an initial guess
@@ -670,7 +672,7 @@ class nl_solver:
         rtol_NK=1e-8,
         target_dIy=1e-3,
         starting_dI=None,
-        starting_dpars=(0.0002, 0.0002, 0.005),
+        # starting_dpars=(0.0002, 0.0002, 0.005),
         verbose=False,
     ):
         """Builds the Jacobian d(Iy)/dI to set up the solver of the linearised problem.
@@ -697,8 +699,8 @@ class nl_solver:
             while the third value is relative, d_profile_par = relative_d_profile_par * profile_par
         """
 
-        if ((dIydI is None) and (self.dIydI is None)) or (
-            (dIydpars is None) and (self.dIydpars is None)
+        if ((dIydI is None) and (self.dIydI is None)
+        # or ((dIydpars is None) and (self.dIydpars is None)
         ):
             self.NK.forward_solve(eq, profile, target_relative_tolerance=rtol_NK)
             self.build_current_vec(eq, profile)
@@ -748,23 +750,24 @@ class nl_solver:
 
         # build/update dIydpars
         # Note this assumes 3 free profile parameters at the moment!
-        if self.n_profile_pars > 0:
-            if dIydpars is None:
-                if self.dIydpars_ICs is None:
-                    print("I'm building the linearization wrt the profile parameters.")
-                    self.dIydpars = np.zeros((self.plasma_domain_size, 3))
-                    self.final_dpars_record = np.zeros(3)
+        # This is no longer active to allow wider compatibility with profile types
+        # if self.n_profile_pars > 0:
+        #     if dIydpars is None:
+        #         if self.dIydpars_ICs is None:
+        #             print("I'm building the linearization wrt the profile parameters.")
+        #             self.dIydpars = np.zeros((self.plasma_domain_size, 3))
+        #             self.final_dpars_record = np.zeros(3)
 
-                    self.prepare_build_dIydpars(
-                        profile, rtol_NK, target_dIy, starting_dpars
-                    )
-                    self.build_dIydIpars(profile, rtol_NK, verbose)
-                    self.dIydpars_ICs = np.copy(self.dIydpars)
-                else:
-                    self.dIydpars = np.copy(self.dIydpars_ICs)
-            else:
-                self.dIydpars = dIydpars
-                self.dIydpars_ICs = np.copy(self.dIydpars)
+        #             self.prepare_build_dIydpars(
+        #                 profile, rtol_NK, target_dIy, starting_dpars
+        #             )
+        #             self.build_dIydIpars(profile, rtol_NK, verbose)
+        #             self.dIydpars_ICs = np.copy(self.dIydpars)
+        #         else:
+        #             self.dIydpars = np.copy(self.dIydpars_ICs)
+        #     else:
+        #         self.dIydpars = dIydpars
+        #         self.dIydpars_ICs = np.copy(self.dIydpars)
 
     def set_plasma_resistivity(self, plasma_resistivity):
         """Function to set the resistivity of the plasma.
@@ -850,19 +853,33 @@ class nl_solver:
         ----------
         profiles : FreeGS4E profile Object
             Profile function of the initial equilibrium.
-            Can handle both FreeGS4E profile types ConstrainPaxisIp and ConstrainBetapIp.
         """
         self.fvac = profiles.fvac
 
-        # this is a patch to make temporarily compatible with Lao profiles
-        self.get_number_of_profile_pars(profiles)
-        if self.n_profile_pars > 0:
-            self.alpha_m = profiles.alpha_m
-            self.alpha_n = profiles.alpha_n
-            if hasattr(profiles, "paxis"):
-                self.profile_parameter = profiles.paxis
-            else:
-                self.profile_parameter = profiles.betap
+        self.profile_type = type(profiles).__name__
+
+        # self.profile_parameters = []
+
+        # note the parameters here are the same that should be provided 
+        # to the stepper if these are time evolving
+        if self.profile_type == 'ConstrainPaxisIp':
+            self.profile_parameters = {'paxis':profiles.paxis, 'alpha_m':profiles.alpha_m, 'alpha_n':profiles.alpha_n}
+        elif self.profile_type == 'ConstrainBetapIp':
+            self.profile_parameters = {'betap':profiles.betap, 'alpha_m':profiles.alpha_m, 'alpha_n':profiles.alpha_n}
+        elif self.profile_type == 'Fiesta_Topeol':
+            self.profile_parameters = {'beta0':profiles.beta0, 'alpha_m':profiles.alpha_m, 'alpha_n':profiles.alpha_n}
+        elif self.profile_type == 'Lao85':
+            self.profile_parameters = {'alpha':profiles.alpha, 'beta':profiles.beta}
+
+        # # this is a patch to make temporarily compatible with Lao profiles
+        # self.get_number_of_profile_pars(profiles)
+        # if self.n_profile_pars > 0:
+        #     self.alpha_m = profiles.alpha_m
+        #     self.alpha_n = profiles.alpha_n
+        #     if hasattr(profiles, "paxis"):
+        #         self.profile_parameter = profiles.paxis
+        #     else:
+        #         self.profile_parameter = profiles.betap
 
     def get_vessel_currents(self, eq):
         """Uses the input equilibrium to extract values for all metal currents,
@@ -903,45 +920,45 @@ class nl_solver:
 
         self.currents_vec_m1 = np.copy(self.currents_vec)
 
-    def assign_vessel_noise(self, eq, noise_level, noise_vec=None):
-        """Adds noise to vessel passive currents and assigns to input equilibrium.
-        Noise corresponds to gaussian noise with std=noise_level in the vessel normal modes.
+    # def assign_vessel_noise(self, eq, noise_level, noise_vec=None):
+    #     """Adds noise to vessel passive currents and assigns to input equilibrium.
+    #     Noise corresponds to gaussian noise with std=noise_level in the vessel normal modes.
 
-        Parameters
-        ----------
-        eq : FreeGS4E equilibrium Object
-            Equilibrium to which noise is added and assigned.
-        noise_level : float
-            Standard deviation of the noise in terms of vessel normal modes' currents.
-        noise_vec : np.array, optional, by default None
-            Vector of noise values to be added. If available, this is used instead of a random realization.
-        """
+    #     Parameters
+    #     ----------
+    #     eq : FreeGS4E equilibrium Object
+    #         Equilibrium to which noise is added and assigned.
+    #     noise_level : float
+    #         Standard deviation of the noise in terms of vessel normal modes' currents.
+    #     noise_vec : np.array, optional, by default None
+    #         Vector of noise values to be added. If available, this is used instead of a random realization.
+    #     """
 
-        # Extracts metal currents and builds self.vessel_currents_vec
-        self.get_vessel_currents(eq)
+    #     # Extracts metal currents and builds self.vessel_currents_vec
+    #     self.get_vessel_currents(eq)
 
-        # generate random noise on vessel normal modes only
-        if noise_vec is None:
-            noise_vec = np.random.randn(self.n_metal_modes - self.n_active_coils)
-            noise_vec *= noise_level
-            noise_vec = np.concatenate((np.zeros(self.n_active_coils), noise_vec))
-            self.noise_vec = noise_vec
+    #     # generate random noise on vessel normal modes only
+    #     if noise_vec is None:
+    #         noise_vec = np.random.randn(self.n_metal_modes - self.n_active_coils)
+    #         noise_vec *= noise_level
+    #         noise_vec = np.concatenate((np.zeros(self.n_active_coils), noise_vec))
+    #         self.noise_vec = noise_vec
 
-        # calculate vessel noise from noise_vec and assign
-        self.vessel_currents_vec += self.evol_metal_curr.IdtoIvessel(Id=noise_vec)
-        for i, labeli in enumerate(self.coils_order[self.n_active_coils :]):
-            # runs on passive only
-            eq.tokamak[labeli].current = self.vessel_currents_vec[
-                i + self.n_active_coils
-            ]
+    #     # calculate vessel noise from noise_vec and assign
+    #     self.vessel_currents_vec += self.evol_metal_curr.IdtoIvessel(Id=noise_vec)
+    #     for i, labeli in enumerate(self.coils_order[self.n_active_coils :]):
+    #         # runs on passive only
+    #         eq.tokamak[labeli].current = self.vessel_currents_vec[
+    #             i + self.n_active_coils
+    #         ]
 
     def initialize_from_ICs(
         self,
         eq,
         profile,
         rtol_NK=1e-7,
-        noise_level=0.0,
-        noise_vec=None,
+        # noise_level=0.0,
+        # noise_vec=None,
         dIydI=None,
         dIydpars=None,
         target_dIy=1e-3,
@@ -970,12 +987,12 @@ class nl_solver:
             Relative tolerance to be used in the static GS problems in the initialization.
             This includes when calculating the Jacobian dIy/dI to set up the linearised problem.
             Note that the tolerance used in static GS solves used by the dynamics is set through the stepper itself.
-        noise_level : float, optional, by default .001
-            If noise_level > 0, gaussian noise with std = noise_level is added to the
-            passive structure currents.
-        noise_vec : noise_vec : np.array, optional, by default None
-            If not None, noise_vec is added to the metal current values extracted from eq.
-            Structure of noise_vec is (active coils, selected passive normal modes).
+        # noise_level : float, optional, by default .001
+        #     If noise_level > 0, gaussian noise with std = noise_level is added to the
+        #     passive structure currents.
+        # noise_vec : noise_vec : np.array, optional, by default None
+        #     If not None, noise_vec is added to the metal current values extracted from eq.
+        #     Structure of noise_vec is (active coils, selected passive normal modes).
         dIydI : np.array of size (np.sum(plasma_domain_mask), n_metal_modes+1), optional
             dIydI_(i,j) = d(Iy_i)/d(I_j)
             This is the jacobian of the plasma current distribution with respect to all
@@ -1018,8 +1035,8 @@ class nl_solver:
         # extract all initial current values currents
 
         # Perturb passive structures when desired
-        if (noise_level > 0) or (noise_vec is not None):
-            self.assign_vessel_noise(self.eq1, noise_level, noise_vec)
+        # if (noise_level > 0) or (noise_vec is not None):
+        #     self.assign_vessel_noise(self.eq1, noise_level, noise_vec)
 
         self.build_current_vec(self.eq1, self.profiles1)
         self.current_at_last_linearization = np.copy(self.currents_vec)
@@ -1068,10 +1085,12 @@ class nl_solver:
 
         # transfer linearization to linear solver
         self.linearised_sol.set_linearization_point(
-            dIydI=self.dIydI_ICs, dIydpars=self.dIydpars_ICs, hatIy0=self.broad_hatIy
+            dIydI=self.dIydI_ICs, 
+            # dIydpars=self.dIydpars_ICs, 
+            hatIy0=self.broad_hatIy
         )
 
-        self.reset_records_for_linearization_update()
+        # self.reset_records_for_linearization_update()
 
     def step_complete_assign(self, working_relative_tol_GS, from_linear=False):
         """This function completes the advancement by dt.
@@ -1199,32 +1218,32 @@ class nl_solver:
             (self.record_Iys, self.limiter_handler.Iy_from_jtor(profiles.jtor))
         )
 
-    def get_number_of_independent_pars(
-        self,
-    ):
-        """Queries the profile function and the metal modes
-        to establish the number of independent variables to
-        the GS equilibrium.
-        """
-        self.number_of_independent_pars = self.n_metal_modes + 1 + self.n_profile_pars
+    # def get_number_of_independent_pars(
+    #     self,
+    # ):
+    #     """Queries the profile function and the metal modes
+    #     to establish the number of independent variables to
+    #     the GS equilibrium.
+    #     """
+    #     self.number_of_independent_pars = self.n_metal_modes + 1 + self.n_profile_pars
 
-    def get_number_of_profile_pars(self, profiles):
-        """Queries the profile function to establish the number of independent parameters."""
-        # linearization not currently set up for profiles outside the Topeol family
-        # temporarily patching this for Lao profiles by removing the forcing term
-        # that appears in the linearization as a consequence of changes in the profiles.
-        self.n_profile_pars = np.size(profiles.get_pars())
+    # def get_number_of_profile_pars(self, profiles):
+    #     """Queries the profile function to establish the number of independent parameters."""
+    #     # linearization not currently set up for profiles outside the Topeol family
+    #     # temporarily patching this for Lao profiles by removing the forcing term
+    #     # that appears in the linearization as a consequence of changes in the profiles.
+    #     self.n_profile_pars = np.size(profiles.get_pars())
 
-    def reset_records_for_linearization_update(
-        self,
-    ):
-        """Resets the recod vectors used for building the update to the linearization matrices."""
-        self.record_currents_pars = np.array([], dtype=np.float32).reshape(
-            0, self.number_of_independent_pars
-        )
-        self.record_Iys = np.array([], dtype=np.float32).reshape(
-            0, self.plasma_domain_size
-        )
+    # def reset_records_for_linearization_update(
+    #     self,
+    # ):
+    #     """Resets the recod vectors used for building the update to the linearization matrices."""
+    #     self.record_currents_pars = np.array([], dtype=np.float32).reshape(
+    #         0, self.number_of_independent_pars
+    #     )
+    #     self.record_Iys = np.array([], dtype=np.float32).reshape(
+    #         0, self.plasma_domain_size
+    #     )
 
     def build_current_pars_vec(self, currents_vec, profiles):
         """Builds vector with full list of independent variables,
@@ -1473,7 +1492,7 @@ class nl_solver:
             Residual in current values. Same format as self.currents_vec.
         """
         self.hatIy1_last = self.calculate_hatIy_GS(
-            trial_currents, rtol_NK=rtol_NK, record_for_updates=True
+            trial_currents, rtol_NK=rtol_NK, record_for_updates=False
         )
         iterated_currs = self.currents_from_hatIy(self.hatIy1_last, active_voltage_vec)
         current_res = iterated_currs - trial_currents
@@ -1608,63 +1627,70 @@ class nl_solver:
         return r_res_GS
 
     def check_and_change_profiles(
-        self, profile_parameter=None, profile_coefficients=None
+        self, profile_parameters=None
     ):
-        """Checks if new input parameters are different from those presently in place.
+        """Checks if new input parameters are provided.
         If so, it actions the necessary changes.
 
         Parameters
         ----------
-        profile_parameter : None or float for new paxis or betap
-            Set to None when the profile parameter (paxis or betap) is left unchanged
-            with respect to the previous timestep. Set here desired value otherwise.
-        profile_coefficients : None or tuple (alpha_m, alpha_n)
-            Set to None when the profile coefficients alpha_m and alpha_n are left unchanged
-            with respect to the previous timestep. Set here desired values otherwise.
+        profile_parameters : None or dictionary
+            Set to None when the profile parameter are left unchanged.
+            Dictionary otherwise.
         """
         self.profile_change_flag = 0
-        # patching for Lao profile: this if is a temporary fix!
-        if self.n_profile_pars:
 
-            self.d_profile_pars = np.zeros(3)
-            if profile_parameter is not None:
-                if profile_parameter != self.profiles1.profile_parameter:
-                    self.profile_change_flag += 1
-                    self.d_profile_pars[2] = (
-                        profile_parameter - self.profiles1.profile_parameter
-                    )
-                    self.profiles1.assign_profile_parameter(profile_parameter)
-                    self.profiles2.assign_profile_parameter(profile_parameter)
-            if profile_coefficients is not None:
-                if (
-                    profile_coefficients[0] != self.profiles1.alpha_m
-                    or profile_coefficients[1] != self.profiles1.alpha_n
-                ):
-                    self.profile_change_flag += 1
-                    self.d_profile_pars[0] = (
-                        profile_coefficients[0] - self.profiles1.alpha_m
-                    )
-                    self.d_profile_pars[1] = (
-                        profile_coefficients[1] - self.profiles1.alpha_n
-                    )
-                    self.profiles1.alpha_m = profile_coefficients[0]
-                    self.profiles1.alpha_n = profile_coefficients[1]
-                    self.profiles2.alpha_m = profile_coefficients[0]
-                    self.profiles2.alpha_n = profile_coefficients[1]
-        # print(self.profiles2.alpha_m, self.profiles2.alpha_n, self.profiles2.profile_parameter)
+        if profile_parameters is not None:
+            for par in profile_parameters:
+                setattr(self.profiles1, par, profile_parameters[par])
+                setattr(self.profiles2, par, profile_parameters[par])
+                if self.profile_type=='Lao85':
+                    self.profiles1.initialize_profile()
+                    self.profiles2.initialize_profile()
+            self.profile_change_flag = 1
+        
+        # # patching for Lao profile: this if is a temporary fix!
+        # if self.n_profile_pars:
+
+        #     self.d_profile_pars = np.zeros(3)
+        #     if profile_parameter is not None:
+        #         if profile_parameter != self.profiles1.profile_parameter:
+        #             self.profile_change_flag += 1
+        #             self.d_profile_pars[2] = (
+        #                 profile_parameter - self.profiles1.profile_parameter
+        #             )
+        #             self.profiles1.assign_profile_parameter(profile_parameter)
+        #             self.profiles2.assign_profile_parameter(profile_parameter)
+        #     if profile_coefficients is not None:
+        #         if (
+        #             profile_coefficients[0] != self.profiles1.alpha_m
+        #             or profile_coefficients[1] != self.profiles1.alpha_n
+        #         ):
+        #             self.profile_change_flag += 1
+        #             self.d_profile_pars[0] = (
+        #                 profile_coefficients[0] - self.profiles1.alpha_m
+        #             )
+        #             self.d_profile_pars[1] = (
+        #                 profile_coefficients[1] - self.profiles1.alpha_n
+        #             )
+        #             self.profiles1.alpha_m = profile_coefficients[0]
+        #             self.profiles1.alpha_n = profile_coefficients[1]
+        #             self.profiles2.alpha_m = profile_coefficients[0]
+        #             self.profiles2.alpha_n = profile_coefficients[1]
+        # # print(self.profiles2.alpha_m, self.profiles2.alpha_n, self.profiles2.profile_parameter)
 
     def nlstepper(
         self,
         active_voltage_vec,
-        profile_parameter=None,
-        profile_coefficients=None,
+        profile_parameters=None,
+        # profile_coefficients=None,
         target_relative_tol_currents=0.005,
         target_relative_tol_GS=0.005,
         working_relative_tol_GS=0.001,
         target_relative_unexplained_residual=0.5,
         max_n_directions=3,
-        max_Arnoldi_iterations=4,
-        max_collinearity=0.3,
+        # max_Arnoldi_iterations=4,
+        # max_collinearity=0.3,
         step_size_psi=2.0,
         step_size_curr=0.8,
         scaling_with_n=0,
@@ -1673,8 +1699,8 @@ class nl_solver:
         curr_eps=1e-5,
         max_no_NK_psi=5.0,
         clip=5,
-        threshold=1.5,
-        clip_hard=1.5,
+        # threshold=1.5,
+        # clip_hard=1.5,
         verbose=0,
         linear_only=False,
     ):
@@ -1704,12 +1730,10 @@ class nl_solver:
         ----------
         active_voltage_vec : np.array
             Vector of active voltages for the active coils, applied between t and t+dt.
-        profile_parameter : None or float for new paxis or betap
-            Set to None when the profile parameter (paxis or betap) is left unchanged
-            with respect to the previous timestep. Set here desired value otherwise.
-        profile_coefficients : None or tuple (alpha_m, alpha_n)
-            Set to None when the profile coefficients alpha_m and alpha_n are left unchanged
-            with respect to the previous timestep. Set here desired values otherwise.
+        profile_parameters : Dictionary
+            Set to None when the profile parameters are left unchanged.
+            Otherwise, dictionary containing the relevant profile parameters 
+            for the profile object on which the evolution is calculated
         target_relative_tol_currents : float, optional, by default .01
             Relative tolerance in the currents required for convergence.
         target_relative_tol_GS : float, optional, by default .01
@@ -1723,13 +1747,6 @@ class nl_solver:
         max_n_directions : int, optional, by default 3
             Used in the NK solvers. Inclusion of additional basis vectors is
             stopped if max_n_directions have already been included.
-        max_Arnoldi_iterations : int, optional, by default 4
-            Used in the NK solvers. Inclusion of additional basis vectors is
-            stopped if max_n_directions have already been considered for inclusion,
-            though not necessarily included.
-        max_collinearity : float, optional, by default .3
-            Used in the NK solvers. The basis vector being considered is rejected
-            if scalar product with any of the previously included is larger than max_collinearity.
         step_size_psi : float, optional, by default 2.
             Used by the NK solver applied to the root problem in the plasma flux.
             l2 norm of proposed step.
@@ -1754,12 +1771,6 @@ class nl_solver:
         clip : float, optional, by default 5
             Used in the NK solvers. Maximum step size for each accepted basis vector, in units
             of the exploratory step.
-        threshold : float, optional, by default 1.5
-            Used in the NK solvers to catch cases of untreated (partial) collinearity.
-            If relative_unexplained_residual>threshold, clip_hard is applied instead of clip.
-        clip_hard : float, optional, by default 1.5
-             Used in the NK solvers. Maximum step size for each accepted basis vector, in units
-            of the exploratory step, for cases of partial collinearity.
         verbose : int, optional, by default T
             Printouts of convergence process.
             Use 1 for printouts with details on each NK cycle.
@@ -1769,28 +1780,21 @@ class nl_solver:
             If linear_only = False, the convergence criteria are used and a solution of
             the full nonlinear problem is seeked.
 
-        Returns
-        -------
-        int
-            Number of grid points NOT in the reduced plasma domain that have some plasma in them (Jtor>0).
-            Depending on the definition of the reduced plasma domain through plasma_domain_mask,
-            this may mean the plasma contacted the wall. This will stop the dynamics.
         """
 
         # check if profile parameter (betap or paxis) is being altered
         # and action the change where necessary
         self.check_and_change_profiles(
-            profile_parameter=profile_parameter,
-            profile_coefficients=profile_coefficients,
+            profile_parameters=profile_parameters,
         )
 
         # solves the linearised problem for the currents.
-        # needs to use the time derivativive of the profile parameters, if they have been changed
-        if self.profile_change_flag:
-            self.d_profile_pars_dt = self.d_profile_pars / self.dt_step
-        else:
-            self.d_profile_pars_dt = None
-        self.set_linear_solution(active_voltage_vec, self.d_profile_pars_dt)
+        # # needs to use the time derivativive of the profile parameters, if they have been changed
+        # if self.profile_change_flag:
+        #     self.d_profile_pars_dt = self.d_profile_pars / self.dt_step
+        # else:
+        #     self.d_profile_pars_dt = None
+        self.set_linear_solution(active_voltage_vec)#, self.d_profile_pars_dt)
         # Solution and GS equilibrium are assigned to self.trial_currents and self.trial_plasma_psi
 
         if linear_only:
@@ -1867,7 +1871,7 @@ class nl_solver:
                     self.NK.forward_solve(self.eq2, self.profiles2, self.rtol_NK)
                     self.trial_plasma_psi *= 1 - blend_GS
                     self.trial_plasma_psi += blend_GS * self.eq2.plasma_psi
-                    self.record_for_update(self.trial_currents, self.profiles2)
+                    # self.record_for_update(self.trial_currents, self.profiles2)
 
                 # prepare for NK algorithms: 1d vectors needed for independent variable
                 self.trial_plasma_psi = self.trial_plasma_psi.reshape(-1)

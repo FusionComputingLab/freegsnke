@@ -133,21 +133,21 @@ class ConstrainBetapIp(freegs4e.jtor.ConstrainBetapIp, Jtor_universal):
         # this is used in critical.inside_mask
         self.mask_outside_limiter = (2 * self.mask_outside_limiter).astype(float)
 
-    def get_pars(
-        self,
-    ):
-        """Fetches all profile parameters and returns them in a single array"""
-        return np.array([self.alpha_m, self.alpha_n, self.betap])
+    # def get_pars(
+    #     self,
+    # ):
+    #     """Fetches all profile parameters and returns them in a single array"""
+    #     return np.array([self.alpha_m, self.alpha_n, self.betap])
 
-    def assign_profile_parameter(self, betap):
-        """Assigns to the profile object a new value of the profile parameter betap"""
-        self.betap = betap
-        self.profile_parameter = betap
+    # def assign_profile_parameter(self, betap):
+    #     """Assigns to the profile object a new value of the profile parameter betap"""
+    #     self.betap = betap
+    #     self.profile_parameter = betap
 
-    def assign_profile_coefficients(self, alpha_m, alpha_n):
-        """Assigns to the profile object new value of the coefficients (alpha_m, alpha_n)"""
-        self.alpha_m = alpha_m
-        self.alpha_n = alpha_n
+    # def assign_profile_coefficients(self, alpha_m, alpha_n):
+    #     """Assigns to the profile object new value of the coefficients (alpha_m, alpha_n)"""
+    #     self.alpha_m = alpha_m
+    #     self.alpha_n = alpha_n
 
     # def _Jtor(self, R, Z, psi, psi_bndry=None, rel_psi_error=0):
     #     """Replaces the original FreeGS Jtor method if FreeGS4E is not available."""
@@ -263,21 +263,21 @@ class ConstrainPaxisIp(freegs4e.jtor.ConstrainPaxisIp, Jtor_universal):
         # else:
         #     self.Jtor = self.Jtor_fast
 
-    def get_pars(
-        self,
-    ):
-        """Fetches all profile parameters and returns them in a single array"""
-        return np.array([self.alpha_m, self.alpha_n, self.paxis])
+    # def get_pars(
+    #     self,
+    # ):
+    #     """Fetches all profile parameters and returns them in a single array"""
+    #     return np.array([self.alpha_m, self.alpha_n, self.paxis])
 
-    def assign_profile_parameter(self, paxis):
-        """Assigns to the profile object a new value of the profile parameter paxis"""
-        self.paxis = paxis
-        self.profile_parameter = paxis
+    # def assign_profile_parameter(self, paxis):
+    #     """Assigns to the profile object a new value of the profile parameter paxis"""
+    #     self.paxis = paxis
+    #     self.profile_parameter = paxis
 
-    def assign_profile_coefficients(self, alpha_m, alpha_n):
-        """Assigns to the profile object new value of the coefficients (alpha_m, alpha_n)"""
-        self.alpha_m = alpha_m
-        self.alpha_n = alpha_n
+    # def assign_profile_coefficients(self, alpha_m, alpha_n):
+    #     """Assigns to the profile object new value of the coefficients (alpha_m, alpha_n)"""
+    #     self.alpha_m = alpha_m
+    #     self.alpha_n = alpha_n
 
     # def _Jtor(self, R, Z, psi, psi_bndry=None, rel_psi_error=0):
     #     """Replaces the original FreeGS Jtor method if FreeGS4E is not available."""
@@ -417,15 +417,15 @@ class Fiesta_Topeol(freegs4e.jtor.Fiesta_Topeol, Jtor_universal):
         # else:
         #     self.Jtor = self.Jtor_fast
 
-    def assign_profile_parameter(self, Beta0):
-        """Assigns to the profile object a new value of the profile parameter paxis"""
-        self.Beta0 = Beta0
-        self.profile_parameter = Beta0
+    # def assign_profile_parameter(self, Beta0):
+    #     """Assigns to the profile object a new value of the profile parameter paxis"""
+    #     self.Beta0 = Beta0
+    #     self.profile_parameter = Beta0
 
-    def assign_profile_coefficients(self, alpha_m, alpha_n):
-        """Assigns to the profile object new value of the coefficients (alpha_m, alpha_n)"""
-        self.alpha_m = alpha_m
-        self.alpha_n = alpha_n
+    # def assign_profile_coefficients(self, alpha_m, alpha_n):
+    #     """Assigns to the profile object new value of the coefficients (alpha_m, alpha_n)"""
+    #     self.alpha_m = alpha_m
+    #     self.alpha_n = alpha_n
 
     # def _Jtor(self, R, Z, psi, psi_bndry=None, rel_psi_error=0):
     #     """Replaces the original FreeGS Jtor method if FreeGS4E is not available."""
@@ -541,7 +541,7 @@ class Lao85(freegs4e.jtor.Lao85, Jtor_universal):
 
         """
         super().__init__(*args, **kwargs)
-        self.profile_parameter = [self.alpha, self.beta]
+        # self.profile_parameter = [self.alpha, self.beta]
 
         if limiter is None:
             self.limiter_handler = eq.limiter_handler
@@ -564,19 +564,19 @@ class Lao85(freegs4e.jtor.Lao85, Jtor_universal):
         # else:
         #     self.Jtor = self.Jtor_fast
 
-    def assign_profile_parameter(self, alpha, beta):
-        """Assigns to the profile object a new value of the profile parameter paxis"""
-        self.alpha = alpha
-        self.beta = beta
-        self.profile_parameter = [alpha, beta]
+    # def assign_profile_parameter(self, alpha, beta):
+    #     """Assigns to the profile object a new value of the profile parameter paxis"""
+    #     self.alpha = alpha
+    #     self.beta = beta
+    #     self.initialize_profile()
 
-    def get_pars(
-        self,
-    ):
-        """Fetches all profile parameters and returns them in a single array"""
-        # This is a temporary fix that allows the linearization to work on lao profiles
-        # Changes in the profile are ignored in the linearised dynamics
-        return np.array([])
+    # def get_pars(
+    #     self,
+    # ):
+    #     """Fetches all profile parameters and returns them in a single array"""
+    #     # This is a temporary fix that allows the linearization to work on lao profiles
+    #     # Changes in the profile are ignored in the linearised dynamics
+    #     return np.array([])
 
     # def _Jtor(self, R, Z, psi, psi_bndry=None, rel_psi_error=0):
     #     """Replaces the original FreeGS Jtor method if FreeGS4E is not available."""

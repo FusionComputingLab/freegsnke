@@ -430,9 +430,9 @@ class nl_solver:
         )
 
         self.linearised_sol.set_linearization_point(
-            dIydI=self.dIydI, 
-            # dIydpars=self.dIydpars, 
-            hatIy0=self.broad_hatIy
+            dIydI=self.dIydI,
+            # dIydpars=self.dIydpars,
+            hatIy0=self.broad_hatIy,
         )
 
         # self.get_number_of_independent_pars()
@@ -699,8 +699,10 @@ class nl_solver:
             while the third value is relative, d_profile_par = relative_d_profile_par * profile_par
         """
 
-        if ((dIydI is None) and (self.dIydI is None)
-        # or ((dIydpars is None) and (self.dIydpars is None)
+        if (
+            (dIydI is None)
+            and (self.dIydI is None)
+            # or ((dIydpars is None) and (self.dIydpars is None)
         ):
             self.NK.forward_solve(eq, profile, target_relative_tolerance=rtol_NK)
             self.build_current_vec(eq, profile)
@@ -860,16 +862,28 @@ class nl_solver:
 
         # self.profile_parameters = []
 
-        # note the parameters here are the same that should be provided 
+        # note the parameters here are the same that should be provided
         # to the stepper if these are time evolving
-        if self.profile_type == 'ConstrainPaxisIp':
-            self.profile_parameters = {'paxis':profiles.paxis, 'alpha_m':profiles.alpha_m, 'alpha_n':profiles.alpha_n}
-        elif self.profile_type == 'ConstrainBetapIp':
-            self.profile_parameters = {'betap':profiles.betap, 'alpha_m':profiles.alpha_m, 'alpha_n':profiles.alpha_n}
-        elif self.profile_type == 'Fiesta_Topeol':
-            self.profile_parameters = {'beta0':profiles.beta0, 'alpha_m':profiles.alpha_m, 'alpha_n':profiles.alpha_n}
-        elif self.profile_type == 'Lao85':
-            self.profile_parameters = {'alpha':profiles.alpha, 'beta':profiles.beta}
+        if self.profile_type == "ConstrainPaxisIp":
+            self.profile_parameters = {
+                "paxis": profiles.paxis,
+                "alpha_m": profiles.alpha_m,
+                "alpha_n": profiles.alpha_n,
+            }
+        elif self.profile_type == "ConstrainBetapIp":
+            self.profile_parameters = {
+                "betap": profiles.betap,
+                "alpha_m": profiles.alpha_m,
+                "alpha_n": profiles.alpha_n,
+            }
+        elif self.profile_type == "Fiesta_Topeol":
+            self.profile_parameters = {
+                "beta0": profiles.beta0,
+                "alpha_m": profiles.alpha_m,
+                "alpha_n": profiles.alpha_n,
+            }
+        elif self.profile_type == "Lao85":
+            self.profile_parameters = {"alpha": profiles.alpha, "beta": profiles.beta}
 
         # # this is a patch to make temporarily compatible with Lao profiles
         # self.get_number_of_profile_pars(profiles)
@@ -1085,9 +1099,9 @@ class nl_solver:
 
         # transfer linearization to linear solver
         self.linearised_sol.set_linearization_point(
-            dIydI=self.dIydI_ICs, 
-            # dIydpars=self.dIydpars_ICs, 
-            hatIy0=self.broad_hatIy
+            dIydI=self.dIydI_ICs,
+            # dIydpars=self.dIydpars_ICs,
+            hatIy0=self.broad_hatIy,
         )
 
         # self.reset_records_for_linearization_update()
@@ -1626,9 +1640,7 @@ class nl_solver:
         r_res_GS = a_res_GS / self.d_plasma_psi_step
         return r_res_GS
 
-    def check_and_change_profiles(
-        self, profile_parameters=None
-    ):
+    def check_and_change_profiles(self, profile_parameters=None):
         """Checks if new input parameters are provided.
         If so, it actions the necessary changes.
 
@@ -1644,11 +1656,11 @@ class nl_solver:
             for par in profile_parameters:
                 setattr(self.profiles1, par, profile_parameters[par])
                 setattr(self.profiles2, par, profile_parameters[par])
-                if self.profile_type=='Lao85':
+                if self.profile_type == "Lao85":
                     self.profiles1.initialize_profile()
                     self.profiles2.initialize_profile()
             self.profile_change_flag = 1
-        
+
         # # patching for Lao profile: this if is a temporary fix!
         # if self.n_profile_pars:
 
@@ -1732,7 +1744,7 @@ class nl_solver:
             Vector of active voltages for the active coils, applied between t and t+dt.
         profile_parameters : Dictionary
             Set to None when the profile parameters are left unchanged.
-            Otherwise, dictionary containing the relevant profile parameters 
+            Otherwise, dictionary containing the relevant profile parameters
             for the profile object on which the evolution is calculated
         target_relative_tol_currents : float, optional, by default .01
             Relative tolerance in the currents required for convergence.
@@ -1794,7 +1806,7 @@ class nl_solver:
         #     self.d_profile_pars_dt = self.d_profile_pars / self.dt_step
         # else:
         #     self.d_profile_pars_dt = None
-        self.set_linear_solution(active_voltage_vec)#, self.d_profile_pars_dt)
+        self.set_linear_solution(active_voltage_vec)  # , self.d_profile_pars_dt)
         # Solution and GS equilibrium are assigned to self.trial_currents and self.trial_plasma_psi
 
         if linear_only:

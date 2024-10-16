@@ -40,6 +40,8 @@ class nl_solver:
         linearize=True,
         min_dIy_dI=0.1,
         verbose=False,
+        custom_coil_resist=None,
+        custom_self_ind=None,
     ):
         """Initializes the time-evolution Object.
 
@@ -103,6 +105,14 @@ class nl_solver:
         min_dIy_dI : float, optional, by default 1
             Threshold value to include/drop vessel normal modes.
             Modes with norm(d(Iy)/dI)<min_dIy_dI are dropped.
+        custom_coil_resist : np.array
+            1d array of resistance values for all machine conducting elements,
+            including both active coils and passive structures
+            If None, the values calculated in machine_config will be sourced and used
+        custom_self_ind : np.array
+            2d matrix of mutual inductances between all pairs of machine conducting elements,
+            including both active coils and passive structures
+            If None, the values calculated in machine_config will be sourced and used
         """
 
         self.nx = np.shape(eq.R)[0]
@@ -155,7 +165,10 @@ class nl_solver:
             max_mode_frequency=self.max_mode_frequency,
             max_internal_timestep=self.max_internal_timestep,
             full_timestep=self.dt_step,
+            coil_resist=custom_coil_resist,
+            coil_self_ind=custom_self_ind,
         )
+
         # this is the number of independent normal mode currents being used
         self.n_metal_modes = self.evol_metal_curr.n_independent_vars
         self.arange_currents = np.arange(self.n_metal_modes + 1)
@@ -329,7 +342,7 @@ class nl_solver:
         else:
             if len(self.linearised_sol.growth_rates):
                 dt_step = abs(
-                    self.linearised_sol.growth_rates[0] * automatic_timestep[0]
+                    self.linearised_sol.instability_timescale[0] * automatic_timestep[0]
                 )
                 self.reset_timestep(
                     full_timestep=dt_step,

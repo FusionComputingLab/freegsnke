@@ -48,13 +48,15 @@ class metal_currents:
         full_timestep=0.0001,
         coil_resist=None,
         coil_self_ind=None,
+        verbose=True,
     ):
 
         self.n_coils = len(machine_config.coil_self_ind)
         self.n_active_coils = machine_config.n_active_coils
+        self.verbose = verbose
 
         # prepare resistance and inductance data
-        if coil_resist != None:
+        if coil_resist is not None:
             if len(coil_resist) != self.n_coils:
                 raise ValueError(
                     "Resistance vector provided is not compatible with machine description"
@@ -64,8 +66,8 @@ class metal_currents:
             self.coil_resist = machine_config.coil_resist
         self.Rm1 = 1.0 / self.coil_resist
         self.R = self.coil_resist
-        if coil_self_ind != None:
-            if np.shape(coil_resist) != self.n_coils**2:
+        if coil_self_ind is not None:
+            if np.size(coil_self_ind) != self.n_coils**2:
                 raise ValueError(
                     "Mutual inductance matrix provided is not compatible with machine description"
                 )
@@ -111,13 +113,14 @@ class metal_currents:
             (np.ones(self.n_active_coils).astype(bool), selected_modes_mask)
         )
         self.n_independent_vars = np.sum(self.selected_modes_mask)
-        print(
-            "Input max_mode_frequency corresponds to ",
-            self.n_independent_vars - self.n_active_coils,
-            " independent vessel normal modes in addition to the ",
-            self.n_active_coils,
-            " active coils.",
-        )
+        if self.verbose:
+            print(
+                "Input max_mode_frequency corresponds to ",
+                self.n_independent_vars - self.n_active_coils,
+                " independent vessel normal modes in addition to the ",
+                self.n_active_coils,
+                " active coils.",
+            )
 
     def initialize_for_eig(self, selected_modes_mask):
         """Initializes the metal currents object for the case where vessel

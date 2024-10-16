@@ -117,7 +117,7 @@ def test_linearised_stepper(create_machine):
     history_times = [t]
     t_per_step = []
     # use the following to reset stepping.eq1 to a new IC
-    stepping.initialize_from_ICs(eq, profiles, noise_level=0)
+    stepping.initialize_from_ICs(eq, profiles)#_level=0)
     #  noise_level=.001,
     #  noise_vec=None,
     #  update_linearization=False,
@@ -209,7 +209,7 @@ def test_non_linear_stepper(create_machine):
     history_times = [t]
     t_per_step = []
     # use the following to reset stepping.eq1 to a new IC
-    stepping.initialize_from_ICs(eq, profiles, noise_level=0)
+    stepping.initialize_from_ICs(eq, profiles)#, noise_level=0)
     #  noise_level=.001,
     #  noise_vec=None,
     #  update_linearization=False,

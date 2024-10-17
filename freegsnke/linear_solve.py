@@ -96,7 +96,7 @@ class linear_solver:
         self.forcing = np.zeros(self.n_independent_vars + 1)
         self.profile_forcing = np.zeros(self.n_independent_vars + 1)
 
-        self.dIydpars = None
+        # self.dIydpars = None
 
     def reset_timesteps(self, max_internal_timestep, full_timestep):
         """Resets the integration timesteps, calling self.solver.set_timesteps
@@ -114,7 +114,7 @@ class linear_solver:
             full_timestep=full_timestep, max_internal_timestep=max_internal_timestep
         )
 
-    def set_linearization_point(self, dIydI, dIydpars, hatIy0):
+    def set_linearization_point(self, dIydI, hatIy0):
         """Initialises an implicit-Euler solver with the appropriate matrices for the linearised problem.
 
         Parameters
@@ -132,8 +132,8 @@ class linear_solver:
         """
         if dIydI is not None:
             self.dIydI = dIydI
-        if dIydpars is not None:
-            self.dIydpars = dIydpars
+        # if dIydpars is not None:
+        #     self.dIydpars = dIydpars
         if hatIy0 is not None:
             self.hatIy0 = hatIy0
 
@@ -213,11 +213,11 @@ class linear_solver:
 
         # build necessary terms to incorporate forcing term from variations of the profile parameters
         # MIdot + RI = V - self.Vm1Rm12Mey_plus@self.dIydpars@d_profile_pars_dt
-        if self.dIydpars is not None:
-            Pm1Rm1Mey_plus = np.concatenate(
-                (self.Pm1Rm1Mey, JMyy[np.newaxis] / nRp), axis=0
-            )
-            self.forcing_pars_matrix = np.matmul(Pm1Rm1Mey_plus, self.dIydpars)
+        # if self.dIydpars is not None:
+        #     Pm1Rm1Mey_plus = np.concatenate(
+        #         (self.Pm1Rm1Mey, JMyy[np.newaxis] / nRp), axis=0
+        #     )
+        #     self.forcing_pars_matrix = np.matmul(Pm1Rm1Mey_plus, self.dIydpars)
 
     def stepper(self, It, active_voltage_vec, d_profile_pars_dt=None):
         """Executes the time advancement. Uses the implicit_euler instance.
@@ -264,18 +264,18 @@ class linear_solver:
         self.instability_timescale_const_Ip = -self.all_timescales_const_Ip[mask]
         self.growth_rates_const_Ip = 1 / self.instability_timescale_const_Ip
 
-    def build_dIydall(self, mask=None):
-        """Builds full Jacobian including both extensive currents and profile pars"""
-        self.dIydall_full = np.concatenate((self.dIydI, self.dIydpars), axis=-1)
-        if mask is not None:
-            self.dIydall = self.dIydall_full[mask, :]
-        else:
-            self.dIydall = self.dIydall_full.copy()
+    # def build_dIydall(self, mask=None):
+    #     """Builds full Jacobian including both extensive currents and profile pars"""
+    #     self.dIydall_full = np.concatenate((self.dIydI, self.dIydpars), axis=-1)
+    #     if mask is not None:
+    #         self.dIydall = self.dIydall_full[mask, :]
+    #     else:
+    #         self.dIydall = self.dIydall_full.copy()
 
-    def assign_from_dIydall(self, mask=None):
-        """Uses full Jacobian to assign current and profile components"""
-        self.dIydI = self.dIydall_full[:, : self.n_independent_vars + 1]
-        self.dIydpars = self.dIydall_full[:, self.n_independent_vars + 1 :]
+    # def assign_from_dIydall(self, mask=None):
+    #     """Uses full Jacobian to assign current and profile components"""
+    #     self.dIydI = self.dIydall_full[:, : self.n_independent_vars + 1]
+    #     self.dIydpars = self.dIydall_full[:, self.n_independent_vars + 1 :]
 
     def build_n2_diffs(self, vectors):
         """Builds non trivial pairwise differences.

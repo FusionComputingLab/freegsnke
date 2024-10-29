@@ -811,7 +811,9 @@ class nl_solver:
         self.simplified_solver_J1.reset_plasma_resistivity(self.plasma_resistance_1d)
         self.evol_plasma_curr.Ryy = self.plasma_resistance_1d
 
-    def check_and_change_plasma_resistivity(self, plasma_resistivity, relative_threshold_difference=0.01):
+    def check_and_change_plasma_resistivity(
+        self, plasma_resistivity, relative_threshold_difference=0.01
+    ):
         """Checks if the plasma resistivity is different and resets it.
 
         Parameters
@@ -824,10 +826,12 @@ class nl_solver:
 
         if plasma_resistivity is not None:
             # check how different
-            check = ((np.abs(plasma_resistivity-self.plasma_resistivity)/self.plasma_resistivity)>relative_threshold_difference)
+            check = (
+                np.abs(plasma_resistivity - self.plasma_resistivity)
+                / self.plasma_resistivity
+            ) > relative_threshold_difference
             if check:
                 self.reset_plasma_resistivity(plasma_resistivity=plasma_resistivity)
-
 
     def calc_lumped_plasma_resistance(self, norm_red_Iy0, norm_red_Iy1):
         """Uses the plasma resistance matrix R_yy to calculate the lumped plasma resistance,
@@ -1843,7 +1847,6 @@ class nl_solver:
         self.check_and_change_plasma_resistivity(
             plasma_resistivity,
         )
-
 
         # solves the linearised problem for the currents.
         # # needs to use the time derivativive of the profile parameters, if they have been changed

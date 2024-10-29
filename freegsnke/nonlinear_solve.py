@@ -33,7 +33,7 @@ class nl_solver:
         nbroad=1,
         blend_hatJ=0,
         dIydI=None,
-        dIydpars=None,
+        # dIydpars=None,
         target_dIy=1e-3,
         automatic_timestep=False,
         mode_removal=True,
@@ -789,6 +789,49 @@ class nl_solver:
             self.eqR * (2 * np.pi / self.dRdZ) * self.plasma_resistivity
         )
         self.plasma_resistance_1d = plasma_resistance_matrix[self.plasma_domain_mask]
+
+    def reset_plasma_resistivity(self, plasma_resistivity):
+        """Function to reset the resistivity of the plasma.
+
+        Parameters
+        ----------
+        plasma_resistivity : float
+            Resistivity of the plasma. Plasma resistance values for each of the domain grid points are
+            2*np.pi*plasma_resistivity*eq.R/(dR*dZ)
+            where dR*dZ is the area of the domain element.
+        """
+
+        self.plasma_resistivity = plasma_resistivity
+        plasma_resistance_matrix = (
+            self.eqR * (2 * np.pi / self.dRdZ) * self.plasma_resistivity
+        )
+        self.plasma_resistance_1d = plasma_resistance_matrix[self.plasma_domain_mask]
+
+        self.linearised_sol.reset_plasma_resistivity(self.plasma_resistance_1d)
+        self.simplified_solver_J1.reset_plasma_resistivity(self.plasma_resistance_1d)
+        self.evol_plasma_curr.Ryy = self.plasma_resistance_1d
+
+    def check_and_change_plasma_resistivity(
+        self, plasma_resistivity, relative_threshold_difference=0.01
+    ):
+        """Checks if the plasma resistivity is different and resets it.
+
+        Parameters
+        ----------
+        plasma_resistivity : float
+            Resistivity of the plasma. Plasma resistance values for each of the domain grid points are
+            2*np.pi*plasma_resistivity*eq.R/(dR*dZ)
+            where dR*dZ is the area of the domain element.
+        """
+
+        if plasma_resistivity is not None:
+            # check how different
+            check = (
+                np.abs(plasma_resistivity - self.plasma_resistivity)
+                / self.plasma_resistivity
+            ) > relative_threshold_difference
+            if check:
+                self.reset_plasma_resistivity(plasma_resistivity=plasma_resistivity)
 
     def calc_lumped_plasma_resistance(self, norm_red_Iy0, norm_red_Iy1):
         """Uses the plasma resistance matrix R_yy to calculate the lumped plasma resistance,
@@ -1695,7 +1738,7 @@ class nl_solver:
         self,
         active_voltage_vec,
         profile_parameters=None,
-        # profile_coefficients=None,
+        plasma_resistivity=None,
         target_relative_tol_currents=0.005,
         target_relative_tol_GS=0.005,
         working_relative_tol_GS=0.001,
@@ -1798,6 +1841,11 @@ class nl_solver:
         # and action the change where necessary
         self.check_and_change_profiles(
             profile_parameters=profile_parameters,
+        )
+
+        # check and change plasma resistivity
+        self.check_and_change_plasma_resistivity(
+            plasma_resistivity,
         )
 
         # solves the linearised problem for the currents.

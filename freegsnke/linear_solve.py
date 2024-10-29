@@ -98,6 +98,10 @@ class linear_solver:
 
         # self.dIydpars = None
 
+    def reset_plasma_resistivity(self, plasma_resistance_1d):
+        self.plasma_resistance_1d = plasma_resistance_1d
+        self.set_linearization_point(None, None)
+
     def reset_timesteps(self, max_internal_timestep, full_timestep):
         """Resets the integration timesteps, calling self.solver.set_timesteps
 

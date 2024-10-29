@@ -122,6 +122,9 @@ class simplified_solver_J1:
             full_timestep=full_timestep, max_internal_timestep=max_internal_timestep
         )
 
+    def reset_plasma_resistivity(self, plasma_resistance_1d):
+        self.plasma_resistance_1d = plasma_resistance_1d
+
     def prepare_solver(self, hatIy_left, hatIy_0, hatIy_1, active_voltage_vec):
         """Computes the actual matrices that are needed in the ODE for the extensive currents
          and that must be passed to the implicit-Euler solver.

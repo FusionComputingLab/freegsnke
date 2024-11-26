@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="https://gitlab.stfc.ac.uk/farscape-ws3/freegsnke/-/tree/kamran_updates/images/freegsnke_logo.png"><br><br>
+  <img src="images/freegsnke_logo.png" alt="FreeGSNKE Logo" width="300"><br><br>
 </div>
 
 # FreeGSNKE: Free-boundary Grad-Shafranov Newton-Krylov Evolve

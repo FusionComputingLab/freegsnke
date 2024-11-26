@@ -31,10 +31,6 @@ Each problem is solved using **fourth-order accurate finite differences** and a 
   <img src="images/mastu_eq.png" alt="mastu_eq" width="350"><br><br>
 </div>
 
-<div align="center">
-  <img src="https://gitlab.stfc.ac.uk/farscape-ws3/freegsnke/-/tree/kamran_updates/images/mastu_eq.png"><br><br>
-</div>
-
 Above we show an example of an equilibrium calculated using FreeGSNKE with a **MAST-U** machine description. 
 
 ## Getting started

@@ -1,12 +1,10 @@
 <div align="center">
-  <img src="images/freegsnke_logo.png" alt="FreeGSNKE Logo" width="300"><br><br>
+  <img src="images/freegsnke_logo.png" alt="FreeGSNKE Logo" width="200"><br><br>
 </div>
 
 # FreeGSNKE: Free-boundary Grad-Shafranov Newton-Krylov Evolve
 
 
-
-## Overview
 FreeGSNKE (pronounced "free-gee-snake") is a **Python**-based code for **simulating the evolution of free-boundary tokamak plasma equilibria**.
 
 Based on the well-established [FreeGS](https://github.com/bendudson/freegs) code, it utilises [FreeGS4E](https://github.com/freegs4e/freegs4e) (a fork of FreeGS) to solve different types of free-boundary Grad-Shafranov equilibrium problem and contains a number of new capabilities over FreeGS. 
@@ -28,6 +26,16 @@ These problems can be solved in a **user-specified tokamak geometry** that can i
 | ------ | ------ | ------ | ------ |
 
 Each problem is solved using **fourth-order accurate finite differences** and a **purpose-built Newton-Krylov method** for additional **stability and convergence** speed (over the Picard iterations used in FreeGS). For equilibria that have plasma current density profiles with steep edge gradients or sheet currents invoke an **adaptive mesh refinement** scheme on the plasma boundary for additional stability. 
+
+<div align="center">
+  <img src="images/mastu_eq.png" alt="mastu_eq" width="350"><br><br>
+</div>
+
+<div align="center">
+  <img src="https://gitlab.stfc.ac.uk/farscape-ws3/freegsnke/-/tree/kamran_updates/images/mastu_eq.png"><br><br>
+</div>
+
+Above we show an example of an equilibrium calculated using FreeGSNKE with a **MAST-U** machine description. 
 
 ## Getting started
 

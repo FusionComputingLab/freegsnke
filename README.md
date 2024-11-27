@@ -1,3 +1,4 @@
+
 <div align="center">
   <img src="images/freegsnke_logo.png" alt="FreeGSNKE Logo" width="200"><br><br>
 </div>
@@ -14,13 +15,18 @@ Based on the well-established [FreeGS](https://github.com/bendudson/freegs) code
 ## Capabilities
 FreeGSNKE is capable of solving both **static** (time-<u>in</u>dependent) and **evolutive** (time-dependent) **free-boundary equilibrium problems**. This includes:
 
-| Problem Type | Objective |
-| ------ | --- |
-| **Static forward**  (<u>new</u>!) | <u>Solve for the plasma equilibrium</u> using user-defined poloidal field coil currents, passive structure currents, and plasma current density profiles. |
-| **Static inverse** | <u>Estimate poloidal field coil currents</u> using user-defined constraints (e.g. isoflux and X-point locations) and plasma current density profiles for a desired plasma equilibrium shape. 
-| **Evolutive forward** (<u>new</u>!) | <u>Solve simultaneously for the plasma equilibrium, the poloidal field coil (and passive structure) currents, and the total plasma current over time from an initial equilibrium</u> using user-defined time-dependent poloidal field coil voltages and plasma current density profile parameters.  |
+| Problem Type | Objective | Example use cases | 
+| --- | --- | --- |
+| **Static forward**  (<u>new</u>!) | <u>Solve for the plasma equilibrium</u> using user-defined poloidal field coil currents, passive structure currents, and plasma current density profiles. | Plasma scenario design and shape control. Equilibrium library generation (for emulation). Initial condition generation for evolutive simulations. |
+| **Static inverse** | <u>Estimate poloidal field coil currents</u> using user-defined constraints (e.g. isoflux and X-point locations) and plasma current density profiles for a desired plasma equilibrium shape. | Plasma scenario design. Optimisation of poloidal field coil or magnetic probe locations. |
+| **Evolutive forward** (<u>new</u>!) | <u>Solve simultaneously for the plasma equilibrium, the poloidal field coil (and passive structure) currents, and the total plasma current over time from an initial equilibrium</u> using user-defined time-dependent poloidal field coil voltages and plasma current density profile parameters. | Full shot simulations. Vertical stability analysis. |
 
 These problems can be solved in a **user-specified tokamak geometry** that can include:
+
+| Feature | Purpose | Properties | 
+| ------ | ------ | ------ | 
+| Active poloidal field coils | Assigned currents | Location in $(R,Z)$-plane, 2D area $(dR,dZ)$,  |
+
 
 | active poloidal field coils | passive conducting structures | wall/limiter contours | magnetic diagnostic probes |
 | ------ | ------ | ------ | ------ |
@@ -124,10 +130,15 @@ as pre-commit hook).
 
 | 2024 |  |
 | ------ | ------ | 
-|  | N. C. Amorisco, *et al*, "FreeGSNKE: A Python-based dynamic free-boundary toroidal plasma equilibrium solver", Physics of Plasmas **31** 042517 (2024) DOI: [10.1063/5.0188467](https://doi.org/10.1063/5.0188467). |
-|  | A. Agnello, *et al*, "Emulation techniques for scenario and classical control design of tokamak plasmas", Physics of Plasmas **31** 043091 (2024) DOI: [10.1063/5.0187822](https://doi.org/10.1063/5.0187822). |
-|  | K. Pentland, *et al*, "Validation of the static forward Grad-Shafranov equilibrium solvers in FreeGSNKE and Fiesta using EFIT++ reconstructions from MAST-U", arXiv (2024) DOI: [2407.12432](https://arxiv.org/abs/2407.12432). |
+|  | N. C. Amorisco et al, "FreeGSNKE: A Python-based dynamic free-boundary toroidal plasma equilibrium solver", Physics of Plasmas **31** 042517 (2024) DOI: [10.1063/5.0188467](https://doi.org/10.1063/5.0188467). |
+|  | A. Agnello et al, "Emulation techniques for scenario and classical control design of tokamak plasmas", Physics of Plasmas **31** 043091 (2024) DOI: [10.1063/5.0187822](https://doi.org/10.1063/5.0187822). |
+|  | K. Pentland et al, "Validation of the static forward Grad-Shafranov equilibrium solvers in FreeGSNKE and Fiesta using EFIT++ reconstructions from MAST-U", arXiv (2024) DOI: [2407.12432](https://arxiv.org/abs/2407.12432). |
 |  | 
+
+
+## Funding
+
+This work was funded under the Fusion Computing Lab collaboration between the STFC Hartree Centre and the UK Atomic Energy Authority. 
 
 ## License
 

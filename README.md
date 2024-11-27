@@ -23,13 +23,12 @@ FreeGSNKE is capable of solving both **static** (time-<u>in</u>dependent) and **
 
 These problems can be solved in a **user-specified tokamak geometry** that can include:
 
-| Feature | Purpose | Properties | 
-| ------ | ------ | ------ | 
-| Active poloidal field coils | Assigned currents | Location in $(R,Z)$-plane, 2D area $(dR,dZ)$,  |
-
-
-| active poloidal field coils | passive conducting structures | wall/limiter contours | magnetic diagnostic probes |
+| Tokamak feature | Purpose | Properties | Plot colour | 
 | ------ | ------ | ------ | ------ |
+| Active poloidal field coils | Can be assigned (voltage-driven) currents that maintain plasma shape and position. | Locations, sizes (areas), wirings (series/anti-series), polarities (+1 or -1), resistivities  (of coil materials), and number of windings. | Blue rectangles |
+| Passive conducting structures  | Can be assigned (induced eddy) currents that also impact plasma shape and position. | Locations, sizes, orientations (if available), and filaments (as passives can be refined if needed). | Dark grey parallelograms |
+| Wall and/or limiter contours  | Confines the plasma boundary (for computational purposes). | Locations. | Solid black line |
+| Magnetic diagnostic probes  | Can measure the poloidal flux (fluxloops) or the magnetic field strength (pickup coils) at specified locations. | Locations (for both) and orientations (for pickup coils). | Orange diamonds (fluxloops) and brown dots\lines (pickup coils) |
 
 Each problem is solved using **fourth-order accurate finite differences** and a **purpose-built Newton-Krylov method** for additional **stability and convergence** speed (over the Picard iterations used in FreeGS). For equilibria that have plasma current density profiles with steep edge gradients or sheet currents invoke an **adaptive mesh refinement** scheme on the plasma boundary for additional stability. 
 
@@ -37,7 +36,7 @@ Each problem is solved using **fourth-order accurate finite differences** and a 
   <img src="images/mastu_eq.png" alt="mastu_eq" width="350"><br><br>
 </div>
 
-Above we show an example of an equilibrium calculated using FreeGSNKE with a **MAST-U** machine description. 
+Above we show an example of an equilibrium calculated using FreeGSNKE with a **MAST-U** machine description. The contours represent the contours of constant poloidal flux and the different tokamak features are plotted in various colours (refer back to table above). 
 
 ## Getting started
 

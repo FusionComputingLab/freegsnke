@@ -13,7 +13,9 @@ Based on the well-established [FreeGS](https://github.com/bendudson/freegs) code
 > **_NOTE:_**  We recommended reading this page in its entirety before attempting to install or run FreeGSNKE!
 
 ## Capabilities
-FreeGSNKE is capable of solving both **static** (time-<u>in</u>dependent) and **evolutive** (time-dependent) **free-boundary equilibrium problems**. This includes:
+FreeGSNKE is capable of solving both **static** (time-<u>in</u>dependent) and **evolutive** (time-dependent) **free-boundary equilibrium problems**. For **fixed-boundary** problems we recommend using FreeGS.
+
+FreeGSNJE can solve:
 
 | Problem Type | Objective | Example use cases | 
 | --- | --- | --- |
@@ -36,7 +38,7 @@ Each problem is solved using **fourth-order accurate finite differences** and a 
   <img src="images/mastu_eq.png" alt="mastu_eq" width="350"><br><br>
 </div>
 
-Above we show an example of an equilibrium calculated using FreeGSNKE with a **MAST-U** machine description. The contours represent the contours of constant poloidal flux and the different tokamak features are plotted in various colours (refer back to table above). 
+Above we show an example of a static equilibrium calculated using FreeGSNKE's forward solver with a **MAST-U** machine description. The contours represent the contours of constant poloidal flux and the different tokamak features are plotted in various colours (refer back to table above). 
 
 ## Getting started
 

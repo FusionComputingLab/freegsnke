@@ -15,22 +15,22 @@ Based on the well-established [FreeGS](https://github.com/bendudson/freegs) code
 ## Capabilities
 FreeGSNKE is capable of solving both **static** (time-<u>in</u>dependent) and **evolutive** (time-dependent) **free-boundary equilibrium problems**. For **fixed-boundary** problems we recommend using FreeGS.
 
-FreeGSNJE can solve:
+FreeGSNKE can solve:
 
 | Problem Type | Objective | Example use cases | 
 | --- | --- | --- |
-| **Static forward**  (<u>new</u>!) | <u>Solve for the plasma equilibrium</u> using user-defined poloidal field coil currents, passive structure currents, and plasma current density profiles. | Plasma scenario design and shape control. Equilibrium library generation (for emulation). Initial condition generation for evolutive simulations. |
-| **Static inverse** | <u>Estimate poloidal field coil currents</u> using user-defined constraints (e.g. isoflux and X-point locations) and plasma current density profiles for a desired plasma equilibrium shape. | Plasma scenario design. Optimisation of poloidal field coil or magnetic probe locations. |
-| **Evolutive forward** (<u>new</u>!) | <u>Solve simultaneously for the plasma equilibrium, the poloidal field coil (and passive structure) currents, and the total plasma current over time from an initial equilibrium</u> using user-defined time-dependent poloidal field coil voltages and plasma current density profile parameters. | Full shot simulations. Vertical stability analysis. |
+| **Static forward** | **Solve for the plasma equilibrium** using user-defined poloidal field coil currents, passive structure currents, and plasma current density profiles. | Plasma scenario design and shape control. Equilibrium library generation (for emulation). Initial condition generation for evolutive simulations. |
+| **Static inverse** | **Estimate poloidal field coil currents** using user-defined constraints (e.g. isoflux and X-point locations) and plasma current density profiles for a desired plasma equilibrium shape. | Plasma scenario design. Optimisation of poloidal field coil or magnetic probe locations. |
+| **Evolutive forward** | **Solve simultaneously for the plasma equilibrium, the poloidal field coil (and passive structure) currents, and the total plasma current over time from an initial equilibrium** using user-defined time-dependent poloidal field coil voltages and plasma current density profile parameters. | Full shot simulations. Vertical stability analysis. |
 
 These problems can be solved in a **user-specified tokamak geometry** that can include:
 
-| Tokamak feature | Purpose | Properties | Plot colour | 
+| Tokamak feature | Purpose | Properties | Element in below image | 
 | ------ | ------ | ------ | ------ |
-| Active poloidal field coils | Can be assigned (voltage-driven) currents that maintain plasma shape and position. | Locations, sizes (areas), wirings (series/anti-series), polarities (+1 or -1), resistivities  (of coil materials), and number of windings. | Blue rectangles |
-| Passive conducting structures  | Can be assigned (induced eddy) currents that also impact plasma shape and position. | Locations, sizes, orientations (if available), and filaments (as passives can be refined if needed). | Dark grey parallelograms |
+| Active poloidal field coils | Can be assigned (voltage-driven) currents that influence plasma shape and position. | Locations, sizes (areas), wirings (series/anti-series), polarities (+1 or -1), resistivities (of coil materials), and number of windings. | Blue rectangles |
+| Passive conducting structures  | Can be assigned induced eddy currents that also impact plasma shape and position. In evolutive forward mode, these are solved self-consistently. | Locations, sizes, orientations (if available), and filaments (as passives can be refined if needed). | Dark grey parallelograms |
 | Wall and/or limiter contours  | Confines the plasma boundary (for computational purposes). | Locations. | Solid black line |
-| Magnetic diagnostic probes  | Can measure the poloidal flux (fluxloops) or the magnetic field strength (pickup coils) at specified locations. | Locations (for both) and orientations (for pickup coils). | Orange diamonds (fluxloops) and brown dots\lines (pickup coils) |
+| Magnetic diagnostic probes  | Can measure the poloidal flux (fluxloops) or the magnetic field strength (pickup coils) at specified locations. | Locations (for both) and orientations (for pickup coils). | Orange diamonds (fluxloops) and brown dots/lines (pickup coils) |
 
 Each problem is solved using **fourth-order accurate finite differences** and a **purpose-built Newton-Krylov method** for additional **stability and convergence** speed (over the Picard iterations used in FreeGS). For equilibria that have plasma current density profiles with steep edge gradients or sheet currents invoke an **adaptive mesh refinement** scheme on the plasma boundary for additional stability. 
 
@@ -72,7 +72,7 @@ The recommended way to install FreeGSNKE is to use a virtual environment such as
 2. `cd` into the FreeGSNKE directory.
 3. Install FreeGSNKE and its dependencies with `pip install ".[freegs4e]"`.
 
-The `freegs4e` in the last step installs [FreeGS4E](https://github.com/freegs4e/freegs4e) automatically (and is required for FreeGSNKE to run). 
+The `freegs4e` extra dependency in the last step installs [FreeGS4E](https://github.com/freegs4e/freegs4e) automatically (and is required for FreeGSNKE to run). 
 
 If you are planning to develop FreeGSNKE, see the below section on contributing
 code.
@@ -80,7 +80,7 @@ code.
 
 ## Contributing
 
-We welcome contributions including <u>bug fixes</u> or <u>new feature requests</u> for FreeGSNKE. To do this, the first step is to consider opening an issue on the project's homepage.
+We welcome contributions including bug fixes or new feature requests for FreeGSNKE. To do this, the first step is to consider opening an issue on the project's homepage.
 
 **If the issue is a bug**:
 - Make sure you're using the latest version of the code as the bug might have been squashed in later releases.
@@ -98,7 +98,7 @@ We welcome contributions including <u>bug fixes</u> or <u>new feature requests</
 
 ### How to contribute code
 
-To make code contributions, please do so via <u>merge request</u>.
+To make code contributions, please do so via merge request.
 
 In place of the final step in [installation](#installation), run `pip install -e
 ".[freegs4e,dev]"` from the FreeGSNKE root directory to install FreeGSNKE in editable mode, including the optional development dependencies.

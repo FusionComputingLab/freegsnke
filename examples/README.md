@@ -1,6 +1,6 @@
 # Examples
 
-These example Jupyter notebooks are intended to be the **first port of call for new users** trying to get up to speed with the basics of simulating Grad-Shafranov equilibria using FreeGSNKE.
+These example Jupyter notebooks are intended to be the **first port of call for new users** trying to get up to speed with the basics of simulating Grad-Shafranov equilibria using FreeGSNKE (the numberings represent increasing complexity!). 
 
 | Example notebook | Purpose | Who can use it? |
 | ------ | ------ | ------ | 

@@ -729,10 +729,10 @@ class NKGSsolver:
         while (rel_change_full > target_relative_tolerance) * (
             iterations < max_solving_iterations
         ):
-            
+
             log.append("-----")
-            log.append("Newton-Krylov iteration: " + str(iterations+1))
-                
+            log.append("Newton-Krylov iteration: " + str(iterations + 1))
+
             norm_delta = self.update_currents(constrain, eq, profiles)
             self.forward_solve(
                 eq,
@@ -757,7 +757,6 @@ class NKGSsolver:
 
             log = []
 
-
         if iterations >= max_solving_iterations:
             warnings.warn(
                 f"Inverse solve failed to converge to requested relative tolerance of "
@@ -765,7 +764,6 @@ class NKGSsolver:
                 + f"iterations. Last relative psi change: {rel_change_full}. "
                 + f"Last current change caused a relative update of tokamak_psi in the core of: {norm_delta}."
             )
-            
 
     def solve(
         self,
@@ -863,7 +861,7 @@ class NKGSsolver:
 
         # inverse solve
         else:
-            if picard == True: # uses picard iterations (from freegs4e)
+            if picard == True:  # uses picard iterations (from freegs4e)
                 freegs4e.solve(
                     eq,
                     profiles,
@@ -871,13 +869,9 @@ class NKGSsolver:
                     verbose,
                     rtol=target_relative_tolerance,
                     show=False,
-                    blend=blend
+                    blend=blend,
                 )
-            else: # uses Newton-Krylov iterations from freegsnke
+            else:  # uses Newton-Krylov iterations from freegsnke
                 self.inverse_solve(
-                    eq,
-                    profiles,
-                    target_relative_tolerance,
-                    constrain,
-                    verbose
+                    eq, profiles, target_relative_tolerance, constrain, verbose
                 )

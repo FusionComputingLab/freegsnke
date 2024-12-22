@@ -320,7 +320,7 @@ class nl_solver:
                 print(
                     "The linear growth rate of this equilibrium corresponds to a characteristic timescale of",
                     self.linearised_sol.instability_timescale,
-                    "s",
+                    "s.",
                 )
             else:
                 print(
@@ -335,9 +335,9 @@ class nl_solver:
         # note that this requires having found an instability
         if automatic_timestep_flag is False:
             print(
-                "The solver's timestep was set at",
+                "The solver's timestep has been set to",
                 self.dt_step,
-                " as explicitly requested. Please compare this with the linear growth rate and, if necessary, reset.",
+                "as explicitly requested. Please compare this with the linear growth rate and reset if necessary.",
             )
         else:
             if len(self.linearised_sol.growth_rates):
@@ -385,7 +385,7 @@ class nl_solver:
             indexes corresponding to True are kept, indexes corresponding to False are dropped
         """
         print(
-            "Mode removal is ON: the input min_dIy_dI corresponds to keeping",
+            "Mode removal is ON: the input 'min_dIy_dI' corresponds to keeping",
             np.sum(selected_modes_mask),
             "out of the original",
             self.n_metal_modes,
@@ -721,7 +721,7 @@ class nl_solver:
         if dIydI is None:
             if self.dIydI_ICs is None:
                 print(
-                    "I'm building the linearization wrt the currents. This may take a minute or two."
+                    "Linearising with respect to the currents - this may take a minute or two."
                 )
                 self.dIydI = np.zeros((self.plasma_domain_size, self.n_metal_modes + 1))
                 self.ddIyddI = np.zeros(self.n_metal_modes + 1)

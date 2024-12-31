@@ -873,9 +873,5 @@ class NKGSsolver:
                 )
             else:  # uses Newton-Krylov iterations from freegsnke
                 self.inverse_solve(
-                    eq, 
-                    profiles, 
-                    target_relative_tolerance, 
-                    constrain, 
-                    verbose
+                    eq, profiles, target_relative_tolerance, constrain, verbose
                 )

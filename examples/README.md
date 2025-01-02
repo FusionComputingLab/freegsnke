@@ -11,5 +11,6 @@ These example Jupyter notebooks are intended to be the **first port of call for 
 | Example 1d | Learn how to extract results from a calculated equilibrium. | Anyone |
 | Example 2 | Learn how to use the evolutive solver to simulate time-dependent equilibria in a MAST-U-like tokamak. | Anyone |
 | Example 3a/b | Simulate (static) MAST-U equilibria over an entire shot using inputs from EFIT++ (requires internal UKAEA MAST-U database). | UKAEA employees + collaborators |
+| Example 4a | Static inverse solve in a SPARC-like tokamak. | Anyone |
 
 If a new example has been created, please add a new line to the table explaining its purpose!

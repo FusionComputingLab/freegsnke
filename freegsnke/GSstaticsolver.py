@@ -259,9 +259,9 @@ class NKGSsolver:
         scaling_with_n=-1.0,
         target_relative_unexplained_residual=0.2,
         max_n_directions=16,
-        max_rel_update_size=0.2,
         clip=10,
         verbose=False,
+        max_rel_update_size=0.2,
     ):
         """The method that actually solves the forward GS problem.
 
@@ -559,6 +559,7 @@ class NKGSsolver:
         max_solving_iterations=20,
         max_iter_per_update=5,
         Picard_handover=0.1,
+        initial_Picard=False,
         step_size=2.5,
         scaling_with_n=-1.0,
         max_n_directions=16,
@@ -636,18 +637,16 @@ class NKGSsolver:
         self.control_coils = [self.control_coils[i] for i in control_mask]
         self.len_control_coils = len(self.control_coils)
 
-        log.append("-----")
-        log.append("Picard iteration: " + str(0))
-
+        if initial_Picard:
         # use freegs4e Picard solver for initial steps to a shallow tolerance
-        freegs4e.solve(
-            eq,
-            profiles,
-            constrain,
-            rtol=4e-2,
-            show=False,
-            blend=0.0,
-        )
+            freegs4e.solve(
+                eq,
+                profiles,
+                constrain,
+                rtol=4e-2,
+                show=False,
+                blend=0.0,
+            )
 
         iterations = 0
         rel_change_full = 1
@@ -657,7 +656,7 @@ class NKGSsolver:
         ):
 
             log.append("-----")
-            log.append("Newton-Krylov iteration: " + str(iterations + 1))
+            log.append("Newton-Krylov iteration: " + str(iterations))
 
             norm_delta = self.update_currents(constrain, eq, profiles)
             self.forward_solve(
@@ -697,15 +696,16 @@ class NKGSsolver:
         profiles,
         target_relative_tolerance,
         constrain=None,
-        max_solving_iterations=50,
+        max_solving_iterations=20,
+        max_iter_per_update=5,
         Picard_handover=0.1,
-        blend=0.0,
         step_size=2.5,
         scaling_with_n=-1.0,
-        target_relative_unexplained_residual=0.2,
+        target_relative_unexplained_residual=.2,
         max_n_directions=16,
         clip=10,
         verbose=False,
+        max_rel_update_size=0.2,
         forward_tolerance_increase=5,
         picard=True,
     ):
@@ -768,36 +768,35 @@ class NKGSsolver:
         # forward solve
         if constrain is None:
             self.forward_solve(
-                eq,
-                profiles,
-                target_relative_tolerance,
-                max_solving_iterations,
-                Picard_handover,
-                step_size,
-                scaling_with_n,
-                target_relative_unexplained_residual,
-                max_n_directions,
-                # max_Arnoldi_iterations,
-                # max_collinearity,
-                clip,
-                # threshold,
-                # clip_hard,
-                verbose,
+                eq=eq,
+                profiles=profiles,
+                target_relative_tolerance=target_relative_tolerance,
+                max_solving_iterations=max_solving_iterations,
+                Picard_handover=Picard_handover,
+                step_size=step_size,
+                scaling_with_n=scaling_with_n,
+                target_relative_unexplained_residual=target_relative_unexplained_residual,
+                max_n_directions=max_n_directions,
+                clip=clip,
+                verbose=verbose,
+                max_rel_update_size=max_rel_update_size
             )
-
-        # inverse solve
+        
         else:
-            if picard == True:  # uses picard iterations (from freegs4e)
-                freegs4e.solve(
-                    eq,
-                    profiles,
-                    constrain,
-                    verbose,
-                    rtol=target_relative_tolerance,
-                    show=False,
-                    blend=blend,
-                )
-            else:  # uses Newton-Krylov iterations from freegsnke
-                self.inverse_solve(
-                    eq, profiles, target_relative_tolerance, constrain, verbose
-                )
+            self.inverse_solve(
+                eq=eq,
+                profiles=profiles,
+                target_relative_tolerance=target_relative_tolerance,
+                constrain=constrain,
+                max_solving_iterations=max_solving_iterations,
+                max_iter_per_update=max_iter_per_update,
+                Picard_handover=Picard_handover,
+                step_size=step_size,
+                scaling_with_n=scaling_with_n,
+                target_relative_unexplained_residual=target_relative_unexplained_residual,
+                max_n_directions=max_n_directions,
+                clip=clip,
+                verbose=verbose,
+                max_rel_update_size=max_rel_update_size,
+                forward_tolerance_increase=5
+            )

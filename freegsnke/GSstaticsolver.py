@@ -1,3 +1,14 @@
+"""
+Applies the Newton Krylov solver Object to the static GS problem.
+Implements both forward and inverse GS solvers.
+
+Copyright 2024 Nicola C. Amorisco, George K. Holt, Kamran Pentland, Adriano Agnello, Alasdair Ross, Matthijs Mars.
+
+FreeGSNKE is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
+"""
+
 import warnings
 from copy import deepcopy
 
@@ -17,9 +28,9 @@ class NKGSsolver:
     class nk_solver.
 
     The solution domain is set at instantiation time, through the
-    input FreeGS4E equilibrium object.
+    input FreeGSNKE equilibrium object.
 
-    The non-linear solver itself is called using the 'solve' method.
+    The non-linear solvers are called using the 'forward_solve', 'inverse_solve' or generic 'solve' methods.
     """
 
     def __init__(self, eq):
@@ -31,7 +42,7 @@ class NKGSsolver:
 
         Parameters
         ----------
-        eq : a freegs4e equilibrium object.
+        eq : a FreeGSNKE equilibrium object.
              The domain grid defined by (eq.R, eq.Z) is the solution domain
              adopted for the GS problems. Calls to the nonlinear solver will
              use the grid domain set at instantiation time. Re-instantiation
@@ -104,11 +115,7 @@ class NKGSsolver:
         # RHS/Jtor
         self.rhs_before_jtor = -freegs4e.gradshafranov.mu0 * eq.R
 
-        self.angle_shift = np.linspace(0, 1, 4)
-        self.twopi = np.pi * 2
-        # self.shifts_uncoupled = np.array([[-1,0],[0,1],[1,0],[0,-1]])
-
-    def freeboundary(self, plasma_psi, tokamak_psi, profiles):  # , rel_psi_error):
+    def freeboundary(self, plasma_psi, tokamak_psi, profiles):  
         """Imposes boundary conditions on set of boundary points.
 
         Parameters
@@ -118,12 +125,12 @@ class NKGSsolver:
         tokamak_psi : np.array of size eq.nx*eq.ny
             magnetic flux due to the tokamak alone, including all metal currents,
             in both active coils and passive structures
-        profiles : freegs4e profile object
-            profile object describing target plasma properties,
-            used to calculate current density jtor
+        profiles : FreeGSNKE profile object
+            profile object describing target plasma properties.
+            Used to calculate current density jtor
         """
 
-        # tokamak_psi is psi from the currents assigned to the tokamak coils in eq, ie.
+        # tokamak_psi is the psi contribution due to the currents assigned to the tokamak coils in eq, ie.
         # tokamak_psi = eq.tokamak.calcPsiFromGreens(pgreen=eq._pgreen)
 
         # jtor and RHS given tokamak_psi above and the input plasma_psi
@@ -131,11 +138,10 @@ class NKGSsolver:
             self.R,
             self.Z,
             (tokamak_psi + plasma_psi).reshape(self.nx, self.ny),
-            # rel_psi_error=rel_psi_error,
         )
         self.rhs = self.rhs_before_jtor * self.jtor
 
-        # calculates and assignes boundary conditions
+        # calculates and imposes the boundary conditions
         self.psi_boundary = np.zeros_like(self.R)
         psi_bnd = np.sum(self.greenfunc * self.jtor[np.newaxis, :, :], axis=(-1, -2))
 
@@ -151,8 +157,8 @@ class NKGSsolver:
         self.rhs[-1, :] = self.psi_boundary[-1, :]
         self.rhs[:, -1] = self.psi_boundary[:, -1]
 
-    def F_function(self, plasma_psi, tokamak_psi, profiles):  # , rel_psi_error=0):
-        """Nonlinear Grad Shafranov equation written as a root problem
+    def F_function(self, plasma_psi, tokamak_psi, profiles): 
+        """Residual of the nonlinear Grad Shafranov equation written as a root problem
         F(plasma_psi) \equiv [\delta* - J](plasma_psi)
         The plasma_psi that solves the Grad Shafranov problem satisfies
         F(plasma_psi) = [\delta* - J](plasma_psi) = 0
@@ -175,20 +181,21 @@ class NKGSsolver:
             residual of the GS equation
         """
 
-        self.freeboundary(plasma_psi, tokamak_psi, profiles)  # , rel_psi_error)
+        self.freeboundary(plasma_psi, tokamak_psi, profiles)
         residual = plasma_psi - (
             self.linear_GS_solver(self.psi_boundary, self.rhs)
         ).reshape(-1)
         return residual
 
     def port_critical(self, eq, profiles):
-        """Transfers critical points info from profile to eq after GS solution or Jtor calculation
+        """Transfers critical points info from profile to equilibrium object 
+        after GS solution.
 
         Parameters
         ----------
-        eq : freegs4e equilibrium object
+        eq : FreeGSNKE equilibrium object
             Equilibrium on which to record values
-        profiles : freegs4e profile object
+        profiles : FreeGSNKE profile object
             Profiles object which has been used to calculate Jtor.
         """
         eq.solved = True
@@ -205,117 +212,38 @@ class NKGSsolver:
 
         eq.tokamak_psi = self.tokamak_psi.reshape(self.nx, self.ny)
 
-    def calculate_explore_metric(self, trial_plasma_psi, profiles):
-        """Calculates the F_function residual and normalizes
-        to a 0d value for initial plasma_psi exploration
-
-        Parameters
-        ----------
-        plasma_psi : np.array of size eq.nx*eq.ny
-            magnetic flux due to the plasma
-        profiles : freegs4e profile object
-            profile object describing target plasma properties,
-            used to calculate current density jtor
-
-        """
-
-        res0 = self.F_function(trial_plasma_psi, self.tokamak_psi, profiles)
-        metric, res0 = self.explore_metric(res0, trial_plasma_psi)
-        plt.imshow(trial_plasma_psi.reshape(self.nx, self.ny))
-        plt.colorbar()
-        plt.title("metric = " + str(metric))
-        plt.show()
-        return metric, res0
-
-    def explore_metric(self, res0, trial_plasma_psi):
-        """Calculates the F_function residual and normalizes
-        to a 0d value for initial plasma_psi exploration
-
-        Parameters
-        ----------
-        plasma_psi : np.array of size eq.nx*eq.ny
-            magnetic flux due to the plasma
-        profiles : freegs4e profile object
-            profile object describing target plasma properties,
-            used to calculate current density jtor
-
-        """
-
-        metric = np.linalg.norm(res0) / np.linalg.norm(trial_plasma_psi)
-        # if Jsize_coeff != None:
-        #     metric -= Jsize_coeff*np.sum(profiles.jtor>0)/np.sum(profiles.mask_inside_limiter)
-        return metric, res0
-
-    def psi_explore(
-        self,
-        reference_trial_psi,
-        reference_trial_pars,
-        profiles,
-        std_shifts,
-        ref_res0=None,
-        successf_shift=None,
-    ):
-        """Can perform an initial exploration of the space of gaussian plasma_psis, to find
-        a better initial guess to start the actual solver on. Exploration
-        includes the plasma_psi 'centre', normalization and exponential degree.
-
-        Parameters
-        ----------
-        reference_trial_psi : np.array of size 4
-            current values for [xc, yc, norm, exp]
-        profiles : freegs4e profile object
-            profile object describing target plasma properties,
-            used to calculate current density jtor
-        std_shifts : np.array of size 4
-            standard dev on steps for [xc, yc, norm, exp]
-        ref_res0 : np.array of size eq.nx*eq.ny
-            result of F_function on reference_trial_psi, by default None
-        successf_shift : np.array of size 4
-            previous succesful step values for [xc, yc, norm, exp]
-
-
-        """
-        if ref_res0 is None:
-            ref_metric, ref_res0 = self.calculate_explore_metric(
-                reference_trial_psi, profiles
-            )
-        else:
-            ref_metric, ref_res0 = self.explore_metric(ref_res0, reference_trial_psi)
-
-        if successf_shift is not None:
-            shift = 1.0 * successf_shift
-        else:
-            shift = np.random.randn(4) * std_shifts
-
-        try:
-            self.trial_plasma_pars = reference_trial_pars + shift
-            if self.trial_plasma_pars[0] > 1:
-                self.trial_plasma_pars = 1
-            self.trial_plasma_psi = self.eq.create_psi_plasma_default(
-                gpars=self.trial_plasma_pars
-            ).reshape(-1)
-
-            metric, res0 = self.calculate_explore_metric(
-                self.trial_plasma_psi, profiles
-            )
-            print("metrics", metric, ref_metric)
-            if metric < ref_metric:
-                return (
-                    self.trial_plasma_psi,
-                    self.trial_plasma_pars,
-                    metric,
-                    res0,
-                    shift,
-                )
-        except:
-            pass
-
-        return reference_trial_psi, reference_trial_pars, ref_metric, ref_res0, None
-
     def relative_norm_residual(self, res, psi):
+        """Calculates a normalised relative residual, based on linalg.norm
+
+        Parameters
+        ----------
+        res : ndarray
+            Residual
+        psi : ndarray
+            plasma_psi
+
+        Returns
+        -------
+        float
+            Relative normalised residual
+        """
         return np.linalg.norm(res) / np.linalg.norm(psi)
 
     def relative_del_residual(self, res, psi):
+        """Calculates a normalised relative residual, based on the norm max(.) - min(.)
+
+        Parameters
+        ----------
+        res : ndarray
+            Residual
+        psi : ndarray
+            plasma_psi
+
+        Returns
+        -------
+        float, float
+            Relative normalised residual, norm(plasma_psi)
+        """
         del_psi = np.amax(psi) - np.amin(psi)
         del_res = np.amax(res) - np.amin(res)
         return del_res / del_psi, del_psi
@@ -331,13 +259,13 @@ class NKGSsolver:
         scaling_with_n=-1.0,
         target_relative_unexplained_residual=0.2,
         max_n_directions=16,
+        max_rel_update_size=0.2,
         clip=10,
         verbose=False,
-        max_rel_update_size=0.2,
     ):
         """The method that actually solves the forward GS problem.
 
-        A forward problem is specified by the 2 freegs4e objects eq and profiles.
+        A forward problem is specified by the 2 FreeGSNKE objects eq and profiles.
         The first specifies the metal currents (throught eq.tokamak)
         and the second specifies the desired plasma properties
         (i.e. plasma current and profile functions).
@@ -347,40 +275,38 @@ class NKGSsolver:
 
         Parameters
         ----------
-        eq : freegs4e equilibrium object
+        eq : FreeGSNKE equilibrium object
             Used to extract the assigned metal currents, which in turn are
             used to calculate the according self.tokamak_psi
-        profiles : freegs4e profile object
+        profiles : FreeGSNKE profile object
             Specifies the target properties of the plasma.
             These are used to calculate Jtor(psi)
         target_relative_tolerance : float
             NK iterations are interrupted when this criterion is
-            satisfied. Relative convergence
+            satisfied. Relative convergence for the residual F(plasma_psi)
         max_solving_iterations : int
             NK iterations are interrupted when this limit is surpassed
         Picard_handover : float
             Value of relative tolerance above which a Picard iteration
-            is performed instead of a full NK call
+            is performed instead of a NK call
         step_size : float
-            l2 norm of proposed step
+            l2 norm of proposed step, in units of the size of the residual R0
         scaling_with_n : float
-            allows to further scale dx candidate steps by factor
+            allows to further scale the proposed steps as a function of the 
+            number of previous steps already attempted
             (1 + self.n_it)**scaling_with_n
         target_relative_explained_residual : float between 0 and 1
-            terminates iteration when exploration can explain this
-            fraction of the initial residual R0
+            terminates internal iterations when the considered directions 
+            can (linearly) explain such a fraction of the initial residual R0
         max_n_directions : int
             terminates iteration even though condition on
             explained residual is not met
-        max_Arnoldi_iterations : int
-            terminates iteration after attempting to explore
-            this number of directions
-        max_collinearity : float between 0 and 1
-            rejects a candidate direction if resulting residual
-            is collinear to any of those stored previously
+        max_rel_update_size : float
+            maximum relative update, in norm, to plasma_psi. If larger than this,
+            the norm of the update is reduced
         clip : float
-            maximum step size for each explored direction, in units
-            of exploratory step dx_i
+            maximum size of the update due to each explored direction, in units
+            of exploratory step used to calculate the finite difference derivative
         verbose : bool
             flag to allow warning messages when Picard is used instead of NK
 

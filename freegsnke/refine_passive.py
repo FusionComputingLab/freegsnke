@@ -38,12 +38,6 @@ def generate_refinement_LH(R, Z, n_refine):
     area, path, vmin, vmax, dv, meanR, meanZ = find_area(R, Z, n_refine)
     Len = np.linalg.norm(dv)
 
-    # if n_refine is None:
-    #     n_refine = int(max(
-    #                             1, area * min_refine_per_area,
-    #                                Len * min_refine_per_lenght)
-    #                         )
-
     rand_fil = np.zeros((0, 2))
     it = 0
     while len(rand_fil) < n_refine and it < 100:
@@ -75,11 +69,6 @@ def generate_refinement_G(R, Z, n_refine):
     """
 
     area, path, vmin, vmax, dv, meanR, meanZ = find_area(R, Z, n_refine)
-
-    # if n_refine is None:
-    #     n_refine = max(
-    #         1, int(area / min_refine_per_area), np.max(dv / min_refine_per_lenght)
-    #     )
 
     dl = (area / n_refine) ** 0.5
     nx = int(dv[0] // dl)

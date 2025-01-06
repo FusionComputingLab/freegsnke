@@ -1,3 +1,13 @@
+"""
+Defines the FreeGSNKE equilibrium Object, which inherits from the FreeGS equilibrium object. 
+
+Copyright 2024 Nicola C. Amorisco, George K. Holt, Kamran Pentland, Adriano Agnello, Alasdair Ross, Matthijs Mars.
+
+FreeGSNKE is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
+"""
+
 import os
 import pickle
 

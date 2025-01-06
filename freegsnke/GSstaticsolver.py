@@ -798,5 +798,5 @@ class NKGSsolver:
                 clip=clip,
                 verbose=verbose,
                 max_rel_update_size=max_rel_update_size,
-                forward_tolerance_increase=5,
+                forward_tolerance_increase=forward_tolerance_increase,
             )

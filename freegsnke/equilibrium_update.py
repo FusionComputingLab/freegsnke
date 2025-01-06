@@ -44,7 +44,7 @@ class Equilibrium(freegs4e.equilibrium.Equilibrium):
 
         # set up for limiter functionality
         self.limiter_handler = limiter_func.Limiter_handler(self, self.tokamak.limiter)
-        self.mask_inside_limiter = 1.0*self.limiter_handler.mask_inside_limiter
+        self.mask_inside_limiter = 1.0 * self.limiter_handler.mask_inside_limiter
         # the factor 2 is needed by critical routines
         self.mask_outside_limiter = 2 * np.logical_not(self.mask_inside_limiter).astype(
             float
@@ -191,7 +191,9 @@ class Equilibrium(freegs4e.equilibrium.Equilibrium):
             > 1e-5
         )
         if check:
-            print("Dicrepancy between psi_func and plasma_psi detected. psi_func has been re-set.")
+            print(
+                "Dicrepancy between psi_func and plasma_psi detected. psi_func has been re-set."
+            )
             # redefine interpolating function
             self.psi_func_interp = interpolate.RectBivariateSpline(
                 self.R[:, 0], self.Z[0, :], self.plasma_psi

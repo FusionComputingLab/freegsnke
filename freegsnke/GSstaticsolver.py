@@ -115,7 +115,7 @@ class NKGSsolver:
         # RHS/Jtor
         self.rhs_before_jtor = -freegs4e.gradshafranov.mu0 * eq.R
 
-    def freeboundary(self, plasma_psi, tokamak_psi, profiles):  
+    def freeboundary(self, plasma_psi, tokamak_psi, profiles):
         """Imposes boundary conditions on set of boundary points.
 
         Parameters
@@ -157,7 +157,7 @@ class NKGSsolver:
         self.rhs[-1, :] = self.psi_boundary[-1, :]
         self.rhs[:, -1] = self.psi_boundary[:, -1]
 
-    def F_function(self, plasma_psi, tokamak_psi, profiles): 
+    def F_function(self, plasma_psi, tokamak_psi, profiles):
         """Residual of the nonlinear Grad Shafranov equation written as a root problem
         F(plasma_psi) \equiv [\delta* - J](plasma_psi)
         The plasma_psi that solves the Grad Shafranov problem satisfies
@@ -188,7 +188,7 @@ class NKGSsolver:
         return residual
 
     def port_critical(self, eq, profiles):
-        """Transfers critical points info from profile to equilibrium object 
+        """Transfers critical points info from profile to equilibrium object
         after GS solution.
 
         Parameters
@@ -292,11 +292,11 @@ class NKGSsolver:
         step_size : float
             l2 norm of proposed step, in units of the size of the residual R0
         scaling_with_n : float
-            allows to further scale the proposed steps as a function of the 
+            allows to further scale the proposed steps as a function of the
             number of previous steps already attempted
             (1 + self.n_it)**scaling_with_n
         target_relative_explained_residual : float between 0 and 1
-            terminates internal iterations when the considered directions 
+            terminates internal iterations when the considered directions
             can (linearly) explain such a fraction of the initial residual R0
         max_n_directions : int
             terminates iteration even though condition on
@@ -638,7 +638,7 @@ class NKGSsolver:
         self.len_control_coils = len(self.control_coils)
 
         if initial_Picard:
-        # use freegs4e Picard solver for initial steps to a shallow tolerance
+            # use freegs4e Picard solver for initial steps to a shallow tolerance
             freegs4e.solve(
                 eq,
                 profiles,
@@ -701,7 +701,7 @@ class NKGSsolver:
         Picard_handover=0.1,
         step_size=2.5,
         scaling_with_n=-1.0,
-        target_relative_unexplained_residual=.2,
+        target_relative_unexplained_residual=0.2,
         max_n_directions=16,
         clip=10,
         verbose=False,
@@ -779,9 +779,9 @@ class NKGSsolver:
                 max_n_directions=max_n_directions,
                 clip=clip,
                 verbose=verbose,
-                max_rel_update_size=max_rel_update_size
+                max_rel_update_size=max_rel_update_size,
             )
-        
+
         else:
             self.inverse_solve(
                 eq=eq,
@@ -798,5 +798,5 @@ class NKGSsolver:
                 clip=clip,
                 verbose=verbose,
                 max_rel_update_size=max_rel_update_size,
-                forward_tolerance_increase=5
+                forward_tolerance_increase=5,
             )

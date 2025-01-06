@@ -31,8 +31,8 @@ class metal_currents:
         coil_self_ind=None,
         verbose=True,
     ):
-        """Sets up framework to solve the dynamical evolution of all metal currents. 
-        Can be used by itself to solve metal circuit equations for vacuum shots, 
+        """Sets up framework to solve the dynamical evolution of all metal currents.
+        Can be used by itself to solve metal circuit equations for vacuum shots,
         i.e. when in the absence of the plasma.
 
         Parameters
@@ -53,7 +53,7 @@ class metal_currents:
             Maximum value of the 'internal' timestep for implicit euler solver. Defaults to .0001.
             The 'internal' timestep is the one actually used by the solver.
         full_timestep : float
-            Timestep by which the equations are advanced. If full_timestep>max_internal_timestep 
+            Timestep by which the equations are advanced. If full_timestep>max_internal_timestep
             multiple 'internal' steps are executed. Defaults to .0001.
         coil_resist : np.array
             1d array of resistance values for all conducting elements in the machine,
@@ -149,9 +149,9 @@ class metal_currents:
 
         self.selected_modes_mask = selected_modes_mask
         self.n_independent_vars = np.sum(self.selected_modes_mask)
-        
+
         # Pmatrix is the full matrix that changes the basis in the current space
-        # from the normal modes Id (for diagonal) to the metal currents I: 
+        # from the normal modes Id (for diagonal) to the metal currents I:
         # I = Pmatrix Id
         # And also
         # Id = Pmatrix^T I
@@ -159,7 +159,7 @@ class metal_currents:
         self.P = (self.normal_modes.Pmatrix)[:, selected_modes_mask]
         self.Pm1 = (self.P).T
 
-        # Note Lambda is not actually diagonal because the passive structures has been 
+        # Note Lambda is not actually diagonal because the passive structures has been
         # diagonalised separately from the active coils. The modes of used for the passive structures
         # diagonalise the isolated dynamics of the walls.
         # Equation is Lambda**(-1)Iddot + I = F
@@ -220,7 +220,7 @@ class metal_currents:
             Maximum value of the 'internal' timestep for implicit euler solver. Defaults to .0001.
             The 'internal' timestep is the one actually used by the solver.
         full_timestep : float
-            Timestep by which the equations are advanced. If full_timestep>max_internal_timestep 
+            Timestep by which the equations are advanced. If full_timestep>max_internal_timestep
             multiple 'internal' steps are executed. Defaults to .0001.
         """
         control = self.max_internal_timestep != max_internal_timestep
@@ -406,7 +406,7 @@ class metal_currents:
 
         Parameters
         ----------
-        green_f : function 
+        green_f : function
             with same structure as Greens, i.e. Greens(R1,Z1, R2,Z2)
 
         Returns

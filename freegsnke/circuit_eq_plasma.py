@@ -33,7 +33,7 @@ class plasma_current:
         Rm1 : np.ndarray
             The diagonal matrix of all metal vessel resistances to the power of -1 ($R^{-1}$).
         P : np.ndarray
-            Matrix used to change basis from normal mode currents to vessel metal currents. 
+            Matrix used to change basis from normal mode currents to vessel metal currents.
         plasma_resistance_1d : np.ndarray
             Vector of plasma resistance values for all grid points in the reduced plasma domain.
             plasma_resistance_1d = 2pi resistivity R/dA for all plasma_pts

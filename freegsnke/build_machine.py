@@ -60,7 +60,7 @@ if "Solenoid" not in active_coils:
 
 
 def tokamak(refine_mode="G", group_filaments=True):
-    """Builds the Machine object using the provided geometry info. 
+    """Builds the Machine object using the provided geometry info.
     Using MultiCoil to represent coils with different locations for each strand.
     Passive structures are handled by the dedicated object.
 
@@ -252,7 +252,6 @@ def tokamak(refine_mode="G", group_filaments=True):
             coils_dict[coil_name]["resistivity"] = coil["resistivity"] / (
                 coil["dR"] * coil["dZ"]
             )
-
 
     # Add walls
     r_wall = [entry["R"] for entry in wall]

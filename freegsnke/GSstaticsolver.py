@@ -401,17 +401,17 @@ class NKGSsolver:
             try:
                 res0 = self.F_function(trial_plasma_psi, self.tokamak_psi, profiles)
                 control_trial_psi = True
-                log.append("first residual found ")
+                log.append("Initial guess for plasma_psi successful, residual found.")
                 # jmap = 1.0 * (profiles.jtor > 0)
             except:
                 trial_plasma_psi /= 0.8
                 n_up += 1
-                log.append("residual failed, try /.8")
+                log.append("Initial guess for plasma_psi failed, trying to scale...")
         # this is in case the above did not work
         # then use standard initialization
         # and grow peak until core mask exists
         if control_trial_psi is False:
-            log.append("Default plasma_psi initialization and adjustment invoked")
+            log.append("Default plasma_psi initialisation and adjustment invoked.")
             eq.plasma_psi = trial_plasma_psi = eq.create_psi_plasma_default(
                 adaptive_centre=True
             )
@@ -426,7 +426,7 @@ class NKGSsolver:
         rel_change, del_psi = self.relative_del_residual(res0, trial_plasma_psi)
         self.relative_change = 1.0 * rel_change
         self.norm_rel_change = [norm_rel_change]
-        log.append("del_psi " + str(del_psi))
+        # log.append("del_psi " + str(del_psi))
 
         args = [self.tokamak_psi, profiles]  # , rel_change]
 
@@ -443,7 +443,8 @@ class NKGSsolver:
         ):
 
             if rel_change > Picard_handover:  # or forcing_Picard:
-                log.append("Picard iteration " + str(iterations))
+                log.append("-----")
+                log.append("Picard iteration: " + str(iterations))
                 # using Picard instead of NK
 
                 if picard_flag < 3:
@@ -460,7 +461,8 @@ class NKGSsolver:
 
             else:
                 # print('NK update')
-                log.append("NK iteration " + str(iterations))
+                log.append("-----")
+                log.append("Newton-Krylov iteration: " + str(iterations))
                 picard_flag = False
                 self.nksolver.Arnoldi_iteration(
                     x0=trial_plasma_psi.copy(),  # trial_current expansion point
@@ -481,8 +483,7 @@ class NKGSsolver:
 
             del_update = np.amax(update) - np.amin(update)
             if del_update / del_psi > max_rel_update_size:
-                # print("update > max_rel_update_size. Reduced.")
-                log.append("update > max_rel_update_size. Reduced.")
+                # log.append("update > max_rel_update_size. Reduced.")
                 update *= np.abs(max_rel_update_size * del_psi / del_update)
 
             new_residual_flag = True
@@ -506,7 +507,7 @@ class NKGSsolver:
 
                 except:
                     log.append(
-                        "Trigger update reduction due to failure to find an Xpoint, try *.75"
+                        "Trigger update reduction due to failure to find an X-point, trying *0.75."
                     )
                     update *= 0.75
 
@@ -519,7 +520,7 @@ class NKGSsolver:
                     res0 = 1.0 * new_res0
                     if (residual_collinearity > 0.9) and (picard_flag is False):
                         log.append(
-                            "New starting_direction used due to collinear residuals"
+                            "New starting_direction used due to collinear residuals."
                         )
                         # print('residual_collinearity', residual_collinearity)
                         # forcing_Picard = True
@@ -568,7 +569,7 @@ class NKGSsolver:
             self.relative_change = 1.0 * rel_change
             self.norm_rel_change.append(norm_rel_change)
             # args[2] = 1.0*rel_change
-            log.append("rel_change " + str(rel_change))
+            log.append("...relative error =  " + str(rel_change))
 
             if verbose:
                 for x in log:
@@ -583,14 +584,14 @@ class NKGSsolver:
 
         self.port_critical(eq=eq, profiles=profiles)
 
-        if picard_flag and verbose:
-            print("Picard was used instead of NK in at least 1 cycle.")
+        # if picard_flag and verbose:
+        #     print("Picard was used instead of NK in at least 1 cycle.")
 
         if iterations >= max_solving_iterations:
             warnings.warn(
-                f"Forward solve failed to converge to the requested relative tolerance of "
-                + f"{target_relative_tolerance} with less than {max_solving_iterations}"
-                + f"iterations. Last relative psi change: {rel_change}"
+                f"Forward solve failed to converge to requested relative tolerance of "
+                + f"{target_relative_tolerance} with less than {max_solving_iterations} "
+                + f"iterations. Last relative psi change: {rel_change}."
             )
 
     def get_currents(self, eq):
@@ -618,7 +619,7 @@ class NKGSsolver:
             )
         else:
             norm_delta = 1
-        print("norm_delta", norm_delta)
+        # print("norm_delta", norm_delta)
 
         return norm_delta
 
@@ -628,6 +629,7 @@ class NKGSsolver:
         profiles,
         target_relative_tolerance,
         constrain,
+        verbose=False,
         max_solving_iterations=20,
         max_iter_per_update=5,
         Picard_handover=0.1,
@@ -635,7 +637,6 @@ class NKGSsolver:
         scaling_with_n=-1.0,
         max_n_directions=16,
         clip=10,
-        verbose=False,
         max_rel_update_size=0.2,
         forward_tolerance_increase=5,
     ):
@@ -665,6 +666,8 @@ class NKGSsolver:
             NK iterations are interrupted when this criterion is
             satisfied. Relative convergence
         constrain : freegs4e constrain object
+        verbose : bool
+            flag to allow warning messages when Picard is used instead of NK
         max_solving_iterations : int
             NK iterations are interrupted when this limit is surpassed
         Picard_handover : float
@@ -695,10 +698,10 @@ class NKGSsolver:
             are requested to converge to a tolerance that is tighter by a factor
             forward_tolerance_increase with respect to the change in flux caused
             by the current updates over the plasma core
-        verbose : bool
-            flag to allow warning messages when Picard is used instead of NK
 
         """
+
+        log = []
 
         self.control_coils = list(eq.tokamak.getCurrents().keys())
         control_mask = np.arange(len(self.control_coils))[
@@ -706,6 +709,9 @@ class NKGSsolver:
         ]
         self.control_coils = [self.control_coils[i] for i in control_mask]
         self.len_control_coils = len(self.control_coils)
+
+        log.append("-----")
+        log.append("Picard iteration: " + str(0))
 
         # use freegs4e Picard solver for initial steps to a shallow tolerance
         freegs4e.solve(
@@ -723,6 +729,10 @@ class NKGSsolver:
         while (rel_change_full > target_relative_tolerance) * (
             iterations < max_solving_iterations
         ):
+
+            log.append("-----")
+            log.append("Newton-Krylov iteration: " + str(iterations + 1))
+
             norm_delta = self.update_currents(constrain, eq, profiles)
             self.forward_solve(
                 eq,
@@ -734,18 +744,25 @@ class NKGSsolver:
                 scaling_with_n=-scaling_with_n,
                 max_n_directions=max_n_directions,
                 clip=clip,
-                verbose=verbose,
+                verbose=False,
                 max_rel_update_size=max_rel_update_size,
             )
             rel_change_full = 1.0 * self.relative_change
             iterations += 1
+            log.append("...relative error =  " + str(rel_change_full))
+
+            if verbose:
+                for x in log:
+                    print(x)
+
+            log = []
 
         if iterations >= max_solving_iterations:
             warnings.warn(
-                f"Inverse solve failed to converge to the requested relative tolerance of "
-                + f"{target_relative_tolerance} with less than {max_solving_iterations}"
-                + f"iterations. Last relative psi change: {rel_change_full}"
-                + f"Last current change caused a relative update of tokamak_psi in the core of: {norm_delta}"
+                f"Inverse solve failed to converge to requested relative tolerance of "
+                + f"{target_relative_tolerance} with less than {max_solving_iterations} "
+                + f"iterations. Last relative psi change: {rel_change_full}. "
+                + f"Last current change caused a relative update of tokamak_psi in the core of: {norm_delta}."
             )
 
     def solve(
@@ -764,6 +781,7 @@ class NKGSsolver:
         clip=10,
         verbose=False,
         forward_tolerance_increase=5,
+        picard=True,
     ):
         """The method to solve the GS problems, both forward and inverse.
             - an inverse solve is specified by the 'constrain' input,
@@ -817,9 +835,11 @@ class NKGSsolver:
             by the current updates over the plasma core
         verbose : bool
             flag to allow warning message in case of failed convergence within requested max_solving_iterations
-
+        picard : bool
+            flag to choose whether inverse solver uses Picard or Newton-Krylov iterations
         """
 
+        # forward solve
         if constrain is None:
             self.forward_solve(
                 eq,
@@ -839,12 +859,19 @@ class NKGSsolver:
                 verbose,
             )
 
+        # inverse solve
         else:
-            freegs4e.solve(
-                eq,
-                profiles,
-                constrain,
-                rtol=target_relative_tolerance,
-                show=False,
-                blend=blend,
-            )
+            if picard == True:  # uses picard iterations (from freegs4e)
+                freegs4e.solve(
+                    eq,
+                    profiles,
+                    constrain,
+                    verbose,
+                    rtol=target_relative_tolerance,
+                    show=False,
+                    blend=blend,
+                )
+            else:  # uses Newton-Krylov iterations from freegsnke
+                self.inverse_solve(
+                    eq, profiles, target_relative_tolerance, constrain, verbose
+                )

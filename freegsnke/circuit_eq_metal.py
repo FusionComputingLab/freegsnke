@@ -115,11 +115,11 @@ class metal_currents:
         self.n_independent_vars = np.sum(self.selected_modes_mask)
         if self.verbose:
             print(
-                "Input max_mode_frequency corresponds to ",
+                "Input 'max_mode_frequency' corresponds to",
                 self.n_independent_vars - self.n_active_coils,
-                " independent vessel normal modes in addition to the ",
+                "independent passive structure normal modes (in addition to the",
                 self.n_active_coils,
-                " active coils.",
+                "active coils).",
             )
 
     def initialize_for_eig(self, selected_modes_mask):

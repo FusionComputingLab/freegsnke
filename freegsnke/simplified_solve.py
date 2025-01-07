@@ -1,7 +1,7 @@
 import numpy as np
 
 from . import machine_config
-from .implicit_euler import implicit_euler_solver, implicit_euler_solver_d
+from .implicit_euler import implicit_euler_solver
 
 
 class simplified_solver_J1:

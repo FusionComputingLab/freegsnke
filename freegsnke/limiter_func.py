@@ -1,3 +1,13 @@
+"""
+Defines the functionality related to the implementation of the limiter in FreeGSNKE. 
+
+Copyright 2024 Nicola C. Amorisco, George K. Holt, Kamran Pentland, Adriano Agnello, Alasdair Ross, Matthijs Mars.
+
+FreeGSNKE is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
+"""
+
 import numpy as np
 from matplotlib.path import Path
 
@@ -5,13 +15,13 @@ from matplotlib.path import Path
 class Limiter_handler:
 
     def __init__(self, eq, limiter):
-        """Object to handle additional calculations due to the addition of a limiter
-        with respect to a purely diverted plasma. This is primarily used by the profile functions.
+        """Object to handle additional calculations due to the limiter.
+        This is primarily used by the profile functions.
         Each profile function has its own instance of a Limiter_handler.
 
         Parameters
         ----------
-        eq : FreeGS4E equilibrium object
+        eq : FreeGSNKE equilibrium object
             Used as a source of info on the solver's grid.
         limiter : a tokamak.Wall object
             Contains a list of R and Z coordinates (the vertices) which define the region accessible to the plasma.
@@ -25,7 +35,6 @@ class Limiter_handler:
         self.dR = self.eqR[1, 0] - self.eqR[0, 0]
         self.dZ = self.eqZ[0, 1] - self.eqZ[0, 0]
         self.dRdZ = self.dR * self.dZ
-        # self.ker_signs = np.array([[1,-1],[-1,1]])[np.newaxis, :, :]
         self.nx, self.ny = np.shape(eq.R)
         self.nxny = self.nx * self.ny
         self.map2d = np.zeros_like(eq.R)
@@ -33,12 +42,12 @@ class Limiter_handler:
         self.build_mask_inside_limiter()
         self.limiter_points()
         self.extract_plasma_pts()
-        # self.make_layer_mask()
 
     def extract_plasma_pts(
         self,
     ):
         # Extracts R and Z coordinates of the grid points in the reduced plasma domain
+        # i.e. inside the limiter
         self.plasma_pts = np.concatenate(
             (
                 self.eqR[self.mask_inside_limiter][:, np.newaxis],
@@ -59,7 +68,7 @@ class Limiter_handler:
 
         Parameters
         ----------
-        eq : FreeGS4E Equilibrium object
+        eq : FreeGSNKE Equilibrium object
             Specifies the domain properties
         limiter : freegs4e.machine.Wall object
             Specifies the limiter contour points
@@ -112,12 +121,11 @@ class Limiter_handler:
         layer_mask *= 1 - mask
         layer_mask = (layer_mask > 0).astype(bool)
         self.layer_mask = layer_mask
-
         return layer_mask
 
     def limiter_points(self, refine=6):
         """Based on the limiter vertices, it builds the refined list of points on the boundary
-        of the region where the plasma is allowed. These points are those on which the flux
+        of the region where the plasma is allowed. These refined boundary points are those on which the flux
         function is interpolated to find the value of psi_boundary in the case of a limiter plasma.
 
         Parameters
@@ -158,11 +166,6 @@ class Limiter_handler:
         self.limiter_mask_out = self.make_layer_mask(
             np.logical_not(self.mask_inside_limiter), 1
         )
-        # self.limiter_mask_out = np.zeros_like(self.eqR)
-        # self.limiter_mask_out[
-        #     self.grid_per_limiter_fine_point[:, 0],
-        #     self.grid_per_limiter_fine_point[:, 1],
-        # ] = 1
 
         self.fine_point_per_cell = {}
         self.fine_point_per_cell_R = {}
@@ -403,6 +406,7 @@ class Limiter_handler:
         # self.map2d = map2d.copy()
         return map2d
 
+    # code below is not used atm
     def build_linear_regularization(
         self,
     ):
@@ -438,7 +442,7 @@ class Limiter_handler:
     def build_quadratic_regularization(
         self,
     ):
-        """Builds matrix to be used for linear regularization. See Press 1992 18.5.
+        """Builds matrix to be used for quadratic regularization. See Press 1992 18.5.
 
         Returns
         -------

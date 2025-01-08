@@ -167,7 +167,7 @@ def calculate_all(coils_dict):
         # resistance = 2pi * (resistivity/area) * (number of loops * mean_radius)
         # note the multiplier is used as refined passives have number of loops = 1
         coil_resist[i] = (
-            coils_dict[labeli]["resistivity"]
+            coils_dict[labeli]["resistivity_over_area"]
             * coils_dict[labeli]["multiplier"][0]
             * np.sum(coords_i[0])
         )

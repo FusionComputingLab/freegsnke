@@ -179,7 +179,7 @@ def tokamak(refine_mode="G", group_filaments=True):
                 # this is needed because currents are distributed over the passive structure
                 coils_dict[coil_name]["multiplier"] = np.array([1 / len(ps.filaments)])
                 # this is resistivity divided by area
-                coils_dict[coil_name]["resistivity"] = (
+                coils_dict[coil_name]["resistivity_over_area"] = (
                     coil["resistivity"] / coils_dict[coil_name]["area"]
                 )
 
@@ -219,9 +219,9 @@ def tokamak(refine_mode="G", group_filaments=True):
                     # note here 'multiplier'=1, so currents must be adjusted accordingly at input time!
                     coils_dict[filament_name]["multiplier"] = np.array([1])
                     # this is resistivity divided by area
-                    coils_dict[filament_name]["resistivity"] = coil["resistivity"] / (
-                        area / n_filaments
-                    )
+                    coils_dict[filament_name]["resistivity_over_area"] = coil[
+                        "resistivity"
+                    ] / (area / n_filaments)
 
         else:
             # passive structure is not refined, just an individual filament
@@ -249,7 +249,7 @@ def tokamak(refine_mode="G", group_filaments=True):
             coils_dict[coil_name]["polarity"] = np.array([1])
             coils_dict[coil_name]["multiplier"] = np.array([1])
             # this is resistivity divided by area
-            coils_dict[coil_name]["resistivity"] = coil["resistivity"] / (
+            coils_dict[coil_name]["resistivity_over_area"] = coil["resistivity"] / (
                 coil["dR"] * coil["dZ"]
             )
 
@@ -315,7 +315,7 @@ def build_active_coil_dict(active_coils):
             coils_dict[coil_name]["dR"] = active_coils[coil_name]["dR"]
             coils_dict[coil_name]["dZ"] = active_coils[coil_name]["dZ"]
             # this is resistivity divided by area
-            coils_dict[coil_name]["resistivity"] = active_coils[coil_name][
+            coils_dict[coil_name]["resistivity_over_area"] = active_coils[coil_name][
                 "resistivity"
             ] / (active_coils[coil_name]["dR"] * active_coils[coil_name]["dZ"])
             coils_dict[coil_name]["multiplier"] = np.array(
@@ -360,7 +360,7 @@ def build_active_coil_dict(active_coils):
         ]["dZ"]
 
         # this is resistivity divided by area
-        coils_dict[coil_name]["resistivity"] = active_coils[coil_name][
+        coils_dict[coil_name]["resistivity_over_area"] = active_coils[coil_name][
             list(active_coils[coil_name].keys())[0]
         ]["resistivity"] / (coils_dict[coil_name]["dR"] * coils_dict[coil_name]["dZ"])
 

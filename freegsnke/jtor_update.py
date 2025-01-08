@@ -131,7 +131,7 @@ class Jtor_universal:
 
 
 class ConstrainBetapIp(freegs4e.jtor.ConstrainBetapIp, Jtor_universal):
-    """FreeGSNKE profile class adapting the original FreeGS object with the same name, 
+    """FreeGSNKE profile class adapting the original FreeGS object with the same name,
     with a few modifications, to:
     - retain memory of critical point calculation;
     - deal with limiter plasma configurations
@@ -194,7 +194,7 @@ class ConstrainBetapIp(freegs4e.jtor.ConstrainBetapIp, Jtor_universal):
 
 
 class ConstrainPaxisIp(freegs4e.jtor.ConstrainPaxisIp, Jtor_universal):
-    """FreeGSNKE profile class adapting the original FreeGS object with the same name, 
+    """FreeGSNKE profile class adapting the original FreeGS object with the same name,
     with a few modifications, to:
     - retain memory of critical point calculation;
     - deal with limiter plasma configurations
@@ -230,7 +230,7 @@ class ConstrainPaxisIp(freegs4e.jtor.ConstrainPaxisIp, Jtor_universal):
                 self.mask_inside_limiter, layer_size=1
             )
         ) > 0
-        
+
         # Note the factor 2 is not a typo: used in critical.inside_mask
         self.mask_outside_limiter = (2 * self.mask_outside_limiter).astype(float)
 
@@ -263,7 +263,7 @@ class ConstrainPaxisIp(freegs4e.jtor.ConstrainPaxisIp, Jtor_universal):
 
 
 class Fiesta_Topeol(freegs4e.jtor.Fiesta_Topeol, Jtor_universal):
-    """FreeGSNKE profile class adapting the FreeGS4E object with the same name, 
+    """FreeGSNKE profile class adapting the FreeGS4E object with the same name,
     with a few modifications, to:
     - retain memory of critical point calculation;
     - deal with limiter plasma configurations
@@ -332,7 +332,7 @@ class Fiesta_Topeol(freegs4e.jtor.Fiesta_Topeol, Jtor_universal):
 
 
 class Lao85(freegs4e.jtor.Lao85, Jtor_universal):
-    """FreeGSNKE profile class adapting the FreeGS4E object with the same name, 
+    """FreeGSNKE profile class adapting the FreeGS4E object with the same name,
     with a few modifications, to:
     - retain memory of critical point calculation;
     - deal with limiter plasma configurations
@@ -402,7 +402,7 @@ class Lao85(freegs4e.jtor.Lao85, Jtor_universal):
 
 
 class TensionSpline(freegs4e.jtor.TensionSpline, Jtor_universal):
-    """FreeGSNKE profile class adapting the FreeGS4E object with the same name, 
+    """FreeGSNKE profile class adapting the FreeGS4E object with the same name,
     with a few modifications, to:
     - retain memory of critical point calculation;
     - deal with limiter plasma configurations

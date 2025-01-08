@@ -10,7 +10,6 @@ but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
 """
 
-
 import numpy as np
 
 from . import machine_config
@@ -46,7 +45,7 @@ class simplified_solver_J1:
         ----------
         Lambdam1: np.array
             State matrix of the circuit equations for the metal in normal mode form:
-            P is the identity on the active coils and diagonalises the isolated dynamics 
+            P is the identity on the active coils and diagonalises the isolated dynamics
             of the passive coils, R^{-1/2}L_{passive}R^{-1/2}
         Pm1: np.array
             change of basis matrix, as defined above, to the power of -1
@@ -60,7 +59,7 @@ class simplified_solver_J1:
             inductance matrix of grid points in the reduced plasma domain
             Calculated by plasma_current object
         plasma_norm_factor: float
-            an overall factor to work with a rescaled plasma current, so that 
+            an overall factor to work with a rescaled plasma current, so that
             it's within a comparable range with metal currents
         plasma_resistance_1d: np.array
             plasma reistance in each (reduced domain) plasma cell, R_yy, raveled to be of the same shape as I_y,

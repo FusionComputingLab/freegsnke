@@ -8,14 +8,14 @@ but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
 """
 
-
 import numpy as np
+
 
 class mode_decomposition:
     """Sets up the vessel mode decomposition to be used by the dynamic solver(s)"""
 
     def __init__(self, coil_resist, coil_self_ind, n_coils, n_active_coils):
-        """Instantiates the class. 
+        """Instantiates the class.
         Matrix data calculated here is used to reformulate the system of circuit eqs,
         primarily in circuit_eq_metal.py
 

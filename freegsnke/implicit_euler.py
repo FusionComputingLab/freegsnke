@@ -8,7 +8,6 @@ but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
 """
 
-
 import math
 
 import numpy as np
@@ -23,7 +22,7 @@ class implicit_euler_solver:
 
     $$I(t+dt) = (M + Rdt)^{-1} (Fdt + MI(t))$$.
 
-    The implementation actually allows for 
+    The implementation actually allows for
 
     $$I(t+dt) = (M + Rdt)^{-1} (Fdt + LI(t))$$
 
@@ -42,7 +41,7 @@ class implicit_euler_solver:
         full_timestep : float
             Full timestep (dt) for the stepper
         max_internal_timestep : float
-            Maximum size of the intermediate timesteps taken during the stepper. 
+            Maximum size of the intermediate timesteps taken during the stepper.
             If max_internal_timestep < full_timestep, multiple steps are taken up to dt=full_timestep
         """
         self.Mmatrix = Mmatrix
@@ -53,7 +52,7 @@ class implicit_euler_solver:
         self.empty_U = np.zeros(self.dims)  # dummy voltage vector
 
     def set_Mmatrix(self, Mmatrix):
-        """Updates the mutual inductance matrix. 
+        """Updates the mutual inductance matrix.
 
         Parameters
         ----------
@@ -73,7 +72,7 @@ class implicit_euler_solver:
         self.Lmatrix = Lmatrix
 
     def set_Rmatrix(self, Rmatrix):
-        """Updates the resistance matrix. 
+        """Updates the resistance matrix.
 
         Parameters
         ----------
@@ -98,7 +97,7 @@ class implicit_euler_solver:
         full_timestep : float
             Full timestep (dt) for the stepper
         max_internal_timestep : float
-            Maximum size of the intermediate timesteps taken during the stepper. 
+            Maximum size of the intermediate timesteps taken during the stepper.
             If max_internal_timestep < full_timestep, multiple steps are taken up to dt=full_timestep
         """
         self.full_timestep = full_timestep
@@ -122,7 +121,7 @@ class implicit_euler_solver:
         return Itpdt
 
     def full_stepper(self, It, forcing):
-        """Calculates the next full timestep I(t + `self.full_timestep`) by repeatedly 
+        """Calculates the next full timestep I(t + `self.full_timestep`) by repeatedly
         solving for the internal timestep I(t + `self.internal_timestep`) for `self.n_steps` steps
 
         Parameters

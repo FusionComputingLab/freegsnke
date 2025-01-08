@@ -9,8 +9,8 @@ but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
 """
 
-
 import numpy as np
+
 
 def Lao_parameters_finder(
     pn_,
@@ -253,6 +253,7 @@ def Topeol_opt_stepper(tp, tf, x, pars):
     if np.any(ratio > 2):
         dpars = np.where(ratio > 2, dpars, np.sign(dpars) * pars / 2)
     return pars + dpars
+
 
 # the actual optimizer
 def Topeol_opt(tp, tf, x, max_it, tol):

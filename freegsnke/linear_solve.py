@@ -8,7 +8,6 @@ but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
 """
 
-
 import numpy as np
 from scipy.linalg import solve_sylvester
 
@@ -17,9 +16,9 @@ from .implicit_euler import implicit_euler_solver
 
 
 class linear_solver:
-    """Interface between the linearised system of circuit equations and the implicit-Euler 
+    """Interface between the linearised system of circuit equations and the implicit-Euler
     time stepper. Calculates the linear growth rate and solves the linearised dynamical problem.
-    It needs the Jacobian of the plasma current distribution with respect to all of the 
+    It needs the Jacobian of the plasma current distribution with respect to all of the
     independent currents, dIy/dI.
     """
 
@@ -35,7 +34,7 @@ class linear_solver:
         max_internal_timestep=0.0001,
         full_timestep=0.0001,
     ):
-        """Instantiates the linear_solver object, with inputs computed mostly 
+        """Instantiates the linear_solver object, with inputs computed mostly
         within the circuit_equation_metals object.
         Based on the input plasma properties and coupling matrices, it prepares:
         - an instance of the implicit Euler solver implicit_euler_solver()
@@ -45,7 +44,7 @@ class linear_solver:
         ----------
         Lambdam1: np.array
             State matrix of the circuit equations for the metal in normal mode form:
-            P is the identity on the active coils and diagonalises the isolated dynamics 
+            P is the identity on the active coils and diagonalises the isolated dynamics
             of the passive coils, R^{-1/2}L_{passive}R^{-1/2}
         Pm1: np.array
             change of basis matrix, as defined above, to the power of -1
@@ -59,10 +58,10 @@ class linear_solver:
             inductance matrix of grid points in the reduced plasma domain
             Calculated by plasma_current object
         plasma_norm_factor: float
-            an overall factor to work with a rescaled plasma current, so that 
+            an overall factor to work with a rescaled plasma current, so that
             it's within a comparable range with metal currents
         max_internal_timestep: float
-            internal integration timestep of the implicit-Euler solver, to be used 
+            internal integration timestep of the implicit-Euler solver, to be used
             as substeps over the <<full_timestep>> interval
         full_timestep: float
             full timestep requested to the implicit-Euler solver
@@ -151,7 +150,7 @@ class linear_solver:
             These would typically come from having solved the forward Grad-Shafranov problem. Finite difference Jacobian.
             Calculated by the nl_solver object
         hatIy0 = np.array
-            Plasma current distribution on the reduced plasma domain (1d) of the equilibrium around which the dynamics is linearised. 
+            Plasma current distribution on the reduced plasma domain (1d) of the equilibrium around which the dynamics is linearised.
             This is normalised by the total plasma current, so that this vector sums to 1.
         """
         if dIydI is not None:
@@ -172,7 +171,7 @@ class linear_solver:
         self,
     ):
         """Initialises the pseudo-inductance matrix of the problem
-        M\dot(x) + Rx = forcing 
+        M\dot(x) + Rx = forcing
         using the linearisation Jacobian.
 
                           \Lambda^-1 + P^-1R^-1Mey A        P^-1R^-1Mey B
@@ -272,7 +271,7 @@ class linear_solver:
     def calculate_linear_growth_rate(
         self,
     ):
-        """Looks into the eigenvecotrs of the "M" matrix to find the negative singular values, 
+        """Looks into the eigenvecotrs of the "M" matrix to find the negative singular values,
         which correspond to the growth rates of instabilities.
 
         Parameters

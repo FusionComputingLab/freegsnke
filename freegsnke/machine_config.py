@@ -8,7 +8,6 @@ but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
 """
 
-
 import os
 import pickle
 from copy import deepcopy
@@ -49,7 +48,7 @@ def check_self_inductance_and_resistance(coils_dict):
     Parameters
     ----------
     coils_dict : dictionary
-        Dictionary containing the FreeGSNKE machine description, i.e. containing vectorised coil info. 
+        Dictionary containing the FreeGSNKE machine description, i.e. containing vectorised coil info.
         Built by build_machine.py and stored by the machine object at machine.coil_dict
 
     Returns
@@ -115,7 +114,7 @@ def calculate_all(coils_dict):
     Parameters
     ----------
     coils_dict : dictionary
-        Dictionary containing the FreeGSNKE machine description, i.e. containing vectorised coil info. 
+        Dictionary containing the FreeGSNKE machine description, i.e. containing vectorised coil info.
         Built by build_machine.py and stored by the machine object at machine.coil_dict
 
     """
@@ -133,7 +132,7 @@ def calculate_all(coils_dict):
 
         # note that while the equation above is valid for active coils, where each filament carries the nominal current,
         # this is not valid for refined passive structures, where each filament carries a factor 1/n_filaments of the total current
-        # and for which a mean of the greens (rather than the sum) should be used instead, which is accounted through the 'multiplier' 
+        # and for which a mean of the greens (rather than the sum) should be used instead, which is accounted through the 'multiplier'
 
         coords_i = coils_dict[labeli]["coords"]
 

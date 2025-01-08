@@ -8,7 +8,6 @@ but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
 """
 
-
 import numpy as np
 
 
@@ -44,9 +43,9 @@ class nksolver:
 
     def Arnoldi_unit(
         self,
-        x0, 
-        dx, 
-        R0,  
+        x0,
+        dx,
+        R0,
         F_function,
         args,
     ):
@@ -113,19 +112,19 @@ class nksolver:
         Omega = np.eye(self.n_it + 2)
         Omega[:-1, :-1] = 1.0 * self.Omega
         self.Omega = np.matmul(givrot, Omega)
-        return next_candidate  
+        return next_candidate
 
     def Arnoldi_iteration(
         self,
-        x0,  
-        dx,  
-        R0,  
+        x0,
+        dx,
+        R0,
         F_function,
         args,
         step_size,
         scaling_with_n,
         target_relative_unexplained_residual,
-        max_n_directions,  
+        max_n_directions,
         clip,
     ):
         """Performs the iteration of the NK solution method:
@@ -153,8 +152,8 @@ class nksolver:
             allows to further scale dx candidate steps as a function of the iteration number n_it, by a factor
             (1 + self.n_it)**scaling_with_n
         target_relative_explained_residual : float between 0 and 1
-            terminates iteration when such a fraction of the initial residual R0 
-            can be (linearly) cancelled     
+            terminates iteration when such a fraction of the initial residual R0
+            can be (linearly) cancelled
         max_n_directions : int
             terminates iteration even though condition on
             explained residual is not met

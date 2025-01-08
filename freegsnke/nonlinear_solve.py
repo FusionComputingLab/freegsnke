@@ -8,7 +8,6 @@ but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
 """
 
-
 from copy import deepcopy
 
 import matplotlib.pyplot as plt
@@ -101,7 +100,7 @@ class nl_solver:
             dIydI_(i,j) = d(Iy_i)/d(I_j)
             This is the jacobian of the plasma current distribution Iy with respect to all
             independent metal currents (both active and vessel modes) and to the total plasma current
-            This is provided if known, otherwise calculated here at the linearization eq 
+            This is provided if known, otherwise calculated here at the linearization eq
         automatic_timestep : (float, float) or False, optional, by default False
             If not False, this overrides inputs full_timestep and max_internal_timestep:
             the timescales of the linearised problem are used to set the size of the timestep.
@@ -234,7 +233,7 @@ class nl_solver:
             full_timestep=self.dt_step,
         )
 
-        # sets up NK solver on the full grid, to be used when solving the 
+        # sets up NK solver on the full grid, to be used when solving the
         # circuits equations as a problem in the plasma flux
         self.psi_nk_solver = nk_solver.nksolver(self.nxny, verbose=True)
 
@@ -667,10 +666,7 @@ class nl_solver:
             Initial value to be used as delta(I_j) to infer the slope of norm(delta(I_y))/delta(I_j).
         """
 
-        if (
-            (dIydI is None)
-            and (self.dIydI is None)
-        ):
+        if (dIydI is None) and (self.dIydI is None):
             self.NK.forward_solve(eq, profile, target_relative_tolerance=rtol_NK)
             self.build_current_vec(eq, profile)
             self.Iy = self.limiter_handler.Iy_from_jtor(profile.jtor).copy()
@@ -928,7 +924,7 @@ class nl_solver:
         profiles : FreeGS4E profile Object
             Profile function of the initial equilibrium. This assigns the initial total plasma current.
         rtol_NK : float
-            Relative tolerance to be used in the static GS problems in the initialization 
+            Relative tolerance to be used in the static GS problems in the initialization
             and when calculating the Jacobian dIy/dI to set up the linearised problem.
             This does not set the tolerance of the static GS solves used by the dynamic solver, which is set through the stepper itself.
         dIydI : np.array of size (np.sum(plasma_domain_mask), n_metal_modes+1), optional
@@ -948,7 +944,7 @@ class nl_solver:
         self.rtol_NK = rtol_NK
 
         # get profile parametrization
-        # this is not currently used, as the linearised evolution 
+        # this is not currently used, as the linearised evolution
         # does not currently account for the evolving profile coefficients
         self.get_profiles_values(profile)
 
@@ -985,7 +981,7 @@ class nl_solver:
         # self.hatIy1 is the normalised plasma current distribution at time t+dt
         self.hatIy1 = np.copy(self.hatIy)
         self.make_broad_hatIy(self.hatIy1)
-        
+
         self.time = 0
         self.step_no = -1
 
@@ -1208,7 +1204,7 @@ class nl_solver:
         jtor_ = self.profiles2.Jtor(self.eqR, self.eqZ, self.tokamak_psi + plasma_psi)
         hat_Iy1 = self.limiter_handler.hat_Iy_from_jtor(jtor_)
         return hat_Iy1
-    
+
     def calculate_hatIy_GS(self, trial_currents, rtol_NK, record_for_updates=False):
         """Finds the normalised plasma current distribution corresponding
         to the combination of the input current values by solving the static GS problem.
@@ -1375,10 +1371,10 @@ class nl_solver:
 
         if a_res_GS is None:
             a_res_GS = self.NK.F_function(
-                    trial_plasma_psi.reshape(-1),
-                    self.tokamak_psi.reshape(-1),
-                    self.profiles2,
-                    )
+                trial_plasma_psi.reshape(-1),
+                self.tokamak_psi.reshape(-1),
+                self.profiles2,
+            )
         a_res_GS = np.amax(abs(a_res_GS))
 
         r_res_GS = a_res_GS / self.d_plasma_psi_step
@@ -1431,12 +1427,12 @@ class nl_solver:
         If linear_only = False, a solution of the full non-linear problem is seeked using
         a combination of NK methods.
         When a solution has been found, time is advanced by self.dt_step,
-        the new values of all extensive currents are recorded in self.currents_vec 
+        the new values of all extensive currents are recorded in self.currents_vec
         and new equilibrium and profile properties in self.eq1 and self.profiles1.
 
         The solver's algorithm proceeds like below:
-        1) solve linearised problem to obtain an initial guess of the currents and solve 
-        the associated static GS problem, assign such trial_plasma_psi and trial_currents 
+        1) solve linearised problem to obtain an initial guess of the currents and solve
+        the associated static GS problem, assign such trial_plasma_psi and trial_currents
         (including the resulting tokamak_psi);
         2) if pair [trial_plasma_psi, tokamak_psi] fails static GS tolerance check,
         update trial_plasma_psi bringing it closer to the actual GS solution;
@@ -1468,7 +1464,7 @@ class nl_solver:
             This is calculated with respect to the change in the flux itself
             due to the dynamical evolution: residual/delta(psi(t+dt) - psi(t))
         working_relative_tol_GS : float, optional, by default .001
-            Tolerance used when solving all static GS problems while executing the step, 
+            Tolerance used when solving all static GS problems while executing the step,
             also expressed in relative terms as target_relative_tol_GS.
             Note this value needs to be smaller than target_relative_tol_GS to allow for convergence.
         target_relative_unexplained_residual : float, optional, by default .5
@@ -1494,9 +1490,9 @@ class nl_solver:
             Blend coefficient used in trial_plasma_psi updates at step 2 of the algorithm above.
             Should be between 0 and 1.
         curr_eps : float, optional, by default 1e-5
-            Regulariser used in calculating the relative convergence on the currents. 
+            Regulariser used in calculating the relative convergence on the currents.
             Avoids divergence when dividing by the advancement in the currents.
-            Min value of the current per step. 
+            Min value of the current per step.
         clip : float, optional, by default 5
             Used in the NK solvers. Maximum step size for each accepted basis vector, in units
             of the exploratory step.
@@ -1522,10 +1518,10 @@ class nl_solver:
             plasma_resistivity,
         )
 
-        # solves the linearised problem for the currents and assigns 
+        # solves the linearised problem for the currents and assigns
         # results in preparation for the nonlinear calculations
         # Solution and GS equilibrium are assigned to self.trial_currents and self.trial_plasma_psi
-        self.set_linear_solution(active_voltage_vec) 
+        self.set_linear_solution(active_voltage_vec)
 
         if linear_only:
             # assign currents and plasma flux to self.currents_vec, self.eq1 and self.profiles1 and complete step
@@ -1598,15 +1594,15 @@ class nl_solver:
                 if control_NK_psi:
                     # NK algorithm to solve the root dynamic problem in psi
                     self.psi_nk_solver.Arnoldi_iteration(
-                        x0=self.trial_plasma_psi.copy(),  
-                        dx=res_psi.copy(),  
-                        R0=res_psi.copy(),  
+                        x0=self.trial_plasma_psi.copy(),
+                        dx=res_psi.copy(),
+                        R0=res_psi.copy(),
                         F_function=self.F_function_psi,
                         args=args_nk,
                         step_size=step_size_psi,
                         scaling_with_n=scaling_with_n,
-                        target_relative_unexplained_residual=target_relative_unexplained_residual,  
-                        max_n_directions=max_n_directions,  
+                        target_relative_unexplained_residual=target_relative_unexplained_residual,
+                        max_n_directions=max_n_directions,
                         clip=clip,
                     )
 
@@ -1667,7 +1663,7 @@ class nl_solver:
                         np.mean(rel_curr_res),
                     ]
                 )
-                
+
                 log.append(["Residuals on static GS eq (relative): ", r_res_GS])
 
                 # one full cycle completed

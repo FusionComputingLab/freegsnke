@@ -8,8 +8,8 @@ but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
 """
 
-
 import freegs4e
+
 
 class Machine(freegs4e.machine.Machine):
     """Same as freegs4e.machine.Machine.

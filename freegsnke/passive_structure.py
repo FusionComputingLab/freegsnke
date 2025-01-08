@@ -9,7 +9,6 @@ but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
 """
 
-
 import freegs4e
 import matplotlib.pyplot as plt
 import numpy as np
@@ -23,7 +22,7 @@ class PassiveStructure(freegs4e.coil.Coil):
     """Inherits from freegs4e.coil.Coil.
     Object to implement passive structures.
     Rather than listing large number of filaments it averages the
-    relevant green functions so that currents are distributed over 
+    relevant green functions so that currents are distributed over
     the structure -- uniformly.
     """
 
@@ -33,7 +32,7 @@ class PassiveStructure(freegs4e.coil.Coil):
         Z,
         min_refine_per_area,
         min_refine_per_length,
-        refine_mode='G',
+        refine_mode="G",
     ):
         """Instantiates the object and builds the refinement of the provided polygonal shape.
 
@@ -80,9 +79,9 @@ class PassiveStructure(freegs4e.coil.Coil):
         Parameters
         ----------
         R : array
-            eq.R, radial coordinate on the domain grid 
+            eq.R, radial coordinate on the domain grid
         Z : array
-            eq.Z, radial coordinate on the domain grid 
+            eq.Z, radial coordinate on the domain grid
 
         """
         RZ_key = (np.min(R), np.max(R), np.min(Z), np.max(Z), np.size(R))
@@ -125,7 +124,7 @@ class PassiveStructure(freegs4e.coil.Coil):
 
     def build_control_br(self, R, Z):
         """Builds controlBr for a new set of R, Z grids.
-        
+
         Parameters
         ----------
         R : array
@@ -150,7 +149,7 @@ class PassiveStructure(freegs4e.coil.Coil):
 
     def build_control_bz(self, R, Z):
         """Builds controlBz for a new set of R, Z grids.
-        
+
         Parameters
         ----------
         R : array

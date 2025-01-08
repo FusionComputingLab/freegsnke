@@ -219,9 +219,9 @@ def tokamak(refine_mode="G", group_filaments=True):
                     # note here 'multiplier'=1, so currents must be adjusted accordingly at input time!
                     coils_dict[filament_name]["multiplier"] = np.array([1])
                     # this is resistivity divided by area
-                    coils_dict[filament_name]["resistivity_over_area"] = coil["resistivity"] / (
-                        area / n_filaments
-                    )
+                    coils_dict[filament_name]["resistivity_over_area"] = coil[
+                        "resistivity"
+                    ] / (area / n_filaments)
 
         else:
             # passive structure is not refined, just an individual filament

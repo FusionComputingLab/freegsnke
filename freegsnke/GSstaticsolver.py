@@ -353,7 +353,7 @@ class NKGSsolver:
         self.relative_change = 1.0 * rel_change
         self.norm_rel_change = [norm_rel_change]
 
-        args = [self.tokamak_psi, profiles] 
+        args = [self.tokamak_psi, profiles]
 
         starting_direction = np.copy(res0)
 
@@ -367,7 +367,7 @@ class NKGSsolver:
             iterations < max_solving_iterations
         ):
 
-            if rel_change > Picard_handover: 
+            if rel_change > Picard_handover:
                 log.append("-----")
                 log.append("Picard iteration: " + str(iterations))
                 # using Picard instead of NK
@@ -388,15 +388,15 @@ class NKGSsolver:
                 log.append("Newton-Krylov iteration: " + str(iterations))
                 picard_flag = False
                 self.nksolver.Arnoldi_iteration(
-                    x0=trial_plasma_psi.copy(),  
-                    dx=starting_direction.copy(),  
-                    R0=res0.copy(),  
+                    x0=trial_plasma_psi.copy(),
+                    dx=starting_direction.copy(),
+                    R0=res0.copy(),
                     F_function=self.F_function,
                     args=args,
                     step_size=step_size,
                     scaling_with_n=scaling_with_n,
                     target_relative_unexplained_residual=target_relative_unexplained_residual,
-                    max_n_directions=max_n_directions,  
+                    max_n_directions=max_n_directions,
                     clip=clip,
                 )
                 update = 1.0 * self.nksolver.dx

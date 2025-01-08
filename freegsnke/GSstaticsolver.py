@@ -210,7 +210,10 @@ class NKGSsolver:
         eq._current = np.sum(profiles.jtor) * self.dRdZ
         eq._profiles = deepcopy(profiles)
 
-        eq.tokamak_psi = self.tokamak_psi.reshape(self.nx, self.ny)
+        try:
+            eq.tokamak_psi = self.tokamak_psi.reshape(self.nx, self.ny)
+        except:
+            pass
 
     def relative_norm_residual(self, res, psi):
         """Calculates a normalised relative residual, based on linalg.norm
@@ -309,7 +312,6 @@ class NKGSsolver:
             of exploratory step used to calculate the finite difference derivative
         verbose : bool
             flag to allow warning messages when Picard is used instead of NK
-
         """
 
         picard_flag = 0
@@ -559,9 +561,10 @@ class NKGSsolver:
         max_solving_iterations=20,
         max_iter_per_update=5,
         Picard_handover=0.1,
-        initial_Picard=False,
+        initial_Picard=True,
         step_size=2.5,
         scaling_with_n=-1.0,
+        target_relative_unexplained_residual=.3,
         max_n_directions=16,
         clip=10,
         max_rel_update_size=0.2,
@@ -611,12 +614,6 @@ class NKGSsolver:
         max_n_directions : int
             terminates iteration even though condition on
             explained residual is not met
-        max_Arnoldi_iterations : int
-            terminates iteration after attempting to explore
-            this number of directions
-        max_collinearity : float between 0 and 1
-            rejects a candidate direction if resulting residual
-            is collinear to any of those stored previously
         clip : float
             maximum step size for each explored direction, in units
             of exploratory step dx_i
@@ -667,6 +664,7 @@ class NKGSsolver:
                 Picard_handover=Picard_handover,
                 step_size=step_size,
                 scaling_with_n=-scaling_with_n,
+                target_relative_unexplained_residual=target_relative_unexplained_residual,
                 max_n_directions=max_n_directions,
                 clip=clip,
                 verbose=False,
@@ -696,17 +694,18 @@ class NKGSsolver:
         profiles,
         target_relative_tolerance,
         constrain=None,
-        max_solving_iterations=20,
+        max_solving_iterations=50,
         max_iter_per_update=5,
         Picard_handover=0.1,
         step_size=2.5,
         scaling_with_n=-1.0,
-        target_relative_unexplained_residual=0.2,
+        target_relative_unexplained_residual=0.3,
         max_n_directions=16,
         clip=10,
         verbose=False,
         max_rel_update_size=0.2,
         forward_tolerance_increase=5,
+        blend=0,
         picard=True,
     ):
         """The method to solve the GS problems, both forward and inverse.
@@ -783,20 +782,32 @@ class NKGSsolver:
             )
 
         else:
-            self.inverse_solve(
-                eq=eq,
-                profiles=profiles,
-                target_relative_tolerance=target_relative_tolerance,
-                constrain=constrain,
-                max_solving_iterations=max_solving_iterations,
-                max_iter_per_update=max_iter_per_update,
-                Picard_handover=Picard_handover,
-                step_size=step_size,
-                scaling_with_n=scaling_with_n,
-                target_relative_unexplained_residual=target_relative_unexplained_residual,
-                max_n_directions=max_n_directions,
-                clip=clip,
-                verbose=verbose,
-                max_rel_update_size=max_rel_update_size,
-                forward_tolerance_increase=forward_tolerance_increase,
-            )
+            if picard == True:  # uses picard iterations (from freegs4e)
+                freegs4e.solve(
+                    eq=eq,
+                    profiles=profiles,
+                    constrain=constrain,
+                    rtol=target_relative_tolerance,
+                    show=False,
+                    blend=blend,
+                )
+                self.port_critical(eq=eq, profiles=profiles)
+
+            else:  # uses Newton-Krylov iterations from freegsnke
+                self.inverse_solve(
+                    eq=eq,
+                    profiles=profiles,
+                    target_relative_tolerance=target_relative_tolerance,
+                    constrain=constrain,
+                    max_solving_iterations=max_solving_iterations,
+                    max_iter_per_update=max_iter_per_update,
+                    Picard_handover=Picard_handover,
+                    step_size=step_size,
+                    scaling_with_n=scaling_with_n,
+                    target_relative_unexplained_residual=target_relative_unexplained_residual,
+                    max_n_directions=max_n_directions,
+                    clip=clip,
+                    verbose=verbose,
+                    max_rel_update_size=max_rel_update_size,
+                    forward_tolerance_increase=forward_tolerance_increase,
+                )

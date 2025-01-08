@@ -1,3 +1,13 @@
+"""
+Defines the FreeGSNKE equilibrium Object, which inherits from the FreeGS4E equilibrium object. 
+
+Copyright 2024 Nicola C. Amorisco, George K. Holt, Kamran Pentland, Adriano Agnello, Alasdair Ross, Matthijs Mars.
+
+FreeGSNKE is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
+"""
+
 import os
 import pickle
 
@@ -29,11 +39,13 @@ class Equilibrium(freegs4e.equilibrium.Equilibrium):
         self.Rnxh = self.R[self.nxh, 0]
         self.Znyh = self.Z[0, self.nyh]
 
+        # It's not a GS solution:
         self.solved = False
 
         # set up for limiter functionality
         self.limiter_handler = limiter_func.Limiter_handler(self, self.tokamak.limiter)
-        self.mask_inside_limiter = self.limiter_handler.mask_inside_limiter
+        self.mask_inside_limiter = 1.0 * self.limiter_handler.mask_inside_limiter
+        # the factor 2 is needed by critical routines
         self.mask_outside_limiter = 2 * np.logical_not(self.mask_inside_limiter).astype(
             float
         )
@@ -41,7 +53,7 @@ class Equilibrium(freegs4e.equilibrium.Equilibrium):
     def adjust_psi_plasma(
         self,
     ):
-        """Scales the psi_plasma initialization so to ensure a viable O-point
+        """Operates an initial rescaling of the psi_plasma guess so to ensure a viable O-point
         and at least an X-point within the domain.
 
         Only use after appropriate coil currents have been set as desired!
@@ -74,32 +86,7 @@ class Equilibrium(freegs4e.equilibrium.Equilibrium):
 
         # O-point is in place
         xpoint_flag = len(xpt) > 0
-        print("xpoint_flag", xpoint_flag)
-        # if xpoint_flag == False:
-        # if n_up > 0:
-        #     n_down_max = np.floor(n_up + np.log(1.5) - np.log(1.1))
-        #     n_down = 0
-        #     n_plasma_psi = self.plasma_psi.copy()
-        #     while (xpoint_flag == False) and (n_down < n_down_max):
-        #         n_plasma_psi /= 1.1
-        #         n_down += 1
-        #         try:
-        #             opt, xpt = critical.find_critical(
-        #                 self.R,
-        #                 self.Z,
-        #                 self.tokamak_psi + n_plasma_psi,
-        #                 self.mask_inside_limiter,
-        #                 None,
-        #             )
-        #             xpoint_flag = len(xpt) > 0
-        #             self.gmod -= np.log(1.1)
-        #         except:
-        #             # here if scaledown causes the o-point to disappear
-        #             print(
-        #                 "Failed to introduce an xpoint on the domain by scaling down psi_plasma."
-        #             )
-        #             break
-        # check if the scale-down worked
+        print("O-point is in place. Flag for X-point in place =", xpoint_flag)
         n_plasma_psi = self.plasma_psi.copy()
         n_exp = 0
         if (xpoint_flag == False) and (n_exp < 10):
@@ -148,7 +135,7 @@ class Equilibrium(freegs4e.equilibrium.Equilibrium):
             )
             limiter_size = np.sum(self.mask_inside_limiter)
             diverted_size = np.sum(diverted_core_mask)
-            print("diverted_size", diverted_size)
+            print("Size of the diverted core in number of domain pts =", diverted_size)
 
             diverted_flag = diverted_size > 0.5 * limiter_size
             while diverted_flag == False and n_up < 6:
@@ -180,21 +167,21 @@ class Equilibrium(freegs4e.equilibrium.Equilibrium):
         self.plasma_psi = n_plasma_psi.copy()
 
     def psi_func(self, R, Z, *args, **kwargs):
-        """Scipy interpolation of plasma function.
+        """Scipy interpolation of plasma_psi function.
         Replaces the original FreeGS interpolation.
         It now includes a check which leads to the update of the interpolation when needed.
 
         Parameters
         ----------
-        R : _type_
-            _description_
-        Z : _type_
-            _description_
+        R : ndarray
+            R coordinates where the interpolation is needed
+        Z : ndarray
+            Z coordinates where the interpolation is needed
 
         Returns
         -------
-        _type_
-            _description_
+        ndarray
+            Interpolated values of plasma_psi
         """
         check = (
             np.abs(
@@ -204,7 +191,9 @@ class Equilibrium(freegs4e.equilibrium.Equilibrium):
             > 1e-5
         )
         if check:
-            print("psi_func has been re-set.")
+            print(
+                "Dicrepancy between psi_func and plasma_psi detected. psi_func has been re-set."
+            )
             # redefine interpolating function
             self.psi_func_interp = interpolate.RectBivariateSpline(
                 self.R[:, 0], self.Z[0, :], self.plasma_psi
@@ -215,14 +204,9 @@ class Equilibrium(freegs4e.equilibrium.Equilibrium):
     def reinitialize_from_file(
         self,
     ):
-        """Initializes the equilibrium with data from file."""
+        """Initializes the equilibrium with data from file, if provided."""
         if self.equilibrium_path is not None:
             self.initialize_from_equilibrium()
-        # else:
-        #     print(
-        #         "Equilibrium data was not provided. Proceeded with default initialization."
-        #     )
-        #     self.plasma_psi = self.plasma_psi**4
 
     def initialize_from_equilibrium(
         self,
@@ -287,6 +271,4 @@ class Equilibrium(freegs4e.equilibrium.Equilibrium):
 
             plasma_psi = psi_func(self.R, self.Z, grid=False)
 
-        # note the factor 2 here. This moves the initialization away from being a GS solution
-        # but this shift is helpful when performing glitch-y inverse solves
-        self.plasma_psi = 2 * plasma_psi
+        self.plasma_psi = plasma_psi

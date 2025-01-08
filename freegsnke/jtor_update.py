@@ -1,3 +1,13 @@
+"""
+Defines the FreeGSNKE profile Object, which inherits from the FreeGS4E profile object. 
+
+Copyright 2024 Nicola C. Amorisco, George K. Holt, Kamran Pentland, Adriano Agnello, Alasdair Ross, Matthijs Mars.
+
+FreeGSNKE is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
+"""
+
 import freegs4e
 import numpy as np
 from freegs4e import critical
@@ -20,8 +30,8 @@ class Jtor_universal:
         mask_outside_limiter,
         limiter_mask_out,
     ):
-        """Universal function that calculates the plasma current distribution
-        over the different types of profile parametrizations.
+        """Universal function that calculates the plasma current distribution,
+        common to all of the different types of profile parametrizations used in FreeGSNKE.
 
         Parameters
         ----------
@@ -32,19 +42,21 @@ class Jtor_universal:
             method from each individual profile class
             returns jtor itself
         core_mask_limiter : method
-            method of the limiter_handles class
+            method of the limiter_handler class
             returns the refined core_mask where jtor>0 accounting for the limiter
         R : np.ndarray
-                R coordinates of the grid points
+            R coordinates of the domain grid points
         Z : np.ndarray
-            Z coordinates of the grid points
+            Z coordinates of the domain grid points
         psi : np.ndarray
-            Poloidal field flux / 2*pi at each grid points (as returned by FreeGS.Equilibrium.psi())
+            Poloidal field flux / 2*pi at each grid points (for example as returned by Equilibrium.psi())
         psi_bndry : float, optional
             Value of the poloidal field flux at the boundary of the plasma (last closed flux surface), by default None
         mask_outside_limiter : np.ndarray
             Mask of points outside the limiter, if any, optional
-
+        limiter_mask_out : np.ndarray
+            The mask identifying the border of the limiter, including points just inside it, the 'last' accessible to the plasma.
+            Same size as psi.
         """
 
         opt, xpt, diverted_core_mask, psi_bndry = Jtor_part1(
@@ -78,6 +90,24 @@ class Jtor_universal:
         )
 
     def Jtor(self, R, Z, psi, psi_bndry=None):
+        """Replaces the FreeGS4E call, while maintaining the same input structure.
+
+        Parameters
+        ----------
+        R : np.ndarray
+            R coordinates of the domain grid points
+        Z : np.ndarray
+            Z coordinates of the domain grid points
+        psi : np.ndarray
+            Poloidal field flux / 2*pi at each grid points (for example as returned by Equilibrium.psi())
+        psi_bndry : float, optional
+            Value of the poloidal field flux at the boundary of the plasma (last closed flux surface), by default None
+
+        Returns
+        -------
+        ndarray
+            2d map of toroidal current values
+        """
         (
             self.jtor,
             self.opt,
@@ -101,7 +131,8 @@ class Jtor_universal:
 
 
 class ConstrainBetapIp(freegs4e.jtor.ConstrainBetapIp, Jtor_universal):
-    """FreeGS profile class with a few modifications, to:
+    """FreeGSNKE profile class adapting the original FreeGS object with the same name,
+    with a few modifications, to:
     - retain memory of critical point calculation;
     - deal with limiter plasma configurations
 
@@ -110,13 +141,14 @@ class ConstrainBetapIp(freegs4e.jtor.ConstrainBetapIp, Jtor_universal):
     def __init__(self, eq, limiter=None, *args, **kwargs):
         """Instantiates the object.
 
-         Parameters
+        Parameters
         ----------
-        eq : freegs4e Equilibrium object
+        eq : FreeGSNKE Equilibrium object
             Specifies the domain properties
         limiter : freegs4e.machine.Wall object
             Specifies the limiter contour points.
-            Only set here if a limiter different from eq.tokamak.limiter is to be used.
+            Only needs to be set here if purposedly using a limiter that is different from eq.tokamak.limiter.
+            Otherwise use None
         """
         super().__init__(*args, **kwargs)
         self.profile_parameter = self.betap
@@ -130,67 +162,8 @@ class ConstrainBetapIp(freegs4e.jtor.ConstrainBetapIp, Jtor_universal):
         self.mask_outside_limiter = np.logical_not(self.mask_inside_limiter)
         self.limiter_mask_out = self.limiter_handler.limiter_mask_out
 
-        # this is used in critical.inside_mask
+        # Note the factor 2 is not a typo: used in critical.inside_mask
         self.mask_outside_limiter = (2 * self.mask_outside_limiter).astype(float)
-
-    # def get_pars(
-    #     self,
-    # ):
-    #     """Fetches all profile parameters and returns them in a single array"""
-    #     return np.array([self.alpha_m, self.alpha_n, self.betap])
-
-    # def assign_profile_parameter(self, betap):
-    #     """Assigns to the profile object a new value of the profile parameter betap"""
-    #     self.betap = betap
-    #     self.profile_parameter = betap
-
-    # def assign_profile_coefficients(self, alpha_m, alpha_n):
-    #     """Assigns to the profile object new value of the coefficients (alpha_m, alpha_n)"""
-    #     self.alpha_m = alpha_m
-    #     self.alpha_n = alpha_n
-
-    # def _Jtor(self, R, Z, psi, psi_bndry=None, rel_psi_error=0):
-    #     """Replaces the original FreeGS Jtor method if FreeGS4E is not available."""
-    #     self.jtor = super().Jtor(R, Z, psi, psi_bndry)
-    #     self.opt, self.xpt = critical.find_critical(R, Z, psi)
-
-    #     self.diverted_core_mask = self.jtor > 0
-    #     self.psi_bndry, mask, self.limiter_flag = (
-    #         self.limiter_handler.core_mask_limiter(
-    #             psi,
-    #             self.xpt[0][2],
-    #             self.diverted_core_mask,
-    #             self.limiter_mask_out,
-    #         )
-    #     )
-    #     self.jtor = super().Jtor(R, Z, psi, self.psi_bndry)
-    #     return self.jtor
-
-    # def Jtor_fast(self, R, Z, psi, psi_bndry=None, rel_psi_error=0):
-    #     """Used when FreeGS4E is available."""
-    #     self.diverted_core_mask = super().Jtor_part1(R, Z, psi, psi_bndry)
-    #     if self.diverted_core_mask is None:
-    #         # print('no xpt')
-    #         self.psi_bndry, self.limiter_core_mask, self.flag_limiter = (
-    #             psi_bndry,
-    #             None,
-    #             False,
-    #         )
-    #     elif rel_psi_error < 0.02:
-    #         self.psi_bndry, self.limiter_core_mask, self.flag_limiter = (
-    #             self.limiter_handler.core_mask_limiter(
-    #                 psi,
-    #                 self.psi_bndry,
-    #                 self.diverted_core_mask,
-    #                 self.limiter_mask_out,
-    #             )
-    #         )
-    #     else:
-    #         self.limiter_core_mask = self.diverted_core_mask.copy()
-    #     self.jtor = super().Jtor_part2(
-    #         R, Z, psi, self.psi_bndry, self.limiter_core_mask
-    #     )
-    #     return self.jtor
 
     def Lao_parameters(
         self, n_alpha, n_beta, alpha_logic=True, beta_logic=True, Ip_logic=True, nn=100
@@ -221,7 +194,8 @@ class ConstrainBetapIp(freegs4e.jtor.ConstrainBetapIp, Jtor_universal):
 
 
 class ConstrainPaxisIp(freegs4e.jtor.ConstrainPaxisIp, Jtor_universal):
-    """FreeGS4E profile class with a few modifications, to:
+    """FreeGSNKE profile class adapting the original FreeGS object with the same name,
+    with a few modifications, to:
     - retain memory of critical point calculation;
     - deal with limiter plasma configurations
 
@@ -232,12 +206,12 @@ class ConstrainPaxisIp(freegs4e.jtor.ConstrainPaxisIp, Jtor_universal):
 
         Parameters
         ----------
-        eq : freegs4e Equilibrium object
+        eq : FreeGSNKE Equilibrium object
             Specifies the domain properties
         limiter : freegs4e.machine.Wall object
             Specifies the limiter contour points
-            Only set if a limiter different from eq.tokamak.limiter is to be used.
-
+            Only needs to be set here if purposedly using a limiter that is different from eq.tokamak.limiter.
+            Otherwise use None
         """
         super().__init__(*args, **kwargs)
         self.profile_parameter = self.paxis
@@ -256,95 +230,9 @@ class ConstrainPaxisIp(freegs4e.jtor.ConstrainPaxisIp, Jtor_universal):
                 self.mask_inside_limiter, layer_size=1
             )
         ) > 0
+
+        # Note the factor 2 is not a typo: used in critical.inside_mask
         self.mask_outside_limiter = (2 * self.mask_outside_limiter).astype(float)
-
-        # if not hasattr(self, "fast"):
-        #     self.Jtor = self._Jtor
-        # else:
-        #     self.Jtor = self.Jtor_fast
-
-    # def get_pars(
-    #     self,
-    # ):
-    #     """Fetches all profile parameters and returns them in a single array"""
-    #     return np.array([self.alpha_m, self.alpha_n, self.paxis])
-
-    # def assign_profile_parameter(self, paxis):
-    #     """Assigns to the profile object a new value of the profile parameter paxis"""
-    #     self.paxis = paxis
-    #     self.profile_parameter = paxis
-
-    # def assign_profile_coefficients(self, alpha_m, alpha_n):
-    #     """Assigns to the profile object new value of the coefficients (alpha_m, alpha_n)"""
-    #     self.alpha_m = alpha_m
-    #     self.alpha_n = alpha_n
-
-    # def _Jtor(self, R, Z, psi, psi_bndry=None, rel_psi_error=0):
-    #     """Replaces the original FreeGS Jtor method if FreeGS4E is not available."""
-    #     self.jtor = super().Jtor(R, Z, psi, psi_bndry)
-    #     self.opt, self.xpt = critical.find_critical(R, Z, psi)
-
-    #     self.diverted_core_mask = self.jtor > 0
-    #     self.psi_bndry, mask, self.limiter_flag = (
-    #         self.limiter_handler.core_mask_limiter(
-    #             psi,
-    #             self.xpt[0][2],
-    #             self.diverted_core_mask,
-    #             self.limiter_mask_out,
-    #         )
-    #     )
-    #     self.jtor = super().Jtor(R, Z, psi, self.psi_bndry)
-    #     return self.jtor
-
-    # def Jtor_fast(self, R, Z, psi, psi_bndry=None, rel_psi_error=0):
-    #     """Used when FreeGS4E is available."""
-
-    #     opt, xpt = super().Jtor_part1(R, Z, psi, psi_bndry)
-
-    #     if psi_bndry is not None:
-    #         self.diverted_core_mask = critical.inside_mask(R, Z, psi, opt, xpt, self.mask_outside_limiter, psi_bndry)
-    #     elif xpt:
-    #         psi_bndry = xpt[0][2]
-    #         self.diverted_core_mask = critical.inside_mask(R, Z, psi, opt, xpt, self.mask_outside_limiter, psi_bndry)
-    #     else:
-    #         # No X-points
-    #         psi_bndry = psi[0, 0]
-    #         self.diverted_core_mask = None
-
-    #     psi_axis = opt[0][2]
-    #     # # check correct sorting between psi_axis and psi_bndry
-    #     if (psi_axis-psi_bndry)*self.Ip < 0:
-    #         raise ValueError("Incorrect critical points! Likely due to not suitable psi_plasma")
-
-    #     # added with respect to original Jtor
-    #     self.xpt = xpt
-    #     self.opt = opt
-    #     self.psi_bndry = psi_bndry
-    #     self.psi_axis = psi_axis
-
-    #     if self.diverted_core_mask is None:
-    #         # print('no xpt')
-    #         self.psi_bndry, self.limiter_core_mask, self.flag_limiter = (
-    #             psi_bndry,
-    #             None,
-    #             False,
-    #         )
-    #     elif rel_psi_error < 0.02:
-    #         self.psi_bndry, self.limiter_core_mask, self.flag_limiter = (
-    #             self.limiter_handler.core_mask_limiter(
-    #                 psi,
-    #                 self.psi_bndry,
-    #                 self.diverted_core_mask,
-    #                 self.limiter_mask_out,
-    #             )
-    #         )
-    #     else:
-    #         self.limiter_core_mask = self.diverted_core_mask.copy()
-
-    #     self.jtor = super().Jtor_part2(
-    #         R, Z, psi, self.psi_bndry, self.limiter_core_mask
-    #     )
-    #     return self.jtor
 
     def Lao_parameters(
         self, n_alpha, n_beta, alpha_logic=True, beta_logic=True, Ip_logic=True, nn=100
@@ -375,7 +263,8 @@ class ConstrainPaxisIp(freegs4e.jtor.ConstrainPaxisIp, Jtor_universal):
 
 
 class Fiesta_Topeol(freegs4e.jtor.Fiesta_Topeol, Jtor_universal):
-    """FreeGS profile class with a few modifications, to:
+    """FreeGSNKE profile class adapting the FreeGS4E object with the same name,
+    with a few modifications, to:
     - retain memory of critical point calculation;
     - deal with limiter plasma configurations
 
@@ -386,12 +275,12 @@ class Fiesta_Topeol(freegs4e.jtor.Fiesta_Topeol, Jtor_universal):
 
         Parameters
         ----------
-        eq : freegs4e Equilibrium object
+        eq : FreeGSNKE Equilibrium object
             Specifies the domain properties
         limiter : freegs4e.machine.Wall object
             Specifies the limiter contour points
-            Only set if a limiter different from eq.tokamak.limiter is to be used.
-
+            Only needs to be set here if purposedly using a limiter that is different from eq.tokamak.limiter.
+            Otherwise use None
         """
         super().__init__(*args, **kwargs)
         self.profile_parameter = self.Beta0
@@ -410,88 +299,9 @@ class Fiesta_Topeol(freegs4e.jtor.Fiesta_Topeol, Jtor_universal):
                 self.mask_inside_limiter, layer_size=1
             )
         ) > 0
+
+        # Note the factor 2 is not a typo: used in critical.inside_mask
         self.mask_outside_limiter = (2 * self.mask_outside_limiter).astype(float)
-
-        # if not hasattr(self, "fast"):
-        #     self.Jtor = self._Jtor
-        # else:
-        #     self.Jtor = self.Jtor_fast
-
-    # def assign_profile_parameter(self, Beta0):
-    #     """Assigns to the profile object a new value of the profile parameter paxis"""
-    #     self.Beta0 = Beta0
-    #     self.profile_parameter = Beta0
-
-    # def assign_profile_coefficients(self, alpha_m, alpha_n):
-    #     """Assigns to the profile object new value of the coefficients (alpha_m, alpha_n)"""
-    #     self.alpha_m = alpha_m
-    #     self.alpha_n = alpha_n
-
-    # def _Jtor(self, R, Z, psi, psi_bndry=None, rel_psi_error=0):
-    #     """Replaces the original FreeGS Jtor method if FreeGS4E is not available."""
-    #     self.jtor = super().Jtor(R, Z, psi, psi_bndry)
-    #     self.opt, self.xpt = critical.find_critical(R, Z, psi)
-
-    #     self.diverted_core_mask = self.jtor > 0
-    #     self.psi_bndry, mask, self.limiter_flag = (
-    #         self.limiter_handler.core_mask_limiter(
-    #             psi,
-    #             self.xpt[0][2],
-    #             self.diverted_core_mask,
-    #             self.limiter_mask_out,
-    #         )
-    #     )
-    #     self.jtor = super().Jtor(R, Z, psi, self.psi_bndry)
-    #     return self.jtor
-
-    # def Jtor_fast(self, R, Z, psi, psi_bndry=None, rel_psi_error=0):
-    #     """Used when FreeGS4E is available."""
-    #     opt, xpt = super().Jtor_part1(R, Z, psi, psi_bndry)
-
-    #     if psi_bndry is not None:
-    #         self.diverted_core_mask = critical.inside_mask(R, Z, psi, opt, xpt, self.mask_outside_limiter, psi_bndry)
-    #     elif xpt:
-    #         psi_bndry = xpt[0][2]
-    #         self.diverted_core_mask = critical.inside_mask(R, Z, psi, opt, xpt, self.mask_outside_limiter, psi_bndry)
-    #     else:
-    #         # No X-points
-    #         psi_bndry = psi[0, 0]
-    #         self.diverted_core_mask = None
-
-    #     psi_axis = opt[0][2]
-    #     # # check correct sorting between psi_axis and psi_bndry
-    #     if (psi_axis-psi_bndry)*self.Ip < 0:
-    #         raise ValueError("Incorrect critical points! Likely due to not suitable psi_plasma")
-
-    #     # added with respect to original Jtor
-    #     self.xpt = xpt
-    #     self.opt = opt
-    #     self.psi_bndry = psi_bndry
-    #     self.psi_axis = psi_axis
-
-    #     if self.diverted_core_mask is None:
-    #         # print('no xpt')
-    #         self.psi_bndry, self.limiter_core_mask, self.flag_limiter = (
-    #             psi_bndry,
-    #             None,
-    #             False,
-    #         )
-    #     elif rel_psi_error < 0.02:
-    #         self.psi_bndry, self.limiter_core_mask, self.flag_limiter = (
-    #             self.limiter_handler.core_mask_limiter(
-    #                 psi,
-    #                 self.psi_bndry,
-    #                 self.diverted_core_mask,
-    #                 self.limiter_mask_out,
-    #             )
-    #         )
-    #     else:
-    #         self.limiter_core_mask = self.diverted_core_mask.copy()
-
-    #     self.jtor = super().Jtor_part2(
-    #         R, Z, psi, self.psi_bndry, self.limiter_core_mask
-    #     )
-    #     return self.jtor
 
     def Lao_parameters(
         self, n_alpha, n_beta, alpha_logic=True, beta_logic=True, Ip_logic=True, nn=100
@@ -522,7 +332,8 @@ class Fiesta_Topeol(freegs4e.jtor.Fiesta_Topeol, Jtor_universal):
 
 
 class Lao85(freegs4e.jtor.Lao85, Jtor_universal):
-    """FreeGS profile class with a few modifications, to:
+    """FreeGSNKE profile class adapting the FreeGS4E object with the same name,
+    with a few modifications, to:
     - retain memory of critical point calculation;
     - deal with limiter plasma configurations
 
@@ -541,7 +352,6 @@ class Lao85(freegs4e.jtor.Lao85, Jtor_universal):
 
         """
         super().__init__(*args, **kwargs)
-        # self.profile_parameter = [self.alpha, self.beta]
 
         if limiter is None:
             self.limiter_handler = eq.limiter_handler
@@ -557,101 +367,9 @@ class Lao85(freegs4e.jtor.Lao85, Jtor_universal):
                 self.mask_inside_limiter, layer_size=1
             )
         ) > 0
+
+        # Note the factor 2 is not a typo: used in critical.inside_mask
         self.mask_outside_limiter = (2 * self.mask_outside_limiter).astype(float)
-
-        # if not hasattr(self, "fast"):
-        #     self.Jtor = self._Jtor
-        # else:
-        #     self.Jtor = self.Jtor_fast
-
-    # def assign_profile_parameter(self, alpha, beta):
-    #     """Assigns to the profile object a new value of the profile parameter paxis"""
-    #     self.alpha = alpha
-    #     self.beta = beta
-    #     self.initialize_profile()
-
-    # def get_pars(
-    #     self,
-    # ):
-    #     """Fetches all profile parameters and returns them in a single array"""
-    #     # This is a temporary fix that allows the linearization to work on lao profiles
-    #     # Changes in the profile are ignored in the linearised dynamics
-    #     return np.array([])
-
-    # def _Jtor(self, R, Z, psi, psi_bndry=None, rel_psi_error=0):
-    #     """Replaces the original FreeGS Jtor method if FreeGS4E is not available."""
-    #     self.jtor = super().Jtor(R, Z, psi, psi_bndry)
-    #     self.opt, self.xpt = critical.find_critical(R, Z, psi)
-
-    #     self.diverted_core_mask = self.jtor > 0
-    #     self.psi_bndry, mask, self.limiter_flag = (
-    #         self.limiter_handler.core_mask_limiter(
-    #             psi,
-    #             self.xpt[0][2],
-    #             self.diverted_core_mask,
-    #             self.limiter_mask_out,
-    #         )
-    #     )
-    #     self.jtor = super().Jtor(R, Z, psi, self.psi_bndry)
-    #     return self.jtor
-
-    # def Jtor_fast_old(self, R, Z, psi, psi_bndry=None, rel_psi_error=0):
-    #     """Used when FreeGS4E is available."""
-
-    #     opt, xpt = super().Jtor_part1(R, Z, psi, psi_bndry)
-
-    #     if psi_bndry is not None:
-    #         self.diverted_core_mask = critical.inside_mask(R, Z, psi, opt, xpt, self.mask_outside_limiter, psi_bndry)
-    #     elif xpt:
-    #         psi_bndry = xpt[0][2]
-    #         psi_axis = opt[0][2]
-    #         # # check correct sorting between psi_axis and psi_bndry
-    #         if (psi_axis-psi_bndry)*self.Ip < 0:
-    #             raise ValueError("Incorrect critical points! Likely due to not suitable psi_plasma")
-    #         self.diverted_core_mask = critical.inside_mask(R, Z, psi, opt, xpt, self.mask_outside_limiter, psi_bndry)
-    #     else:
-    #         # No X-points
-    #         psi_bndry = psi[0, 0]
-    #         self.diverted_core_mask = None
-
-    #     # added with respect to original Jtor
-    #     self.xpt = xpt
-    #     self.opt = opt
-    #     self.psi_bndry = psi_bndry
-    #     self.psi_axis = psi_axis
-
-    #     if self.diverted_core_mask is None:
-    #         # print('no xpt')
-    #         self.psi_bndry, self.limiter_core_mask, self.flag_limiter = (
-    #             psi_bndry,
-    #             None,
-    #             False,
-    #         )
-    #     elif True: #rel_psi_error < 0.02:
-    #         self.psi_bndry, self.limiter_core_mask, self.flag_limiter = (
-    #             self.limiter_handler.core_mask_limiter(
-    #                 psi,
-    #                 self.psi_bndry,
-    #                 self.diverted_core_mask,
-    #                 self.limiter_mask_out,
-    #             )
-    #         )
-    #     else:
-    #         self.limiter_core_mask = self.diverted_core_mask.copy()
-
-    #     self.jtor = super().Jtor_part2(
-    #         R, Z, psi, self.psi_bndry, self.limiter_core_mask
-    #     )
-    #     return self.jtor
-
-    # def Jtor(self, R, Z, psi, psi_bndry=None):
-    #     self.jtor, self.opt, self.xpt, self.psi_bndry, self.diverted_core_mask, self.limiter_core_mask, self.flag_limiter = Jtor_fast(self.Jtor_part1,
-    #                      self.Jtor_part2,
-    #                      self.limiter_handler.core_mask_limiter,
-    #                      R, Z, psi, psi_bndry,
-    #                      self.mask_outside_limiter,
-    #                      self.limiter_mask_out)
-    #     return self.jtor
 
     def Topeol_parameters(self, nn=100, max_it=100, tol=1e-5):
         """Fids best combination of
@@ -684,10 +402,10 @@ class Lao85(freegs4e.jtor.Lao85, Jtor_universal):
 
 
 class TensionSpline(freegs4e.jtor.TensionSpline, Jtor_universal):
-    """FreeGS profile class with a few modifications, to:
+    """FreeGSNKE profile class adapting the FreeGS4E object with the same name,
+    with a few modifications, to:
     - retain memory of critical point calculation;
     - deal with limiter plasma configurations
-
     """
 
     def __init__(self, eq, limiter=None, *args, **kwargs):
@@ -695,13 +413,14 @@ class TensionSpline(freegs4e.jtor.TensionSpline, Jtor_universal):
 
         Parameters
         ----------
-        eq : freegs4e Equilibrium object
+        eq : FreeGSNKE Equilibrium object
             Specifies the domain properties
         limiter : freegs4e.machine.Wall object
             Specifies the limiter contour points
-            Only set if a limiter different from eq.tokamak.limiter is to be used.
-
+            Only needs to be set here if purposedly using a limiter that is different from eq.tokamak.limiter.
+            Otherwise use None
         """
+
         super().__init__(*args, **kwargs)
         self.profile_parameter = [
             self.pp_knots,
@@ -728,12 +447,9 @@ class TensionSpline(freegs4e.jtor.TensionSpline, Jtor_universal):
                 self.mask_inside_limiter, layer_size=1
             )
         ) > 0
-        self.mask_outside_limiter = (2 * self.mask_outside_limiter).astype(float)
 
-        # if not hasattr(self, "fast"):
-        #     self.Jtor = self._Jtor
-        # else:
-        #     self.Jtor = self.Jtor_fast
+        # Note the factor 2 is not a typo: used in critical.inside_mask
+        self.mask_outside_limiter = (2 * self.mask_outside_limiter).astype(float)
 
     def assign_profile_parameter(
         self,
@@ -766,11 +482,3 @@ class TensionSpline(freegs4e.jtor.TensionSpline, Jtor_universal):
             ffp_values_2,
             ffp_sigma,
         ]
-
-    def get_pars(
-        self,
-    ):
-        """Fetches all profile parameters and returns them in a single array"""
-        # This is a temporary fix that allows the linearization to work on lao profiles
-        # Changes in the profile are ignored in the linearised dynamics
-        return np.array([])

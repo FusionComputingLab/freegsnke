@@ -1,3 +1,13 @@
+"""
+Implements the core Newton Krylov nonlinear solver used by both static GS solver and evolutive solver. 
+
+Copyright 2024 Nicola C. Amorisco, George K. Holt, Kamran Pentland, Adriano Agnello, Alasdair Ross, Matthijs Mars.
+
+FreeGSNKE is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
+"""
+
 import numpy as np
 
 
@@ -5,7 +15,7 @@ class nksolver:
     """Implementation of Newton Krylow algorithm for solving
     a generic root problem of the type
     F(x, other args) = 0
-    in the variable x.
+    in the variable x -- F(x) should have the same dimensions as x.
     Problem must be formulated so that x is a 1d np.array.
 
     In practice, given a guess x_0 and F(x_0) = R_0
@@ -21,6 +31,7 @@ class nksolver:
         problem_dimension : int
             Dimension of independent variable.
             np.shape(x) = problem_dimension
+            x is a 1d vector.
 
 
         """
@@ -30,121 +41,38 @@ class nksolver:
         self.dummy_hessenberg_residual[0] = 1.0
         self.verbose = verbose
 
-    # def least_square_problem(self, R0, nR0, G, Q, clip, threshold, clip_hard):
-    #     """Solves the following least square problem
-    #     min || G*coeffs + R0 ||^2
-    #     in the coefficients coeffs, and calculates the corresponding best step
-    #     dx = coeffs * Q
-
-    #     Parameters
-    #     ----------
-    #     R0 : 1d np.array, np.shape(R0) = self.problem_dimension
-    #         Residual at expansion point x_0
-    #     nR0 : float
-    #         l2 norm of R0
-    #     G : 2d np.array, np.shape(G) = [variable, self.problem_dimension]
-    #         Collection of values F(x_0 + dx_i) - R_0
-    #     Q : 2d np.array, np.shape(Q) = [variable, self.problem_dimension]
-    #         Collection of values dx_i
-    #     clip : float
-    #         maximum step size for each explored direction, in units
-    #         of exploratory step dx_i
-    #     threshold : float
-    #         catches cases of untreated (partial) collinearity
-    #     clip_hard : float
-    #         maximum step size for cases of untreated (partial) collinearity
-    #     """
-
-    #     self.coeffs = np.matmul(np.matmul(np.linalg.inv(np.matmul(G.T, G)), G.T), -R0)
-    #     self.coeffs = np.clip(self.coeffs, -clip, clip)
-    #     self.explained_residual = np.sum(G * self.coeffs[np.newaxis, :], axis=1)
-    #     self.relative_unexplained_residual = (
-    #         np.linalg.norm(self.explained_residual + R0) / nR0
-    #     )
-    #     # if self.relative_unexplained_residual > threshold:
-    #     #     self.coeffs = np.clip(self.coeffs, -clip_hard, clip_hard)
-    #     self.dx = np.sum(Q * self.coeffs[np.newaxis, :], axis=1)
-
-    def least_square_problem_hessenberg(
-        self, R0, nR0, G, Q, Hm, clip, threshold, clip_hard
-    ):
-        """Solves the following least square problem
-        min || G*coeffs + R0 ||^2
-        in the coefficients coeffs, and calculates the corresponding best step
-        dx = coeffs * Q
-
-        Parameters
-        ----------
-        R0 : 1d np.array, np.shape(R0) = self.problem_dimension
-            Residual at expansion point x_0
-        nR0 : float
-            l2 norm of R0
-        G : 2d np.array, np.shape(G) = [variable, self.problem_dimension]
-            Collection of values F(x_0 + dx_i) - R_0
-        Q : 2d np.array, np.shape(Q) = [variable, self.problem_dimension]
-            Collection of values dx_i
-        clip : float
-            maximum step size for each explored direction, in units
-            of exploratory step dx_i
-        threshold : float
-            catches cases of untreated (partial) collinearity
-        clip_hard : float
-            maximum step size for cases of untreated (partial) collinearity
-        """
-        # print('initial residual', nR0)
-        self.coeffs = np.matmul(
-            np.matmul(np.linalg.inv(np.matmul(Hm.T, Hm)), Hm.T),
-            -nR0 * self.dummy_hessenberg_residual[: self.n_it + 1],
-        )
-        self.coeffs = np.clip(self.coeffs, -clip, clip)
-        self.explained_residual = (
-            np.linalg.norm(np.sum(G * self.coeffs[np.newaxis, :], axis=1)) / nR0
-        )
-        # self.relative_unexplained_residual = (
-        # np.linalg.norm(self.explained_residual + R0) / nR0
-        # )
-        # print(self.n_it, self.relative_unexplained_residual)
-        # if self.relative_unexplained_residual > threshold:
-        #     self.coeffs = np.clip(self.coeffs, -clip_hard, clip_hard)
-        self.dx = np.sum(Q * self.coeffs[np.newaxis, :], axis=1)
-
     def Arnoldi_unit(
         self,
-        x0,  # trial expansion point
-        dx,  # norm 1
-        # ndx,
-        R0,  # residual at trial_current expansion point: Fresidual(trial_current)
+        x0,
+        dx,
+        R0,
         F_function,
         args,
-        # step_size
     ):
-        """Explores direction dx by calculating and storing residual F(x_0 + dx)
+        """Explores direction dx and proposes new direction for next exploration.
 
         Parameters
         ----------
         x0 : 1d np.array, np.shape(x0) = self.problem_dimension
             The expansion point x_0
         dx : 1d np.array, np.shape(dx) = self.problem_dimension
-            The direction to be explored. This will be sized appropriately.
+            The first direction to be explored. This will be sized appropriately.
         R0 : 1d np.array, np.shape(R0) = self.problem_dimension
-            Residual at expansion point x_0
+            Residual of the root problem F_function at expansion point x_0
         F_function : 1d np.array, np.shape(x0) = self.problem_dimension
             Function representing the root problem at hand
         args : list
             Additional arguments for using function F
-            F(x_0 + dx, *args)
-        step_size : float
-            l2 norm of proposed step.
-
+            F = F(x, *args)
 
         Returns
         -------
-        new_candidate_step : 1d np.array, np.shape(dx_new) = self.problem_dimension
+        new_candidate_step : 1d np.array, with same self.problem_dimension
             The direction to be explored next
 
         """
-        # build residual
-        # candidate_x = x0 + dx
+
+        # calculate residual at explored point x0+dx
         res_calculated = False
         while res_calculated is False:
             try:
@@ -153,7 +81,6 @@ class nksolver:
                 res_calculated = True
             except:
                 dx *= 0.75
-        # R_dx = np.copy(F_function(candidate_x, *args))
         useful_residual = R_dx - R0
         self.G[:, self.n_it] = useful_residual
 
@@ -171,6 +98,7 @@ class nksolver:
 
         # append to Hessenberg matrix and normalize
         self.Hm[self.n_it + 1, self.n_it] = np.linalg.norm(next_candidate)
+        # normalise the candidate direction for next iteration
         next_candidate /= self.Hm[self.n_it + 1, self.n_it]
 
         # build the relevant Givens rotation
@@ -184,66 +112,54 @@ class nksolver:
         Omega = np.eye(self.n_it + 2)
         Omega[:-1, :-1] = 1.0 * self.Omega
         self.Omega = np.matmul(givrot, Omega)
-        return next_candidate  # this is norm 1
+        return next_candidate
 
     def Arnoldi_iteration(
         self,
-        x0,  # trial_current expansion point
-        dx,  # first vector for current basis
-        R0,  # circuit eq. residual at trial_current expansion point: F_function(x0)
+        x0,
+        dx,
+        R0,
         F_function,
         args,
         step_size,
         scaling_with_n,
         target_relative_unexplained_residual,
-        max_n_directions,  # max number of basis vectors (must be less than number of modes + 1)
+        max_n_directions,
         clip,
     ):
         """Performs the iteration of the NK solution method:
         1) explores direction dx
-        2) computes and stores new residual
-        3) builds new candidate direction to continue exploring
-        Calculates best candidate step, stored at self.dx
+        2) checks what fraction of the residual can be (linearly) canceled
+        3) restarts if not satisfied
+        The best candidate step combining all explored directions is stored at self.dx
 
         Parameters
         ----------
         x0 : 1d np.array, np.shape(x0) = self.problem_dimension
             The expansion point x_0
         dx : 1d np.array, np.shape(dx) = self.problem_dimension
-            The first direction to be explored.
+            The first direction to be explored. This will be sized appropriately.
         R0 : 1d np.array, np.shape(R0) = self.problem_dimension
-            Residual at expansion point x_0
+            Residual of the root problem F_function at expansion point x_0
         F_function : 1d np.array, np.shape(x0) = self.problem_dimension
             Function representing the root problem at hand
         args : list
             Additional arguments for using function F
-            F(x_0 + dx, *args)
+            F = F(x, *args)
         step_size : float
-            l2 norm of proposed step
+            l2 norm of proposed step in units of the residual norm
         scaling_with_n : float
-            allows to further scale dx candidate steps by factor
+            allows to further scale dx candidate steps as a function of the iteration number n_it, by a factor
             (1 + self.n_it)**scaling_with_n
         target_relative_explained_residual : float between 0 and 1
-            terminates iteration when exploration can explain this
-            fraction of the initial residual R0
+            terminates iteration when such a fraction of the initial residual R0
+            can be (linearly) cancelled
         max_n_directions : int
             terminates iteration even though condition on
             explained residual is not met
-        max_Arnoldi_iterations : int
-            terminates iteration after attempting to explore
-            this number of directions
-        max_collinearity : float between 0 and 1
-            rejects a candidate direction if resulting residual
-            is collinear to any of those stored previously
         clip : float
             maximum step size for each explored direction, in units
             of exploratory step dx_i
-        threshold : float
-            catches cases of untreated (partial) collinearity
-        clip_hard : float
-            maximum step size for cases of untreated (partial) collinearity
-
-
         """
 
         nR0 = np.linalg.norm(R0)
@@ -265,7 +181,6 @@ class nksolver:
 
         # resize step based on residual
         adjusted_step_size = step_size * nR0
-        # print('initial residual 0', R0)
 
         # prepare for first direction exploration
         self.n_it = 0
@@ -276,8 +191,6 @@ class nksolver:
         self.Qn[:, self.n_it] = np.copy(dx)
         dx *= this_step_size
         self.Q[:, self.n_it] = np.copy(dx)
-
-        # print('initial residual 2', R0)
 
         explore = 1
         while explore:

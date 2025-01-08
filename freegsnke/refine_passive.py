@@ -1,3 +1,13 @@
+"""
+Defines some of the functionality needed by the FreeGSNKE passive_structure object.
+
+Copyright 2024 Nicola C. Amorisco, George K. Holt, Kamran Pentland, Adriano Agnello, Alasdair Ross, Matthijs Mars.
+
+FreeGSNKE is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
+"""
+
 from matplotlib.path import Path
 from scipy.stats.qmc import LatinHypercube
 
@@ -38,12 +48,6 @@ def generate_refinement_LH(R, Z, n_refine):
     area, path, vmin, vmax, dv, meanR, meanZ = find_area(R, Z, n_refine)
     Len = np.linalg.norm(dv)
 
-    # if n_refine is None:
-    #     n_refine = int(max(
-    #                             1, area * min_refine_per_area,
-    #                                Len * min_refine_per_lenght)
-    #                         )
-
     rand_fil = np.zeros((0, 2))
     it = 0
     while len(rand_fil) < n_refine and it < 100:
@@ -75,11 +79,6 @@ def generate_refinement_G(R, Z, n_refine):
     """
 
     area, path, vmin, vmax, dv, meanR, meanZ = find_area(R, Z, n_refine)
-
-    # if n_refine is None:
-    #     n_refine = max(
-    #         1, int(area / min_refine_per_area), np.max(dv / min_refine_per_lenght)
-    #     )
 
     dl = (area / n_refine) ** 0.5
     nx = int(dv[0] // dl)

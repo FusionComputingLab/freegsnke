@@ -1,3 +1,13 @@
+"""
+Implements the object that advances the linearised dynamics.
+
+Copyright 2024 Nicola C. Amorisco, George K. Holt, Kamran Pentland, Adriano Agnello, Alasdair Ross, Matthijs Mars.
+
+FreeGSNKE is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
+"""
+
 import numpy as np
 from scipy.linalg import solve_sylvester
 
@@ -6,8 +16,10 @@ from .implicit_euler import implicit_euler_solver
 
 
 class linear_solver:
-    """Interface between the linearised system of circuit equations and an ODE solver, calling a general implicit-Euler for a first-order ODE.
-    Solves the linearised problem. It needs the Jacobian of the plasma current distribution with respect to the independent currents, dIy/dI.
+    """Interface between the linearised system of circuit equations and the implicit-Euler
+    time stepper. Calculates the linear growth rate and solves the linearised dynamical problem.
+    It needs the Jacobian of the plasma current distribution with respect to all of the
+    independent currents, dIy/dI.
     """
 
     def __init__(
@@ -22,7 +34,8 @@ class linear_solver:
         max_internal_timestep=0.0001,
         full_timestep=0.0001,
     ):
-        """Instantiates the linear_solver object, with inputs computed mostly from circuit_equation_metals.py .
+        """Instantiates the linear_solver object, with inputs computed mostly
+        within the circuit_equation_metals object.
         Based on the input plasma properties and coupling matrices, it prepares:
         - an instance of the implicit Euler solver implicit_euler_solver()
         - internal time-stepper for the implicit-Euler
@@ -31,23 +44,25 @@ class linear_solver:
         ----------
         Lambdam1: np.array
             State matrix of the circuit equations for the metal in normal mode form:
-            Pm1Rm1MP = Lambdam1
-            P is the identity on the active coils and diagonalises the isolated dynamics of the passive coils, R^{-1/2}L_{passive}R^{-1/2}
+            P is the identity on the active coils and diagonalises the isolated dynamics
+            of the passive coils, R^{-1/2}L_{passive}R^{-1/2}
         Pm1: np.array
-            change of basis matrix, as defined above
+            change of basis matrix, as defined above, to the power of -1
         Rm1: np.array
             matrix of all metal resitances to the power of -1. Diagonal.
         Mey: np.array
-            matrix of inductances between grid points in the reduced plasma domain and all metal coils
-            (active coils and passive-structure filaments, self.Vm1Rm12Mey below is the one between plasma and the normal modes)
-            calculated using plasma_grids.py
+            matrix of inductance values between grid points in the reduced plasma domain and all metal coils
+            (active coils and passive-structure filaments)
+            Calculated by the metal_currents object
         Myy: np.array
             inductance matrix of grid points in the reduced plasma domain
-            calculated using plasma_grids.py
+            Calculated by plasma_current object
         plasma_norm_factor: float
-            an overall number to work with a rescaled plasma current, so that it's within a comparable range
+            an overall factor to work with a rescaled plasma current, so that
+            it's within a comparable range with metal currents
         max_internal_timestep: float
-            internal integration timestep of the implicit-Euler solver, to be used as substeps over the <<full_timestep>> interval
+            internal integration timestep of the implicit-Euler solver, to be used
+            as substeps over the <<full_timestep>> interval
         full_timestep: float
             full timestep requested to the implicit-Euler solver
         """
@@ -96,9 +111,15 @@ class linear_solver:
         self.forcing = np.zeros(self.n_independent_vars + 1)
         self.profile_forcing = np.zeros(self.n_independent_vars + 1)
 
-        # self.dIydpars = None
-
     def reset_plasma_resistivity(self, plasma_resistance_1d):
+        """Resets the value of the plasma resistivity,
+        throught the vector of 'geometric restistances' in the plasma domain
+
+        Parameters
+        ----------
+        plasma_resistance_1d : ndarray
+            Vector of 2pi resistivity R/dA for all domain grid points in the reduced plasma domain
+        """
         self.plasma_resistance_1d = plasma_resistance_1d
         self.set_linearization_point(None, None)
 
@@ -119,25 +140,21 @@ class linear_solver:
         )
 
     def set_linearization_point(self, dIydI, hatIy0):
-        """Initialises an implicit-Euler solver with the appropriate matrices for the linearised problem.
+        """Initialises an implicit-Euler solver with the appropriate matrices for the linearised dynamic problem.
 
         Parameters
         ----------
         dIydI = np.array
-            partial derivatives of plasma-cell currents on the reduced plasma domain with respect to all intependent <<current>> parameters
+            partial derivatives of plasma-cell currents on the reduced plasma domain with respect to all intependent metal currents
             (active coil currents, vessel normal modes, total plasma current divided by plasma_norm_factor).
             These would typically come from having solved the forward Grad-Shafranov problem. Finite difference Jacobian.
-        dIydI = np.array
-            partial derivatives of plasma-cell currents on the reduced plasma domain with respect to all intependent profile parameters,
-            i.e. (alpha_m, alpha_n, paxis OR betap)
+            Calculated by the nl_solver object
         hatIy0 = np.array
-            Normalised plasma current distribution on the reduced plasma domain (1d) at the equilibrium of the linearization.
-            This vector sums to 1.
+            Plasma current distribution on the reduced plasma domain (1d) of the equilibrium around which the dynamics is linearised.
+            This is normalised by the total plasma current, so that this vector sums to 1.
         """
         if dIydI is not None:
             self.dIydI = dIydI
-        # if dIydpars is not None:
-        #     self.dIydpars = dIydpars
         if hatIy0 is not None:
             self.hatIy0 = hatIy0
 
@@ -154,7 +171,8 @@ class linear_solver:
         self,
     ):
         """Initialises the pseudo-inductance matrix of the problem
-        M\dot(x) + Rx = forcing from the linearisation Jacobian.
+        M\dot(x) + Rx = forcing
+        using the linearisation Jacobian.
 
                           \Lambda^-1 + P^-1R^-1Mey A        P^-1R^-1Mey B
         M = M0 + dM =  (                                                       )
@@ -168,6 +186,8 @@ class linear_solver:
         where A = dIy/dId
               B = dIy/dIp
               C = dIy/plasmapars
+        Here we take C=0, that is the linearised dynamics does not account for evolving
+        plasma parameters atm.
 
 
         Parameters
@@ -234,7 +254,7 @@ class linear_solver:
         active_voltage_vec = np.array
             voltages applied to the active coils
         d_profile_pars_dt = np.array
-            time derivative of the profile parameters, in the order (alpha_m, alpha_n, paxis OR betap)
+            time derivative of the profile parameters, not used atm
         other parameters are passed in as object attributes
         """
         self.empty_U[: self.n_active_coils] = active_voltage_vec
@@ -251,158 +271,23 @@ class linear_solver:
     def calculate_linear_growth_rate(
         self,
     ):
-        """Looks into the eigenvecotrs of the "M" matrix to find the negative singular values, which correspond to the growth rates of instabilities.
+        """Looks into the eigenvecotrs of the "M" matrix to find the negative singular values,
+        which correspond to the growth rates of instabilities.
 
         Parameters
         ----------
         parameters are passed in as object attributes
         """
+        # full set of characteristic timescales
         self.all_timescales = np.sort(np.linalg.eigvals(self.Mmatrix))
+        # full set of characteristic timescales of the metal circuit equations
         self.all_timescales_const_Ip = np.sort(
             np.linalg.eigvals(self.Mmatrix[:-1, :-1])
         )
         mask = self.all_timescales < 0
+        # the negative (i.e. unstable) eigenvalues
         self.instability_timescale = -self.all_timescales[mask]
         self.growth_rates = 1 / self.instability_timescale
         mask = self.all_timescales_const_Ip < 0
         self.instability_timescale_const_Ip = -self.all_timescales_const_Ip[mask]
         self.growth_rates_const_Ip = 1 / self.instability_timescale_const_Ip
-
-    # def build_dIydall(self, mask=None):
-    #     """Builds full Jacobian including both extensive currents and profile pars"""
-    #     self.dIydall_full = np.concatenate((self.dIydI, self.dIydpars), axis=-1)
-    #     if mask is not None:
-    #         self.dIydall = self.dIydall_full[mask, :]
-    #     else:
-    #         self.dIydall = self.dIydall_full.copy()
-
-    # def assign_from_dIydall(self, mask=None):
-    #     """Uses full Jacobian to assign current and profile components"""
-    #     self.dIydI = self.dIydall_full[:, : self.n_independent_vars + 1]
-    #     self.dIydpars = self.dIydall_full[:, self.n_independent_vars + 1 :]
-
-    def build_n2_diffs(self, vectors):
-        """Builds non trivial pairwise differences.
-
-        Parameters
-        ----------
-        vectors : list of arrays
-            These should be the recorded currents and Iys
-
-        Returns
-        -------
-        list of arrays
-            Each array has non-trivial pairwise differences of entries in the input arrays
-        """
-        diff_1d = []
-        size = np.shape(vectors[0])[0]
-        idxs = np.tril_indices(size, k=-1)
-        idxs = idxs[0] * size + idxs[1]
-        for vector in vectors:
-            diff_vec_2d = vector[np.newaxis, :, :] - vector[:, np.newaxis, :]
-            diff_1d.append((diff_vec_2d.reshape(size * size, -1)[idxs]).T)
-        return diff_1d
-
-    def prepare_linearization_update(self, current_record, Iy_record, threshold):
-        """Computes quantities to update the linearisation matrices,
-        using a record of recently computed Grad-Shafranov solutions.
-
-        Parameters
-        ----------
-        current_record : np.array
-            <<current>> and profile parameter values over a time-horizon
-        Iy_record : np.array
-            plasma cell currents (over the reduced domain) over a time-horizon
-        """
-
-        # self.mask_Iy = (np.sum(Iy_record>0, axis=0)>0)
-        self.mask_Iy = (
-            np.std(Iy_record, axis=0) / (np.mean(Iy_record, axis=0) + 0.1)
-        ) > threshold
-        Iy_record = Iy_record[:, self.mask_Iy]
-        self.dv, self.dIy = self.build_n2_diffs([current_record, Iy_record])
-        self.build_dIydall(mask=self.mask_Iy)
-        self.dd = self.dIy - np.matmul(self.dIydall, self.dv)
-
-        # Composing the Sylverster equation
-        # where D is the sought Jacobian update
-        # dd@dv.T + D@(dv@dv.T) + \lambda R@D == 0
-        # standard form is
-        # AX + XB = Q
-
-        self.B = np.matmul(self.dv, self.dv.T)
-        self.Q = np.matmul(self.dd, self.dv.T)
-
-    def find_linearization_update(self, current_record, Iy_record, R, threshold):
-        """Computes the regularised update to the full jacobian.
-
-        Parameters
-        ----------
-        current_record : np.array
-            <<current>> and profile parameter values over a time-horizon
-        Iy_record : np.array
-            plasma cell currents (over the reduced domain) over a time-horizon
-        R : np.array
-            the regularization to be applied.
-        """
-        self.prepare_linearization_update(current_record, Iy_record, threshold)
-        reg_matrix = R[self.mask_Iy, :][:, self.mask_Iy]
-        self.jacobian_update = solve_sylvester(a=reg_matrix, b=self.B, q=self.Q)
-
-        self.jacobian_update_full = np.zeros_like(self.dIydall_full)
-        self.jacobian_update_full[self.mask_Iy, :] = self.jacobian_update
-
-    def apply_linearization_update(
-        self,
-    ):
-        """Uses the precalculated self.jacobian_update to update both
-        self.dIydI and self.dIydpars
-        """
-        self.dIydall_full += self.jacobian_update_full
-        self.assign_from_dIydall()
-
-    # def prepare_min_update_linearization(
-    #     self, current_record, Iy_record, threshold_svd
-    # ):
-    #     """Computes quantities to update the linearisation matrices, using a record of recently computed Grad-Shafranov solutions.
-    #     To be updated.
-
-    #     Parameters
-    #     ----------
-    #     current_record : np.array
-    #         <<current>> parameter values over a time-horizon
-    #     Iy_record : np.array
-    #         plasma cell currents (over the reduced domain) over a time-horizon
-    #     threshold_svd : float
-    #         discards singular values that are too small, to obtain a smoother pseudo-inverse
-    #     other parameters are passed in as object attributes
-    #     """
-    #     self.Iy_dv = ((Iy_record - Iy_record[-1:])[:-1]).T
-
-    #     self.current_dv = (current_record - current_record[-1:])[:-1]
-    #     self.abs_current_dv = np.mean(abs(self.current_dv), axis=0)
-
-    #     U, S, B = np.linalg.svd(self.current_dv.T, full_matrices=False)
-
-    #     mask = S > threshold_svd
-    #     S = S[mask]
-    #     U = U[:, mask]
-    #     B = B[mask, :]
-
-    #     # delta = Iy_dv@(B.T)@np.diag(1/S)@(U.T)
-    #     self.pseudo_inverse = (B.T) @ np.diag(1 / S) @ (U.T)
-
-    # def min_update_linearization(
-    #     self,
-    # ):
-    #     """Returns a minimum update to the Jacobian dIydI based on a set of recently computed Grad-Shafranov solutions.
-
-    #     Parameters
-    #     ----------
-    #     parameters are passed in as object attributes
-    #     """
-    #     self.predicted_Iy = np.matmul(self.dIydI, self.current_dv.T)
-    #     Iy_dv_d = self.Iy_dv - self.predicted_Iy
-
-    #     delta = Iy_dv_d @ self.pseudo_inverse
-    #     return delta

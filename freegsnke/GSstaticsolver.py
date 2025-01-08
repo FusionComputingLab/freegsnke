@@ -564,7 +564,7 @@ class NKGSsolver:
         initial_Picard=True,
         step_size=2.5,
         scaling_with_n=-1.0,
-        target_relative_unexplained_residual=.3,
+        target_relative_unexplained_residual=0.3,
         max_n_directions=16,
         clip=10,
         max_rel_update_size=0.2,

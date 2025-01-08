@@ -1,5 +1,16 @@
-import numpy as np
+"""
+Implements some functionality needed by the FreeGSNKE profile object to find optimised coefficients
+when switching between profile parametrizations.
 
+Copyright 2024 Nicola C. Amorisco, George K. Holt, Kamran Pentland, Adriano Agnello, Alasdair Ross, Matthijs Mars.
+
+FreeGSNKE is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
+"""
+
+
+import numpy as np
 
 def Lao_parameters_finder(
     pn_,
@@ -71,6 +82,9 @@ def Lao_parameters_finder(
 
 
 # Functions for the Lao85.Topeol_parameters optimiser
+# Used to find best fitting set of parameters for a Topeol profile
+# to reproduce the input pprime_ and ffprime_ of a Lao85 profile
+# Non-linear optimization
 def Topeol_std(x, alpha_m, alpha_n, beta_0):
     return (1 - x**alpha_m) ** alpha_n
 
@@ -240,7 +254,7 @@ def Topeol_opt_stepper(tp, tf, x, pars):
         dpars = np.where(ratio > 2, dpars, np.sign(dpars) * pars / 2)
     return pars + dpars
 
-
+# the actual optimizer
 def Topeol_opt(tp, tf, x, max_it, tol):
     tpn, tfn, b0 = Topeol_opt_init(tp, tf)
     it = 0

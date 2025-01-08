@@ -1,3 +1,13 @@
+"""
+Defines some of the functionality needed by the FreeGSNKE passive_structure object.
+
+Copyright 2024 Nicola C. Amorisco, George K. Holt, Kamran Pentland, Adriano Agnello, Alasdair Ross, Matthijs Mars.
+
+FreeGSNKE is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
+"""
+
 from matplotlib.path import Path
 from scipy.stats.qmc import LatinHypercube
 

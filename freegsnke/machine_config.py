@@ -1,3 +1,14 @@
+"""
+Checks and/or calculates resistance and inductance machine model based on the provided machine geometry.
+
+Copyright 2024 Nicola C. Amorisco, George K. Holt, Kamran Pentland, Adriano Agnello, Alasdair Ross, Matthijs Mars.
+
+FreeGSNKE is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
+"""
+
+
 import os
 import pickle
 from copy import deepcopy
@@ -13,20 +24,39 @@ if active_coils_path is None:
     raise ValueError("ACTIVE_COILS_PATH environment variable not set.")
 
 
-# def Greens_with_depth(Rc, Zc, R, Z, dR, dZ, tol=1e-6):
-#     mask = np.abs(R - Rc) < tol
-#     mask *= np.abs(Z - Zc) < tol
-#     small_r = np.sqrt(dR * dZ / np.pi)
-#     Rc = np.where(mask, Rc - small_r / 2, Rc)
-#     greens = Greens(Rc, Zc, R, Z)
-#     return greens
-
-
 def self_ind_circular_loop(R, r):
+    """Self inductance of a circular loop with radius R and width r.
+
+    Parameters
+    ----------
+    R : float or ndarray
+        Radius of the loop
+    r : float or ndarray
+        Width of the filament
+
+    Returns
+    -------
+    float or ndarray
+        Self inductance values
+    """
     return mu0 * R * (np.log(8 * R / r) - 0.5)
 
 
 def check_self_inductance_and_resistance(coils_dict):
+    """Checks if file with pre-calculated resistance and inductance value is in place,
+    and if so if the machine model corresponds.
+
+    Parameters
+    ----------
+    coils_dict : dictionary
+        Dictionary containing the FreeGSNKE machine description, i.e. containing vectorised coil info. 
+        Built by build_machine.py and stored by the machine object at machine.coil_dict
+
+    Returns
+    -------
+    ndarrays
+        resistance and inductance model
+    """
 
     needs_calculating = False
 
@@ -80,13 +110,13 @@ def check_self_inductance_and_resistance(coils_dict):
 
 
 def calculate_all(coils_dict):
-    """_summary_
+    """Calculates resistance and inductance model from the provided machine geometry.
 
     Parameters
     ----------
     coils_dict : dictionary
-        dictionary containing vectorised coil info.
-        Created in build_machine.py and stored at tokamak.coil_dict
+        Dictionary containing the FreeGSNKE machine description, i.e. containing vectorised coil info. 
+        Built by build_machine.py and stored by the machine object at machine.coil_dict
 
     """
     n_coils = len(list(coils_dict.keys()))
@@ -101,9 +131,9 @@ def calculate_all(coils_dict):
         # for coil-coil flux
         # mutual inductance = 2pi * (sum of all Greens(R_i,Z_i, R_j,Z_j) on n_i*n_j terms, where n is the number of windings)
 
-        # note that while the eq above is valid for active coils, where each filament carries the nominal current,
-        # this is not valid for refined passive structures, where each filament carries 1/n_filaments
-        # and for which a mean of the greens (rather than the sum) should be used instead
+        # note that while the equation above is valid for active coils, where each filament carries the nominal current,
+        # this is not valid for refined passive structures, where each filament carries a factor 1/n_filaments of the total current
+        # and for which a mean of the greens (rather than the sum) should be used instead, which is accounted through the 'multiplier' 
 
         coords_i = coils_dict[labeli]["coords"]
 
@@ -116,8 +146,6 @@ def calculate_all(coils_dict):
                     coords_i[1][np.newaxis, :],
                     coords_j[0][:, np.newaxis],
                     coords_j[1][:, np.newaxis],
-                    # np.array([coils_dict[labeli]["dR"]])[:, np.newaxis],
-                    # np.array([coils_dict[labeli]["dZ"]])[:, np.newaxis],
                 )
 
                 # Recalculate the diagonal terms of greenm using self_ind_circular_loop
@@ -126,11 +154,9 @@ def calculate_all(coils_dict):
                     rr = np.array([coils_dict[labeli]["dR"]]) + np.array(
                         [coils_dict[labeli]["dZ"]]
                     )
-                    # print(j, greenm)
                     greenm[np.arange(len(coords_i[0])), np.arange(len(coords_i[0]))] = (
                         self_ind_circular_loop(R=coords_i[0], r=rr) / (2 * np.pi)
                     )
-                    # print(j, greenm)
 
                 greenm *= coils_dict[labelj]["polarity"][:, np.newaxis]
                 greenm *= coils_dict[labelj]["multiplier"][:, np.newaxis]
@@ -166,125 +192,3 @@ n_coils = len(list(coils_dict.keys()))
 coils_order, coil_resist, coil_self_ind = check_self_inductance_and_resistance(
     coils_dict
 )
-
-
-# # not actually used in code, user provides relevant values
-# # eta_copper = 1.55e-8  # Resistivity in Ohm*m, for active coils
-# # eta_steel = 5.5e-7  # In Ohm*m, for passive structures
-
-
-# # Create dictionary of coils
-# coils_dict = {}
-# for i, coil_name in enumerate(active_coils):
-#     if coil_name == "Solenoid":
-#         coils_dict[coil_name] = {}
-#         coils_dict[coil_name]["coords"] = np.array(
-#             [active_coils[coil_name]["R"], active_coils[coil_name]["Z"]]
-#         )
-#         coils_dict[coil_name]["polarity"] = np.array(
-#             [active_coils[coil_name]["polarity"]] * len(active_coils[coil_name]["R"])
-#         )
-#         coils_dict[coil_name]["dR"] = active_coils[coil_name]["dR"]
-#         coils_dict[coil_name]["dZ"] = active_coils[coil_name]["dZ"]
-#         # this is resistivity divided by area
-#         coils_dict[coil_name]["resistivity"] = active_coils[coil_name][
-#             "resistivity"
-#         ] / (active_coils[coil_name]["dR"] * active_coils[coil_name]["dZ"])
-#         coils_dict[coil_name]["multiplier"] = np.array(
-#             [active_coils[coil_name]["multiplier"]] * len(active_coils[coil_name]["R"])
-#         )
-#         continue
-#     coils_dict[coil_name] = {}
-
-#     coords_R = []
-#     for ind in active_coils[coil_name].keys():
-#         coords_R.extend(active_coils[coil_name][ind]["R"])
-
-#     coords_Z = []
-#     for ind in active_coils[coil_name].keys():
-#         coords_Z.extend(active_coils[coil_name][ind]["Z"])
-#     coils_dict[coil_name]["coords"] = np.array([coords_R, coords_Z])
-
-#     polarity = []
-#     for ind in active_coils[coil_name].keys():
-#         polarity.extend(
-#             [active_coils[coil_name][ind]["polarity"]]
-#             * len(active_coils[coil_name][ind]["R"])
-#         )
-#     coils_dict[coil_name]["polarity"] = np.array(polarity)
-
-#     multiplier = []
-#     for ind in active_coils[coil_name].keys():
-#         multiplier.extend(
-#             [active_coils[coil_name][ind]["multiplier"]]
-#             * len(active_coils[coil_name][ind]["R"])
-#         )
-#     coils_dict[coil_name]["multiplier"] = np.array(multiplier)
-
-#     coils_dict[coil_name]["dR"] = active_coils[coil_name][
-#         list(active_coils[coil_name].keys())[0]
-#     ]["dR"]
-#     coils_dict[coil_name]["dZ"] = active_coils[coil_name][
-#         list(active_coils[coil_name].keys())[0]
-#     ]["dZ"]
-
-#     # this is resistivity divided by area
-#     coils_dict[coil_name]["resistivity"] = active_coils[coil_name][
-#         list(active_coils[coil_name].keys())[0]
-#     ]["resistivity"] / (coils_dict[coil_name]["dR"] * coils_dict[coil_name]["dZ"])
-
-# for i, coil in enumerate(passive_coils):
-#     tkey = "passive_" + str(i)
-#     coils_dict[tkey] = {}
-#     coils_dict[tkey]["coords"] = np.array((coil["R"], coil["Z"]))[:, np.newaxis]
-#     coils_dict[tkey]["dR"] = coil["dR"]
-#     coils_dict[tkey]["dZ"] = coil["dZ"]
-#     coils_dict[tkey]["polarity"] = np.array([1])
-#     coils_dict[tkey]["multiplier"] = np.array([1])
-#     # this is resistivity divided by area
-#     coils_dict[tkey]["resistivity"] = coil["resistivity"] / (coil["dR"] * coil["dZ"])
-
-# needs_calculating = check_self_inductance_and_resistance()
-
-#     # Save self inductance and resistance matrices, plus list of ordered coils
-#     with open(self_inductance_path, "wb") as f:
-#         pickle.dump(coil_self_ind, f)
-#     with open(resistance_path, "wb") as f:
-#         pickle.dump(coil_resist, f)
-#     with open(coils_order_path, "wb") as f:
-#         pickle.dump(coils_order, f)
-
-
-# # # Extract normal modes
-# # # 0. active + passive
-# # R12 = np.diag(coil_resist**.5)
-# # Rm12 = np.diag(coil_resist**-.5)
-# # Mm1 = np.linalg.inv(coil_self_ind)
-# # lm1r = R12@Mm1@R12
-# # rm1l = Rm12@coil_self_ind@Rm12
-# # # w,v = np.linalg.eig(R12@(Mm1@R12))
-# # # ordw = np.argsort(w)
-# # # w_active = w[ordw]
-# # # Vmatrix_full = ((v.T)[ordw]).T
-
-# # # 1. active coils
-# # w,v = np.linalg.eig(lm1r[:n_active_coils, :n_active_coils])
-# # ordw = np.argsort(w)
-# # w_active = w[ordw]
-# # Vmatrix_active = ((v.T)[ordw]).T
-
-# # # 2. passive structures
-# # w,v = np.linalg.eig(lm1r[n_active_coils:, n_active_coils:])
-# # ordw = np.argsort(w)
-# # w_passive = w[ordw]
-# # Vmatrix_passive = ((v.T)[ordw]).T
-
-# # # compose full
-# # Vmatrix = np.zeros((n_coils, n_coils))
-# # # Vmatrix[:n_active_coils, :n_active_coils] = 1.0*Vmatrix_active
-# # Vmatrix[:n_active_coils, :n_active_coils] = np.eye(n_active_coils)
-# # Vmatrix[n_active_coils:, n_active_coils:] = 1.0*Vmatrix_passive
-
-
-# # TODO: Unit tests
-# # if __name__ == "__main__":

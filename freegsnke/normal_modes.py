@@ -1,27 +1,34 @@
-import numpy as np
+"""
+Calculates matrix data needed for normal mode decomposition of the vessel.
 
-"""This calculates matrix data needed for normal mode decomposition of the vessel.
-Resistance data (coil_resist) and metal mutual inductance matrix (coil_self_ind)
-are as calculated in self.py 
-Matrix data calculated here is used to reformulate the system of circuit eqs,
-primarily in circuit_eq_metal.py
+Copyright 2024 Nicola C. Amorisco, George K. Holt, Kamran Pentland, Adriano Agnello, Alasdair Ross, Matthijs Mars.
+
+FreeGSNKE is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
 """
 
+
+import numpy as np
 
 class mode_decomposition:
     """Sets up the vessel mode decomposition to be used by the dynamic solver(s)"""
 
     def __init__(self, coil_resist, coil_self_ind, n_coils, n_active_coils):
-        """Instantiates the class
+        """Instantiates the class. 
+        Matrix data calculated here is used to reformulate the system of circuit eqs,
+        primarily in circuit_eq_metal.py
 
         Parameters
         ----------
         coil_resist : np.array
             1d array of resistance values for all machine conducting elements,
-            including both active coils and passive structures
+            including both active coils and passive structures.
+            Normally calculated (or fetched) in machine_config.py
         coil_self_ind : np.array
             2d matrix of mutual inductances between all pairs of machine conducting elements,
             including both active coils and passive structures
+            Normally calculated (or fetched) in machine_config.py
         """
 
         # check number of coils is compatible with data provided
@@ -38,17 +45,11 @@ class mode_decomposition:
         self.coil_self_ind = coil_self_ind
 
         # active + passive
-        # R12 = np.diag(self.coil_resist**0.5)
-        # Rm12 = np.diag(self.coil_resist**-0.5)
-        # Mm1 = np.linalg.inv(self.coil_self_ind)
-        # lm1r = R12 @ Mm1 @ R12
-        # lm1r_non_symm = Mm1 @ np.diag(self.coil_resist)
-        # rm1l = Rm12 @ self.coil_self_ind @ Rm12
         self.rm1l_non_symm = np.diag(self.coil_resist**-1.0) @ self.coil_self_ind
 
         # 1. active coils
         # normal modes are not used for the active coils,
-        # but they're calculated here for the check below
+        # but they're calculated here for the check on negative eigenvalues below
         mm1 = np.linalg.inv(
             self.coil_self_ind[: self.n_active_coils, : self.n_active_coils]
         )
@@ -56,7 +57,6 @@ class mode_decomposition:
         w, v = np.linalg.eig(r12 @ mm1 @ r12)
         ordw = np.argsort(w)
         w_active = w[ordw]
-        # Pmatrix_active = ((v.T)[ordw]).T
 
         # 2. passive structures
         r12 = np.diag(self.coil_resist[self.n_active_coils :] ** 0.5)
@@ -68,9 +68,8 @@ class mode_decomposition:
         self.w_passive = w[ordw]
         Pmatrix_passive = ((v.T)[ordw]).T
 
-        # a sign convention for the normal modes is set, otherwise same mode could have opposite signs
-        # in repeat calculcations and across machines, which may hinder reproducibility
-        # The way this is achieved is somewhat arbitrary:
+        # A sign convention for the sign of the normal modes is set
+        # The way this is achieved is just a choice:
         Pmatrix_passive /= np.sign(np.sum(Pmatrix_passive, axis=0, keepdims=True))
 
         if np.any(w_active < 0):
@@ -91,7 +90,3 @@ class mode_decomposition:
         self.Pmatrix[self.n_active_coils :, self.n_active_coils :] = (
             1.0 * Pmatrix_passive
         )
-
-
-# TODO: Unit tests
-# if __name__ == "__main__":

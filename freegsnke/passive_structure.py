@@ -1,3 +1,15 @@
+"""
+Implements the FreeGSNKE object used to deal with extended vessel structures.
+Current is distributed uniformly over each extended structure.
+
+Copyright 2024 Nicola C. Amorisco, George K. Holt, Kamran Pentland, Adriano Agnello, Alasdair Ross, Matthijs Mars.
+
+FreeGSNKE is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
+"""
+
+
 import freegs4e
 import matplotlib.pyplot as plt
 import numpy as np
@@ -10,8 +22,9 @@ from .refine_passive import find_area, generate_refinement
 class PassiveStructure(freegs4e.coil.Coil):
     """Inherits from freegs4e.coil.Coil.
     Object to implement passive structures.
-    Rather than listing large number of filaments it builds the
-    relevant green function matrix to distribute currents uniformly.
+    Rather than listing large number of filaments it averages the
+    relevant green functions so that currents are distributed over 
+    the structure -- uniformly.
     """
 
     def __init__(
@@ -20,16 +33,16 @@ class PassiveStructure(freegs4e.coil.Coil):
         Z,
         min_refine_per_area,
         min_refine_per_length,
-        refine_mode="G",
+        refine_mode='G',
     ):
-        """Instantiates the Machine, same as freegs4e.machine.Machine.
+        """Instantiates the object and builds the refinement of the provided polygonal shape.
 
         Parameters
         ----------
         R : array
-            List of vertex coordinates, defining passive structure polygon.
+            List of vertex coordinates, defining a passive structure polygon.
         Z : array
-            List of vertex coordinates, defining passive structure polygon.
+            List of vertex coordinates, defining a passive structure polygon.
         refine_mode : str, optional
             refinement mode for passive structures inputted as polygons, by default 'G' for 'grid'
             Use 'LH' for alternative mode using a Latin Hypercube implementation.
@@ -62,7 +75,15 @@ class PassiveStructure(freegs4e.coil.Coil):
 
     def create_RZ_key(self, R, Z):
         """
-        Produces tuple (Rmin,Rmax,Zmin,Zmax,nx,ny) to access correct greens function.
+        Produces tuple (Rmin,Rmax,Zmin,Zmax,nx,ny) to access correct dictionary entry of greens function.
+
+        Parameters
+        ----------
+        R : array
+            eq.R, radial coordinate on the domain grid 
+        Z : array
+            eq.Z, radial coordinate on the domain grid 
+
         """
         RZ_key = (np.min(R), np.max(R), np.min(Z), np.max(Z), np.size(R))
         return RZ_key
@@ -78,14 +99,14 @@ class PassiveStructure(freegs4e.coil.Coil):
         return filaments
 
     def build_control_psi(self, R, Z):
-        """Builds controlPsi, controlBr, controlBz for a new set of R, Z grids.
+        """Builds controlPsi for a new set of R, Z grids.
 
         Parameters
         ----------
         R : array
-            Grid on which to calculate the greens
+            Grid on which to calculate the greens, i.e. eq.R
         Z : array
-            Grid on which to calculate the greens
+            Grid on which to calculate the greens, i.e. eq.Z
         """
 
         greens_psi = Greens(
@@ -103,7 +124,15 @@ class PassiveStructure(freegs4e.coil.Coil):
             self.greens[RZ_key] = {"psi": greens_psi}
 
     def build_control_br(self, R, Z):
-        """Builds controlPsi, controlBr, controlBz for a new set of R, Z grids."""
+        """Builds controlBr for a new set of R, Z grids.
+        
+        Parameters
+        ----------
+        R : array
+            Grid on which to calculate the greens, i.e. eq.R
+        Z : array
+            Grid on which to calculate the greens, i.e. eq.Z
+        """
 
         greens_br = GreensBr(
             self.filaments[:, 0].reshape([-1] + [1] * R.ndim),
@@ -120,7 +149,15 @@ class PassiveStructure(freegs4e.coil.Coil):
             self.greens[RZ_key] = {"Br": greens_br}
 
     def build_control_bz(self, R, Z):
-        """Builds controlPsi, controlBr, controlBz for a new set of R, Z grids."""
+        """Builds controlBz for a new set of R, Z grids.
+        
+        Parameters
+        ----------
+        R : array
+            Grid on which to calculate the greens, i.e. eq.R
+        Z : array
+            Grid on which to calculate the greens, i.e. eq.Z
+        """
 
         greens_bz = GreensBz(
             self.filaments[:, 0].reshape([-1] + [1] * R.ndim),

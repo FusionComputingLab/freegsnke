@@ -11,7 +11,9 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 from matplotlib.path import Path
 from scipy.stats.qmc import LatinHypercube
 
-engine = LatinHypercube(d=2)
+# fixing the seed for reproducibility purposes
+engine = LatinHypercube(d=2, seed=42)
+
 
 import numpy as np
 

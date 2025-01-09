@@ -86,14 +86,8 @@ conda activate freegsnke
 
 ### Stage two: install FreeGSNKE
 
-1. Clone the FreeGSNKE repository with:
-```shell
-git clone git@gitlab.stfc.ac.uk:farscape-ws3/freegsnke.git
-```
-or 
-```shell
-git clone https://gitlab.stfc.ac.uk/farscape-ws3/freegsnke.git
-```
+1. Clone the FreeGSNKE repository with or download a release from the releases page.
+
 2. Enter the FreeGSNKE directory with:
 ```shell
 cd

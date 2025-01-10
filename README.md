@@ -10,7 +10,7 @@ FreeGSNKE (pronounced "free-gee-snake") is a **Python**-based code for **simulat
 
 Based on the well-established [FreeGS](https://github.com/bendudson/freegs) code, it utilises [FreeGS4E](https://github.com/freegs4e/freegs4e) (a fork of FreeGS) to solve different types of free-boundary Grad-Shafranov equilibrium problem and contains a number of new capabilities over FreeGS. 
 
-> **_NOTE:_**  We recommended reading this page in its entirety before attempting to install or run FreeGSNKE!
+**NOTE:**  We recommended reading this page in its entirety before attempting to install or run FreeGSNKE!
 
 ## Capabilities
 FreeGSNKE is capable of solving both **static** (time-<u>in</u>dependent) and **evolutive** (time-dependent) **free-boundary equilibrium problems**. For **fixed-boundary** problems we recommend using FreeGS.
@@ -35,10 +35,10 @@ These problems can be solved in a **user-specified tokamak geometry** that can i
 Each problem is solved using **fourth-order accurate finite differences** and a **purpose-built Newton-Krylov method** for additional **stability and convergence** speed (over the Picard iterations used in FreeGS). For equilibria that have plasma current density profiles with steep edge gradients or sheet currents invoke an **adaptive mesh refinement** scheme on the plasma boundary for additional stability. 
 
 <div align="center">
-  <img src="_images/mastu_eq.png" alt="mastu_eq" width="350"><br><br>
+  <img src="https://freegsnke-static-images-bucket.s3.eu-west-2.amazonaws.com/freegsnke_vs_efit.gif" alt="mastu_eq" width="650"><br><br>
 </div>
 
-Above we show an example of a static equilibrium calculated using FreeGSNKE's forward solver with a **MAST-U** machine description. The contours represent the contours of constant poloidal flux and the different tokamak features are plotted in various colours (refer back to table above). 
+In the left panel above we show an example of a dynamic equilibrium calculated using FreeGSNKE's forward solver with a **MAST-U** machine description. On the right is an equilibrium reconstruction of a real MAST-U plasma discharge. The active coil currents used in the FreeGSNKE simulation are the same as those used in the real shot, thus demonstrating FreeGSNKE's accuracy. The contours represent constant poloidal flux and the different tokamak features are plotted in various colours (refer back to table above). 
 
 ## Feature roadmap
 FreeGSNKE is constantly evolving and so we hope to provide users with more advanced features over time:
@@ -75,27 +75,29 @@ Building from source is currently the only supported installation method.
 The recommended way to install FreeGSNKE is to use a virtual environment such as conda or venv. The following instructions will set up a conda environment:
 
 1. Install the latest [Miniforge](https://github.com/conda-forge/miniforge) distribution for your operating system.
+
 2. Create a new conda environment with:
-```shell
-conda create -n freegsnke python=3.10
-```
+
+   ```shell
+   conda create -n freegsnke python=3.10
+   ```
 3. Activate the new environment with:
-```shell
-conda activate freegsnke
-```
+
+   ```shell
+   conda activate freegsnke
+   ```
 
 ### Stage two: install FreeGSNKE
 
-1. Clone the FreeGSNKE repository with or download a release from the releases page.
+1. Clone the FreeGSNKE repository download a release from the releases page.
 
-2. Enter the FreeGSNKE directory with:
-```shell
-cd
-```
-3. Install FreeGSNKE and its dependencies with
-```shell
-pip install ".[freegs4e]"
-```
+2. Enter the FreeGSNKE directory.
+   
+3. Install FreeGSNKE and its dependencies with:
+
+   ```shell
+   pip install ".[freegs4e]"
+   ```
 
 The extra `freegs4e` dependency in the last step installs [FreeGS4E](https://github.com/freegs4e/freegs4e) automatically (and is required for FreeGSNKE to run). 
 

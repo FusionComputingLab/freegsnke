@@ -32,13 +32,13 @@ These problems can be solved in a **user-specified tokamak geometry** that can i
 | Wall and/or limiter contours  | Confines the plasma boundary (for computational purposes). | Locations. | Solid black line |
 | Magnetic diagnostic probes  | Can measure the poloidal flux (fluxloops) or the magnetic field strength (pickup coils) at specified locations. | Locations (for both) and orientations (for pickup coils). | Orange diamonds (fluxloops) and brown dots/lines (pickup coils) |
 
-Each problem is solved using **fourth-order accurate finite differences** and a **purpose-built Newton-Krylov method** for additional **stability and convergence** speed (over the Picard iterations used in FreeGS). Equilibria that have plasma current density profiles with steep edge gradients or sheet currents invoke an **adaptive mesh refinement** scheme on the plasma boundary for additional stability. 
+Static Grad-Shafranov problems are solved using **fourth-order accurate finite differences** and a **purpose-built Newton-Krylov method** for additional **stability and convergence** speed (over the Picard iterations used in FreeGS). An implicit Euler method and the same Newton-Krylov solver are used to tackle the evolutive problem.
 
 <div align="center">
   <img src="https://freegsnke-static-images-bucket.s3.eu-west-2.amazonaws.com/freegsnke_vs_efit.gif" alt="mastu_eq" width="650"><br><br>
 </div>
 
-In the left panel above we show an example of a dynamic equilibrium calculated using FreeGSNKE's forward solver with a **MAST-U** machine description. On the right is an equilibrium reconstruction of a real MAST-U plasma discharge. The active coil currents used in the FreeGSNKE simulation are the same as those used in the real shot, thus demonstrating FreeGSNKE's accuracy. The contours represent constant poloidal flux and the different tokamak features are plotted in various colours (refer back to table above). 
+In the left panel above we show an example of a dynamic equilibrium calculated using FreeGSNKE's forward solver, simulating the flat-phase of a **MAST-U** plasma discharge.On the right is the sequence of equilibrium reconstructions for the actual MAST-U shot. The agreement between the simulation and the real shot is very good in both the plasma shape targets and the currents in the poloidal field coils, illustrating FreeGSNKE's accuracy. The contours represent constant poloidal flux and the different tokamak features are plotted in various colours (refer back to table above). 
 
 ## Feature roadmap
 FreeGSNKE is constantly evolving and so we hope to provide users with more advanced features over time:

@@ -32,7 +32,7 @@ These problems can be solved in a **user-specified tokamak geometry** that can i
 | Wall and/or limiter contours  | Confines the plasma boundary (for computational purposes). | Locations. | Solid black line |
 | Magnetic diagnostic probes  | Can measure the poloidal flux (fluxloops) or the magnetic field strength (pickup coils) at specified locations. | Locations (for both) and orientations (for pickup coils). | Orange diamonds (fluxloops) and brown dots/lines (pickup coils) |
 
-Each problem is solved using **fourth-order accurate finite differences** and a **purpose-built Newton-Krylov method** for additional **stability and convergence** speed (over the Picard iterations used in FreeGS). For equilibria that have plasma current density profiles with steep edge gradients or sheet currents invoke an **adaptive mesh refinement** scheme on the plasma boundary for additional stability. 
+Each problem is solved using **fourth-order accurate finite differences** and a **purpose-built Newton-Krylov method** for additional **stability and convergence** speed (over the Picard iterations used in FreeGS). Equilibria that have plasma current density profiles with steep edge gradients or sheet currents invoke an **adaptive mesh refinement** scheme on the plasma boundary for additional stability. 
 
 <div align="center">
   <img src="https://freegsnke-static-images-bucket.s3.eu-west-2.amazonaws.com/freegsnke_vs_efit.gif" alt="mastu_eq" width="650"><br><br>

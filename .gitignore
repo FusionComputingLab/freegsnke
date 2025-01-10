@@ -35,6 +35,7 @@ examples/example_nonlinear_evolution_diverted_*
 docs/_build
 docs/api
 docs/notebooks
+docs/_images
 build/
 examples/.virtual_documents/*
 .virtual_documents/

@@ -1,6 +1,6 @@
 
 <div align="center">
-  <img src="images/freegsnke_logo.png" alt="FreeGSNKE Logo" width="200"><br><br>
+  <img src="_images/freegsnke_logo.png" alt="FreeGSNKE Logo" width="200"><br><br>
 </div>
 
 # FreeGSNKE: Free-boundary Grad-Shafranov Newton-Krylov Evolve
@@ -35,7 +35,7 @@ These problems can be solved in a **user-specified tokamak geometry** that can i
 Each problem is solved using **fourth-order accurate finite differences** and a **purpose-built Newton-Krylov method** for additional **stability and convergence** speed (over the Picard iterations used in FreeGS). For equilibria that have plasma current density profiles with steep edge gradients or sheet currents invoke an **adaptive mesh refinement** scheme on the plasma boundary for additional stability. 
 
 <div align="center">
-  <img src="images/mastu_eq.png" alt="mastu_eq" width="350"><br><br>
+  <img src="_images/mastu_eq.png" alt="mastu_eq" width="350"><br><br>
 </div>
 
 Above we show an example of a static equilibrium calculated using FreeGSNKE's forward solver with a **MAST-U** machine description. The contours represent the contours of constant poloidal flux and the different tokamak features are plotted in various colours (refer back to table above). 
@@ -86,14 +86,8 @@ conda activate freegsnke
 
 ### Stage two: install FreeGSNKE
 
-1. Clone the FreeGSNKE repository with:
-```shell
-git clone git@gitlab.stfc.ac.uk:farscape-ws3/freegsnke.git
-```
-or 
-```shell
-git clone https://gitlab.stfc.ac.uk/farscape-ws3/freegsnke.git
-```
+1. Clone the FreeGSNKE repository with or download a release from the releases page.
+
 2. Enter the FreeGSNKE directory with:
 ```shell
 cd

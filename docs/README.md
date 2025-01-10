@@ -1,6 +1,6 @@
 # Documentation guide
 
-The documentation is provided by Sphinx and is partially automatically generated from the code.
+The documentation is built using Sphinx and is partially automatically generated from the code.
 
 
 ## API documentation

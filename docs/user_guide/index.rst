@@ -17,3 +17,6 @@ The notebooks are displayed statically on the following pages, but running them 
     :maxdepth: 1
     
     ../notebooks/example0 - build_tokamak_machine
+    ../notebooks/example1 - static_inverse_solve_MASTU
+    ../notebooks/example2 - static_forward_solve_MASTU.ipynb
+    ../notebooks/example3 - extracting_equilibrium_quantites

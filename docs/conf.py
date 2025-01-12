@@ -100,7 +100,7 @@ html_theme_path = [sphinx_rtd_theme.get_html_theme_path()]
 html_theme_options = {
     # 'logo_only': True,
     "display_version": True,
-    "navigation_depth": 1,
+    "navigation_depth": 3,
     "collapse_navigation": True,
     # 'style_nav_header_background': '#C48EDC',
 }

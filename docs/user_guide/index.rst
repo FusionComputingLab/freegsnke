@@ -22,3 +22,4 @@ The notebooks are displayed statically on the following pages, but running them 
     ../notebooks/example3 - extracting_equilibrium_quantites
     ../notebooks/example4 - using_magnetic_probes
     ../notebooks/example5 - evolutive_forward_solve
+    ../notebooks/example7 - static_inverse_solve_SPARC

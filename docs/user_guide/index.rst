@@ -20,3 +20,4 @@ The notebooks are displayed statically on the following pages, but running them 
     ../notebooks/example1 - static_inverse_solve_MASTU
     ../notebooks/example2 - static_forward_solve_MASTU.ipynb
     ../notebooks/example3 - extracting_equilibrium_quantites
+    ../notebooks/example4 - using_magnetic_probes

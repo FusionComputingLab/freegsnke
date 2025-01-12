@@ -16,8 +16,4 @@ The notebooks are displayed statically on the following pages, but running them 
 .. toctree::
     :maxdepth: 1
     
-    ../notebooks/equilibrium_examples
-    ../notebooks/basic_dynamical_evolution
-    ../notebooks/example_nonlinear_evolution_diverted
-    ../notebooks/example_nonlinear_evolution_limiter
-    ../notebooks/machine_config
+    ../notebooks/example0 - build_tokamak_machine

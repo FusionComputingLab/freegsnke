@@ -1,7 +1,9 @@
-sphinx==5.0.0
+sphinx
 sphinx-math-dollar
 sphinx-rtd-dark-mode
 sphinx-rtd-theme
+sphinx-autobuild
 ipython
 m2r2
 myst-nb
+docutils<0.21

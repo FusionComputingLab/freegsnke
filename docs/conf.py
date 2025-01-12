@@ -129,3 +129,5 @@ myst_enable_extensions = [
     "amsmath",
     "dollarmath",
 ]
+
+nb_execution_timeout = 600

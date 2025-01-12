@@ -1,4 +1,5 @@
 import sys
+from datetime import datetime
 
 sys.path.append("../")
 
@@ -13,7 +14,7 @@ sys.path.append("../")
 from freegsnke import __author__, __version__
 
 project = "FreeGSNKE"
-copyright = "2023, authors"
+copyright = f"{datetime.now().year}, the FreeGSNKE authors"
 author = __author__
 release = __version__
 version = __version__

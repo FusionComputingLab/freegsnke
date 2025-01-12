@@ -124,3 +124,8 @@ html_css_files = [
 autodoc_mock_imports = ["freegs"]
 
 # -- Extension configuration -------------------------------------------------
+
+myst_enable_extensions = [
+    "amsmath",
+    "dollarmath",
+]

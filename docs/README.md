@@ -19,13 +19,21 @@ The documentation can then be built by running:
 bash build_documentation.sh
 ```
 
+This may take several minutes to complete as it runs some examples of the code to generate the documentation.
+
 ## Viewing the documentation
 
 After building, open the `docs/_build/html/index.html` file in a browser to view the documentation landing page.
 
-## Manual documentation
+## Developing the documentation
 
-Additionally, documentation can be added manually. See, for example, `docs/user_guide/index.rst`.
+To develop the documentation, you can use the following command to automatically rebuild the documentation when changes are made:
+
+```bash
+bash build_documentation.sh live
+```
+
+The documentation can then be viewed in a browser at `http://localhost:8000`.
 
 ## TODOs
 - [ ] add general documentation and examples/guides

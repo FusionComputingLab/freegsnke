@@ -36,6 +36,7 @@ docs/_build
 docs/api
 docs/notebooks
 docs/_images
+docs/machine_configs
 build/
 examples/.virtual_documents/*
 .virtual_documents/

@@ -34,10 +34,3 @@ bash build_documentation.sh live
 ```
 
 The documentation can then be viewed in a browser at `http://localhost:8000`.
-
-## TODOs
-- [ ] add general documentation and examples/guides
-- [ ] update `conf.py` file with correct details (authors, copyright, etc.)
-- [ ] Exchange the sphinx-build with [sphinx-multiversion](https://holzhaus.github.io/sphinx-multiversion/master/index.html). (and set it up so that we have different tagged commits that show up as versions on the website)
-- [ ] Make sure tests fail if sphinx-build fails
-- [ ] add tests to check if documentation is build properly

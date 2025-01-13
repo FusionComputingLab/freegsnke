@@ -186,4 +186,6 @@ This work was funded under the Fusion Computing Lab collaboration between the ST
 
 ## License
 
-FreeGSNKE is currently available under academic license. Contact the authors directly for details.
+FreeGSNKE is distributed under the GNU Lesser General Public License v3.0. See the [LICENSE](LICENSE) file or the [GNU website](https://www.gnu.org/licenses/lgpl-3.0.en.html) for more details.
+
+The authors are also willing to discuss alternative licensing arrangements if required.

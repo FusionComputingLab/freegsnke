@@ -3,7 +3,7 @@ Class to implement magnetic probes (flux loops and pick ups at the moment):
 - sets up probe object, containing the types and locations of the probes
 - methods to extract the 'measurements' by each probe from an equilibrium.
 
-Copyright 2024 The Authors, as per the README.
+Copyright 2025 UKAEA, UKRI-STFC, and The Authors, as per the COPYRIGHT and README files.
 
 This file is part of FreeGSNKE.
 

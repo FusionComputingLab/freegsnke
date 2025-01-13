@@ -2,7 +2,7 @@
 Implements some functionality needed by the FreeGSNKE profile object to find optimised coefficients
 when switching between profile parametrizations.
 
-Copyright 2024 The Authors, as per the README.
+Copyright 2025 UKAEA, UKRI-STFC, and The Authors, as per the COPYRIGHT and README files.
 
 This file is part of FreeGSNKE.
 

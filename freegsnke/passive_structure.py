@@ -2,7 +2,7 @@
 Implements the FreeGSNKE object used to deal with extended vessel structures.
 Current is distributed uniformly over each extended structure.
 
-Copyright 2024 The Authors, as per the README.
+Copyright 2025 UKAEA, UKRI-STFC, and The Authors, as per the COPYRIGHT and README files.
 
 This file is part of FreeGSNKE.
 

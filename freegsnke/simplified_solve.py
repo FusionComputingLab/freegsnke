@@ -3,7 +3,7 @@ Implements a 'simplified' set of discretised current equations (coupling metals 
 in which the normalised distribution of the plasma current is assumed known (but not the magnitude of the plasma current).
 This makes the system of current equations linear.
 
-Copyright 2024 The Authors, as per the README.
+Copyright 2025 UKAEA, UKRI-STFC, and The Authors, as per the COPYRIGHT and README files.
 
 This file is part of FreeGSNKE.
 

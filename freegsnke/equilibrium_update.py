@@ -1,7 +1,7 @@
 """
 Defines the FreeGSNKE equilibrium Object, which inherits from the FreeGS4E equilibrium object. 
 
-Copyright 2024 The Authors, as per the README.
+Copyright 2025 UKAEA, UKRI-STFC, and The Authors, as per the COPYRIGHT and README files.
 
 This file is part of FreeGSNKE.
 

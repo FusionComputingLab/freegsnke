@@ -2,7 +2,7 @@
 Defines the metal_currents Object, which handles the circuit equations of 
 all metal structures in the tokamak - both active PF coils and passive structures.
 
-Copyright 2024 The Authors, as per the README.
+Copyright 2025 UKAEA, UKRI-STFC, and The Authors, as per the COPYRIGHT and README files.
 
 This file is part of FreeGSNKE.
 

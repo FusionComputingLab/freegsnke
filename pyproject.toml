@@ -4,19 +4,17 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "freegsnke"
-version = "0.1.0"
+version = "1.0"
 authors = [
-    {name = "Nicola Amorisco", email = "nicola.amorisco@stfc.ac.uk"},
-    {name = "George Holt", email = "george.holt@stfc.ac.uk"},
-    {name = "Adriano Agnello", email = "adriano.agnello@stfc.ac.uk"},
-    {name = "Matthijs Mars"}
+    {name = "The FreeGSNKE Developers"}
 ]
-description = "Evolutive free boundary Grad-Shafranov solver for tokamak plasma equilibrium"
+description = "FreeGSNKE: A Python code for evolutive free-boundary tokamak plasma equilibrium simulations"
 readme = "README.md"
 requires-python = ">=3.9"
 classifiers = [
     "Programming Language :: Python :: 3",
-    "Operating System :: OS Independent"
+    "Operating System :: OS Independent",
+    "License :: OSI Approved :: GNU Lesser General Public License v3 (LGPLv3)"
 ]
 dynamic = ["dependencies", "optional-dependencies"]
 
@@ -29,4 +27,4 @@ optional-dependencies.dev =  { file = ["requirements-dev.txt"] }
 optional-dependencies.freegs4e = { file = ["requirements-freegs4e.txt"] }
 
 [project.urls]
-Homepage = "https://gitlab.stfc.ac.uk/farscape-ws3/freegsnke"
+Homepage = "https://github.com/FusionComputingLab/freegsnke"

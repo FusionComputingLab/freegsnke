@@ -1,2 +1,4 @@
-__version__ = "1.0"
-__author__ = "Nicola C. Amorisco, George K. Holt, Kamran Pentland, Adriano Agnello, Alasdair Ross, Matthijs Mars"
+import importlib.metadata
+
+__version__ = importlib.metadata.version("freegsnke")
+__author__ = "The FreeGSNKE Developers"

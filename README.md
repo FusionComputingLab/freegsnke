@@ -8,7 +8,7 @@
 
 FreeGSNKE (pronounced "free-gee-snake") is a **Python**-based code for **simulating the evolution of free-boundary tokamak plasma equilibria**.
 
-Based on the well-established [FreeGS](https://github.com/bendudson/freegs) code, it utilises [FreeGS4E](https://github.com/freegs4e/freegs4e) (a fork of FreeGS) to solve different types of free-boundary Grad-Shafranov equilibrium problem and contains a number of new capabilities over FreeGS. 
+Based on the well-established [FreeGS](https://github.com/bendudson/freegs) code, it utilises [FreeGS4E](https://github.com/FusionComputingLab/freegs4e) (a fork of FreeGS) to solve different types of free-boundary Grad-Shafranov equilibrium problem and contains a number of new capabilities over FreeGS. 
 
 **NOTE:**  We recommended reading this page in its entirety before attempting to install or run FreeGSNKE!
 
@@ -99,7 +99,7 @@ The recommended way to install FreeGSNKE is inside a virtual environment, for ex
    pip install ".[freegs4e]"
    ```
 
-The extra `freegs4e` dependency in the last step installs [FreeGS4E](https://github.com/freegs4e/freegs4e) automatically (and is required for FreeGSNKE to run). 
+The extra `freegs4e` dependency in the last step installs [FreeGS4E](https://github.com/FusionComputingLab/freegs4e) automatically (and is required for FreeGSNKE to run). 
 
 If you are planning to develop FreeGSNKE, see the below section on [contributing](#contributing) code.
 
@@ -135,7 +135,7 @@ pip install -e ".[freegs4e,dev]"
 
 This will install FreeGSNKE in editable mode, including the optional development dependencies.
 
-If you are also planning to co-develop [FreeGS4E](https://github.com/freegs4e/freegs4e), you will need to install it in editable mode as well. This can be done by cloning the FreeGS4E repository, installing using the development instructions, and then installing FreeGSNKE in editable mode with:
+If you are also planning to co-develop [FreeGS4E](https://github.com/FusionComputingLab/freegs4e), you will need to install it in editable mode as well. This can be done by cloning the FreeGS4E repository, installing using the development instructions, and then installing FreeGSNKE in editable mode with:
 ```shell
 pip install ".[dev]"
 ```

@@ -36,7 +36,7 @@ Static Grad-Shafranov problems are solved using **fourth-order accurate finite d
 
 <div align="center" markdown="0">
 <video width="650" autoplay loop muted playsinline controls>
-<source src="https://freegsnke-static-images-bucket.s3.eu-west-2.amazonaws.com/freegsnke_vs_efit_video_large.mp4" type="video/mp4">
+<source src="https://freegsnke-static-images-bucket.s3.eu-west-2.amazonaws.com/freegsnke_vs_efit_video_small.mp4" type="video/mp4">
 </video>
 </div>
 

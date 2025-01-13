@@ -34,10 +34,8 @@ These problems can be solved in a **user-specified tokamak geometry** that can i
 
 Static Grad-Shafranov problems are solved using **fourth-order accurate finite differences** and a **purpose-built Newton-Krylov method** for additional **stability and convergence** speed (over the Picard iterations used in FreeGS). An implicit Euler method and the same Newton-Krylov solver are used to tackle the evolutive problem.
 
-<div align="center" markdown="0">
-<video width="650" autoplay loop muted playsinline controls>
-<source src="https://freegsnke-static-images-bucket.s3.eu-west-2.amazonaws.com/freegsnke_vs_efit_video_large.mp4" type="video/mp4">
-</video>
+<div align="center">
+<video autoplay width="650" src="https://github.com/user-attachments/assets/0f0207f9-1c5e-451e-b45e-24e7c9589154" />
 </div>
 
 In the left panel above we show an example of a dynamic equilibrium calculated using FreeGSNKE's forward solver, simulating the flat-phase of a **MAST-U** plasma discharge.On the right is the sequence of equilibrium reconstructions for the actual MAST-U shot. The agreement between the simulation and the real shot is very good in both the plasma shape targets and the currents in the poloidal field coils, illustrating FreeGSNKE's accuracy. The contours represent constant poloidal flux and the different tokamak features are plotted in various colours (refer back to table above). 

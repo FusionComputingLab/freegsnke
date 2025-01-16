@@ -89,17 +89,11 @@ The recommended way to install FreeGSNKE is inside a virtual environment, for ex
 
 ### Stage two: install FreeGSNKE
 
-1. Clone the FreeGSNKE repository or download a release from the releases page.
-
-2. Enter the FreeGSNKE directory.
-   
-3. Install FreeGSNKE and its dependencies with:
-
    ```shell
-   pip install ".[freegs4e]"
+   pip install "freegsnke[freegs4e] @ git+https://github.com/FusionComputingLab/freegsnke"
    ```
 
-The extra `freegs4e` dependency in the last step installs [FreeGS4E](https://github.com/FusionComputingLab/freegs4e) automatically (and is required for FreeGSNKE to run). 
+The extra `freegs4e` dependency installs [FreeGS4E](https://github.com/FusionComputingLab/freegs4e) automatically (and is required for FreeGSNKE to run). 
 
 If you are planning to develop FreeGSNKE, see the below section on [contributing](#contributing) code.
 
@@ -126,11 +120,16 @@ We welcome contributions including **bug fixes** or **new feature** requests for
 
 To make code contributions, please do so via a **merge request**. This will require working on your own branch, making the desired changes, and then submitting a merge request. The request will then be considered by the repository maintainers. 
 
-To work on your code in development mode, run the following in place of the final step in [installation](#installation) from your FreeGSNKE root directory:
+To work on your code in development mode, first clone the repository:
+
+```
+git clone https://github.com/FusionComputingLab/freegsnke
+```
+
+From your FreeGSNKE root directory, run:
 
 ```shell
 pip install -e ".[freegs4e,dev]"
-
 ```
 
 This will install FreeGSNKE in editable mode, including the optional development dependencies.

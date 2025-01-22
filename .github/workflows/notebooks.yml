@@ -25,9 +25,9 @@ jobs:
         run: jupyter nbconvert --execute --to notebook --inplace "examples/example3 - extracting_equilibrium_quantites.ipynb"
       - name: Check using magnetic probes notebook
         run: jupyter nbconvert --execute --to notebook --inplace "examples/example4 - using_magnetic_probes.ipynb"
-      - name: Check evolutive formward solve notebook
+      - name: Check evolutive forward solve notebook
         run: jupyter nbconvert --execute --to notebook --inplace "examples/example5 - evolutive_forward_solve.ipynb"
-      - name: Check static invserse solve SPARC notebook
+      - name: Check static inverse solve SPARC notebook
         run: jupyter nbconvert --execute --to notebook --inplace "examples/example7 - static_inverse_solve_SPARC.ipynb"
       - name: Check static inverse solve ITER notebook
         run: jupyter nbconvert --execute --to notebook --inplace "examples/example8 - static_inverse_solve_ITER.ipynb"

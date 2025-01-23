@@ -57,9 +57,9 @@ FreeGSNKE is constantly evolving and so we hope to provide users with more advan
 
 **Get familiar with FreeGS(NKE)**: given FreeGSNKE relies on some core FreeGS functionality, it is strongly recommended to first familiarise yourself with how it works by taking a look at the documentation [here](https://freegs.readthedocs.io/en/latest/).
 
-**After installation (below), check out the FreeGSNKE examples**: in addition to the FreeGS docs, Jupyter notebooks with examples of how to solve each of the above equilibrium problems using FreeGSNKE can be found in the `examples/` directory.
+**After installation (see below), check out the FreeGSNKE user guide**: the FreeGSNKE docs are hosted at [docs.freegsnke.com](https://docs.freegsnke.com/), and the [user guide](https://docs.freegsnke.com/user_guide/) contains several examples to get started. You can also build the documentation yourself by following the instructions in the `docs/README.md` file. The user guide is built from Jupyter notebooks in the `examples/` directory, where you can also find more demos beyond those included in the user guide.
 
-**Refer to the documentation**: once you are a bit more familiar with FreeGSNKE, check out the code documentation (build instructions can be found in the `docs/README.md` document).
+**Refer to the documentation**: once you are a bit more familiar with FreeGSNKE, have a look through the [API documentation](https://docs.freegsnke.com/api/freegsnke).
 
 **References**: check out the references at the bottom of this page for even more detailed information about FreeGSNKE and how it is being used in the community!
 

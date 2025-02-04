@@ -90,7 +90,7 @@ The recommended way to install FreeGSNKE is inside a virtual environment, for ex
 ### Stage two: install FreeGSNKE
 
    ```shell
-   pip install "freegsnke[freegs4e] @ git+https://github.com/FusionComputingLab/freegsnke"
+   pip install "freegsnke[freegs4e]"
    ```
 
 The extra `freegs4e` dependency installs [FreeGS4E](https://github.com/FusionComputingLab/freegs4e) automatically (and is required for FreeGSNKE to run). 

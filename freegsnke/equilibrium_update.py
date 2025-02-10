@@ -27,7 +27,7 @@ import numpy as np
 from freegs4e import critical
 from scipy import interpolate
 
-from . import limiter_func
+from . import limiter_func, virtual_circuits
 
 
 class Equilibrium(freegs4e.equilibrium.Equilibrium):
@@ -39,6 +39,8 @@ class Equilibrium(freegs4e.equilibrium.Equilibrium):
 
         self.equilibrium_path = os.environ.get("EQUILIBRIUM_PATH", None)
         self.reinitialize_from_file()
+
+        self.VC = virtual_circuits.VirtualCircuit()
 
         # redefine interpolating function
         self.psi_func_interp = interpolate.RectBivariateSpline(

@@ -38,8 +38,9 @@ class Equilibrium(freegs4e.equilibrium.Equilibrium):
         super().__init__(*args, **kwargs)
 
         self.equilibrium_path = os.environ.get("EQUILIBRIUM_PATH", None)
-        self.reinitialize_from_file()
-
+        if self.equilibrium_path is not None:
+            self.initialize_from_equilibrium()
+            
         # redefine interpolating function
         self.psi_func_interp = interpolate.RectBivariateSpline(
             self.R[:, 0], self.Z[0, :], self.plasma_psi
@@ -212,74 +213,46 @@ class Equilibrium(freegs4e.equilibrium.Equilibrium):
 
         return self.psi_func_interp(R, Z, *args, **kwargs)
 
-    def reinitialize_from_file(
-        self,
-    ):
-        """Initializes the equilibrium with data from file, if provided."""
-        if self.equilibrium_path is not None:
-            self.initialize_from_equilibrium()
-
-    def initialize_from_equilibrium(
-        self,
-    ):
-        """Executes the initialization if data from file is available"""
-
-        with open(self.equilibrium_path, "rb") as f:
-            equilibrium_data = pickle.load(f)
-
-        coil_currents = equilibrium_data["coil_currents"]
-        plasma_psi = equilibrium_data["plasma_psi"]
-
-        # check that machine descriptions correspond
-        # on file first
-        coils_on_file = list(coil_currents.keys())
-        # select active coils only
-        active_coils_on_file = [coil for coil in coils_on_file if coil[:7] != "passive"]
-        # in tokamak
-        coils_in_tokamak = list((self.tokamak.getCurrents()).keys())
-        # select active coils only
-        active_coils_in_tokamak = [
-            coil for coil in coils_in_tokamak if coil[:7] != "passive"
-        ]
-        if active_coils_on_file == active_coils_in_tokamak:
-            # assign coil current values
-            for coil in active_coils_in_tokamak:
-                self.tokamak[coil].current = coil_currents[coil]
-
-            # assign plasma_psi
-            self.initialize_plasma_psi(plasma_psi)
-
-            print(
-                "Equilibrium initialised using file provided as part of the machine description."
-            )
-
-        else:
-            print(
-                "Although the machine description was provided with an equilibrium for initialization, this was not used as the coil set does not correspond."
-            )
-
-    def initialize_plasma_psi(self, plasma_psi):
-        """Assigns the input plasma_psi to the equilibrium being instantiated.
-        Checks and corrects any disagreements in the grid sizes.
+    def initialize_from_equilibrium(self):
+        """
+        This function loads a pickle file containing an initial guess for the plasma
+        flux (and the corners of the grid points it is located on). 
+        
+        Interpolation is carried out and mapped to the computational grid specified in the
+        eq class. 
 
         Parameters
         ----------
-        plasma_psi : np.array
-            plasma flux function to be used for the initialization
+
+        Returns
+        -------
+
         """
 
-        nx, ny = np.shape(self.plasma_psi)
-        nx_file, ny_file = np.shape(plasma_psi)
+        # load the data from the pickle file
+        with open(self.equilibrium_path, "rb") as f:
+            data = pickle.load(f)
 
-        if (nx, ny) != (nx_file, ny_file):
+        # extract the data (will fail if not in this format)
+        try: 
+            Rmin = data["Rmin"]
+            Rmax = data["Rmax"]
+            Zmin = data["Zmin"]
+            Zmax = data["Zmax"]
+            psi_plasma = data["psi_plasma"]
+        except:
+            raise ValueError("Data in EQUILIBRIUM_PATH pickle not in correct format or missing.")
 
-            # assume solving domain was as in current equilibrium
-            psi_func = interpolate.RectBivariateSpline(
-                np.linspace(self.Rmin, self.Rmax, nx_file),
-                np.linspace(self.Zmin, self.Zmax, ny_file),
-                plasma_psi,
-            )
+        # interpolate the plasma psi on the grid given in the data file
+        plasma_psi_func = interpolate.RectBivariateSpline(
+            np.linspace(Rmin, Rmax, psi_plasma.shape[0]),
+            np.linspace(Zmin, Zmax, psi_plasma.shape[1]),
+            psi_plasma,
+        )
 
-            plasma_psi = psi_func(self.R, self.Z, grid=False)
-
-        self.plasma_psi = plasma_psi
+        # extract the values on the grid given in the eq object (this is the initial guess)
+        self.plasma_psi = plasma_psi_func(self.R, self.Z, grid=False)
+            
+        print(
+            "Initial guess for plasma flux initialised using file provided at EQUILIBRIUM_PATH."
+        )

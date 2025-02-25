@@ -13,5 +13,6 @@ These example Jupyter notebooks are intended to be the **first port of call for 
 | Example 6a/b | Simulate (static) MAST-U equilibria over an entire shot using inputs from EFIT++ (requires internal UKAEA MAST-U database). | UKAEA employees + collaborators |
 | Example 7 | Static inverse solve in a SPARC-like tokamak. | Anyone |
 | Example 8 | Static inverse solve in an ITER-like tokamak. | Anyone |
+| Example 9 | Learn how to use and build virtual circuits in a MAST-U like tokamak. | Anyone |
 
 If a new example has been created, please add a new line to the table explaining its purpose!

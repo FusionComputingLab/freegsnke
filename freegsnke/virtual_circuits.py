@@ -1,5 +1,5 @@
 """
-Defines the Virtual Circuit object.
+Defines class that represents the virtual circuits. 
 
 Copyright 2025 UKAEA, UKRI-STFC, and The Authors, as per the COPYRIGHT and README files.
 
@@ -19,38 +19,61 @@ You should have received a copy of the GNU Lesser General Public License
 along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>. 
 """
 
+import numpy as np
 from copy import deepcopy
 
-import numpy as np
-
-
 class VirtualCircuit:
-
+    """
+        The virtual circuits class.
+        """
+        
     def __init__(
         self,
     ):
-        """ """
-
-    def define_solver(self, solver, target_relative_tolerance=1e-7):
-        """_summary_
-
+        """
+        Initialises the virtual circuits.
+        
         Parameters
         ----------
-        solver : _type_
-            _description_
+
         """
+    
+    def define_solver(self, 
+                      solver, 
+                      target_relative_tolerance=1e-7
+                      ):
+        """
+        Sets the solver in the VC class. 
+        
+        Parameters
+        ----------
+        solver : object
+            The static Grad-Shafranov solver object.
+        target_relative_tolerance : float
+            Target relative tolerance to be met. 
+                
+        Returns
+        -------
+
+        """
+        
         self.solver = solver
         self.target_relative_tolerance = target_relative_tolerance
 
     def calculate_targets(self, eq, targets):
-        """_summary_
-
+        """
+        Sets the solver in the VC class. 
+        
         Parameters
         ----------
-        eq : _type_
-            _description_
-        targets : _type_
-            _description_
+        eq : object
+            The equilibrium object.  
+        targets : float
+            Target relative tolerance to be met. 
+                
+        Returns
+        -------
+
         """
         rinout_flag = False
         target_vec = np.zeros(len(targets))

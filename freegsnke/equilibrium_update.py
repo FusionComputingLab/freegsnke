@@ -40,6 +40,7 @@ class Equilibrium(freegs4e.equilibrium.Equilibrium):
         self.equilibrium_path = os.environ.get("EQUILIBRIUM_PATH", None)
         self.reinitialize_from_file()
 
+        # store an initialisation of the virtual circuits class
         self.VC = virtual_circuits.VirtualCircuit()
 
         # redefine interpolating function

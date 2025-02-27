@@ -410,47 +410,44 @@ class VirtualCircuit:
         verbose=False,
     ):
         """
-         Calculate the "virtual circuits" matrix:
+        Calculate the "virtual circuits" matrix:
 
-             J^+ = (J^T J)^(-1) J^T,
+            V = (S^T S)^(-1) S^T,
 
-         which is the Moore-Penrose pseudo-inverse of the shape (Jacobian) matrix J:
+        which is the Moore-Penrose pseudo-inverse of the shape (Jacobian) matrix S:
 
-             J_ij = dT_i / dI_j.
+            S_ij = dT_i / dI_j.
 
-         This represents the sensitivity of target parameters T_i to changes in coil
-         currents I_j.
+        This represents the sensitivity of target parameters T_i to changes in coil
+        currents I_j.
 
-        The virtual circuit currents correspond to the rows of J^+.
+        Parameters
+        ----------
+        eq : object
+            The equilibrium object.
+        profiles : object
+            The profiles object.
+        coils : list
+            List of strings containing the names of the coil currents to be assigned.
+        targets : list
+            List of strings containing the targets of interest. See above for supported targets.
+        non_standard_targets : list
+            List of lists of additional (non-standard) target functions to use. Each sub-list
+            takes the form ["new_target_name", function(eq)], where function calcualtes the target
+            using the eq object.
+        target_dIy : float
+            Target value for the norm of delta(I_y), from which the finite difference derivative is calculated.
+        starting_dI : float
+            Initial value to be used as delta(I_j) to infer the slope of norm(delta(I_y))/delta(I_j).
+        min_starting_dI : float
+            Minimum starting_dI value to be used as delta(I_j): to infer the slope of norm(delta(I_y))/delta(I_j).
+        verbose: bool
+            Display output (or not).
 
-
-         Parameters
-         ----------
-         eq : object
-             The equilibrium object.
-         profiles : object
-             The profiles object.
-         coils : list
-             List of strings containing the names of the coil currents to be assigned.
-         targets : list
-             List of strings containing the targets of interest. See above for supported targets.
-         non_standard_targets : list
-             List of lists of additional (non-standard) target functions to use. Each sub-list
-             takes the form ["new_target_name", function(eq)], where function calcualtes the target
-             using the eq object.
-         target_dIy : float
-             Target value for the norm of delta(I_y), from which the finite difference derivative is calculated.
-         starting_dI : float
-             Initial value to be used as delta(I_j) to infer the slope of norm(delta(I_y))/delta(I_j).
-         min_starting_dI : float
-             Minimum starting_dI value to be used as delta(I_j): to infer the slope of norm(delta(I_y))/delta(I_j).
-         verbose: bool
-             Display output (or not).
-
-         Returns
-         -------
-         None
-             Modifies the class (and other private) object(s) in place.
+        Returns
+        -------
+        None
+            Modifies the class (and other private) object(s) in place.
 
         """
 
@@ -461,12 +458,12 @@ class VirtualCircuit:
         # store currents in VC object
         self.build_current_vec(self.eq, coils)
 
-        # solve static GS problem (it's already solved but this makes sure)
-        self.solver.forward_solve(
-            eq=self.eq,
-            profiles=self.profiles,
-            target_relative_tolerance=self.target_relative_tolerance,
-        )
+        # # solve static GS problem (it's already solved?)
+        # self.solver.forward_solve(
+        #     eq=self.eq,
+        #     profiles=self.profiles,
+        #     target_relative_tolerance=self.target_relative_tolerance,
+        # )
 
         # store the flattened plasma current vector (and its norm)
         self.profiles.Iy = self.profiles.limiter_handler.Iy_from_jtor(
@@ -524,3 +521,70 @@ class VirtualCircuit:
 
         print("---")
         print("Shape and virtual circuit matrices built.")
+
+    def apply_VC(
+        self,
+        coils,
+        targets_shift,
+        non_standard_targets_shift=None,
+    ):
+        """
+        Here we apply the VC matrix V to requested shifts in the target quantities (dT),
+        obtaining the shift in the currents (in coils, dI) required to achieve this:
+
+            dI = V * dT.
+
+        Applying the current shifts to the existing currents, we
+        re-solve the equilibrium and return to user.
+
+        Parameters
+        ----------
+        coils : list
+            List of strings containing the names of the coil currents to be assigned.
+        targets_shift : list
+            List of floats containing the shifts in the targets of interest. See above for supported targets.
+        non_standard_targets_shift : list
+            List of floats of additional (non-standard) target shifts to use.
+
+        Returns
+        -------
+        object
+            Returns the equilibrium object after applying the shifted currents.
+        object
+            Returns the profiles object after applying the shifted currents.
+
+        """
+
+        # add in extra targets (if exist)
+        if non_standard_targets_shift is not None:
+            shifts = targets_shift + non_standard_targets_shift
+        else:
+            shifts = targets_shift
+
+        # check dimensionalities
+        assert (
+            len(shifts) == self.VCs.shape[1]
+        ), "No. of target shifts and no. of targets in VCs matrix do not match!"
+
+        # calculate current shifts required using the VCs matrix
+        current_shifts = self.VCs @ np.array(shifts)
+
+        # store copies of the eq and profile objects
+        eq = deepcopy(self.eq)
+        profiles = deepcopy(self.profiles)
+
+        # assign currents to the required coils in the eq object
+        new_currents = [
+            eq.tokamak.getCurrents()[name] + current_shifts[i]
+            for i, name in enumerate(coils)
+        ]
+        self.assign_currents(new_currents, coils, eq=eq)
+
+        # solve for the new equilibrium
+        self.solver.forward_solve(
+            eq,
+            profiles,
+            target_relative_tolerance=self.target_relative_tolerance,
+        )
+
+        return eq, profiles

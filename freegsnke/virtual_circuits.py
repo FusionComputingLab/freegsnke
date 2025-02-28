@@ -60,7 +60,9 @@ class VirtualCircuit:
         self.solver = solver
         self.target_relative_tolerance = target_relative_tolerance
 
-    def calculate_targets(self, eq, targets, non_standard_targets=None):
+    def calculate_targets(
+        self, eq, targets, targets_options=None, non_standard_targets=None
+    ):
         """
         For the given equilibrium, this function calculates the targets
         specified in the targets list.
@@ -78,8 +80,13 @@ class VirtualCircuit:
             - "Zx_lower": lower X-point (vertical) position.
             - "Rx_upper": upper X-point (radial) position.
             - "Zx_upper": upper X-point (vertical) position.
-            - "Rs_lower_outer": lower (outer) strikepoint (radial) position.
-            - "Rs_upper_outer": upper (outer) strikepoint (radial) position.
+        targets_options : dict
+            Dictionary of additional parameters required to calculate the
+            'targets'. Options are required for:
+            - "Rx_lower": approx. radial position of the lower X-point.
+            - "Zx_lower": approx. vertical position of the lower X-point.
+            - "Rx_upper": approx. radial position of the upper X-point.
+            - "Zx_upper": approx. vertical position of the upper X-point.
         non_standard_targets : list
             List of lists of additional (non-standard) target functions to use. Each sub-list
             takes the form ["new_target_name", function(eq)], where function calcualtes the target
@@ -96,7 +103,6 @@ class VirtualCircuit:
 
         # flag to ensure we calculate expensive things once
         rinout_flag = False
-        xpt_flag = False
 
         # outputting targets
         final_targets = deepcopy(targets)
@@ -123,47 +129,51 @@ class VirtualCircuit:
 
             # lower X-point (radial) position
             elif target == "Rx_lower":
-                if xpt_flag == False:
-                    xpts = eq.xpt[0:2, 0:2]
-                    sorted_xpt = xpts[xpts[:, 1].argsort()]
-                    xpt_flag = True
-                target_vec[i] = sorted_xpt[0, 0]
+
+                # (R,Z) location where the X-point should roughly be
+                loc = targets_options[target]
+
+                # find closest x-point to 'loc'
+                xpts = eq.xpt[:, 0:2]
+                x_point_ind = np.argmin(np.sum((xpts - loc) ** 2, axis=1))
+
+                target_vec[i] = xpts[x_point_ind, 0]
 
             # lower X-point (vertical) position
             elif target == "Zx_lower":
-                if xpt_flag == False:
-                    xpts = eq.xpt[0:2, 0:2]
-                    sorted_xpt = xpts[xpts[:, 1].argsort()]
-                    xpt_flag = True
-                target_vec[i] = sorted_xpt[0, 1]
+
+                # (R,Z) location where the X-point should roughly be
+                loc = targets_options[target]
+
+                # find closest x-point to 'loc'
+                xpts = eq.xpt[:, 0:2]
+                x_point_ind = np.argmin(np.sum((xpts - loc) ** 2, axis=1))
+
+                target_vec[i] = xpts[x_point_ind, 1]
 
             # upper X-point (radial) position
             elif target == "Rx_upper":
-                if xpt_flag == False:
-                    xpts = eq.xpt[0:2, 0:2]
-                    sorted_xpt = xpts[xpts[:, 1].argsort()]
-                    xpt_flag = True
-                target_vec[i] = sorted_xpt[1, 0]
+
+                # (R,Z) location where the X-point should roughly be
+                loc = targets_options[target]
+
+                # find closest x-point to 'loc'
+                xpts = eq.xpt[:, 0:2]
+                x_point_ind = np.argmin(np.sum((xpts - loc) ** 2, axis=1))
+
+                target_vec[i] = xpts[x_point_ind, 0]
 
             # upper X-point (vertical) position
             elif target == "Zx_upper":
-                if xpt_flag == False:
-                    xpts = eq.xpt[0:2, 0:2]
-                    sorted_xpt = xpts[xpts[:, 1].argsort()]
-                    xpt_flag = True
-                target_vec[i] = sorted_xpt[1, 1]
 
-            # lower (outer) strikepoint (radial) position
-            elif target == "Rs_lower_outer":
-                target_vec[i] = eq.strikepoints(
-                    quadrant="lower right", loc=(eq.xpt[0, 0], 0.0)
-                )[0]
+                # (R,Z) location where the X-point should roughly be
+                loc = targets_options[target]
 
-            # upper (outer) strikepoint (radial) position
-            elif target == "Rs_upper_outer":
-                target_vec[i] = eq.strikepoints(
-                    quadrant="upper right", loc=(eq.xpt[0, 0], 0.0)
-                )[0]
+                # find closest x-point to 'loc'
+                xpts = eq.xpt[:, 0:2]
+                x_point_ind = np.argmin(np.sum((xpts - loc) ** 2, axis=1))
+
+                target_vec[i] = xpts[x_point_ind, 1]
 
             # catch undefined targets
             else:
@@ -320,7 +330,13 @@ class VirtualCircuit:
         self.final_dI_record[j] = final_dI
 
     def build_dIydI_j(
-        self, j, coils, targets=None, non_standard_targets=None, verbose=False
+        self,
+        j,
+        coils,
+        targets,
+        targets_options,
+        non_standard_targets=None,
+        verbose=False,
     ):
         """
         Computes the term d(Iy)/dI_j of the Jacobian as a finite difference derivative,
@@ -338,6 +354,8 @@ class VirtualCircuit:
             List of strings containing the names of the coil currents to be assigned.
         targets : list
             List of strings containing the targets of interest. See above for supported targets.
+        targets_options : dict
+            Dictionary of additional parameters required to calculate the 'targets' (see above).
         non_standard_targets : list
             List of lists of additional (non-standard) target functions to use. Each sub-list
             takes the form ["new_target_name", function(eq)], where function calcualtes the target
@@ -347,9 +365,8 @@ class VirtualCircuit:
 
         Returns
         -------
-        dIydIj : np.array
-            Finite difference derivative d(Iy)/dI_j - this is a 1D vector over flattened vector
-            of plasma currents (on the computational grid - reduced to the plasma_domain_mask).
+        None
+            VC object modifed in place.
         """
 
         # store dI
@@ -366,22 +383,21 @@ class VirtualCircuit:
             currents[j : j + 1], coils[j : j + 1], self.target_relative_tolerance
         )
 
-        # difference between plasma current vectors (before and after the solve)
-        dIy_1 = (
-            self.profiles2.limiter_handler.Iy_from_jtor(self.profiles2.jtor)
-            - self.profiles.Iy
-        )
+        # # difference between plasma current vectors (before and after the solve)
+        # dIy_1 = (
+        #     self.profiles2.limiter_handler.Iy_from_jtor(self.profiles2.jtor)
+        #     - self.profiles.Iy
+        # )
 
-        # calculate the finite difference derivative
-        dIydIj = dIy_1 / final_dI
+        # # calculate the finite difference derivative
+        # dIydIj = dIy_1 / final_dI
 
         # calculate finite difference of targets wrt to the coil current
-        if targets is not None:
-            _, self.target_vec_1 = self.calculate_targets(
-                self.eq2, targets, non_standard_targets
-            )
-            dtargets = self.target_vec_1 - self.targets_vec
-            self.dtargetsdIj = dtargets / final_dI
+        _, self.target_vec_1 = self.calculate_targets(
+            self.eq2, targets, targets_options, non_standard_targets
+        )
+        dtargets = self.target_vec_1 - self.targets_vec
+        self.dtargetsdIj = dtargets / final_dI
 
         # print some output
         if verbose:
@@ -395,7 +411,7 @@ class VirtualCircuit:
             #     np.linalg.norm(dIy_1),
             # )
 
-        return dIydIj
+        # return dIydIj
 
     def calculate_VC(
         self,
@@ -403,6 +419,7 @@ class VirtualCircuit:
         profiles,
         coils,
         targets,
+        targets_options,
         non_standard_targets=None,
         target_dIy=1e-3,
         starting_dI=None,
@@ -431,6 +448,8 @@ class VirtualCircuit:
             List of strings containing the names of the coil currents to be assigned.
         targets : list
             List of strings containing the targets of interest. See above for supported targets.
+        targets_options : dict
+            Dictionary of additional parameters required to calculate the 'targets' (see above).
         non_standard_targets : list
             List of lists of additional (non-standard) target functions to use. Each sub-list
             takes the form ["new_target_name", function(eq)], where function calcualtes the target
@@ -458,12 +477,12 @@ class VirtualCircuit:
         # store currents in VC object
         self.build_current_vec(self.eq, coils)
 
-        # # solve static GS problem (it's already solved?)
-        # self.solver.forward_solve(
-        #     eq=self.eq,
-        #     profiles=self.profiles,
-        #     target_relative_tolerance=self.target_relative_tolerance,
-        # )
+        # solve static GS problem (it's already solved?)
+        self.solver.forward_solve(
+            eq=self.eq,
+            profiles=self.profiles,
+            target_relative_tolerance=self.target_relative_tolerance,
+        )
 
         # store the flattened plasma current vector (and its norm)
         self.profiles.Iy = self.profiles.limiter_handler.Iy_from_jtor(
@@ -473,12 +492,8 @@ class VirtualCircuit:
 
         # calculate the targets from the equilibrium
         targets_new, self.targets_vec = self.calculate_targets(
-            self.eq, targets, non_standard_targets
+            self.eq, targets, targets_options, non_standard_targets
         )
-
-        # make copies of the newly solved equilibrium and profile objects
-        self.eq2 = deepcopy(eq)
-        self.profiles2 = deepcopy(profiles)
 
         # define starting_dI using currents if not given
         if starting_dI is None:
@@ -502,6 +517,10 @@ class VirtualCircuit:
                 print(
                     f"{j}th coil ({coils[j]}) using initial current shift {starting_dI[j]}."
                 )
+
+            # make copies of the newly solved equilibrium and profile objects (modifed in next function call)
+            self.eq2 = deepcopy(eq)
+            self.profiles2 = deepcopy(profiles)
             self.prepare_build_dIydI_j(j, coils, target_dIy, starting_dI[j])
 
         if verbose:
@@ -511,7 +530,13 @@ class VirtualCircuit:
         # for each coil, build the Jacobian using the value of delta(I_j) inferred earlier
         # by self.prepare_build_dIydI_j.
         for j in np.arange(len(coils)):
-            self.build_dIydI_j(j, coils, targets, non_standard_targets, verbose)
+
+            # make copies of the newly solved equilibrium and profile objects (modifed in next function call)
+            self.eq2 = deepcopy(eq)
+            self.profiles2 = deepcopy(profiles)
+            self.build_dIydI_j(
+                j, coils, targets, targets_options, non_standard_targets, verbose
+            )
 
             # each shape matrix row is derivative of targets wrt the final coil current change
             self.shape_matrix[:, j] = self.dtargetsdIj
@@ -524,9 +549,12 @@ class VirtualCircuit:
 
     def apply_VC(
         self,
+        eq,
+        profiles,
         coils,
         targets_shift,
         non_standard_targets_shift=None,
+        verbose=False,
     ):
         """
         Here we apply the VC matrix V to requested shifts in the target quantities (dT),
@@ -539,12 +567,18 @@ class VirtualCircuit:
 
         Parameters
         ----------
+        eq : object
+            The equilibrium object upon which to apply the VCs.
+        profiles : object
+            The profiles object upon which to apply the VCS.
         coils : list
             List of strings containing the names of the coil currents to be assigned.
         targets_shift : list
             List of floats containing the shifts in the targets of interest. See above for supported targets.
         non_standard_targets_shift : list
             List of floats of additional (non-standard) target shifts to use.
+        verbose: bool
+            Display output (or not).
 
         Returns
         -------
@@ -567,24 +601,35 @@ class VirtualCircuit:
         ), "No. of target shifts and no. of targets in VCs matrix do not match!"
 
         # calculate current shifts required using the VCs matrix
-        current_shifts = self.VCs @ np.array(shifts)
+        # current_shifts = self.VCs @ np.array(shifts)
+
+        # calculate current shifts required using shape matrix (for stability)
+        # uses least squares solver to solve S*dI = dT
+        # where dT are the target shifts and dI the current shifts
+        current_shifts = np.linalg.lstsq(
+            self.shape_matrix, np.array(shifts), rcond=None
+        )[0]
+
+        if verbose:
+            print(f"Currents shifts from VCs:")
+            print(f"{coils} = {current_shifts}.")
 
         # store copies of the eq and profile objects
-        eq = deepcopy(self.eq)
-        profiles = deepcopy(self.profiles)
+        eq_new = deepcopy(eq)
+        profiles_new = deepcopy(profiles)
 
         # assign currents to the required coils in the eq object
         new_currents = [
-            eq.tokamak.getCurrents()[name] + current_shifts[i]
+            eq_new.tokamak.getCurrents()[name] + current_shifts[i]
             for i, name in enumerate(coils)
         ]
-        self.assign_currents(new_currents, coils, eq=eq)
+        self.assign_currents(new_currents, coils, eq=eq_new)
 
         # solve for the new equilibrium
         self.solver.forward_solve(
-            eq,
-            profiles,
+            eq_new,
+            profiles_new,
             target_relative_tolerance=self.target_relative_tolerance,
         )
 
-        return eq, profiles
+        return eq_new, profiles_new

@@ -27,7 +27,8 @@ from scipy.signal import convolve2d
 
 from . import nk_solver_H as nk_solver
 from .circuit_eq_metal import metal_currents
-from .circuit_eq_plasma import plasma_current
+
+# from .circuit_eq_plasma import plasma_current
 from .GSstaticsolver import NKGSsolver
 from .linear_solve import linear_solver
 from .simplified_solve import simplified_solver_J1
@@ -194,13 +195,13 @@ class nl_solver:
         self.n_metal_modes = self.evol_metal_curr.n_independent_vars
         self.arange_currents = np.arange(self.n_metal_modes + 1)
 
-        self.evol_plasma_curr = plasma_current(
-            plasma_pts=self.limiter_handler.plasma_pts,
-            Rm1=np.diag(self.evol_metal_curr.Rm1),
-            P=self.evol_metal_curr.P,
-            plasma_resistance_1d=self.plasma_resistance_1d,
-            Mye=self.evol_metal_curr.Mey_matrix.T,
-        )
+        # self.evol_plasma_curr = plasma_current(
+        #     plasma_pts=self.limiter_handler.plasma_pts,
+        #     Rm1=np.diag(self.evol_metal_curr.Rm1),
+        #     P=self.evol_metal_curr.P,
+        #     plasma_resistance_1d=self.plasma_resistance_1d,
+        #     Mye=self.evol_metal_curr.Mey_matrix.T,
+        # )
 
         # This solves the system of circuit eqs based on an assumption
         # for the direction of the plasma current distribution at time t+dt
@@ -209,7 +210,7 @@ class nl_solver:
             Pm1=self.evol_metal_curr.Pm1,
             Rm1=np.diag(self.evol_metal_curr.Rm1),
             Mey=self.evol_metal_curr.Mey_matrix,
-            Myy=self.evol_plasma_curr.Myy_matrix,
+            plasma_pts=self.limiter_handler.plasma_pts,
             plasma_norm_factor=self.plasma_norm_factor,
             plasma_resistance_1d=self.plasma_resistance_1d,
             full_timestep=self.dt_step,
@@ -237,7 +238,7 @@ class nl_solver:
             Pm1=self.evol_metal_curr.Pm1,
             Rm1=np.diag(self.evol_metal_curr.Rm1),
             Mey=self.evol_metal_curr.Mey_matrix,
-            Myy=self.evol_plasma_curr.Myy_matrix,
+            plasma_pts=self.limiter_handler.plasma_pts,
             plasma_norm_factor=self.plasma_norm_factor,
             plasma_resistance_1d=self.plasma_resistance_1d,
             max_internal_timestep=self.max_internal_timestep,
@@ -395,14 +396,14 @@ class nl_solver:
         self.circuit_eq_residual = np.zeros(self.extensive_currents_dim)
         self.currents_nk_solver = nk_solver.nksolver(self.extensive_currents_dim)
 
-        self.evol_plasma_curr.reset_modes(P=self.evol_metal_curr.P)
+        # self.evol_plasma_curr.reset_modes(P=self.evol_metal_curr.P)
 
         self.simplified_solver_J1 = simplified_solver_J1(
             Lambdam1=self.evol_metal_curr.Lambdam1,
             Pm1=self.evol_metal_curr.Pm1,
             Rm1=np.diag(self.evol_metal_curr.Rm1),
             Mey=self.evol_metal_curr.Mey_matrix,
-            Myy=self.evol_plasma_curr.Myy_matrix,
+            plasma_pts=self.limiter_handler.plasma_pts,
             plasma_norm_factor=self.plasma_norm_factor,
             plasma_resistance_1d=self.plasma_resistance_1d,
             full_timestep=self.dt_step,
@@ -413,7 +414,7 @@ class nl_solver:
             Pm1=self.evol_metal_curr.Pm1,
             Rm1=np.diag(self.evol_metal_curr.Rm1),
             Mey=self.evol_metal_curr.Mey_matrix,
-            Myy=self.evol_plasma_curr.Myy_matrix,
+            plasma_pts=self.limiter_handler.plasma_pts,
             plasma_norm_factor=self.plasma_norm_factor,
             plasma_resistance_1d=self.plasma_resistance_1d,
             max_internal_timestep=self.max_internal_timestep,

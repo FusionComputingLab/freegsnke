@@ -24,6 +24,7 @@ along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 import numpy as np
 
 from . import machine_config
+from .circuit_eq_plasma import Myy
 from .implicit_euler import implicit_euler_solver
 
 
@@ -41,7 +42,7 @@ class simplified_solver_J1:
         Pm1,
         Rm1,
         Mey,
-        Myy,
+        plasma_pts,
         plasma_norm_factor,
         plasma_resistance_1d,
         full_timestep=0.0001,
@@ -66,9 +67,10 @@ class simplified_solver_J1:
             matrix of inductance values between grid points in the reduced plasma domain and all metal coils
             (active coils and passive-structure filaments)
             Calculated by the metal_currents object
-        Myy: np.array
-            inductance matrix of grid points in the reduced plasma domain
-            Calculated by plasma_current object
+        plasma_pts : np.ndarray
+            Array with R and Z coordinates of all the points inside the limiter
+            i.e. freegsnke.limiter_handler.plasma_pts
+            Domain points in the domain that are included in the evolutive calculations.
         plasma_norm_factor: float
             an overall factor to work with a rescaled plasma current, so that
             it's within a comparable range with metal currents
@@ -97,7 +99,7 @@ class simplified_solver_J1:
         self.Pm1Rm1 = Pm1 @ Rm1
         self.Pm1Rm1Mey = np.matmul(self.Pm1Rm1, Mey)
         self.MyeP_T = Pm1 @ Mey
-        self.Myy = Myy
+        self.Myy = Myy(plasma_pts=plasma_pts)
 
         self.n_active_coils = machine_config.n_active_coils
         self.n_coils = machine_config.n_coils

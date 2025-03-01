@@ -368,6 +368,7 @@ class NKGSsolver:
 
         starting_direction = np.copy(res0)
 
+        log.append("Initial relative error =  " + str(rel_change))
         if verbose:
             for x in log:
                 print(x)

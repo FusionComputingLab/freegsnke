@@ -24,8 +24,8 @@ along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 import numpy as np
 
 from . import machine_config
-from .circuit_eq_plasma import Myy
 from .implicit_euler import implicit_euler_solver
+from .Myy_builder import Myy_handler
 
 
 class simplified_solver_J1:
@@ -42,7 +42,7 @@ class simplified_solver_J1:
         Pm1,
         Rm1,
         Mey,
-        plasma_pts,
+        limiter_handler,
         plasma_norm_factor,
         plasma_resistance_1d,
         full_timestep=0.0001,
@@ -67,10 +67,8 @@ class simplified_solver_J1:
             matrix of inductance values between grid points in the reduced plasma domain and all metal coils
             (active coils and passive-structure filaments)
             Calculated by the metal_currents object
-        plasma_pts : np.ndarray
-            Array with R and Z coordinates of all the points inside the limiter
-            i.e. freegsnke.limiter_handler.plasma_pts
-            Domain points in the domain that are included in the evolutive calculations.
+        limiter_handler : freegsnke object
+            freegsnke object handling the functionalities related to the limiter
         plasma_norm_factor: float
             an overall factor to work with a rescaled plasma current, so that
             it's within a comparable range with metal currents
@@ -99,7 +97,7 @@ class simplified_solver_J1:
         self.Pm1Rm1 = Pm1 @ Rm1
         self.Pm1Rm1Mey = np.matmul(self.Pm1Rm1, Mey)
         self.MyeP_T = Pm1 @ Mey
-        self.Myy = Myy(plasma_pts=plasma_pts)
+        self.handleMyy = Myy_handler(limiter_handler)
 
         self.n_active_coils = machine_config.n_active_coils
         self.n_coils = machine_config.n_coils
@@ -183,7 +181,7 @@ class simplified_solver_J1:
         self.Mmatrix[:-1, -1] = np.dot(simplified_mutual, hatIy_1)
         self.Lmatrix[:-1, -1] = np.dot(simplified_mutual, hatIy_0)
 
-        simplified_self_left = np.dot(self.Myy, hatIy_left) / Rp
+        simplified_self_left = self.handleMyy.dot(hatIy_left) / Rp
         simplified_self_1 = np.dot(simplified_self_left, hatIy_1)
         simplified_self_0 = np.dot(simplified_self_left, hatIy_0)
         self.Mmatrix[-1, -1] = simplified_self_1
@@ -272,7 +270,7 @@ class simplified_solver_J1:
         res_met = np.dot(self.Lambdam1, Id_dot)
         res_met += np.dot(self.Pm1Rm1Mey, Iy_dot) * self.plasma_norm_factor
         # plasma lump
-        res_pl = np.dot(self.Myy, Iy_dot)
+        res_pl = self.handleMyy.dot(Iy_dot)
         res_pl += np.dot(self.MyeP_T, Id_dot) / self.plasma_norm_factor
         res_pl = np.dot(res_pl, hatIy_left)
         res_pl /= Rp

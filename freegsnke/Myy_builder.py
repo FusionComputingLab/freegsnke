@@ -71,40 +71,69 @@ from freegs4e.gradshafranov import Greens
 #         self.P = P
 
 
-def Myy(
-    plasma_pts,
-):
-    """Calculates the matrix of mutual inductances between all plasma grid points
+#     def Myy(
+#         plasma_pts,
+#     ):
+#         """Calculates the matrix of mutual inductances between all plasma grid points
 
-    Parameters
-    ----------
-    plasma_pts : np.ndarray
-        Array with R and Z coordinates of all the points inside the limiter
+#         Parameters
+#         ----------
+#         plasma_pts : np.ndarray
+#             Array with R and Z coordinates of all the points inside the limiter
 
-    Returns
-    -------
-    Myy : np.ndarray
-        Array of mutual inductances between plasma grid points
-    """
-    greenm = Greens(
-        plasma_pts[:, np.newaxis, 0],
-        plasma_pts[:, np.newaxis, 1],
-        plasma_pts[np.newaxis, :, 0],
-        plasma_pts[np.newaxis, :, 1],
-    )
-    return 2 * np.pi * greenm
+#         Returns
+#         -------
+#         Myy : np.ndarray
+#             Array of mutual inductances between plasma grid points
+#         """
+#         greenm = Greens(
+#             plasma_pts[:, np.newaxis, 0],
+#             plasma_pts[:, np.newaxis, 1],
+#             plasma_pts[np.newaxis, :, 0],
+#             plasma_pts[np.newaxis, :, 1],
+#         )
+#         return 2 * np.pi * greenm
 
 
-def grid_greens(R, Z):
+class Myy_handler:
 
-    dz = Z[0, 1] - Z[0, 0]
-    nZ = np.shape(Z)[1]
+    def __init__(self, limiter_handler):
 
-    ggreens = Greens(
-        R[:, 0][:, np.newaxis, np.newaxis],
-        dz * np.arange(nZ)[np.newaxis, np.newaxis, :],
-        R[:, 0][np.newaxis, :, np.newaxis],
-        0,
-    )
+        self.gg = self.grid_greens(limiter_handler.eqR, limiter_handler.eqZ)
 
-    return 2 * np.pi * ggreens
+        self.r_idxs = np.tile(
+            limiter_handler.idxs_mask[0][:, np.newaxis],
+            (1, len(limiter_handler.plasma_pts)),
+        )
+        self.dz_idxs = np.abs(
+            limiter_handler.idxs_mask[1][np.newaxis, :]
+            - limiter_handler.idxs_mask[1][:, np.newaxis]
+        )
+
+    def grid_greens(self, R, Z):
+
+        dz = Z[0, 1] - Z[0, 0]
+        nZ = np.shape(Z)[1]
+
+        ggreens = Greens(
+            R[:, 0][:, np.newaxis, np.newaxis],
+            dz * np.arange(nZ)[np.newaxis, np.newaxis, :],
+            R[:, 0][np.newaxis, :, np.newaxis],
+            0,
+        )
+
+        return 2 * np.pi * ggreens
+
+    def compose_Myy(
+        self,
+    ):
+
+        return self.gg[self.r_idxs, self.r_idxs.T, self.dz_idxs]
+
+    def dot(self, vec):
+
+        return np.dot(self.compose_Myy(), vec)
+
+    def matmul(self, mat):
+
+        return np.matmul(self.compose_Myy(), mat)

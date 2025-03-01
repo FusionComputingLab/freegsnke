@@ -23,8 +23,8 @@ import numpy as np
 from scipy.linalg import solve_sylvester
 
 from . import machine_config
-from .circuit_eq_plasma import Myy
 from .implicit_euler import implicit_euler_solver
+from .Myy_builder import Myy_handler
 
 
 class linear_solver:
@@ -40,7 +40,7 @@ class linear_solver:
         Pm1,
         Rm1,
         Mey,
-        plasma_pts,
+        limiter_handler,
         plasma_norm_factor,
         plasma_resistance_1d,
         max_internal_timestep=0.0001,
@@ -66,10 +66,8 @@ class linear_solver:
             matrix of inductance values between grid points in the reduced plasma domain and all metal coils
             (active coils and passive-structure filaments)
             Calculated by the metal_currents object
-        plasma_pts : np.ndarray
-            Array with R and Z coordinates of all the points inside the limiter
-            i.e. freegsnke.limiter_handler.plasma_pts
-            Domain points in the domain that are included in the evolutive calculations.
+        limiter_handler : freegsnke object
+            freegsnke object handling the functionalities related to the limiter
         plasma_norm_factor: float
             an overall factor to work with a rescaled plasma current, so that
             it's within a comparable range with metal currents
@@ -105,7 +103,7 @@ class linear_solver:
         self.Pm1Rm1 = Pm1 @ Rm1
         self.Pm1Rm1Mey = np.matmul(self.Pm1Rm1, Mey)
         self.MyeP_T = Pm1 @ Mey
-        self.Myy = Myy(plasma_pts=plasma_pts)
+        self.handleMyy = Myy_handler(limiter_handler)
 
         self.n_active_coils = machine_config.n_active_coils
 
@@ -237,10 +235,10 @@ class linear_solver:
         self.M0matrix[-1, :-1] = np.dot(self.MyeP_T, self.hatIy0)
         # metal to plasma plasma-mediated
         self.dMmatrix[-1, :-1] = np.dot(
-            np.matmul(self.Myy, self.dIydI[:, :-1]).T, self.hatIy0
+            self.handleMyy.matmul(self.dIydI[:, :-1]).T, self.hatIy0
         )
 
-        JMyy = np.dot(self.Myy, self.hatIy0)
+        JMyy = self.handleMyy.dot(self.hatIy0)
         self.dMmatrix[-1, -1] = np.dot(self.dIydI[:, -1], JMyy)
 
         self.dMmatrix[-1, :] /= nRp

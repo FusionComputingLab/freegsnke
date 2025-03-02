@@ -155,7 +155,7 @@ class nl_solver:
         self.NK = NKGSsolver(eq)
 
         # setting up reduced domain for plasma circuit eq.:
-        self.limiter_handler = profiles.limiter_handler
+        self.limiter_handler = eq.limiter_handler
         self.plasma_domain_mask = self.limiter_handler.mask_inside_limiter
         self.plasma_domain_size = np.sum(self.plasma_domain_mask)
 

@@ -158,12 +158,13 @@ class simplified_solver_J1:
         Parameters
         ----------
         hatIy_left: np.array
-            guess for gridded plasma current to left-contract the plasma evolution equation
+            normalised plasma current distribution on the reduced domain.
+            This is used to left-contract the plasma evolution equation
             (e.g. at time t, or t+dt, or a combination)
         hatIy_0: np.array
-            gridded plasma current to left-contract the plasma evolution equation at time t
+            normalised plasma current distribution on the reduced domain at time t
         hatIy_1: np.array
-            (guessed) gridded plasma current to left-contract the plasma evolution equation at time t+dt
+            (guessed) normalised plasma current distribution on the reduced domain at time t+dt
         active_voltage_vec: np.array
             voltages applied to the active coils
         """
@@ -210,7 +211,7 @@ class simplified_solver_J1:
         hatIy_0: np.array
             normalised plasma current distribution on the reduced domain at time t
         hatIy_1: np.array
-            normalised plasma current distribution on the reduced domain at time t+dt
+            (guessed) normalised plasma current distribution on the reduced domain at time t+dt
         active_voltage_vec: np.array
             voltages applied to the active coils
 

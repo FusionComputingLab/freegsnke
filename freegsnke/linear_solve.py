@@ -235,7 +235,7 @@ class linear_solver:
         self.M0matrix[-1, :-1] = np.dot(self.MyeP_T, self.hatIy0)
         # metal to plasma plasma-mediated
         self.dMmatrix[-1, :-1] = np.dot(
-            self.handleMyy.matmul(self.dIydI[:, :-1]).T, self.hatIy0
+            self.dIydI[:, :-1].T, self.handleMyy.dot(self.hatIy0)
         )
 
         JMyy = self.handleMyy.dot(self.hatIy0)

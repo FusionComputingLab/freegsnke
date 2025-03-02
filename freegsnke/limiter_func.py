@@ -105,6 +105,33 @@ class Limiter_handler:
         mask_inside_limiter = mask_inside_limiter.reshape(self.nx, self.ny)
         self.mask_inside_limiter = mask_inside_limiter
 
+    def broaden_mask(self, mask, layer_size=3):
+        """Creates a mask that is wider than the input mask, by a width=`layer_size`
+
+        Parameters
+        ----------
+        layer_size : int, optional
+            Width of the layer, by default 3
+
+        Returns
+        -------
+        layer_mask : np.ndarray
+            Broader mask
+        """
+
+        layer_mask = np.zeros(
+            np.array([self.nx, self.ny]) + 2 * np.array([layer_size, layer_size])
+        )
+
+        for i in np.arange(-layer_size, layer_size + 1) + layer_size:
+            for j in np.arange(-layer_size, layer_size + 1) + layer_size:
+                layer_mask[i : i + self.nx, j : j + self.ny] += mask
+        layer_mask = layer_mask[
+            layer_size : layer_size + self.nx, layer_size : layer_size + self.ny
+        ]
+        layer_mask = (layer_mask > 0).astype(bool)
+        return layer_mask
+
     def make_layer_mask(self, mask, layer_size=3):
         """Creates a mask for the points just outside the input mask, with a width=`layer_size`
 
@@ -119,20 +146,9 @@ class Limiter_handler:
             Mask of the points outside the mask within a distance of `layer_size`
         """
 
-        layer_mask = np.zeros(
-            np.array([self.nx, self.ny]) + 2 * np.array([layer_size, layer_size])
-        )
-
-        for i in np.arange(-layer_size, layer_size + 1) + layer_size:
-            for j in np.arange(-layer_size, layer_size + 1) + layer_size:
-                layer_mask[i : i + self.nx, j : j + self.ny] += mask
-        layer_mask = layer_mask[
-            layer_size : layer_size + self.nx, layer_size : layer_size + self.ny
-        ]
-        layer_mask *= 1 - mask
-        layer_mask = (layer_mask > 0).astype(bool)
-        self.layer_mask = layer_mask
-        return layer_mask
+        layer_mask = self.broaden_mask(mask, layer_size=layer_size)
+        layer_mask = layer_mask * np.logical_not(mask)
+        return layer_mask.astype(bool)
 
     def limiter_points(self, refine=6):
         """Based on the limiter vertices, it builds the refined list of points on the boundary

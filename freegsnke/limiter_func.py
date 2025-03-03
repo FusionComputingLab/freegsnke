@@ -52,24 +52,63 @@ class Limiter_handler:
 
         self.build_mask_inside_limiter()
         self.limiter_points()
-        self.extract_plasma_pts()
+        self.plasma_pts = self.extract_plasma_pts(eq.R, eq.Z, self.mask_inside_limiter)
+        self.idxs_mask = self.extract_index_mask(self.mask_inside_limiter)
 
-    def extract_plasma_pts(
-        self,
-    ):
-        # Extracts R and Z coordinates of the grid points in the reduced plasma domain
-        # i.e. inside the limiter
-        self.plasma_pts = np.concatenate(
+    def extract_index_mask(self, mask):
+        """Extracts the indices of the R and Z coordinates of the grid points in the reduced plasma domain
+           i.e. inside the limiter
+
+        Parameters
+        ----------
+        mask : np.ndarray of bool
+            Specifies the mask of the relevant region
+        """
+
+        nx, ny = np.shape(mask)
+        idxs_mask = np.mgrid[0:nx, 0:ny][np.tile(mask, (2, 1, 1))].reshape(2, -1)
+
+        return idxs_mask
+
+    def extract_plasma_pts(self, R, Z, mask):
+        """Extracts R and Z coordinates of the grid points in the reduced plasma domain
+           i.e. inside the limiter
+
+        Parameters
+        ----------
+        R : np.ndarray
+            R coordinates on the domain grid, e.g. eq.R
+        Z : np.ndarray
+            Z coordinates on the domain grid, e.g. eq.Z
+        mask : np.ndarray of bool
+            Specifies the mask of the relevant region
+        """
+        plasma_pts = np.concatenate(
             (
-                self.eqR[self.mask_inside_limiter][:, np.newaxis],
-                self.eqZ[self.mask_inside_limiter][:, np.newaxis],
+                R[mask][:, np.newaxis],
+                Z[mask][:, np.newaxis],
             ),
             axis=-1,
         )
 
-        self.idxs_mask = np.mgrid[0 : self.nx, 0 : self.ny][
-            np.tile(self.mask_inside_limiter, (2, 1, 1))
-        ].reshape(2, -1)
+        return plasma_pts
+
+    def build_reduced_rect_domain(
+        self,
+    ):
+        """Build smallest rectangular domain around limiter mask"""
+
+        self.eqR_red = self.eqR[min(self.idxs_mask[0]) : max(self.idxs_mask[0]) + 1, :]
+        self.eqZ_red = self.eqZ[:, min(self.idxs_mask[1]) : max(self.idxs_mask[1]) + 1]
+        self.mask_inside_limiter_red = self.mask_inside_limiter[
+            min(self.idxs_mask[0]) : max(self.idxs_mask[0]) + 1,
+            min(self.idxs_mask[1]) : max(self.idxs_mask[1]) + 1,
+        ]
+
+        self.plasma_pts_red = self.extract_plasma_pts(
+            self.eqR_red, self.eqZ_red, self.mask_inside_limiter_red
+        )
+        self.idxs_mask_red = self.extract_index_mask(self.mask_inside_limiter_red)
 
     def build_mask_inside_limiter(
         self,

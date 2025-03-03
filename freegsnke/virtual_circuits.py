@@ -24,9 +24,9 @@ from copy import deepcopy
 import numpy as np
 
 
-class VirtualCircuit:
+class VirtualCircuitHandling:
     """
-    The virtual circuits class.
+    The virtual circuits handling class.
     """
 
     def __init__(
@@ -80,16 +80,20 @@ class VirtualCircuit:
             - "Zx_lower": lower X-point (vertical) position.
             - "Rx_upper": upper X-point (radial) position.
             - "Zx_upper": upper X-point (vertical) position.
+            - "Rs_lower_outer": lower strikepoint (radial) position.
+            - "Rs_upper_outer": upper strikepoint (radial) position.
         targets_options : dict
             Dictionary of additional parameters required to calculate the
             'targets'. Options are required for:
-            - "Rx_lower": approx. radial position of the lower X-point.
-            - "Zx_lower": approx. vertical position of the lower X-point.
-            - "Rx_upper": approx. radial position of the upper X-point.
-            - "Zx_upper": approx. vertical position of the upper X-point.
+            - "Rx_lower": approx. (R,Z) position of the lower X-point.
+            - "Zx_lower": approx. (R,Z) position of the lower X-point.
+            - "Rx_upper": approx. (R,Z) position of the upper X-point.
+            - "Zx_upper": approx. (R,Z) position of the upper X-point.
+            - "Rs_lower_outer": approx. (R,Z) position of the lower outer strikepoint.
+            - "Rs_upper_outer": approx. (R,Z) position of the upper outer strikepoint.
         non_standard_targets : list
-            List of lists of additional (non-standard) target functions to use. Each sub-list
-            takes the form ["new_target_name", function(eq)], where function calcualtes the target
+            List of lists of additional (non-standard) target functions to use. Takes the
+            form [["new_target_name",...], [function(eq),...]], where function calcualtes the target
             using the eq object.
 
         Returns
@@ -101,15 +105,19 @@ class VirtualCircuit:
             Returns a 1D array of the target values (in same order as 'targets' input).
         """
 
-        # flag to ensure we calculate expensive things once
+        # flag to ensure we calculate things once
         rinout_flag = False
 
+        # set to empty
+        if targets_options is None:
+            targets_options = {}
+        
         # outputting targets
         final_targets = deepcopy(targets)
         if non_standard_targets is None:
             target_vec = np.zeros(len(targets))
         else:
-            target_vec = np.zeros(len(targets) + len(non_standard_targets))
+            target_vec = np.zeros(len(targets) + len(non_standard_targets[0]))
 
         for i, target in enumerate(targets):
 
@@ -130,60 +138,131 @@ class VirtualCircuit:
             # lower X-point (radial) position
             elif target == "Rx_lower":
 
-                # (R,Z) location where the X-point should roughly be
-                loc = targets_options[target]
+                if target in targets_options:
+                    # (R,Z) location where the X-point should roughly be
+                    loc = targets_options[target]
 
-                # find closest x-point to 'loc'
-                xpts = eq.xpt[:, 0:2]
-                x_point_ind = np.argmin(np.sum((xpts - loc) ** 2, axis=1))
-
-                target_vec[i] = xpts[x_point_ind, 0]
+                    # find closest x-point to 'loc'
+                    xpts = eq.xpt[:, 0:2]
+                    x_point_ind = np.argmin(np.sum((xpts - loc) ** 2, axis=1))
+                    target_vec[i] = xpts[x_point_ind, 0]
+                else:
+                    print(f"Use of the 'target_option' input for {target} is advised!")
+                    
+                    # choose from first two X-points
+                    xpts = eq.xpt[0:2, 0:2]
+                    x_point_ind = np.argmin(xpts[:,1])
+                    target_vec[i] = xpts[x_point_ind, 0]
 
             # lower X-point (vertical) position
             elif target == "Zx_lower":
 
-                # (R,Z) location where the X-point should roughly be
-                loc = targets_options[target]
+                if target in targets_options:
+                    # (R,Z) location where the X-point should roughly be
+                    loc = targets_options[target]
 
-                # find closest x-point to 'loc'
-                xpts = eq.xpt[:, 0:2]
-                x_point_ind = np.argmin(np.sum((xpts - loc) ** 2, axis=1))
+                    # find closest x-point to 'loc'
+                    xpts = eq.xpt[:, 0:2]
+                    x_point_ind = np.argmin(np.sum((xpts - loc) ** 2, axis=1))
+                    target_vec[i] = xpts[x_point_ind, 1]
+                else:
+                    print(f"Use of the 'target_option' input for {target} is advised!")
 
-                target_vec[i] = xpts[x_point_ind, 1]
+                    # choose from first two X-points
+                    xpts = eq.xpt[0:2, 0:2]
+                    x_point_ind = np.argmin(xpts[:,1])
+                    target_vec[i] = xpts[x_point_ind, 1]
 
             # upper X-point (radial) position
             elif target == "Rx_upper":
 
-                # (R,Z) location where the X-point should roughly be
-                loc = targets_options[target]
+                if target in targets_options:
+                    # (R,Z) location where the X-point should roughly be
+                    loc = targets_options[target]
 
-                # find closest x-point to 'loc'
-                xpts = eq.xpt[:, 0:2]
-                x_point_ind = np.argmin(np.sum((xpts - loc) ** 2, axis=1))
+                    # find closest x-point to 'loc'
+                    xpts = eq.xpt[:, 0:2]
+                    x_point_ind = np.argmin(np.sum((xpts - loc) ** 2, axis=1))
+                    target_vec[i] = xpts[x_point_ind, 0]
+                else:
+                    print(f"Use of the 'target_option' input for {target} is advised!")
 
-                target_vec[i] = xpts[x_point_ind, 0]
+                    # choose from first two X-points
+                    xpts = eq.xpt[0:2, 0:2]
+                    x_point_ind = np.argmax(xpts[:,1])
+                    target_vec[i] = xpts[x_point_ind, 0]
 
             # upper X-point (vertical) position
             elif target == "Zx_upper":
 
-                # (R,Z) location where the X-point should roughly be
-                loc = targets_options[target]
+                if target in targets_options:
+                    # (R,Z) location where the X-point should roughly be
+                    loc = targets_options[target]
 
-                # find closest x-point to 'loc'
-                xpts = eq.xpt[:, 0:2]
-                x_point_ind = np.argmin(np.sum((xpts - loc) ** 2, axis=1))
+                    # find closest x-point to 'loc'
+                    xpts = eq.xpt[:, 0:2]
+                    x_point_ind = np.argmin(np.sum((xpts - loc) ** 2, axis=1))
+                    target_vec[i] = xpts[x_point_ind, 1]
+                else:
+                    print(f"Use of the 'target_option' input for {target} is advised!")
 
-                target_vec[i] = xpts[x_point_ind, 1]
+                    # choose from first two X-points
+                    xpts = eq.xpt[0:2, 0:2]
+                    x_point_ind = np.argmax(xpts[:,1])
+                    target_vec[i] = xpts[x_point_ind, 1]
+                    
+            # lower outer strikepoint (radial) position
+            elif target == "Rs_lower_outer":
 
+                if target in targets_options:
+                    # (R,Z) location where the strikepoint should roughly be
+                    loc = targets_options[target]
+
+                    # find closets strikepoint to 'loc'
+                    strikes = eq.strikepoints()
+                    strike_ind = np.argmin(np.sum((strikes - loc) ** 2, axis=1))
+                    target_vec[i] = strikes[strike_ind, 0]
+                else:
+                    print(f"Use of the 'target_option' input for {target} is advised!")
+
+                    # choose the (lower) strikepoint with the largest radial position
+                    strikes = eq.strikepoints()
+                    if strikes.shape[0] > 4:
+                        print(f"More than four strikepoints located, use of 'target_option' input for {target} is strongly advised!")
+                    s_point_ind = strikes[strikes[:, 1] < 0]     
+                    print               
+                    target_vec[i] = s_point_ind[np.argmax(s_point_ind[:, 0]), 0]      
+                    
+            # upper outer strikepoint (radial) position
+            elif target == "Rs_upper_outer":
+
+                if target in targets_options:
+                    # (R,Z) location where the strikepoint should roughly be
+                    loc = targets_options[target]
+
+                    # find closets strikepoint to 'loc'
+                    strikes = eq.strikepoints()
+                    strike_ind = np.argmin(np.sum((strikes - loc) ** 2, axis=1))
+                    target_vec[i] = strikes[strike_ind, 0]
+                else:
+                    print(f"Use of the 'target_option' input for {target} is advised!")
+
+                    # choose the (upper) strikepoint with the largest radial position
+                    strikes = eq.strikepoints()
+                    if strikes.shape[0] > 4:
+                        print(f"More than four strikepoints located, use of 'target_option' input for {target} is strongly advised!")
+                    s_point_ind = strikes[strikes[:, 1] > 0]                   
+                    target_vec[i] = s_point_ind[np.argmax(s_point_ind[:, 0]), 0]     
+                    
             # catch undefined targets
             else:
                 raise ValueError(f"Undefined target: {target}.")
 
         # add in extra target calculations
         if non_standard_targets is not None:
-            for j, target in enumerate(non_standard_targets):
-                final_targets.append(target[0])
-                target_vec[(i + 1) + j] = target[1](eq)
+            final_targets += non_standard_targets[0]
+            for j in range(0, len(non_standard_targets[0])):
+                target_vec[(i + 1) + j] = non_standard_targets[1][j](eq)
 
         return final_targets, target_vec
 
@@ -258,12 +337,12 @@ class VirtualCircuit:
         """
 
         # assign currents
-        self.assign_currents(currents_vec, coils, eq=self.eq2)
+        self.assign_currents(currents_vec, coils, eq=self._eq2)
 
         # solve for equilibrium
         self.solver.forward_solve(
-            self.eq2,
-            self.profiles2,
+            self._eq2,
+            self._profiles2,
             target_relative_tolerance=target_relative_tolerance,
         )
 
@@ -313,12 +392,12 @@ class VirtualCircuit:
 
         # difference between plasma current vectors (before and after the solve)
         dIy_0 = (
-            self.profiles2.limiter_handler.Iy_from_jtor(self.profiles2.jtor)
+            self._profiles2.limiter_handler.Iy_from_jtor(self._profiles2.jtor)
             - self.profiles.Iy
         )
 
         # relative norm of plasma current change
-        rel_ndIy_0 = np.linalg.norm(dIy_0) / self.nIy
+        rel_ndIy_0 = np.linalg.norm(dIy_0) / self._nIy
 
         # scale the starting_dI to match the target
         final_dI = starting_dI * target_dIy / rel_ndIy_0
@@ -357,8 +436,8 @@ class VirtualCircuit:
         targets_options : dict
             Dictionary of additional parameters required to calculate the 'targets' (see above).
         non_standard_targets : list
-            List of lists of additional (non-standard) target functions to use. Each sub-list
-            takes the form ["new_target_name", function(eq)], where function calcualtes the target
+            List of lists of additional (non-standard) target functions to use. Takes the
+            form [["new_target_name",...], [function(eq),...]], where function calcualtes the target
             using the eq object.
         verbose: bool
             Display output (or not).
@@ -383,21 +462,12 @@ class VirtualCircuit:
             currents[j : j + 1], coils[j : j + 1], self.target_relative_tolerance
         )
 
-        # # difference between plasma current vectors (before and after the solve)
-        # dIy_1 = (
-        #     self.profiles2.limiter_handler.Iy_from_jtor(self.profiles2.jtor)
-        #     - self.profiles.Iy
-        # )
-
-        # # calculate the finite difference derivative
-        # dIydIj = dIy_1 / final_dI
-
         # calculate finite difference of targets wrt to the coil current
-        _, self.target_vec_1 = self.calculate_targets(
-            self.eq2, targets, targets_options, non_standard_targets
+        _, self._target_vec_1 = self.calculate_targets(
+            self._eq2, targets, targets_options, non_standard_targets
         )
-        dtargets = self.target_vec_1 - self.targets_vec
-        self.dtargetsdIj = dtargets / final_dI
+        dtargets = self._target_vec_1 - self._targets_vec
+        self._dtargetsdIj = dtargets / final_dI
 
         # print some output
         if verbose:
@@ -451,8 +521,8 @@ class VirtualCircuit:
         targets_options : dict
             Dictionary of additional parameters required to calculate the 'targets' (see above).
         non_standard_targets : list
-            List of lists of additional (non-standard) target functions to use. Each sub-list
-            takes the form ["new_target_name", function(eq)], where function calcualtes the target
+            List of lists of additional (non-standard) target functions to use. Takes the
+            form [["new_target_name",...], [function(eq),...]], where function calcualtes the target
             using the eq object.
         target_dIy : float
             Target value for the norm of delta(I_y), from which the finite difference derivative is calculated.
@@ -488,10 +558,10 @@ class VirtualCircuit:
         self.profiles.Iy = self.profiles.limiter_handler.Iy_from_jtor(
             self.profiles.jtor
         ).copy()
-        self.nIy = np.linalg.norm(self.profiles.Iy)
+        self._nIy = np.linalg.norm(self.profiles.Iy)
 
         # calculate the targets from the equilibrium
-        targets_new, self.targets_vec = self.calculate_targets(
+        targets_new, self._targets_vec = self.calculate_targets(
             self.eq, targets, targets_options, non_standard_targets
         )
 
@@ -519,8 +589,8 @@ class VirtualCircuit:
                 )
 
             # make copies of the newly solved equilibrium and profile objects (modifed in next function call)
-            self.eq2 = deepcopy(eq)
-            self.profiles2 = deepcopy(profiles)
+            self._eq2 = deepcopy(eq)
+            self._profiles2 = deepcopy(profiles)
             self.prepare_build_dIydI_j(j, coils, target_dIy, starting_dI[j])
 
         if verbose:
@@ -532,17 +602,19 @@ class VirtualCircuit:
         for j in np.arange(len(coils)):
 
             # make copies of the newly solved equilibrium and profile objects (modifed in next function call)
-            self.eq2 = deepcopy(eq)
-            self.profiles2 = deepcopy(profiles)
+            self._eq2 = deepcopy(eq)
+            self._profiles2 = deepcopy(profiles)
             self.build_dIydI_j(
                 j, coils, targets, targets_options, non_standard_targets, verbose
             )
 
             # each shape matrix row is derivative of targets wrt the final coil current change
-            self.shape_matrix[:, j] = self.dtargetsdIj
+            self.shape_matrix[:, j] = self._dtargetsdIj
 
         # "virtual circuits" are the pseudo-inverse of the shape matrix
-        self.VCs = np.linalg.pinv(self.shape_matrix)
+        self.VC = np.linalg.pinv(self.shape_matrix)
+        self.VC_targets = targets_new
+        self.VC_coils = coils
 
         print("---")
         print("Shape and virtual circuit matrices built.")
@@ -552,7 +624,10 @@ class VirtualCircuit:
         eq,
         profiles,
         coils,
+        targets,
+        targets_options,
         targets_shift,
+        non_standard_targets=None,
         non_standard_targets_shift=None,
         verbose=False,
     ):
@@ -570,11 +645,19 @@ class VirtualCircuit:
         eq : object
             The equilibrium object upon which to apply the VCs.
         profiles : object
-            The profiles object upon which to apply the VCS.
+            The profiles object upon which to apply the VCs.
         coils : list
             List of strings containing the names of the coil currents to be assigned.
+        targets : list
+            List of strings containing the targets of interest. See above for supported targets.
+        targets_options : dict
+            Dictionary of additional parameters required to calculate the 'targets' (see above).
         targets_shift : list
             List of floats containing the shifts in the targets of interest. See above for supported targets.
+        non_standard_targets : list
+            List of lists of additional (non-standard) target functions to use. Takes the
+            form [["new_target_name",...], [function(eq),...]], where function calcualtes the target
+            using the eq object.
         non_standard_targets_shift : list
             List of floats of additional (non-standard) target shifts to use.
         verbose: bool
@@ -586,23 +669,28 @@ class VirtualCircuit:
             Returns the equilibrium object after applying the shifted currents.
         object
             Returns the profiles object after applying the shifted currents.
-
+        list
+            List of strings containing all of targets of interest. See above for supported targets.
+        np.array
+            Array of new target values.
+        np.array
+            Array of old target values.
         """
+        
+        # verify targets, coils, and shifts all match those used to generate VCs
+        if non_standard_targets is not None:
 
-        # add in extra targets (if exist)
-        if non_standard_targets_shift is not None:
+            assert targets + non_standard_targets[0] == self.VC_targets, "Targets do not match those stored in 'VC_targets'!"
             shifts = targets_shift + non_standard_targets_shift
         else:
+            assert targets == self.VC_targets, "Targets do not match those stored in 'VC_targets'!"
             shifts = targets_shift
 
-        # check dimensionalities
+        assert coils == self.VC_coils, "Coils do not match those stored in 'VC_coils'!"
         assert (
-            len(shifts) == self.VCs.shape[1]
+            len(shifts) == self.VC.shape[1]
         ), "No. of target shifts and no. of targets in VCs matrix do not match!"
-
-        # calculate current shifts required using the VCs matrix
-        # current_shifts = self.VCs @ np.array(shifts)
-
+            
         # calculate current shifts required using shape matrix (for stability)
         # uses least squares solver to solve S*dI = dT
         # where dT are the target shifts and dI the current shifts
@@ -618,6 +706,18 @@ class VirtualCircuit:
         eq_new = deepcopy(eq)
         profiles_new = deepcopy(profiles)
 
+        # re-solve static GS problem (to make sure it's solved already)
+        self.solver.forward_solve(
+            eq=eq_new,
+            profiles=profiles_new,
+            target_relative_tolerance=self.target_relative_tolerance,
+        )
+        
+        # calculate the targets
+        _, old_target_values = self.calculate_targets(
+            eq_new, targets, targets_options, non_standard_targets
+        )
+        
         # assign currents to the required coils in the eq object
         new_currents = [
             eq_new.tokamak.getCurrents()[name] + current_shifts[i]
@@ -632,4 +732,13 @@ class VirtualCircuit:
             target_relative_tolerance=self.target_relative_tolerance,
         )
 
-        return eq_new, profiles_new
+        # calculate new target values and the difference vs. the old 
+        all_targets, new_target_values = self.calculate_targets(
+            eq_new, targets, targets_options, non_standard_targets
+        )
+    
+        if verbose:
+            print(f"Targets shifts from VCs:")
+            print(f"{all_targets} = {new_target_values - old_target_values}.")
+            
+        return eq_new, profiles_new, all_targets, new_target_values, old_target_values

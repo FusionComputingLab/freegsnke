@@ -40,9 +40,6 @@ class Equilibrium(freegs4e.equilibrium.Equilibrium):
         self.equilibrium_path = os.environ.get("EQUILIBRIUM_PATH", None)
         self.reinitialize_from_file()
 
-        # store an initialisation of the virtual circuits class
-        self.VC = virtual_circuits.VirtualCircuit()
-
         # redefine interpolating function
         self.psi_func_interp = interpolate.RectBivariateSpline(
             self.R[:, 0], self.Z[0, :], self.plasma_psi

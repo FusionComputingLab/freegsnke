@@ -302,3 +302,31 @@ class linear_solver:
         mask = self.all_timescales_const_Ip < 0
         self.instability_timescale_const_Ip = -self.all_timescales_const_Ip[mask]
         self.growth_rates_const_Ip = 1 / self.instability_timescale_const_Ip
+
+    def calculate_stability_margin(
+        self,
+    ):
+        """
+        Here we calculate the stability margin parameter from:
+
+        https://iopscience.iop.org/article/10.1088/0029-5515/45/8/021
+
+        Parameters
+        ----------
+        parameters are passed in as object attributes
+        """
+
+        # extract the L and S matrices
+        n = self.n_independent_vars
+        L = self.M0matrix[0:n, 0:n]
+        S = -self.dMmatrix[0:n, 0:n]
+
+        # find e'values
+        A = np.linalg.solve(L, S) - np.eye(n)
+        self.all_stability_margins = np.sort(np.linalg.eigvals(A))
+
+        # extract stability margin
+        mask = self.all_stability_margins > 0
+        self.stability_margin = self.all_stability_margins[
+            mask
+        ]  # the positive (i.e. unstable) eigenvalues

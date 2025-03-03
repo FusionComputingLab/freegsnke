@@ -321,6 +321,7 @@ class nl_solver:
         # check if input equilibrium and associated linearization have an instability, and its timescale
         if automatic_timestep_flag + mode_removal + linearize:
             self.linearised_sol.calculate_linear_growth_rate()
+            self.linearised_sol.calculate_stability_margin()
             if len(self.linearised_sol.growth_rates):
                 print(
                     "The linear growth rate of this equilibrium corresponds to a characteristic timescale of",

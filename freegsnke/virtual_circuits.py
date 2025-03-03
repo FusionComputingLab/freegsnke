@@ -111,7 +111,7 @@ class VirtualCircuitHandling:
         # set to empty
         if targets_options is None:
             targets_options = {}
-        
+
         # outputting targets
         final_targets = deepcopy(targets)
         if non_standard_targets is None:
@@ -148,10 +148,10 @@ class VirtualCircuitHandling:
                     target_vec[i] = xpts[x_point_ind, 0]
                 else:
                     print(f"Use of the 'target_option' input for {target} is advised!")
-                    
+
                     # choose from first two X-points
                     xpts = eq.xpt[0:2, 0:2]
-                    x_point_ind = np.argmin(xpts[:,1])
+                    x_point_ind = np.argmin(xpts[:, 1])
                     target_vec[i] = xpts[x_point_ind, 0]
 
             # lower X-point (vertical) position
@@ -170,7 +170,7 @@ class VirtualCircuitHandling:
 
                     # choose from first two X-points
                     xpts = eq.xpt[0:2, 0:2]
-                    x_point_ind = np.argmin(xpts[:,1])
+                    x_point_ind = np.argmin(xpts[:, 1])
                     target_vec[i] = xpts[x_point_ind, 1]
 
             # upper X-point (radial) position
@@ -189,7 +189,7 @@ class VirtualCircuitHandling:
 
                     # choose from first two X-points
                     xpts = eq.xpt[0:2, 0:2]
-                    x_point_ind = np.argmax(xpts[:,1])
+                    x_point_ind = np.argmax(xpts[:, 1])
                     target_vec[i] = xpts[x_point_ind, 0]
 
             # upper X-point (vertical) position
@@ -208,9 +208,9 @@ class VirtualCircuitHandling:
 
                     # choose from first two X-points
                     xpts = eq.xpt[0:2, 0:2]
-                    x_point_ind = np.argmax(xpts[:,1])
+                    x_point_ind = np.argmax(xpts[:, 1])
                     target_vec[i] = xpts[x_point_ind, 1]
-                    
+
             # lower outer strikepoint (radial) position
             elif target == "Rs_lower_outer":
 
@@ -228,11 +228,13 @@ class VirtualCircuitHandling:
                     # choose the (lower) strikepoint with the largest radial position
                     strikes = eq.strikepoints()
                     if strikes.shape[0] > 4:
-                        print(f"More than four strikepoints located, use of 'target_option' input for {target} is strongly advised!")
-                    s_point_ind = strikes[strikes[:, 1] < 0]     
-                    print               
-                    target_vec[i] = s_point_ind[np.argmax(s_point_ind[:, 0]), 0]      
-                    
+                        print(
+                            f"More than four strikepoints located, use of 'target_option' input for {target} is strongly advised!"
+                        )
+                    s_point_ind = strikes[strikes[:, 1] < 0]
+                    print
+                    target_vec[i] = s_point_ind[np.argmax(s_point_ind[:, 0]), 0]
+
             # upper outer strikepoint (radial) position
             elif target == "Rs_upper_outer":
 
@@ -250,10 +252,12 @@ class VirtualCircuitHandling:
                     # choose the (upper) strikepoint with the largest radial position
                     strikes = eq.strikepoints()
                     if strikes.shape[0] > 4:
-                        print(f"More than four strikepoints located, use of 'target_option' input for {target} is strongly advised!")
-                    s_point_ind = strikes[strikes[:, 1] > 0]                   
-                    target_vec[i] = s_point_ind[np.argmax(s_point_ind[:, 0]), 0]     
-                    
+                        print(
+                            f"More than four strikepoints located, use of 'target_option' input for {target} is strongly advised!"
+                        )
+                    s_point_ind = strikes[strikes[:, 1] > 0]
+                    target_vec[i] = s_point_ind[np.argmax(s_point_ind[:, 0]), 0]
+
             # catch undefined targets
             else:
                 raise ValueError(f"Undefined target: {target}.")
@@ -676,21 +680,25 @@ class VirtualCircuitHandling:
         np.array
             Array of old target values.
         """
-        
+
         # verify targets, coils, and shifts all match those used to generate VCs
         if non_standard_targets is not None:
 
-            assert targets + non_standard_targets[0] == self.VC_targets, "Targets do not match those stored in 'VC_targets'!"
+            assert (
+                targets + non_standard_targets[0] == self.VC_targets
+            ), "Targets do not match those stored in 'VC_targets'!"
             shifts = targets_shift + non_standard_targets_shift
         else:
-            assert targets == self.VC_targets, "Targets do not match those stored in 'VC_targets'!"
+            assert (
+                targets == self.VC_targets
+            ), "Targets do not match those stored in 'VC_targets'!"
             shifts = targets_shift
 
         assert coils == self.VC_coils, "Coils do not match those stored in 'VC_coils'!"
         assert (
             len(shifts) == self.VC.shape[1]
         ), "No. of target shifts and no. of targets in VCs matrix do not match!"
-            
+
         # calculate current shifts required using shape matrix (for stability)
         # uses least squares solver to solve S*dI = dT
         # where dT are the target shifts and dI the current shifts
@@ -712,12 +720,12 @@ class VirtualCircuitHandling:
             profiles=profiles_new,
             target_relative_tolerance=self.target_relative_tolerance,
         )
-        
+
         # calculate the targets
         _, old_target_values = self.calculate_targets(
             eq_new, targets, targets_options, non_standard_targets
         )
-        
+
         # assign currents to the required coils in the eq object
         new_currents = [
             eq_new.tokamak.getCurrents()[name] + current_shifts[i]
@@ -732,13 +740,13 @@ class VirtualCircuitHandling:
             target_relative_tolerance=self.target_relative_tolerance,
         )
 
-        # calculate new target values and the difference vs. the old 
+        # calculate new target values and the difference vs. the old
         all_targets, new_target_values = self.calculate_targets(
             eq_new, targets, targets_options, non_standard_targets
         )
-    
+
         if verbose:
             print(f"Targets shifts from VCs:")
             print(f"{all_targets} = {new_target_values - old_target_values}.")
-            
+
         return eq_new, profiles_new, all_targets, new_target_values, old_target_values

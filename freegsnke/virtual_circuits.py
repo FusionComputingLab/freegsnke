@@ -24,6 +24,54 @@ from copy import deepcopy
 import numpy as np
 
 
+class VirtualCircuit:
+    """
+    The class for storing/recording virtual circuits that have been built
+    using the VirtualCircuitHandling class.
+    """
+
+    def __init__(
+        self,
+        name,
+        eq,
+        profiles,
+        shape_matrix,
+        VCs_matrix,
+        targets,
+        coils,
+    ):
+        """
+        Store the key quantities from the VirtualCircuitHandling calculations.
+
+        Parameters
+        ----------
+        name : str
+            Name to call the VCs (e.g. super-X VCs).
+        eq : object
+            The equilibrium object used to build the VCs.
+        profiles : object
+            The profiles object used to build the VCs.
+        shape_matrix : np.array
+            The array storing the Jacobians between the targets and coils given in 'targets'
+            and 'coils'.
+        VCs_matrix : np.array
+            The array storing the VCs between the targets and coils given in 'targets'
+            and 'coils'.
+        targets : list
+            The list of targets used to calculate the shape_matrix and VCs_matrix.
+        coils : list
+            The list of coils used to calculate the shape_matrix and VCs_matrix.
+        """
+
+        self.name = name
+        self.eq = eq
+        self.profiles = profiles
+        self.shape_matrix = shape_matrix
+        self.VCs_matrix = VCs_matrix
+        self.targets = targets
+        self.coils = coils
+
+
 class VirtualCircuitHandling:
     """
     The virtual circuits handling class.
@@ -39,6 +87,9 @@ class VirtualCircuitHandling:
         ----------
 
         """
+
+        # name to store the VC under
+        self.default_VC_name = "latest_VC"
 
     def define_solver(self, solver, target_relative_tolerance=1e-7):
         """
@@ -499,6 +550,7 @@ class VirtualCircuitHandling:
         starting_dI=None,
         min_starting_dI=50,
         verbose=False,
+        VC_name=None,
     ):
         """
         Calculate the "virtual circuits" matrix:
@@ -536,6 +588,8 @@ class VirtualCircuitHandling:
             Minimum starting_dI value to be used as delta(I_j): to infer the slope of norm(delta(I_y))/delta(I_j).
         verbose: bool
             Display output (or not).
+        VC_name: str
+            Name to store the VC under (in the 'VirtualCircuit' class).
 
         Returns
         -------
@@ -616,12 +670,29 @@ class VirtualCircuitHandling:
             self.shape_matrix[:, j] = self._dtargetsdIj
 
         # "virtual circuits" are the pseudo-inverse of the shape matrix
-        self.VC = np.linalg.pinv(self.shape_matrix)
-        self.VC_targets = targets_new
-        self.VC_coils = coils
+        self.VCs_matrix = np.linalg.pinv(self.shape_matrix)
+        self.VCs_targets = targets_new
+        self.VCs_coils = coils
+
+        # store the data in its own (new) class
+        if VC_name is None:
+            VC_name = self.default_VC_name
+
+        # store the VC object dynamically
+        store_VC = VirtualCircuit(
+            name=VC_name,
+            eq=eq,
+            profiles=profiles,
+            shape_matrix=self.shape_matrix,
+            VCs_matrix=self.VCs_matrix,
+            targets=self.VCs_targets,
+            coils=self.VCs_coils,
+        )
+        setattr(self, VC_name, store_VC)
 
         print("---")
         print("Shape and virtual circuit matrices built.")
+        print(f"VC object stored under name: '{VC_name}'.")
 
     def apply_VC(
         self,
@@ -685,18 +756,18 @@ class VirtualCircuitHandling:
         if non_standard_targets is not None:
 
             assert (
-                targets + non_standard_targets[0] == self.VC_targets
+                targets + non_standard_targets[0] == self.VCs_targets
             ), "Targets do not match those stored in 'VC_targets'!"
             shifts = targets_shift + non_standard_targets_shift
         else:
             assert (
-                targets == self.VC_targets
+                targets == self.VCs_targets
             ), "Targets do not match those stored in 'VC_targets'!"
             shifts = targets_shift
 
-        assert coils == self.VC_coils, "Coils do not match those stored in 'VC_coils'!"
+        assert coils == self.VCs_coils, "Coils do not match those stored in 'VC_coils'!"
         assert (
-            len(shifts) == self.VC.shape[1]
+            len(shifts) == self.VCs_matrix.shape[1]
         ), "No. of target shifts and no. of targets in VCs matrix do not match!"
 
         # calculate current shifts required using shape matrix (for stability)

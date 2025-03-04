@@ -25,7 +25,6 @@ import numpy as np
 
 from . import machine_config
 from .implicit_euler import implicit_euler_solver
-from .Myy_builder import Myy_handler
 
 
 class simplified_solver_J1:
@@ -42,7 +41,7 @@ class simplified_solver_J1:
         Pm1,
         Rm1,
         Mey,
-        limiter_handler,
+        # limiter_handler,
         plasma_norm_factor,
         plasma_resistance_1d,
         full_timestep=0.0001,
@@ -67,8 +66,6 @@ class simplified_solver_J1:
             matrix of inductance values between grid points in the reduced plasma domain and all metal coils
             (active coils and passive-structure filaments)
             Calculated by the metal_currents object
-        limiter_handler : freegsnke object
-            freegsnke object handling the functionalities related to the limiter
         plasma_norm_factor: float
             an overall factor to work with a rescaled plasma current, so that
             it's within a comparable range with metal currents
@@ -151,7 +148,9 @@ class simplified_solver_J1:
         """
         self.plasma_resistance_1d = plasma_resistance_1d
 
-    def prepare_solver(self, hatIy_left, hatIy_0, hatIy_1, active_voltage_vec):
+    def prepare_solver(
+        self, hatIy_left, hatIy_0, hatIy_1, active_voltage_vec, Myy_hatIy_left
+    ):
         """Computes the actual matrices that are needed in the ODE for the extensive currents
          and that must be passed to the implicit-Euler solver.
 
@@ -167,6 +166,9 @@ class simplified_solver_J1:
             (guessed) normalised plasma current distribution on the reduced domain at time t+dt
         active_voltage_vec: np.array
             voltages applied to the active coils
+        Myy_hatIy_left : np.array
+            The matrix product np.dot(Myy, hatIy_left) in the same reduced domain as hatIy_left
+            This is provided by Myy_handler
         """
 
         Rp = np.sum(self.plasma_resistance_1d * hatIy_left * hatIy_1)
@@ -181,7 +183,7 @@ class simplified_solver_J1:
         self.Mmatrix[:-1, -1] = np.dot(simplified_mutual, hatIy_1)
         self.Lmatrix[:-1, -1] = np.dot(simplified_mutual, hatIy_0)
 
-        simplified_self_left = self.handleMyy.dot(hatIy_left) / Rp
+        simplified_self_left = Myy_hatIy_left / Rp
         simplified_self_1 = np.dot(simplified_self_left, hatIy_1)
         simplified_self_0 = np.dot(simplified_self_left, hatIy_0)
         self.Mmatrix[-1, -1] = simplified_self_1
@@ -195,7 +197,9 @@ class simplified_solver_J1:
         self.empty_U[: self.n_active_coils] = active_voltage_vec
         self.forcing[:-1] = np.dot(self.Pm1Rm1, self.empty_U)
 
-    def stepper(self, It, hatIy_left, hatIy_0, hatIy_1, active_voltage_vec):
+    def stepper(
+        self, It, hatIy_left, hatIy_0, hatIy_1, active_voltage_vec, Myy_hatIy_left
+    ):
         """Computes and returns the set of extensive currents at time t+dt
 
         Parameters
@@ -214,13 +218,18 @@ class simplified_solver_J1:
             (guessed) normalised plasma current distribution on the reduced domain at time t+dt
         active_voltage_vec: np.array
             voltages applied to the active coils
+        Myy_hatIy_left : np.array
+            The matrix product np.dot(Myy, hatIy_left) in the same reduced domain as hatIy_left
+            This is provided by Myy_handler
 
         Returns
         -------
         Itpdt: np.array
             currents (active coils, vessel eigenmodes, total plasma current) at time t+dt
         """
-        self.prepare_solver(hatIy_left, hatIy_0, hatIy_1, active_voltage_vec)
+        self.prepare_solver(
+            hatIy_left, hatIy_0, hatIy_1, active_voltage_vec, Myy_hatIy_left
+        )
         Itpdt = self.solver.full_stepper(It, self.forcing)
         return Itpdt
 

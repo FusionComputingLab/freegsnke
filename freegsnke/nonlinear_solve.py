@@ -207,7 +207,7 @@ class nl_solver:
             Pm1=self.evol_metal_curr.Pm1,
             Rm1=np.diag(self.evol_metal_curr.Rm1),
             Mey=self.evol_metal_curr.Mey_matrix,
-            limiter_handler=self.limiter_handler,
+            # limiter_handler=self.limiter_handler,
             plasma_norm_factor=self.plasma_norm_factor,
             plasma_resistance_1d=self.plasma_resistance_1d,
             full_timestep=self.dt_step,
@@ -392,7 +392,7 @@ class nl_solver:
             Pm1=self.evol_metal_curr.Pm1,
             Rm1=np.diag(self.evol_metal_curr.Rm1),
             Mey=self.evol_metal_curr.Mey_matrix,
-            limiter_handler=self.limiter_handler,
+            # limiter_handler=self.limiter_handler,
             plasma_norm_factor=self.plasma_norm_factor,
             plasma_resistance_1d=self.plasma_resistance_1d,
             full_timestep=self.dt_step,
@@ -1000,7 +1000,7 @@ class nl_solver:
         )
 
         # set Myy matrix in place throught the handling object
-        self.handleMyy.force_build_myy(self.hatIy)
+        self.handleMyy.force_build_Myy(self.hatIy)
 
         # transfer linearization to linear solver:
         self.Myy_hatIy0 = self.handleMyy.dot(self.hatIy)
@@ -1156,12 +1156,14 @@ class nl_solver:
             Current values at time t+dt. Same format as self.currents_vec.
         """
         self.make_blended_hatIy(hatIy1)
+        Myy_hatIy_left = self.handleMyy.dot(self.blended_hatIy)
         current_from_hatIy = self.simplified_solver_J1.stepper(
             It=self.currents_vec,
             hatIy_left=self.blended_hatIy,
             hatIy_0=self.hatIy,
             hatIy_1=hatIy1,
             active_voltage_vec=active_voltage_vec,
+            Myy_hatIy_left=Myy_hatIy_left,
         )
         return current_from_hatIy
 
@@ -1527,12 +1529,27 @@ class nl_solver:
         # Solution and GS equilibrium are assigned to self.trial_currents and self.trial_plasma_psi
         self.set_linear_solution(active_voltage_vec)
 
+        # check Matrix is still applicable
+        myy_flag = self.handleMyy.check_Myy(self.hatIy)
+
         if linear_only:
             # assign currents and plasma flux to self.currents_vec, self.eq1 and self.profiles1 and complete step
             self.step_complete_assign(working_relative_tol_GS, from_linear=True)
+            if myy_flag:
+                print(
+                    "The plasma used for calculating the adopted linearization and the plasma in this evolution have departed by more than",
+                    self.handleMyy.tolerance,
+                    "domain pixels. The linearization may not be accurate.",
+                )
 
         else:
             # seek solution of the full nonlinear problem
+
+            if myy_flag:
+                if verbose:
+                    print("The Myy matrix is being recalculated.")
+                # recalculate Myy
+                self.handleMyy.force_build_Myy(self.hatIy)
 
             # this assigns to self.eq2 and self.profiles2
             # also records self.tokamak_psi corresponding to self.trial_currents in 2d

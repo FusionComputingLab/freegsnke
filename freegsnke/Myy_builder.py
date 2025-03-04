@@ -97,7 +97,7 @@ from freegs4e.gradshafranov import Greens
 
 class Myy_handler:
 
-    def __init__(self, limiter_handler):
+    def __init__(self, limiter_handler, layer_size=5, tolerance=3):
 
         limiter_handler.build_reduced_rect_domain()
 
@@ -116,6 +116,9 @@ class Myy_handler:
             self.reduce_rect_domain(limiter_handler.eqZ),
         )
 
+        self.layer_size = layer_size
+        self.tolerance = tolerance
+
     def grid_greens(self, R, Z):
 
         dz = Z[0, 1] - Z[0, 0]
@@ -130,7 +133,7 @@ class Myy_handler:
 
         return 2 * np.pi * ggreens
 
-    def build_mask_from_hatIy(self, hatIy, layer_size=5):
+    def build_mask_from_hatIy(self, hatIy, layer_size):
         """Builds the mask that will be used by build_myy_from_mask
         based on the hatIy map. The mask is broadened by a number of pixels
         equal to layer mask. The limiter mask is taken into account.
@@ -150,7 +153,7 @@ class Myy_handler:
         hatIy_broad_rect_red *= self.mask_inside_limiter_red
         return hatIy_broad_rect_red
 
-    def build_myy_from_mask(self, mask):
+    def build_Myy_from_mask(self, mask):
         """Build the Myy matrix only including domain points in the input mask
 
         Parameters
@@ -162,7 +165,7 @@ class Myy_handler:
             (same size as self.mask_inside_limiter_red)
         """
         self.myy_mask_red = mask
-        self.outside_myy_mask = np.logical_not(mask)[self.mask_inside_limiter_red]
+        self.outside_myy_mask = np.logical_not(mask)
 
         nmask = np.sum(mask)
 
@@ -179,7 +182,7 @@ class Myy_handler:
 
         self.myy = self.gg[r_idxs, r_idxs.T, dz_idxs]
 
-    def force_build_myy(self, hatIy):
+    def force_build_Myy(self, hatIy):
         """Builds the Myy matrix only including domain points in the input vector (not necessarily a mask)
 
         Parameters
@@ -188,20 +191,30 @@ class Myy_handler:
              1d vector on reduced plasma domain, e.g. inside the limiter
         """
 
-        hatIy_broad_rect_red = self.build_mask_from_hatIy(hatIy)
-        self.build_myy_from_mask(hatIy_broad_rect_red)
+        hatIy_broad_rect_red = self.build_mask_from_hatIy(
+            hatIy, layer_size=self.layer_size
+        )
+        self.build_Myy_from_mask(hatIy_broad_rect_red)
 
     def check_Myy(self, hatIy):
-        """Rebuilds myy when the input hatIy is not fully inside the current myy_mask
+        """Rebuilds myy when the input hatIy, broadened by a number of pixels
+        set by tolerance, is not fully inside the current myy_mask
+        Note 1. tolerance should be smaller than 'layer_size' in build_mask_from_hatIy
+        Note 2. tolerance should be larger than the number of pixels by which the plasma
+        is expected to 'move' every timestep of the evolution.
 
         Parameters
         ----------
         hatIy : np.ndarray
             1d vector on reduced plasma domain, e.g. inside the limiter
+        tolerance : int
+            number of pixels by which hatIy should be 'inside self.myy_mask_red'
         """
-
-        if np.sum(hatIy[self.outside_myy_mask]):
-            self.force_build_myy(hatIy)
+        hatIy_broad_rect_red = self.build_mask_from_hatIy(
+            hatIy, layer_size=self.tolerance
+        )
+        flag = np.sum(hatIy_broad_rect_red[self.outside_myy_mask])
+        return flag
 
     def dot(self, hatIy):
         """Performs the product with a vector defined on the reduced domain, i.e. inside the limiter.

@@ -99,13 +99,16 @@ class Myy_handler:
 
     def __init__(self, limiter_handler):
 
-        self.mask_inside_limiter = limiter_handler.mask_inside_limiter
         limiter_handler.build_reduced_rect_domain()
 
         self.reduce_rect_domain = limiter_handler.reduce_rect_domain
         self.extract_index_mask = limiter_handler.extract_index_mask
         self.rebuild_map2d = limiter_handler.rebuild_map2d
         self.broaden_mask = limiter_handler.broaden_mask
+        self.idxs_mask_red = limiter_handler.idxs_mask_red
+
+        self.mask_inside_limiter = limiter_handler.mask_inside_limiter
+        self.mask_inside_limiter_red = self.reduce_rect_domain(self.mask_inside_limiter)
 
         self.gg = self.grid_greens(limiter_handler.eqR_red, limiter_handler.eqZ_red)
 
@@ -145,10 +148,12 @@ class Myy_handler:
             _description_, by default 3
         """
         hatIy_mask = hatIy > 0
-        hatIy_rect_full = self.rebuild_map2d(hatIy_mask)
-        hatIy_broad = self.broaden_mask(hatIy_rect_full, layer_size=layer_size)
-        hatIy_broad *= self.mask_inside_limiter
-        return hatIy_broad
+        hatIy_rect_red = self.rebuild_map2d(
+            hatIy_mask, self.mask_inside_limiter_red, self.idxs_mask_red
+        )
+        hatIy_broad_rect_red = self.broaden_mask(hatIy_rect_red, layer_size=layer_size)
+        hatIy_broad_rect_red *= self.mask_inside_limiter
+        return hatIy_broad_rect_red
 
     def build_myy_from_mask(self, mask):
         """Build the Myy matrix only including domain points in the input mask
@@ -156,52 +161,64 @@ class Myy_handler:
         Parameters
         ----------
         mask : np.ndarray
-            mask of the domain points to include on the full domain grid, e.g. eq.R
+            mask of the domain points to include.
+            Map is defined on the reduced rectangular domain grid,
+            i.e. the smallest rectangular domain around limiter mask
+            (same size as self.mask_inside_limiter_red)
         """
-        self.myy_mask = mask
-        self.outside_myy_mask = np.logical_not(mask)[self.mask_inside_limiter]
+        self.myy_mask_red = mask
+        self.outside_myy_mask = np.logical_not(mask)[self.mask_inside_limiter_red]
 
-        mask_red = self.reduce_rect_domain(mask)
-        nmask = np.sum(mask_red)
+        nmask = np.sum(mask)
 
-        idxs_mask_red = self.extract_index_mask(mask_red)
+        self.idxs_myy_mask_red = self.extract_index_mask(mask)
 
         r_idxs = np.tile(
-            idxs_mask_red[0][:, np.newaxis],
+            self.idxs_myy_mask_red[0][:, np.newaxis],
             (1, nmask),
         )
         dz_idxs = np.abs(
-            idxs_mask_red[1][np.newaxis, :] - idxs_mask_red[1][:, np.newaxis]
+            self.idxs_myy_mask_red[1][np.newaxis, :]
+            - self.idxs_myy_mask_red[1][:, np.newaxis]
         )
 
         self.myy = self.gg[r_idxs, r_idxs.T, dz_idxs]
 
-    def source_Myy(self, hatIy):
-        """Returns the Myy matrix. Resets the domain when the input hatIy
-        is not fully inside the current myy_mask
+    def check_Myy(self, hatIy):
+        """Rebuilds myy when the input hatIy is not fully inside the current myy_mask
 
         Parameters
         ----------
-        hatIy : hatIy : np.ndarray
+        hatIy : np.ndarray
             1d vector on reduced plasma domain, e.g. inside the limiter
         """
 
         if np.sum(hatIy[self.outside_myy_mask]):
-            hatIy_mask = self.build_mask_from_hatIy(hatIy)
-            self.build_myy_from_mask(hatIy_mask)
+            hatIy_broad_rect_red = self.build_mask_from_hatIy(hatIy)
+            self.build_myy_from_mask(hatIy_broad_rect_red)
 
-        return self.myy
+    def dot(self, hatIy):
+        """Performs the product with a vector defined on the reduced domain, i.e. inside the limiter.
+        Returns a vector on the same domain.
 
-    def compose_Myy(
-        self,
-    ):
+        Parameters
+        ----------
+        hatIy : np.ndarray
+            1d vector on reduced plasma domain, e.g. inside the limiter
+        """
+        # first bring hatIy from the reduced domain to the current myy domain
+        hatIy_rect_red = self.rebuild_map2d(
+            hatIy, self.mask_inside_limiter_red, self.idxs_mask_red
+        )
+        hatIy_myy_red = hatIy_rect_red[self.myy_mask_red]
 
-        return self.gg[self.r_idxs, self.r_idxs.T, self.dz_idxs]
+        # perform the dot product
+        result = np.dot(self.myy, hatIy_myy_red)
 
-    def dot(self, vec):
+        # bring result back to the reduced plasma domain
+        result_rect_red = self.rebuild_map2d(
+            result, self.mask_inside_limiter_red, self.idxs_myy_mask_red
+        )
+        result_red = result_rect_red[self.mask_inside_limiter_red]
 
-        return np.dot(self.compose_Myy(), vec)
-
-    def matmul(self, mat):
-
-        return np.matmul(self.compose_Myy(), mat)
+        return result_red

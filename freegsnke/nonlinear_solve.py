@@ -98,9 +98,6 @@ class nl_solver:
         plasma_norm_factor : float, optional, by default 1000
             The plasma current is re-normalised by this factor,
             to bring to a value more akin to those of the metal currents
-        nbroad : int, optional, by default 1
-            enables the use of a smoothing (with a square smoothing filter of nbroad grid points per side)
-            when building the plasma current distribution used to contract the plasma circuit equations
         blend_hatJ : float, optional, by default 0
             optional coefficient which enables use a blended version of the normalised plasma current distribution
             when contracting the plasma lumped circuit eq. from the left. The blend combines the
@@ -255,7 +252,7 @@ class nl_solver:
         self.step_no = 0
 
         # set default blend for contracting the plasma lumped eq
-        self.make_broad_hatIy = lambda x: self.make_broad_hatIy_noconv(
+        self.make_blended_hatIy = lambda x: self.make_blended_hatIy_(
             x, blend=blend_hatJ
         )
 
@@ -412,7 +409,7 @@ class nl_solver:
 
         self.linearised_sol.set_linearization_point(
             dIydI=self.dIydI,
-            hatIy0=self.broad_hatIy,
+            hatIy0=self.blended_hatIy,
         )
 
     def set_linear_solution(self, active_voltage_vec, d_profile_pars_dt=None):
@@ -981,7 +978,7 @@ class nl_solver:
         self.hatIy = self.limiter_handler.normalize_sum(self.Iy)
         # self.hatIy1 is the normalised plasma current distribution at time t+dt
         self.hatIy1 = np.copy(self.hatIy)
-        self.make_broad_hatIy(self.hatIy1)
+        self.make_blended_hatIy(self.hatIy1)
 
         self.time = 0
         self.step_no = -1
@@ -999,7 +996,7 @@ class nl_solver:
         # transfer linearization to linear solver
         self.linearised_sol.set_linearization_point(
             dIydI=self.dIydI_ICs,
-            hatIy0=self.broad_hatIy,
+            hatIy0=self.blended_hatIy,
         )
 
     def step_complete_assign(self, working_relative_tol_GS, from_linear=False):
@@ -1119,10 +1116,10 @@ class nl_solver:
     #     )
     #     self.broad_hatIy = self.limiter_handler.hat_Iy_from_jtor(self.broad_hatIy)
 
-    def make_broad_hatIy_noconv(self, hatIy1, blend):
+    def make_blended_hatIy_(self, hatIy1, blend):
         """Averages the normalised plasma current distributions at time t and
         (a guess for the one at) at time t+dt to better contract the system of
-        plasma circuit eqs. Does not apply convolution: nbroad==1.
+        plasma circuit eqs.
 
         Parameters
         ----------
@@ -1130,10 +1127,7 @@ class nl_solver:
             Guess for the normalised plasma current distributions at time t+dt.
             Should be a vector that sums to 1. Reduced plasma domain only.
         """
-        self.broad_hatIy = self.limiter_handler.rebuild_map2d(
-            hatIy1 + blend * self.hatIy
-        )
-        self.broad_hatIy = self.limiter_handler.hat_Iy_from_jtor(self.broad_hatIy)
+        self.blended_hatIy = (1 - blend) * hatIy1 + blend * self.hatIy
 
     def currents_from_hatIy(self, hatIy1, active_voltage_vec):
         """Uses a guess for the normalised plasma current distribution at time t+dt
@@ -1152,10 +1146,10 @@ class nl_solver:
         np.array
             Current values at time t+dt. Same format as self.currents_vec.
         """
-        self.make_broad_hatIy(hatIy1)
+        self.make_blended_hatIy(hatIy1)
         current_from_hatIy = self.simplified_solver_J1.stepper(
             It=self.currents_vec,
-            hatIy_left=self.broad_hatIy,
+            hatIy_left=self.blended_hatIy,
             hatIy_0=self.hatIy,
             hatIy_1=hatIy1,
             active_voltage_vec=active_voltage_vec,

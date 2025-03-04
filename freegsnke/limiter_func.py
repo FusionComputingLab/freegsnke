@@ -93,22 +93,28 @@ class Limiter_handler:
 
         return plasma_pts
 
+    def reduce_rect_domain(self, map):
+        """Reduce map from the whole domain to the smallest rectangular domain around limiter mask
+
+        Parameters
+        ----------
+        map : np.ndarray
+            Same dimensions as eq.R
+        """
+
+        return map[self.Rrange[0] : self.Rrange[1], self.Zrange[0] : self.Zrange[1]]
+
     def build_reduced_rect_domain(
         self,
     ):
         """Build smallest rectangular domain around limiter mask"""
 
-        self.eqR_red = self.eqR[min(self.idxs_mask[0]) : max(self.idxs_mask[0]) + 1, :]
-        self.eqZ_red = self.eqZ[:, min(self.idxs_mask[1]) : max(self.idxs_mask[1]) + 1]
-        self.mask_inside_limiter_red = self.mask_inside_limiter[
-            min(self.idxs_mask[0]) : max(self.idxs_mask[0]) + 1,
-            min(self.idxs_mask[1]) : max(self.idxs_mask[1]) + 1,
-        ]
+        self.Rrange = (min(self.idxs_mask[0]), max(self.idxs_mask[0]) + 1)
+        self.Zrange = (min(self.idxs_mask[1]), max(self.idxs_mask[1]) + 1)
 
-        self.plasma_pts_red = self.extract_plasma_pts(
-            self.eqR_red, self.eqZ_red, self.mask_inside_limiter_red
-        )
-        self.idxs_mask_red = self.extract_index_mask(self.mask_inside_limiter_red)
+        self.eqR_red = self.reduce_rect_domain(self.eqR)
+        self.eqZ_red = self.reduce_rect_domain(self.eqZ)
+        self.mask_inside_limiter_red = self.reduce_rect_domain(self.mask_inside_limiter)
 
     def build_mask_inside_limiter(
         self,
@@ -449,10 +455,7 @@ class Limiter_handler:
         hat_Iy = self.normalize_sum(hat_Iy)
         return hat_Iy
 
-    def check_if_outside_domain(self, jtor):
-        return np.sum(jtor[self.layer_mask])
-
-    def rebuild_map2d(self, reduced_vector):
+    def rebuild_map2d(self, reduced_vector, map_dummy, idxs_mask):
         """Rebuilds 2d map on full domain corresponding to 1d vector
         reduced_vector on smaller plasma domain
 
@@ -460,14 +463,19 @@ class Limiter_handler:
         ----------
         reduced_vector : np.ndarray
             1d vector on reduced plasma domain
+        map_dummy : np.ndarray
+            Specifies the size of the desired rectangular map
+        idxs_mask : np.ndarray
+            Specifies the location of the pixels of the reduced vector in the rectangular domain
+            Note this is specific to map_dummy, e.g. use self.extract_index_mask
 
         Returns
         -------
         self.map2d : np.ndarray
-            2d map on full domain. Values on gridpoints outside the
+            2d map on domain as map_dummy. Values on gridpoints outside the
             reduced plasma domain are set to zero.
         """
-        map2d = np.zeros_like(self.eqR)
-        map2d[self.idxs_mask[0], self.idxs_mask[1]] = reduced_vector
-        # self.map2d = map2d.copy()
+
+        map2d = np.zeros_like(map_dummy)
+        map2d[idxs_mask[0], idxs_mask[1]] = reduced_vector
         return map2d

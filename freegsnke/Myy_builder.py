@@ -99,16 +99,24 @@ class Myy_handler:
 
     def __init__(self, limiter_handler):
 
-        self.gg = self.grid_greens(limiter_handler.eqR, limiter_handler.eqZ)
+        self.mask_inside_limiter = limiter_handler.mask_inside_limiter
+        limiter_handler.build_reduced_rect_domain()
 
-        self.r_idxs = np.tile(
-            limiter_handler.idxs_mask[0][:, np.newaxis],
-            (1, len(limiter_handler.plasma_pts)),
-        )
-        self.dz_idxs = np.abs(
-            limiter_handler.idxs_mask[1][np.newaxis, :]
-            - limiter_handler.idxs_mask[1][:, np.newaxis]
-        )
+        self.reduce_rect_domain = limiter_handler.reduce_rect_domain
+        self.extract_index_mask = limiter_handler.extract_index_mask
+        self.rebuild_map2d = limiter_handler.rebuild_map2d
+        self.broaden_mask = limiter_handler.broaden_mask
+
+        self.gg = self.grid_greens(limiter_handler.eqR_red, limiter_handler.eqZ_red)
+
+        # self.r_idxs = np.tile(
+        #     limiter_handler.idxs_mask[0][:, np.newaxis],
+        #     (1, len(limiter_handler.plasma_pts)),
+        # )
+        # self.dz_idxs = np.abs(
+        #     limiter_handler.idxs_mask[1][np.newaxis, :]
+        #     - limiter_handler.idxs_mask[1][:, np.newaxis]
+        # )
 
     def grid_greens(self, R, Z):
 
@@ -123,6 +131,66 @@ class Myy_handler:
         )
 
         return 2 * np.pi * ggreens
+
+    def build_mask_from_hatIy(self, hatIy, layer_size=5):
+        """Builds the mask that will be used by build_myy_from_mask
+        based on the hatIy map. The mask is broadened by a number of pixels
+        equal to layer mask. The limiter mask is taken into account.
+
+        Parameters
+        ----------
+        hatIy : np.ndarray
+            1d vector on reduced plasma domain, e.g. inside the limiter
+        layer_size : int, optional
+            _description_, by default 3
+        """
+        hatIy_mask = hatIy > 0
+        hatIy_rect_full = self.rebuild_map2d(hatIy_mask)
+        hatIy_broad = self.broaden_mask(hatIy_rect_full, layer_size=layer_size)
+        hatIy_broad *= self.mask_inside_limiter
+        return hatIy_broad
+
+    def build_myy_from_mask(self, mask):
+        """Build the Myy matrix only including domain points in the input mask
+
+        Parameters
+        ----------
+        mask : np.ndarray
+            mask of the domain points to include on the full domain grid, e.g. eq.R
+        """
+        self.myy_mask = mask
+        self.outside_myy_mask = np.logical_not(mask)[self.mask_inside_limiter]
+
+        mask_red = self.reduce_rect_domain(mask)
+        nmask = np.sum(mask_red)
+
+        idxs_mask_red = self.extract_index_mask(mask_red)
+
+        r_idxs = np.tile(
+            idxs_mask_red[0][:, np.newaxis],
+            (1, nmask),
+        )
+        dz_idxs = np.abs(
+            idxs_mask_red[1][np.newaxis, :] - idxs_mask_red[1][:, np.newaxis]
+        )
+
+        self.myy = self.gg[r_idxs, r_idxs.T, dz_idxs]
+
+    def source_Myy(self, hatIy):
+        """Returns the Myy matrix. Resets the domain when the input hatIy
+        is not fully inside the current myy_mask
+
+        Parameters
+        ----------
+        hatIy : hatIy : np.ndarray
+            1d vector on reduced plasma domain, e.g. inside the limiter
+        """
+
+        if np.sum(hatIy[self.outside_myy_mask]):
+            hatIy_mask = self.build_mask_from_hatIy(hatIy)
+            self.build_myy_from_mask(hatIy_mask)
+
+        return self.myy
 
     def compose_Myy(
         self,

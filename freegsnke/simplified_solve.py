@@ -97,7 +97,7 @@ class simplified_solver_J1:
         self.Pm1Rm1 = Pm1 @ Rm1
         self.Pm1Rm1Mey = np.matmul(self.Pm1Rm1, Mey)
         self.MyeP_T = Pm1 @ Mey
-        self.handleMyy = Myy_handler(limiter_handler)
+        # self.handleMyy = Myy_handler(limiter_handler)
 
         self.n_active_coils = machine_config.n_active_coils
         self.n_coils = machine_config.n_coils

@@ -48,7 +48,6 @@ class nl_solver:
         max_internal_timestep=0.0001,
         plasma_resistivity=1e-6,
         plasma_norm_factor=1000,
-        nbroad=1,
         blend_hatJ=0,
         dIydI=None,
         target_dIy=1e-3,
@@ -255,18 +254,10 @@ class nl_solver:
         # counter for the step advancement of the dynamics
         self.step_no = 0
 
-        # this is the filter used to broaden the normalised plasma current distribution
-        # used to contract the system of plasma circuit equations
-        self.ones_to_broaden = np.ones((nbroad, nbroad))
-        # use convolution if nbroad>1
-        if nbroad > 1:
-            self.make_broad_hatIy = lambda x: self.make_broad_hatIy_conv(
-                x, blend=blend_hatJ
-            )
-        else:
-            self.make_broad_hatIy = lambda x: self.make_broad_hatIy_noconv(
-                x, blend=blend_hatJ
-            )
+        # set default blend for contracting the plasma lumped eq
+        self.make_broad_hatIy = lambda x: self.make_broad_hatIy_noconv(
+            x, blend=blend_hatJ
+        )
 
         # self.dIydI is the Jacobian of the plasma current distribution
         # with respect to the independent currents (as in self.currents_vec)
@@ -1104,31 +1095,31 @@ class nl_solver:
             self.eq2, self.profiles2, target_relative_tolerance=rtol_NK
         )
 
-    def make_broad_hatIy_conv(self, hatIy1, blend=0):
-        """Averages the normalised plasma current distributions at time t and
-        (a guess for the one at) at time t+dt to better contract the system of
-        plasma circuit eqs. Applies some 'smoothing' though convolution, when
-        setting is nbroad>1.
+    # def make_broad_hatIy_conv(self, hatIy1, blend=0):
+    #     """Averages the normalised plasma current distributions at time t and
+    #     (a guess for the one at) at time t+dt to better contract the system of
+    #     plasma circuit eqs. Applies some 'smoothing' though convolution, when
+    #     setting is nbroad>1.
 
-        Parameters
-        ----------
-        hatIy1 : np.array
-            Guess for the normalised plasma current distributions at time t+dt.
-            Should be a vector that sums to 1. Reduced plasma domain only.
-        blend : float between 0 and 1
-            Option to combine the normalised plasma current distributions at time t
-            with (a guess for) the one at time t+dt before contraction of the plasma
-            lumped circuit eq.
-        """
-        self.broad_hatIy = self.limiter_handler.rebuild_map2d(
-            hatIy1 + blend * self.hatIy
-        )
-        self.broad_hatIy = convolve2d(
-            self.broad_hatIy, self.ones_to_broaden, mode="same"
-        )
-        self.broad_hatIy = self.limiter_handler.hat_Iy_from_jtor(self.broad_hatIy)
+    #     Parameters
+    #     ----------
+    #     hatIy1 : np.array
+    #         Guess for the normalised plasma current distributions at time t+dt.
+    #         Should be a vector that sums to 1. Reduced plasma domain only.
+    #     blend : float between 0 and 1
+    #         Option to combine the normalised plasma current distributions at time t
+    #         with (a guess for) the one at time t+dt before contraction of the plasma
+    #         lumped circuit eq.
+    #     """
+    #     self.broad_hatIy = self.limiter_handler.rebuild_map2d(
+    #         hatIy1 + blend * self.hatIy
+    #     )
+    #     self.broad_hatIy = convolve2d(
+    #         self.broad_hatIy, self.ones_to_broaden, mode="same"
+    #     )
+    #     self.broad_hatIy = self.limiter_handler.hat_Iy_from_jtor(self.broad_hatIy)
 
-    def make_broad_hatIy_noconv(self, hatIy1, blend=0):
+    def make_broad_hatIy_noconv(self, hatIy1, blend):
         """Averages the normalised plasma current distributions at time t and
         (a guess for the one at) at time t+dt to better contract the system of
         plasma circuit eqs. Does not apply convolution: nbroad==1.

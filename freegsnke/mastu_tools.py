@@ -1,50 +1,75 @@
 """
+Contains various functions required to load MAST-U experimental shot data, ready for 
+simulation in FreeGSNKE. Also contains additional functions that may be of use in the
+simulations themselves. 
 
-This file contains a number of useful functions required to run the "example3" notebook. 
+Copyright 2025 UKAEA, UKRI-STFC, and The Authors, as per the COPYRIGHT and README files.
+
+This file is part of FreeGSNKE.
+
+FreeGSNKE is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Lesser General Public License for more details.
+
+FreeGSNKE is free software: you can redistribute it and/or modify
+it under the terms of the GNU Lesser General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
   
-Machine description code courtesy of Geof Cunningham, modified by Kamran Pentland (UKAEA). 
-
+You should have received a copy of the GNU Lesser General Public License
+along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 """
 
-import math
-import pickle
-from collections import Counter
-
-import matplotlib.pyplot as plt
 import numpy as np
-import pyuda
 import scipy as sp
 import shapely as sh
+import matplotlib.pyplot as plt
+import pickle
+import math
+import os
+import pyuda
 from freegs4e import critical
+
 from numpy import (
     abs,
-    amax,
-    arctan2,
     argmax,
-    argmin,
     clip,
-    cos,
-    dot,
     linspace,
     pi,
-    sin,
-    sqrt,
-    sum,
-    zeros,
 )
-from scipy.interpolate import interp1d
 
 # --------------------------------
-# MACHINE DESCRIPTION DATA
-# recovers the machine description data and builds the required pickle files for FreeGSNKE
-
+# EXTRACTING EFIT++ DATA
 
 def get_machine_data(
-    shot=45425,  # choose a shot
-    split_passives=True,  # True = model passive structures as parallelograms (recommended), False = model as point current sources
+    save_path=None,
+    shot=45425,
+    split_passives=True,
 ):
+    """
+    This functions builds the active coil, passive structure, wall, and limiter machine description pickle 
+    files for MAST-U (for a given shot number).    
 
-    # pull data from pyUDA client
+    Parameters
+    ----------
+    save_path : str
+        Path in which to save the machine pickle files. 
+    shot : int
+        MAST-U shot number.
+    split_passives : bool
+        If True, we model the passive structures as parallelograms (recommended), if False, we model as point current sources
+
+    Returns
+    -------
+    None
+        Builds pickle files for the machine description in the 'machine_configs/MAST-U' directory. 
+    """       
+        
+    if save_path is None:
+        raise ValueError("'save_path' cannot be None. Please provide a valid path to save the machine data.")
+        
+    # set up pyUDA client
     client = pyuda.Client()
 
     # store data in dictionary form
@@ -447,7 +472,7 @@ def get_machine_data(
     # save data: this pickle file can be used when a symmetric MAST-U machine
     # description is required.
     pickle.dump(
-        active_coils, open("../machine_configs/MAST-U/MAST-U_active_coils.pickle", "wb")
+        active_coils, open(f"{save_path}/MAST-U_active_coils.pickle", "wb")
     )
 
     # define non-symmetric active coils dictionary
@@ -528,10 +553,10 @@ def get_machine_data(
         limiter.append({"R": limiter_uda["r"][i], "Z": limiter_uda["z"][i]})
 
     # save
-    pickle.dump(limiter, open("../machine_configs/MAST-U/MAST-U_limiter.pickle", "wb"))
+    pickle.dump(limiter, open(f"{save_path}/MAST-U_limiter.pickle", "wb"))
 
     # save: here we set the wall to be the same as the MAST-U limiter.
-    pickle.dump(limiter, open("../machine_configs/MAST-U/MAST-U_wall.pickle", "wb"))
+    pickle.dump(limiter, open(f"{save_path}/MAST-U_wall.pickle", "wb"))
 
     # ------------
     # PASSIVE STRUCTURES
@@ -677,7 +702,7 @@ def get_machine_data(
     # save data
     pickle.dump(
         passive_coils,
-        open("../machine_configs/MAST-U/MAST-U_passive_coils.pickle", "wb"),
+        open(f"{save_path}/MAST-U_passive_coils.pickle", "wb"),
     )
 
     # ------------
@@ -721,35 +746,64 @@ def get_machine_data(
     # save
     pickle.dump(
         {"flux_loops": flux_loops, "pickups": pickups},
-        open("../machine_configs/MAST-U/MAST-U_magnetic_probes.pickle", "wb"),
+        open(f"{save_path}/MAST-U_magnetic_probes.pickle", "wb"),
     )
 
     # DONE
     print("MAST-U geometry data successfully extracted and pickle files built.")
 
-
-# ------------
-# ------------
-def load_efit_times_and_status(client, shot=45425):
+def load_efit_times_and_status(
+    client, 
+    shot=45425
+    ):
     """
-    Extract the shot status (converged or not) and times from the EFIT data.
+    Extract the (magnetics-only) EFIT++ reconstruction shot status, which tells us whether 
+    each time slice converged or not. 
 
-    """
+    Parameters
+    ----------
+    client :
+        The pyUDA client.
+    shot : int
+        MAST-U shot number.
 
+    Returns
+    -------
+    np.array
+        Shot times at which EFIT++ reconstructions take place.
+    np.array
+        Shot status at the times when EFIT++ reconstructions take place.
+    """ 
+    
     # load data
     status = client.get("/epm/equilibriumstatusinteger", shot)
 
     return status.time.data, status.data
 
 
-# ------------
-# ------------
-def load_efit_times_and_status_splines(client, shot=45425):
+def load_efit_times_and_status_splines(
+    client, 
+    shot=45425
+    ):
     """
-    Extract the shot status (converged or not) and times from the EFIT data.
+    Extract the (magnetics + motional stark effect) EFIT++ reconstruction shot status, which 
+    tells us whether each time slice converged or not. 
 
-    """
+    Parameters
+    ----------
+    client :
+        The pyUDA client.
+    shot : int
+        MAST-U shot number.
 
+    Returns
+    -------
+    np.array
+        Shot times at which EFIT++ reconstructions take place.
+    np.array
+        Shot status at the times when EFIT++ reconstructions take place.
+    """ 
+    
     # load data
     status = client.get("/epq/equilibriumstatusinteger", shot)
 
@@ -758,11 +812,55 @@ def load_efit_times_and_status_splines(client, shot=45425):
 
 # ------------
 # ------------
-def load_static_solver_inputs(client, shot=45425, zero_passives=False):
+def load_static_solver_inputs(
+    client, 
+    shot=45425, 
+    zero_passives=False
+    ):
     """
-    Extract the EFIT++ data required for the static solve.
+    Extract the key (magnetics-only) EFIT++ reconstruction data at each time slice so that 
+    we can use it in FreeGSNKE to carry out static forward GS solves. 
 
-    """
+    Parameters
+    ----------
+    client :
+        The pyUDA client.
+    shot : int
+        MAST-U shot number.
+    zero_passives : bool
+        If True, we set the currents in the MAST-U passive structures to zero, if False, we use
+        the currents found by EFIT++.
+        
+    Returns
+    -------
+    np.array
+        Total plasma current [Amps] at each EFIT++ reconstruction time.
+    np.array
+        Vaccum toroidal field parameter at each EFIT++ reconstruction time.
+    np.array
+        Alpha coefficients (for p') from Lao toroidal current density profile
+        at each EFIT++ reconstruction time.
+    np.array
+        Beta coefficients (for FF') from Lao toroidal current density profile
+        at each EFIT++ reconstruction time.
+    np.array
+        Alpha logical parameter (sets p' edge boundary condition) for Lao toroidal current 
+        density profile at each EFIT++ reconstruction time.
+    np.array
+        Beta logical parameter (sets FF' edge boundary condition) for Lao toroidal current 
+        density profile at each EFIT++ reconstruction time.
+    dict
+        Dictionary of active coil and passive structure currents: within each key is an 
+        array of currents (one at each EFIT++ reconstruction time). These are currents for 
+        the symmetric active coil set up. 
+    dict
+        Dictionary of active coil and passive structure currents: within each key is an 
+        array of currents (one at each EFIT++ reconstruction time). These are currents for 
+        the symmetric active coil set up.
+    dict
+        Dictionary of active coil and passive structure current discrepancies:  these are between
+        the symmetric and non-symmetric active coil set ups.
+    """ 
 
     # load data
     Ip = client.get(
@@ -795,7 +893,8 @@ def load_static_solver_inputs(client, shot=45425, zero_passives=False):
     currents_nonsym = {}
     currents_discrepancy = {}
 
-    with open("../machine_configs/MAST-U//MAST-U_active_coils.pickle", "rb") as file:
+    path = os.environ["ACTIVE_COILS_PATH"]
+    with open(path, "rb") as file:
         active_coils = pickle.load(file)
 
     efit_names = current_labels[0:24]  # active coil names in efit
@@ -835,7 +934,8 @@ def load_static_solver_inputs(client, shot=45425, zero_passives=False):
                 currents[active_coil_name] = None
 
     # passive structures
-    with open("../machine_configs/MAST-U//MAST-U_passive_coils.pickle", "rb") as file:
+    path = os.environ["PASSIVE_COILS_PATH"]
+    with open(path, "rb") as file:
         passive_coils = pickle.load(file)
 
     # Passive structures
@@ -887,12 +987,64 @@ def load_static_solver_inputs(client, shot=45425, zero_passives=False):
 
 # ------------
 # ------------
-def load_static_solver_inputs_splines(client, shot=45425, zero_passives=False):
+def load_static_solver_inputs_splines(
+    client, 
+    shot=45425, 
+    zero_passives=False
+    ):
     """
-    Extract the EFIT++ data required for the static solve.
+    Extract the key (magnetics + motional stark effect) EFIT++ reconstruction data at each
+    time slice so that we can use it in FreeGSNKE to carry out static forward GS solves. 
 
+    Parameters
+    ----------
+    client :
+        The pyUDA client.
+    shot : int
+        MAST-U shot number.
+    zero_passives : bool
+        If True, we set the currents in the MAST-U passive structures to zero, if False, we use
+        the currents found by EFIT++.
+        
+    Returns
+    -------
+    np.array
+        Total plasma current [Amps] at each EFIT++ reconstruction time.
+    np.array
+        Vaccum toroidal field parameter at each EFIT++ reconstruction time.
+    np.array
+        Knot points for p' profile at each EFIT++ reconstruction time.
+    np.array
+        Knot points for FF' profile at each EFIT++ reconstruction time.
+    np.array
+        Values of p' profile at knot points at each EFIT++ reconstruction time.
+    np.array
+        Values of FF' profile at knot points at each EFIT++ reconstruction time.
+    np.array
+        Values of second derivative of p' profile at knot points at each EFIT++ 
+        reconstruction time.
+    np.array
+        Values of second derivative of FF' profile at knot points at each EFIT++ 
+        reconstruction time.
+    np.array
+        Values of tension spline parameter for p' profile at each EFIT++ 
+        reconstruction time.
+    np.array
+        Values of tension spline parameter for FF' profile at each EFIT++ 
+        reconstruction time. 
+    dict
+        Dictionary of active coil and passive structure currents: within each key is an 
+        array of currents (one at each EFIT++ reconstruction time). These are currents for 
+        the symmetric active coil set up. 
+    dict
+        Dictionary of active coil and passive structure currents: within each key is an 
+        array of currents (one at each EFIT++ reconstruction time). These are currents for 
+        the symmetric active coil set up.
+    dict
+        Dictionary of active coil and passive structure current discrepancies:  these are between
+        the symmetric and non-symmetric active coil set ups.
     """
-
+        
     # load data
     Ip = client.get(
         "/epq/input/constraints/plasmacurrent/computed", shot
@@ -945,7 +1097,8 @@ def load_static_solver_inputs_splines(client, shot=45425, zero_passives=False):
     currents_nonsym = {}
     currents_discrepancy = {}
 
-    with open("../machine_configs/MAST-U//MAST-U_active_coils.pickle", "rb") as file:
+    path = os.environ["ACTIVE_COILS_PATH"]
+    with open(path, "rb") as file:
         active_coils = pickle.load(file)
 
     efit_names = current_labels[0:24]  # active coil names in efit
@@ -985,7 +1138,8 @@ def load_static_solver_inputs_splines(client, shot=45425, zero_passives=False):
                 currents[active_coil_name] = None
 
     # passive structures
-    with open("../machine_configs/MAST-U//MAST-U_passive_coils.pickle", "rb") as file:
+    path = os.environ["PASSIVE_COILS_PATH"]
+    with open(path, "rb") as file:
         passive_coils = pickle.load(file)
 
     # Passive structures
@@ -1038,14 +1192,49 @@ def load_static_solver_inputs_splines(client, shot=45425, zero_passives=False):
         currents_discrepancy,
     )
 
-
-# ------------
 def extract_EFIT_outputs(client, shot, time_indices):
     """
-    Load EFIT++ output data for chosen targets below at time indices required.
-
+    Extract the key (magnetics-only) EFIT++ reconstruction output data at each
+    time slice so that we can compare to FreeGSNKE.
+    
+    Parameters
+    ----------
+    client :
+        The pyUDA client.
+    shot : int
+        MAST-U shot number.
+    time_indices : np.array
+        Array of logicals, same length as the number of EFIT++ reconstruction time slices, at
+        which to extract the EFIT++ output data.
+        
+    Returns
+    -------
+    np.array
+        Total plasma flux map [Webers/(2pi)] at each EFIT++ reconstruction time.
+    np.array
+        Total plasma flux on the magnetic axis [Webers/(2pi)] at each EFIT++ reconstruction time.
+    np.array
+        Total plasma flux on the plasma boundary [Webers/(2pi)] at each EFIT++ reconstruction time.
+    np.array
+        Toroidal plasma current density map [Amps/m^2] at each EFIT++ reconstruction time.
+    np.array
+        The (R,Z) location of the magnetic axis at each EFIT++ reconstruction time.
+    np.array
+        The inner and outer R location of the plasma boundary at the midplane at each EFIT++ reconstruction time.
+    np.array
+        The (R,Z) location of the X-points at each EFIT++ reconstruction time.
+    np.array
+        The p' profile (vs. normalised psi) at each EFIT++ reconstruction time.
+    np.array
+        The FF' profile (vs. normalised psi) at each EFIT++ reconstruction time.
+    np.array
+        The strikepoints at each EFIT++ reconstruction time (not always very accurate).
+    dict
+        Dictionary of (target and computed) fluxloop readings used by EFIT++ at each reconstruction time.
+    dict
+        Dictionary of (target and computed) pickup coil readings used by EFIT++ at each reconstruction time.
     """
-
+        
     # equilibrium data
     psi_total = client.get("/epm/output/profiles2d/poloidalflux", shot).data[
         time_indices, :, :
@@ -1166,12 +1355,47 @@ def extract_EFIT_outputs(client, shot, time_indices):
         pickup_data,
     )
 
-
-# ------------
 def extract_EFIT_outputs_splines(client, shot, time_indices):
     """
-    Load EFIT++ output data for chosen targets below at time indices required.
-
+    Extract the key (magnetics + motional stark effect) EFIT++ reconstruction output data at each
+    time slice so that we can compare to FreeGSNKE.
+    
+    Parameters
+    ----------
+    client :
+        The pyUDA client.
+    shot : int
+        MAST-U shot number.
+    time_indices : np.array
+        Array of logicals, same length as the number of EFIT++ reconstruction time slices, at
+        which to extract the EFIT++ output data.
+        
+    Returns
+    -------
+    np.array
+        Total plasma flux map [Webers/(2pi)] at each EFIT++ reconstruction time.
+    np.array
+        Total plasma flux on the magnetic axis [Webers/(2pi)] at each EFIT++ reconstruction time.
+    np.array
+        Total plasma flux on the plasma boundary [Webers/(2pi)] at each EFIT++ reconstruction time.
+    np.array
+        Toroidal plasma current density map [Amps/m^2] at each EFIT++ reconstruction time.
+    np.array
+        The (R,Z) location of the magnetic axis at each EFIT++ reconstruction time.
+    np.array
+        The inner and outer R location of the plasma boundary at the midplane at each EFIT++ reconstruction time.
+    np.array
+        The (R,Z) location of the X-points at each EFIT++ reconstruction time.
+    np.array
+        The p' profile (vs. normalised psi) at each EFIT++ reconstruction time.
+    np.array
+        The FF' profile (vs. normalised psi) at each EFIT++ reconstruction time.
+    np.array
+        The strikepoints at each EFIT++ reconstruction time (not always very accurate).
+    dict
+        Dictionary of (target and computed) fluxloop readings used by EFIT++ at each reconstruction time.
+    dict
+        Dictionary of (target and computed) pickup coil readings used by EFIT++ at each reconstruction time.
     """
 
     # equilibrium data
@@ -1298,73 +1522,39 @@ def extract_EFIT_outputs_splines(client, shot, time_indices):
 # --------------------------------
 # ADDITIONAL FUNCTIONS
 
-
-# ------------
-def get_coil_info(coil_list, coil):
-    # Given a coil recovers the coil position and orientation data into
-    # a dictionary and appends it to a list of coils.
-
-    # Get coil location
-    coordinates = coil["data"]["coordinate"]
-    position = np.array([coordinates.r, coordinates.phi, coordinates.z])
-
-    # Get coil orientation
-    vector = coil["data"]["orientation"]["unit_vector"]
-    orientation = np.array([vector.r, vector.phi, vector.z])
-
-    # Create coil dictionary
-    coil_dict = {
-        "name": coil.name,
-        "position": position,
-        "orientation": coil["data"]["orientation"].measurement_direction,
-        "orientation_vector": orientation,
-    }
-
-    coil_list.append(coil_dict)
-
-
-# ------------
-def get_coils(data, coil_list):
-    # Recovers the data for all the pickup coils.
-
-    child_names = [child.name for child in data.children]
-
-    if "data" in child_names:
-        get_coil_info(coil_list, data)
-    else:
-        for child in data.children:
-            get_coils(child, coil_list)
-
-
-# ------------
 def get_element_vertices(
     centreR, centreZ, dR, dZ, a1, a2, version=0.1, close_shape=False
 ):
     """
-    Convert EFIT description of rectangles / parallelograms to vertices (used
+    Convert EFIT++ description of parallelograms to four vertices (used in FreeGSNKE
     passive structures).
-
-                xxxx     ---             xxxxxxxxxxx
-            xxxx   x      |            xx        xx
-    --- xxxx       x      |          xx        xx
-     |  x          x      dZ       xx        xx
-     dZ x       xxxx      |      xx        xx
-     |  x   xxxx   ^      |    xx        xx   ^
-    --- xxxx    A1 )     --- xxxxxxxxxxxx A2 )
-        |----dR----|         |-----dR---|
-
-    :param centreR: R-position of centre of shape
-    :param centreZ: Z-position of centre of shape
-    :param dR: Width
-    :param dZ: Height
-    :param a1: angle1 as defined above. zero for rectangles
-    :param a2: angle2 as defined above. zero for rectangles.
-    :param version: geometry version (backwards compatibilty for bug in < V0.1
-    :param close_shape: Repeat first vertex to close the shape if set to True
-    :return:
-
-    Code courtesy of Lucy Kogan (UKAEA)
-
+    
+    Code courtesy of Lucy Kogan (UKAEA).
+    
+    Parameters
+    ----------
+    centreR : float
+        Centre (R) of the parallelogram. 
+    centreZ : float
+        Centre (Z) of the parallelogram.
+    dR : float
+        Width of the the parallelogram. 
+    dZ : float
+        Height of the the parallelogram.
+    a1 : float
+        Angle between the horizontal and the base of the parallelogram (zero for rectangles).
+    a2 : float
+        Angle between the horizontal and the right side of the parallelogram (zero for rectangles).
+    version : float
+        Geometry version (backwards compatibilty for bug in < V0.1). Use default. 
+    close_shape : bool
+        Repeat first vertex to close the shape if set to True. 
+    
+    Returns
+    -------
+    list
+        Returns list of vertics with radial 'rr' and vertical 'zz' positions and
+        the original width 'dR' and height 'dZ' of the shape.         
     """
 
     if a1 == 0.0 and a2 == 0.0:
@@ -1434,55 +1624,6 @@ def get_element_vertices(
 
     return [rr, zz, dR, dZ]
 
-
-# ------------
-def find_strikepoints(R, Z, psi_total, psi_boundary, limiter):
-    """
-    This function can be used to find the strikepoints of an equilibrium using
-    the:
-        - R and Z grids (2D)
-        - psi_total (2D) (i.e. the poloidal flux map)
-        - psi_boundary (single value)
-        - limiter/wall coordinates (N x 2)
-
-    """
-
-    # find contour object for psi_boundary
-    cs = plt.contour(R, Z, psi_total, levels=[psi_boundary])
-    plt.close()  # this isn't the most elegant but we don't need the plot itself
-
-    # for each item in the contour object there's a list of points in (r,z) (i.e. a line)
-    psi_boundary_lines = []
-    for i, item in enumerate(cs.allsegs[0]):
-        psi_boundary_lines.append(item)
-
-    # use the shapely package to find where each psi_boundary_line intersects the limiter (or not)
-    strikes = []
-    curve1 = sh.LineString(limiter)
-    for j, line in enumerate(psi_boundary_lines):
-        curve2 = sh.LineString(line)
-
-        # find the intersection points
-        intersection = curve2.intersection(curve1)
-
-        # extract intersection points
-        if intersection.geom_type == "Point":
-            strikes.append(np.squeeze(np.array(intersection.xy).T))
-        elif intersection.geom_type == "MultiPoint":
-            strikes.append(
-                np.squeeze(np.array([geom.xy for geom in intersection.geoms]))
-            )
-
-    # check how many strikepoints
-    if len(strikes) == 0:
-        out = None
-    else:
-        out = np.concatenate(strikes, axis=0)
-
-    return out
-
-
-# ------------
 def Separatrix(R, Z, psi, ntheta, psival=1.0, theta_grid=None, input_opoint=None):
     """Find the R, Z coordinates of the separatrix for equilbrium
     eq. Returns a tuple of (R, Z, R_X, Z_X), where R_X, Z_X are the
@@ -1555,8 +1696,6 @@ def Separatrix(R, Z, psi, ntheta, psival=1.0, theta_grid=None, input_opoint=None
 
     return points, theta_grid
 
-
-# ------------
 def find_psisurface(psifunc, R, Z, r0, z0, r1, z1, psival=1.0, n=100):
     """
     eq      - Equilibrium object
@@ -1599,8 +1738,6 @@ def find_psisurface(psifunc, R, Z, r0, z0, r1, z1, psival=1.0, n=100):
 
     return r, z
 
-
-# ------------
 def max_euclidean_distance(points1, points2):
     """
     Calculate the maximum Euclidean distance between corresponding points in two sets.
@@ -1615,8 +1752,6 @@ def max_euclidean_distance(points1, points2):
         return np.nan
     return np.max(np.sqrt(np.sum((points1_valid - points2_valid) ** 2, axis=1)))
 
-
-# ------------
 def median_euclidean_distance(points1, points2):
     """
     Calculate the maximum Euclidean distance between corresponding points in two sets.
@@ -1631,8 +1766,6 @@ def median_euclidean_distance(points1, points2):
         return np.nan
     return np.median(np.sqrt(np.sum((points1_valid - points2_valid) ** 2, axis=1)))
 
-
-# ------------
 def separatrix_areas(separatrix_1, separatrix_2):
     """
     This function can be used to find the poloidal area of each separatrix given

@@ -112,8 +112,8 @@ class Limiter_handler:
         self.Rrange = (min(self.idxs_mask[0]), max(self.idxs_mask[0]) + 1)
         self.Zrange = (min(self.idxs_mask[1]), max(self.idxs_mask[1]) + 1)
 
-        self.eqR_red = self.reduce_rect_domain(self.eqR)
-        self.eqZ_red = self.reduce_rect_domain(self.eqZ)
+        # self.eqR_red = self.reduce_rect_domain(self.eqR)
+        # self.eqZ_red = self.reduce_rect_domain(self.eqZ)
         self.mask_inside_limiter_red = self.reduce_rect_domain(self.mask_inside_limiter)
 
     def build_mask_inside_limiter(
@@ -163,16 +163,17 @@ class Limiter_handler:
         layer_mask : np.ndarray
             Broader mask
         """
+        nx, ny = np.shape(mask)
 
         layer_mask = np.zeros(
-            np.array([self.nx, self.ny]) + 2 * np.array([layer_size, layer_size])
+            np.array([nx, ny]) + 2 * np.array([layer_size, layer_size])
         )
 
         for i in np.arange(-layer_size, layer_size + 1) + layer_size:
             for j in np.arange(-layer_size, layer_size + 1) + layer_size:
-                layer_mask[i : i + self.nx, j : j + self.ny] += mask
+                layer_mask[i : i + nx, j : j + ny] += mask
         layer_mask = layer_mask[
-            layer_size : layer_size + self.nx, layer_size : layer_size + self.ny
+            layer_size : layer_size + nx, layer_size : layer_size + ny
         ]
         layer_mask = (layer_mask > 0).astype(bool)
         return layer_mask
@@ -476,6 +477,6 @@ class Limiter_handler:
             reduced plasma domain are set to zero.
         """
 
-        map2d = np.zeros_like(map_dummy)
+        map2d = np.zeros_like(map_dummy.astype(reduced_vector.dtype))
         map2d[idxs_mask[0], idxs_mask[1]] = reduced_vector
         return map2d

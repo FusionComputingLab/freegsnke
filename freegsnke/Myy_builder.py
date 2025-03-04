@@ -105,21 +105,16 @@ class Myy_handler:
         self.extract_index_mask = limiter_handler.extract_index_mask
         self.rebuild_map2d = limiter_handler.rebuild_map2d
         self.broaden_mask = limiter_handler.broaden_mask
-        self.idxs_mask_red = limiter_handler.idxs_mask_red
 
         self.mask_inside_limiter = limiter_handler.mask_inside_limiter
         self.mask_inside_limiter_red = self.reduce_rect_domain(self.mask_inside_limiter)
 
-        self.gg = self.grid_greens(limiter_handler.eqR_red, limiter_handler.eqZ_red)
+        self.idxs_mask_red = self.extract_index_mask(self.mask_inside_limiter_red)
 
-        # self.r_idxs = np.tile(
-        #     limiter_handler.idxs_mask[0][:, np.newaxis],
-        #     (1, len(limiter_handler.plasma_pts)),
-        # )
-        # self.dz_idxs = np.abs(
-        #     limiter_handler.idxs_mask[1][np.newaxis, :]
-        #     - limiter_handler.idxs_mask[1][:, np.newaxis]
-        # )
+        self.gg = self.grid_greens(
+            self.reduce_rect_domain(limiter_handler.eqR),
+            self.reduce_rect_domain(limiter_handler.eqZ),
+        )
 
     def grid_greens(self, R, Z):
 
@@ -152,7 +147,7 @@ class Myy_handler:
             hatIy_mask, self.mask_inside_limiter_red, self.idxs_mask_red
         )
         hatIy_broad_rect_red = self.broaden_mask(hatIy_rect_red, layer_size=layer_size)
-        hatIy_broad_rect_red *= self.mask_inside_limiter
+        hatIy_broad_rect_red *= self.mask_inside_limiter_red
         return hatIy_broad_rect_red
 
     def build_myy_from_mask(self, mask):
@@ -184,6 +179,18 @@ class Myy_handler:
 
         self.myy = self.gg[r_idxs, r_idxs.T, dz_idxs]
 
+    def force_build_myy(self, hatIy):
+        """Builds the Myy matrix only including domain points in the input vector (not necessarily a mask)
+
+        Parameters
+         ----------
+         hatIy : np.ndarray
+             1d vector on reduced plasma domain, e.g. inside the limiter
+        """
+
+        hatIy_broad_rect_red = self.build_mask_from_hatIy(hatIy)
+        self.build_myy_from_mask(hatIy_broad_rect_red)
+
     def check_Myy(self, hatIy):
         """Rebuilds myy when the input hatIy is not fully inside the current myy_mask
 
@@ -194,8 +201,7 @@ class Myy_handler:
         """
 
         if np.sum(hatIy[self.outside_myy_mask]):
-            hatIy_broad_rect_red = self.build_mask_from_hatIy(hatIy)
-            self.build_myy_from_mask(hatIy_broad_rect_red)
+            self.force_build_myy(hatIy)
 
     def dot(self, hatIy):
         """Performs the product with a vector defined on the reduced domain, i.e. inside the limiter.

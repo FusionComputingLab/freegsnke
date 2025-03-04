@@ -29,6 +29,7 @@ from . import nk_solver_H as nk_solver
 from .circuit_eq_metal import metal_currents
 from .GSstaticsolver import NKGSsolver
 from .linear_solve import linear_solver
+from .Myy_builder import Myy_handler
 from .simplified_solve import simplified_solver_J1
 
 
@@ -150,10 +151,12 @@ class nl_solver:
         # instantiating static GS solver on eq's domain
         self.NK = NKGSsolver(eq)
 
+        # instantiate the Myy_handler object
+        self.handleMyy = Myy_handler(eq.limiter_handler)
+
         # setting up reduced domain for plasma circuit eq.:
         self.limiter_handler = eq.limiter_handler
-        self.plasma_domain_mask = self.limiter_handler.mask_inside_limiter
-        self.plasma_domain_size = np.sum(self.plasma_domain_mask)
+        self.plasma_domain_size = np.sum(self.limiter_handler.mask_inside_limiter)
 
         # Extract relevant information on the type of profile function used and on the actual value of associated parameters
         self.get_profiles_values(profiles)
@@ -232,7 +235,7 @@ class nl_solver:
             Pm1=self.evol_metal_curr.Pm1,
             Rm1=np.diag(self.evol_metal_curr.Rm1),
             Mey=self.evol_metal_curr.Mey_matrix,
-            limiter_handler=self.limiter_handler,
+            # limiter_handler=self.limiter_handler,
             plasma_norm_factor=self.plasma_norm_factor,
             plasma_resistance_1d=self.plasma_resistance_1d,
             max_internal_timestep=self.max_internal_timestep,
@@ -400,7 +403,7 @@ class nl_solver:
             Pm1=self.evol_metal_curr.Pm1,
             Rm1=np.diag(self.evol_metal_curr.Rm1),
             Mey=self.evol_metal_curr.Mey_matrix,
-            limiter_handler=self.limiter_handler,
+            # limiter_handler=self.limiter_handler,
             plasma_norm_factor=self.plasma_norm_factor,
             plasma_resistance_1d=self.plasma_resistance_1d,
             max_internal_timestep=self.max_internal_timestep,
@@ -408,8 +411,7 @@ class nl_solver:
         )
 
         self.linearised_sol.set_linearization_point(
-            dIydI=self.dIydI,
-            hatIy0=self.blended_hatIy,
+            dIydI=self.dIydI, hatIy0=self.blended_hatIy, Myy_hatIy0=self.Myy_hatIy0
         )
 
     def set_linear_solution(self, active_voltage_vec, d_profile_pars_dt=None):
@@ -727,7 +729,9 @@ class nl_solver:
         plasma_resistance_matrix = (
             self.eqR * (2 * np.pi / self.dRdZ) * self.plasma_resistivity
         )
-        self.plasma_resistance_1d = plasma_resistance_matrix[self.plasma_domain_mask]
+        self.plasma_resistance_1d = plasma_resistance_matrix[
+            self.limiter_handler.mask_inside_limiter
+        ]
 
     def reset_plasma_resistivity(self, plasma_resistivity):
         """Function to reset the resistivity of the plasma.
@@ -744,7 +748,9 @@ class nl_solver:
         plasma_resistance_matrix = (
             self.eqR * (2 * np.pi / self.dRdZ) * self.plasma_resistivity
         )
-        self.plasma_resistance_1d = plasma_resistance_matrix[self.plasma_domain_mask]
+        self.plasma_resistance_1d = plasma_resistance_matrix[
+            self.limiter_handler.mask_inside_limiter
+        ]
 
         self.linearised_sol.reset_plasma_resistivity(self.plasma_resistance_1d)
         self.simplified_solver_J1.reset_plasma_resistivity(self.plasma_resistance_1d)
@@ -993,10 +999,13 @@ class nl_solver:
             verbose=verbose,
         )
 
-        # transfer linearization to linear solver
+        # set Myy matrix in place throught the handling object
+        self.handleMyy.force_build_myy(self.hatIy)
+
+        # transfer linearization to linear solver:
+        self.Myy_hatIy0 = self.handleMyy.dot(self.hatIy)
         self.linearised_sol.set_linearization_point(
-            dIydI=self.dIydI_ICs,
-            hatIy0=self.blended_hatIy,
+            dIydI=self.dIydI_ICs, hatIy0=self.blended_hatIy, Myy_hatIy0=self.Myy_hatIy0
         )
 
     def step_complete_assign(self, working_relative_tol_GS, from_linear=False):

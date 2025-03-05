@@ -10,7 +10,7 @@ os.environ["WALL_PATH"] = "./machine_configs/test/wall.pickle"
 os.environ["LIMITER_PATH"] = "./machine_configs/test/limiter.pickle"
 os.environ["PROBE_PATH"] = "./machine_configs/test/magnetic_probes.pickle"
 
-from freegsnke import build_machine, limiter_func
+from freegsnke import build_machine, equilibrium_update, limiter_func
 
 
 @pytest.fixture
@@ -20,7 +20,7 @@ def create_machine():
     # Creates equilibrium object and initializes it with
     # a "good" solution
     # plasma_psi = np.loadtxt('plasma_psi_example.txt')
-    eq = freegs4e.Equilibrium(
+    eq = equilibrium_update.Equilibrium(
         tokamak=tokamak,
         # domains can be changed
         Rmin=0.1,
@@ -39,10 +39,10 @@ def create_machine():
 def plasma_domain_masks(create_machine):
     tokamak, eq = create_machine
     limiter_handler = limiter_func.Limiter_handler(eq, tokamak.limiter)
-    limiter_handler.make_layer_mask(limiter_handler.mask_inside_limiter)
+    layer_mask = limiter_handler.make_layer_mask(limiter_handler.mask_inside_limiter)
     return (
         limiter_handler.mask_inside_limiter,
-        limiter_handler.layer_mask,
+        layer_mask,
         limiter_handler.plasma_pts,
     )
 

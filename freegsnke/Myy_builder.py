@@ -96,8 +96,32 @@ from freegs4e.gradshafranov import Greens
 
 
 class Myy_handler:
+    """Object handling all operations which involve the Myy matrix,
+    i.e. the mututal inductance matrix of all domain grid points.
+    To reduce memory usage, the domain on which myy is built and stored
+    is set adaptively, so to cover the plasma. This object handles this
+    adaptive aspect.
+
+    """
 
     def __init__(self, limiter_handler, layer_size=5, tolerance=3):
+        """Instantiates the object
+
+        Parameters
+        ----------
+        limiter_handler : FreeGSNKE limiter object, i.e. eq.limiter_handler
+            Sets the properties of the domain grid and those of the limiter
+        layer_size : int, optional
+            Used when recalculating myy.
+            A layer of layer_size pixels is added to envelop the mask defined by the
+            plasma. This 'broadened' mask defines the pixels included in the myy matrix
+            By default 5
+        tolerance : int, optional
+            Used to check if myy needs recalculating. Myy is not recalculated if
+            the mask defined by the plasma region, broadened by tolerance pixels,
+            is fully contained in the domain of the current myy matrix,
+            By default 3
+        """
 
         limiter_handler.build_reduced_rect_domain()
 
@@ -120,6 +144,18 @@ class Myy_handler:
         self.tolerance = tolerance
 
     def grid_greens(self, R, Z):
+        """Calculates and stores the green function values on the minimal rectangular
+        region that fully encompasses the limiter. Uses that the green functions are invariant
+        for vertical translations.
+
+        Parameters
+        ----------
+        R : np.ndarray
+            Like eq.R, but on the rectangular reduced domain,
+            i.e. self.reduce_rect_domain(limiter_handler.eqR)
+        Z : np.ndarray
+            Like eq.Z, but on the rectangular reduced domain
+        """
 
         dz = Z[0, 1] - Z[0, 0]
         nZ = np.shape(Z)[1]

@@ -38,6 +38,8 @@ class VirtualCircuit:
         shape_matrix,
         VCs_matrix,
         targets,
+        targets_val,
+        non_standard_targets,
         coils,
     ):
         """
@@ -59,6 +61,12 @@ class VirtualCircuit:
             and 'coils'.
         targets : list
             The list of targets used to calculate the shape_matrix and VCs_matrix.
+        targets_val : np.array
+            The array of target values.
+        non_standard_targets : list
+            List of lists of additional (non-standard) target functions to use. Takes the
+            form [["new_target_name",...], [function(eq),...]], where function calcualtes the target
+            using the eq object.
         coils : list
             The list of coils used to calculate the shape_matrix and VCs_matrix.
         """
@@ -69,7 +77,26 @@ class VirtualCircuit:
         self.shape_matrix = shape_matrix
         self.VCs_matrix = VCs_matrix
         self.targets = targets
+        self.targets_val = targets_val
+        self.non_standard_targets = non_standard_targets
         self.coils = coils
+        self.build_targets_options()
+
+    def build_targets_options(
+        self,
+    ):
+        """Builds the disctionary of targets_options to be used by VirtualCircuitHandling.apply_VC"""
+
+        if self.non_standard_targets is not None:
+            self.len_non_standard_targets = len(self.non_standard_targets[0])
+        else:
+            self.len_non_standard_targets = 0
+
+        self.targets_options = {}
+        for i, target in enumerate(
+            self.targets[: len(self.targets) - self.len_non_standard_targets]
+        ):
+            self.targets_options[target] = self.targets_val[i]
 
 
 class VirtualCircuitHandling:
@@ -441,14 +468,11 @@ class VirtualCircuitHandling:
         currents[j] += starting_dI
 
         # assign current to the coil and solve static GS problem
-        self.assign_currents_solve_GS(
-            currents[j : j + 1], coils[j : j + 1], self.target_relative_tolerance
-        )
+        self.assign_currents_solve_GS(currents, coils, self.target_relative_tolerance)
 
         # difference between plasma current vectors (before and after the solve)
         dIy_0 = (
-            self._profiles2.limiter_handler.Iy_from_jtor(self._profiles2.jtor)
-            - self.profiles.Iy
+            self._profiles2.limiter_handler.Iy_from_jtor(self._profiles2.jtor) - self.Iy
         )
 
         # relative norm of plasma current change
@@ -513,16 +537,14 @@ class VirtualCircuitHandling:
         currents[j] += final_dI
 
         # assign current to the coil and solve static GS problem
-        self.assign_currents_solve_GS(
-            currents[j : j + 1], coils[j : j + 1], self.target_relative_tolerance
-        )
+        self.assign_currents_solve_GS(currents, coils, self.target_relative_tolerance)
 
         # calculate finite difference of targets wrt to the coil current
         _, self._target_vec_1 = self.calculate_targets(
             self._eq2, targets, targets_options, non_standard_targets
         )
         dtargets = self._target_vec_1 - self._targets_vec
-        self._dtargetsdIj = dtargets / final_dI
+        # self._dtargetsdIj = dtargets / final_dI
 
         # print some output
         if verbose:
@@ -536,7 +558,7 @@ class VirtualCircuitHandling:
             #     np.linalg.norm(dIy_1),
             # )
 
-        # return dIydIj
+        return dtargets / final_dI
 
     def calculate_VC(
         self,
@@ -598,29 +620,23 @@ class VirtualCircuitHandling:
 
         """
 
-        # store copies of the eq and profile objects
-        self.eq = deepcopy(eq)
-        self.profiles = deepcopy(profiles)
-
-        # store currents in VC object
-        self.build_current_vec(self.eq, coils)
+        # store original currents
+        self.build_current_vec(eq, coils)
 
         # solve static GS problem (it's already solved?)
         self.solver.forward_solve(
-            eq=self.eq,
-            profiles=self.profiles,
+            eq=eq,
+            profiles=profiles,
             target_relative_tolerance=self.target_relative_tolerance,
         )
 
         # store the flattened plasma current vector (and its norm)
-        self.profiles.Iy = self.profiles.limiter_handler.Iy_from_jtor(
-            self.profiles.jtor
-        ).copy()
-        self._nIy = np.linalg.norm(self.profiles.Iy)
+        self.Iy = eq.limiter_handler.Iy_from_jtor(profiles.jtor).copy()
+        self._nIy = np.linalg.norm(self.Iy)
 
         # calculate the targets from the equilibrium
         targets_new, self._targets_vec = self.calculate_targets(
-            self.eq, targets, targets_options, non_standard_targets
+            eq, targets, targets_options, non_standard_targets
         )
 
         # define starting_dI using currents if not given
@@ -635,8 +651,13 @@ class VirtualCircuitHandling:
             print("Preparing the scaled current shifts with respect to the:")
 
         # storage matrices
-        self.shape_matrix = np.zeros((len(targets_new), len(coils)))
+        shape_matrix = np.zeros((len(targets_new), len(coils)))
         self.final_dI_record = np.zeros(len(coils))
+
+        # make copies of the newly solved equilibrium and profile objects
+        # these are used for all GS solves below
+        self._eq2 = deepcopy(eq)
+        self._profiles2 = deepcopy(profiles)
 
         # for each coil, prepare by inferring delta(I_j) corresponding to a change delta(I_y)
         # with norm(delta(I_y)) = target_dIy
@@ -645,10 +666,7 @@ class VirtualCircuitHandling:
                 print(
                     f"{j}th coil ({coils[j]}) using initial current shift {starting_dI[j]}."
                 )
-
-            # make copies of the newly solved equilibrium and profile objects (modifed in next function call)
-            self._eq2 = deepcopy(eq)
-            self._profiles2 = deepcopy(profiles)
+            # self._eq2 = deepcopy(eq)
             self.prepare_build_dIydI_j(j, coils, target_dIy, starting_dI[j])
 
         if verbose:
@@ -658,21 +676,11 @@ class VirtualCircuitHandling:
         # for each coil, build the Jacobian using the value of delta(I_j) inferred earlier
         # by self.prepare_build_dIydI_j.
         for j in np.arange(len(coils)):
-
-            # make copies of the newly solved equilibrium and profile objects (modifed in next function call)
-            self._eq2 = deepcopy(eq)
-            self._profiles2 = deepcopy(profiles)
-            self.build_dIydI_j(
+            # self._eq2 = deepcopy(eq)
+            # each shape matrix row is derivative of targets wrt the final coil current change
+            shape_matrix[:, j] = self.build_dIydI_j(
                 j, coils, targets, targets_options, non_standard_targets, verbose
             )
-
-            # each shape matrix row is derivative of targets wrt the final coil current change
-            self.shape_matrix[:, j] = self._dtargetsdIj
-
-        # "virtual circuits" are the pseudo-inverse of the shape matrix
-        self.VCs_matrix = np.linalg.pinv(self.shape_matrix)
-        self.VCs_targets = targets_new
-        self.VCs_coils = coils
 
         # store the data in its own (new) class
         if VC_name is None:
@@ -683,10 +691,13 @@ class VirtualCircuitHandling:
             name=VC_name,
             eq=eq,
             profiles=profiles,
-            shape_matrix=self.shape_matrix,
-            VCs_matrix=self.VCs_matrix,
-            targets=self.VCs_targets,
-            coils=self.VCs_coils,
+            shape_matrix=shape_matrix,
+            # "virtual circuits" are the pseudo-inverse of the shape matrix
+            VCs_matrix=np.linalg.pinv(shape_matrix),
+            targets=targets_new,
+            targets_val=self._targets_vec,
+            non_standard_targets=non_standard_targets,
+            coils=coils,
         )
         setattr(self, VC_name, store_VC)
 
@@ -698,12 +709,8 @@ class VirtualCircuitHandling:
         self,
         eq,
         profiles,
-        coils,
-        targets,
-        targets_options,
-        targets_shift,
-        non_standard_targets=None,
-        non_standard_targets_shift=None,
+        VC_object,
+        all_requested_target_shifts,
         verbose=False,
     ):
         """
@@ -721,20 +728,13 @@ class VirtualCircuitHandling:
             The equilibrium object upon which to apply the VCs.
         profiles : object
             The profiles object upon which to apply the VCs.
-        coils : list
-            List of strings containing the names of the coil currents to be assigned.
-        targets : list
-            List of strings containing the targets of interest. See above for supported targets.
-        targets_options : dict
-            Dictionary of additional parameters required to calculate the 'targets' (see above).
-        targets_shift : list
-            List of floats containing the shifts in the targets of interest. See above for supported targets.
-        non_standard_targets : list
-            List of lists of additional (non-standard) target functions to use. Takes the
-            form [["new_target_name",...], [function(eq),...]], where function calcualtes the target
-            using the eq object.
-        non_standard_targets_shift : list
-            List of floats of additional (non-standard) target shifts to use.
+        VC_object : an istance of the VirtualCircuit class
+            Specifies the virtual circuit matrix and properties
+        all_requested_targets_shift : list
+            List of floats containing the shifts in all of the relevant targets.
+            Same order as VC_object.targets.
+            Includes both standard and non-standard targets.
+            Functions to calculate non-standard targets are sourced from the VC_object.
         verbose: bool
             Display output (or not).
 
@@ -745,7 +745,7 @@ class VirtualCircuitHandling:
         object
             Returns the profiles object after applying the shifted currents.
         list
-            List of strings containing all of targets of interest. See above for supported targets.
+            List of strings containing all of targets of interest.
         np.array
             Array of new target values.
         np.array
@@ -753,56 +753,47 @@ class VirtualCircuitHandling:
         """
 
         # verify targets, coils, and shifts all match those used to generate VCs
-        if non_standard_targets is not None:
-
-            assert (
-                targets + non_standard_targets[0] == self.VCs_targets
-            ), "Targets do not match those stored in 'VC_targets'!"
-            shifts = targets_shift + non_standard_targets_shift
-        else:
-            assert (
-                targets == self.VCs_targets
-            ), "Targets do not match those stored in 'VC_targets'!"
-            shifts = targets_shift
-
-        assert coils == self.VCs_coils, "Coils do not match those stored in 'VC_coils'!"
-        assert (
-            len(shifts) == self.VCs_matrix.shape[1]
-        ), "No. of target shifts and no. of targets in VCs matrix do not match!"
+        assert len(all_requested_target_shifts) == len(
+            VC_object.targets_val
+        ), "The vector of requested shifts does not match the list of targets associated with the supplied VC_object!"
+        shifts = all_requested_target_shifts
 
         # calculate current shifts required using shape matrix (for stability)
         # uses least squares solver to solve S*dI = dT
         # where dT are the target shifts and dI the current shifts
         current_shifts = np.linalg.lstsq(
-            self.shape_matrix, np.array(shifts), rcond=None
+            VC_object.shape_matrix, np.array(shifts), rcond=None
         )[0]
 
         if verbose:
             print(f"Currents shifts from VCs:")
-            print(f"{coils} = {current_shifts}.")
-
-        # store copies of the eq and profile objects
-        eq_new = deepcopy(eq)
-        profiles_new = deepcopy(profiles)
+            print(f"{VC_object.coils} = {current_shifts}.")
 
         # re-solve static GS problem (to make sure it's solved already)
         self.solver.forward_solve(
-            eq=eq_new,
-            profiles=profiles_new,
+            eq=eq,
+            profiles=profiles,
             target_relative_tolerance=self.target_relative_tolerance,
         )
 
         # calculate the targets
         _, old_target_values = self.calculate_targets(
-            eq_new, targets, targets_options, non_standard_targets
+            eq,
+            VC_object.targets[: -VC_object.len_non_standard_targets],
+            VC_object.targets_options,
+            VC_object.non_standard_targets,
         )
+
+        # store copies of the eq and profile objects
+        eq_new = deepcopy(eq)
+        profiles_new = deepcopy(profiles)
 
         # assign currents to the required coils in the eq object
         new_currents = [
             eq_new.tokamak.getCurrents()[name] + current_shifts[i]
-            for i, name in enumerate(coils)
+            for i, name in enumerate(VC_object.coils)
         ]
-        self.assign_currents(new_currents, coils, eq=eq_new)
+        self.assign_currents(new_currents, VC_object.coils, eq=eq_new)
 
         # solve for the new equilibrium
         self.solver.forward_solve(
@@ -813,7 +804,10 @@ class VirtualCircuitHandling:
 
         # calculate new target values and the difference vs. the old
         all_targets, new_target_values = self.calculate_targets(
-            eq_new, targets, targets_options, non_standard_targets
+            eq_new,
+            VC_object.targets[: -VC_object.len_non_standard_targets],
+            VC_object.targets_options,
+            VC_object.non_standard_targets,
         )
 
         if verbose:

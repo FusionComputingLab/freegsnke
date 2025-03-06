@@ -39,6 +39,7 @@ class VirtualCircuit:
         VCs_matrix,
         targets,
         targets_val,
+        targets_options,
         non_standard_targets,
         coils,
     ):
@@ -63,6 +64,9 @@ class VirtualCircuit:
             The list of targets used to calculate the shape_matrix and VCs_matrix.
         targets_val : np.array
             The array of target values.
+        targets_options : dict
+            Dictionary of additional parameters required to calculate the
+            'targets'.
         non_standard_targets : list
             List of lists of additional (non-standard) target functions to use. Takes the
             form [["new_target_name",...], [function(eq),...]], where function calcualtes the target
@@ -80,24 +84,11 @@ class VirtualCircuit:
         self.targets_val = targets_val
         self.non_standard_targets = non_standard_targets
         self.coils = coils
-        self.build_targets_options()
-
-    def build_targets_options(
-        self,
-    ):
-        """Builds the disctionary of targets_options to be used by VirtualCircuitHandling.apply_VC"""
-
+        self.targets_options = targets_options
         if self.non_standard_targets is not None:
             self.len_non_standard_targets = len(self.non_standard_targets[0])
         else:
             self.len_non_standard_targets = 0
-
-        self.targets_options = {}
-        for i, target in enumerate(
-            self.targets[: len(self.targets) - self.len_non_standard_targets]
-        ):
-            self.targets_options[target] = self.targets_val[i]
-
 
 class VirtualCircuitHandling:
     """
@@ -692,10 +683,10 @@ class VirtualCircuitHandling:
             eq=eq,
             profiles=profiles,
             shape_matrix=shape_matrix,
-            # "virtual circuits" are the pseudo-inverse of the shape matrix
-            VCs_matrix=np.linalg.pinv(shape_matrix),
+            VCs_matrix=np.linalg.pinv(shape_matrix), # "virtual circuits" are the pseudo-inverse of the shape matrix
             targets=targets_new,
             targets_val=self._targets_vec,
+            targets_options=targets_options,
             non_standard_targets=non_standard_targets,
             coils=coils,
         )
@@ -728,8 +719,8 @@ class VirtualCircuitHandling:
             The equilibrium object upon which to apply the VCs.
         profiles : object
             The profiles object upon which to apply the VCs.
-        VC_object : an istance of the VirtualCircuit class
-            Specifies the virtual circuit matrix and properties
+        VC_object : an instance of the VirtualCircuit class
+            Specifies the virtual circuit matrix and properties.
         all_requested_targets_shift : list
             List of floats containing the shifts in all of the relevant targets.
             Same order as VC_object.targets.
@@ -779,7 +770,7 @@ class VirtualCircuitHandling:
         # calculate the targets
         _, old_target_values = self.calculate_targets(
             eq,
-            VC_object.targets[: -VC_object.len_non_standard_targets],
+            VC_object.targets[0: len(VC_object.targets) - VC_object.len_non_standard_targets],
             VC_object.targets_options,
             VC_object.non_standard_targets,
         )
@@ -803,15 +794,15 @@ class VirtualCircuitHandling:
         )
 
         # calculate new target values and the difference vs. the old
-        all_targets, new_target_values = self.calculate_targets(
+        target_names, new_target_values = self.calculate_targets(
             eq_new,
-            VC_object.targets[: -VC_object.len_non_standard_targets],
+            VC_object.targets[0: len(VC_object.targets) - VC_object.len_non_standard_targets],
             VC_object.targets_options,
             VC_object.non_standard_targets,
         )
 
         if verbose:
             print(f"Targets shifts from VCs:")
-            print(f"{all_targets} = {new_target_values - old_target_values}.")
+            print(f"{target_names} = {new_target_values - old_target_values}.")
 
-        return eq_new, profiles_new, all_targets, new_target_values, old_target_values
+        return eq_new, profiles_new, target_names, new_target_values, old_target_values

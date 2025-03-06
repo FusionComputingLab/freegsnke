@@ -90,6 +90,7 @@ class VirtualCircuit:
         else:
             self.len_non_standard_targets = 0
 
+
 class VirtualCircuitHandling:
     """
     The virtual circuits handling class.
@@ -683,7 +684,9 @@ class VirtualCircuitHandling:
             eq=eq,
             profiles=profiles,
             shape_matrix=shape_matrix,
-            VCs_matrix=np.linalg.pinv(shape_matrix), # "virtual circuits" are the pseudo-inverse of the shape matrix
+            VCs_matrix=np.linalg.pinv(
+                shape_matrix
+            ),  # "virtual circuits" are the pseudo-inverse of the shape matrix
             targets=targets_new,
             targets_val=self._targets_vec,
             targets_options=targets_options,
@@ -770,7 +773,9 @@ class VirtualCircuitHandling:
         # calculate the targets
         _, old_target_values = self.calculate_targets(
             eq,
-            VC_object.targets[0: len(VC_object.targets) - VC_object.len_non_standard_targets],
+            VC_object.targets[
+                0 : len(VC_object.targets) - VC_object.len_non_standard_targets
+            ],
             VC_object.targets_options,
             VC_object.non_standard_targets,
         )
@@ -796,7 +801,9 @@ class VirtualCircuitHandling:
         # calculate new target values and the difference vs. the old
         target_names, new_target_values = self.calculate_targets(
             eq_new,
-            VC_object.targets[0: len(VC_object.targets) - VC_object.len_non_standard_targets],
+            VC_object.targets[
+                0 : len(VC_object.targets) - VC_object.len_non_standard_targets
+            ],
             VC_object.targets_options,
             VC_object.non_standard_targets,
         )

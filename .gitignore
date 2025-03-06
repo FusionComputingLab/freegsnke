@@ -40,3 +40,5 @@ docs/machine_configs
 build/
 examples/.virtual_documents/*
 .virtual_documents/
+# Local Netlify folder
+.netlify

@@ -1,0 +1,19 @@
+name: Formatting Check
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  formatting:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup
+        uses: './.github/actions/cicd-setup'
+      - name: Check black
+        run: black --check freegsnke/
+      - name: Check isort
+        run: isort --check --diff freegsnke/

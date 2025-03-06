@@ -1,3 +1,5 @@
+build
+twine
 pytest
 pre-commit
 black==24.1.1

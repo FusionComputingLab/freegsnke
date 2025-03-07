@@ -11,7 +11,6 @@ from . import machine_config
 from freegsnke import GSstaticsolver
 
 
-
 class ControlVoltages:
     """
     Class to implement control voltages from virtual circuit, and given a set of requested target shifts.
@@ -24,11 +23,11 @@ class ControlVoltages:
 
     """
 
-    def __init__(self, targets = None ):
+    def __init__(self, targets=None):
         """Initialize the control voltages class"""
         if targets is None:
-            targets = ["R_in","R_out","Rx_lower"]
-        self.targets = targets 
+            targets = ["R_in", "R_out", "Rx_lower"]
+        self.targets = targets
 
     def assign_eqi():
 
@@ -98,18 +97,21 @@ class ControlVoltages:
         virtual_circuit : object
             virtual circuit object
         """
-        solver = GSstaticsolver.NKGSsolver(eq)  
-
+        solver = GSstaticsolver.NKGSsolver(eq)
 
         # assert hasattr(self,active_coils_reduced) , "coils haven't been set yet"
-        _,coils_active, order_dict = self.get_active_coils(eq)
+        _, coils_active, order_dict = self.get_active_coils(eq)
         if origin is None:
             # create virtual circuit object using freegsnke
             print("building virtual circuit from freegsnke")
             vch = vc.VirtualCircuitHandling()
             vch.define_solver(solver)
             vch.calculate_VC(
-                eq, profiles, coils=coils_active, targets=targets, targets_options= None ,
+                eq,
+                profiles,
+                coils=coils_active,
+                targets=targets,
+                targets_options=None,
             )
 
             # get the virtual circuit object
@@ -168,9 +170,9 @@ class ControlVoltages:
         -------
         feedback_current : array
         """
-        self.targets = target_names 
+        self.targets = target_names
         # get active coils and ordering dictionary
-        _,active_coils, order_dict = self.get_active_coils(eq)
+        _, active_coils, order_dict = self.get_active_coils(eq)
 
         # check dimensions
         assert len(targets_req) == len(
@@ -190,7 +192,11 @@ class ControlVoltages:
         # build VC object if not provided
         if virtual_circuit is None:
             print("building virtual circuit")
-            virtual_circuit = self.get_vc(eq=eq, profiles=profiles, targets=self.targets,)
+            virtual_circuit = self.get_vc(
+                eq=eq,
+                profiles=profiles,
+                targets=self.targets,
+            )
 
         self.virtual_circuit = virtual_circuit
 
@@ -208,7 +214,6 @@ class ControlVoltages:
         # shifts required
         target_deltas = targets_req - targets_obs
         print("target deltas", target_deltas)
-
 
         # do matrix multiplication VC @ G @ delta
         delta_currents = virtual_circuit.VCs_matrix @ gain_matrix @ target_deltas

@@ -8,6 +8,8 @@ from copy import deepcopy
 
 from . import virtual_circuits as vc  # import the virtual circuit class
 from . import machine_config
+from freegsnke import GSstaticsolver
+
 
 
 class ControlVoltages:
@@ -96,16 +98,22 @@ class ControlVoltages:
         virtual_circuit : object
             virtual circuit object
         """
+        solver = GSstaticsolver.NKGSsolver(eq)  
+
 
         # assert hasattr(self,active_coils_reduced) , "coils haven't been set yet"
+        _,coils_active, order_dict = self.get_active_coils(eq)
         if origin is None:
             # create virtual circuit object using freegsnke
-            vc.VirtualCircuitHandling().calculate_VC(
-                eq, profiles, coils=self.active_coils_reduced, targets=self.targets
+            print("building virtual circuit from freegsnke")
+            vch = vc.VirtualCircuitHandling()
+            vch.define_solver(solver)
+            vch.calculate_VC(
+                eq, profiles, coils=coils_active, targets=targets, targets_options= None ,
             )
 
             # get the virtual circuit object
-            virtual_circuit = vc.VirtualCircuitHandling().latest_VC
+            virtual_circuit = vch.latest_VC
         elif origin == "emulator":
             # create virtual circuit object using nn emulator
             print("building VC from emulator")
@@ -160,6 +168,7 @@ class ControlVoltages:
         -------
         feedback_current : array
         """
+        self.targets = target_names 
         # get active coils and ordering dictionary
         _,active_coils, order_dict = self.get_active_coils(eq)
 
@@ -180,7 +189,8 @@ class ControlVoltages:
 
         # build VC object if not provided
         if virtual_circuit is None:
-            virtual_circuit = self.get_vc(eq=eq, profiles=profiles)
+            print("building virtual circuit")
+            virtual_circuit = self.get_vc(eq=eq, profiles=profiles, targets=self.targets,)
 
         self.virtual_circuit = virtual_circuit
 

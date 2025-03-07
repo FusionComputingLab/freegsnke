@@ -25,13 +25,29 @@ class ControlVoltages:
     calculate_feedback_voltage_vector : compute feedback voltages from a virtual circuit object and a set of target shifts.
     """
 
-    def __init__(self, targets=None):
+    def __init__(self, targets=None, coils = None ):
         """Initialize the control voltages class"""
         if targets is None:
-            targets = ["R_in", "R_out", "Rx_lower"]
+            targets = ["R_in", "R_out", "Rx_lower","Rs_lower_outer"]
         self.targets = targets
+        if coils is None:
+            self.coils = ['d1', 'd2', 'd3', 'dp', 'd5', 'd6', 'd7', 'p4', 'p5']
 
-    def assign_eqi():
+    def assign_eqi(self,eq, profiles):
+        """
+        Assign eq and profiles to the class object.
+        Parameters
+        ----------
+        eq : object
+            equilibrium object
+        profiles : object        
+            profiles object
+        Returns
+        -------
+        None
+        """
+        self.eq = eq
+        self.profiles = profiles
 
         pass
 
@@ -101,7 +117,7 @@ class ControlVoltages:
 
         return inductance_active
 
-    def get_vc(self, eq, profiles, targets=None, origin=None):
+    def get_vc(self, eq, profiles, targets=None,coils = None, origin=None):
         """
         Get a virtual circuit object from freegsnke or from a file or NN emulator.
 
@@ -124,8 +140,10 @@ class ControlVoltages:
             virtual circuit object
         """
 
-        # assert hasattr(self,active_coils_reduced) , "coils haven't been set yet"
-        _, coils_active, order_dict = self.get_active_coils(eq)
+        if coils is None:
+            _, coils_active, order_dict = self.get_active_coils(eq)
+            coils = coils_active
+        
 
         if origin is None:
             # create virtual circuit object using freegsnke
@@ -136,7 +154,7 @@ class ControlVoltages:
             vch.calculate_VC(
                 eq,
                 profiles,
-                coils=coils_active,
+                coils=coils,
                 targets=targets,
                 targets_options=None,
             )
@@ -232,7 +250,7 @@ class ControlVoltages:
         # check coils in virtual circuit match those in the tokamak
         assert (
             target_names == virtual_circuit.targets
-        ), "The virtual circuit targets do not match the targets in the tokamak"
+        ), "The virtual circuit targets do not match the targets requested"
 
         if targets_obs is None:
             # get the targets from the equilibrium

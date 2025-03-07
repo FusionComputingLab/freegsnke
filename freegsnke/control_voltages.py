@@ -25,7 +25,7 @@ class ControlVoltages:
     calculate_feedback_voltage_vector : compute feedback voltages from a virtual circuit object and a set of target shifts.
     """
 
-    def __init__(self, targets=None, coils = None ):
+    def __init__(self, eq, targets=None, coils = None ):
         """Initialize the control voltages class"""
         if targets is None:
             targets = ["R_in", "R_out", "Rx_lower","Rs_lower_outer"]
@@ -33,23 +33,29 @@ class ControlVoltages:
         if coils is None:
             self.coils = ['d1', 'd2', 'd3', 'dp', 'd5', 'd6', 'd7', 'p4', 'p5']
 
-    def assign_eqi(self,eq, profiles):
-        """
-        Assign eq and profiles to the class object.
-        Parameters
-        ----------
-        eq : object
-            equilibrium object
-        profiles : object        
-            profiles object
-        Returns
-        -------
-        None
-        """
         self.eq = eq
-        self.profiles = profiles
 
-        pass
+        #set coil lists and dictionary for all active coils
+        self.get_active_coils(self.eq)
+
+
+    # def assign_eqi(self,eq, profiles):
+    #     """
+    #     Assign eq and profiles to the class object.
+    #     Parameters
+    #     ----------
+    #     eq : object
+    #         equilibrium object
+    #     profiles : object        
+    #         profiles object
+    #     Returns
+    #     -------
+    #     None
+    #     """
+    #     self.eq = eq
+    #     self.profiles = profiles
+
+    #     pass
 
     def get_active_coils(self, eq):
         """
@@ -83,7 +89,7 @@ class ControlVoltages:
         self.active_coils_reduced = active_coils_reduced
 
         print("all active coils", self.active_coils_all)
-        print("redduced set of active coils", self.active_coils_reduced)
+        print("reduced set of active coils", self.active_coils_reduced)
 
         # create a dictionary to map coil names to their order in the list
         order_dictionary = {coil: i for i, coil in enumerate(active_coils)}
@@ -94,6 +100,7 @@ class ControlVoltages:
 
     def get_inductance(self, coils=None):
         """retrieve inductance matrix from machine config, located in machine_config.coil_self_ind
+        assings inductance matrix attribute to class
 
         parameters
         ----------
@@ -104,19 +111,27 @@ class ControlVoltages:
         -------
         inductance_matrix : np.array
             inductance matrix
-        """
-        if coils is None:
-            # use default of all acitve coils from tokamak
-            coils_dict = machine_config.coils_dict
-            inductance_active = machine_config.coil_self_ind[:12, :12]
 
-        else:  # use coils provided and select apropriate part of inductance matrix
-            mask = [self.order_dictionary[coil] for coil in coils]
-            inductance_active = machine_config.coil_self_ind[np.ix_(mask, mask)]
+
+        REMARKS
+        ??Machine config and inductance matrix will come from stepper function later??
+        """
+        if coils is None: # use default of all acitve coils from tokamak
+            print("Inductance matrix for default of all acitve coils")
+            coils = self.active_coils_all
+        else : # use coils provided and select apropriate part of inductance matrix
+            print(f"Inductance matrix for coils provided {coils}")
+            pass
+        
+        # create mask for selecting part of inductance matrix
+        mask = [self.order_dictionary[coil] for coil in coils]
+        inductance_active = machine_config.coil_self_ind[np.ix_(mask, mask)]    
         self.inductance_matrix = inductance_active
 
         return inductance_active
 
+
+    ## this function will be repalced by instance of build virtual circuit class.
     def get_vc(self, eq, profiles, targets=None,coils = None, origin=None):
         """
         Get a virtual circuit object from freegsnke or from a file or NN emulator.
@@ -140,11 +155,6 @@ class ControlVoltages:
             virtual circuit object
         """
 
-        if coils is None:
-            _, coils_active, order_dict = self.get_active_coils(eq)
-            coils = coils_active
-        
-
         if origin is None:
             # create virtual circuit object using freegsnke
             print("building virtual circuit from freegsnke")
@@ -152,10 +162,10 @@ class ControlVoltages:
             vch = vc.VirtualCircuitHandling()
             vch.define_solver(solver)
             vch.calculate_VC(
-                eq,
+                self.eq,
                 profiles,
-                coils=coils,
-                targets=targets,
+                coils=self.coils,
+                targets=self.targets,
                 targets_options=None,
             )
 
@@ -201,7 +211,6 @@ class ControlVoltages:
             array function of target values for each control voltage at given  time
             Defaults to None, in which case the targets are computed from the equilibrium.
 
-
         targets_names : list
             list of target names. Defaults to None, in which case the targets taken to be all active.
 
@@ -217,9 +226,8 @@ class ControlVoltages:
         feedback_voltages : array
             feedback voltages
         """
+        
         self.targets = target_names
-        # get active coils and ordering dictionary
-        _, active_coils, order_dict = self.get_active_coils(eq)
 
         # check dimensions
         assert len(targets_req) == len(
@@ -300,6 +308,53 @@ class ControlVoltages:
         self.feedback_voltages_v2 = voltages_v2
 
         return voltages_v1, voltages_v2
+
+
+class BuildVirtualCircuit:
+    """
+    Class to build a virtual circuit objects from either a file or freegsnke or emulators
+    
+    """
+
+
+    def __init__(self, path):
+        """
+        Initialize the class
+        
+        Parameters
+        ----------
+        path : str
+            path to the virtual circuit file
+        """
+        self.vc_path = path #path to the virtual circuit file
+
+
+    def load_vc_fromfile(self):
+        """
+        ?? what format file will vc be saved in.
+        ?? what data will be saved (e.g. shape matrix, vcs matrix, targets, coils, etc.)
+
+        Load the virtual circuit from a file, and save as attribute
+        
+        Returns
+        -------
+        virtual_circuit : object
+            virtual circuit object  "
+        """ 
+
+
+    def build_sequence(self):
+        """
+        Build sequence of virtual circuits from the virtual circuit file and save as attribute
+        
+        Returns
+        -------
+        virtual_circuit_sequence : list
+            list of virtual circuit objects
+
+        ?? will we want time stamps for each vc?
+        """
+
 
 
 ### TESTING ###

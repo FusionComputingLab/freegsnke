@@ -10,96 +10,256 @@ from . import virtual_circuits as vc  # import the virtual circuit class
 from . import machine_config
 
 
-
 class ControlVoltages:
     """
     Class to implement control voltages from virtual circuit, and given a set of requested target shifts.
 
+    Attributes :
+    ???
+
+    Methods :
+    ???
+
     """
 
-    def __init__(self):
+    def __init__(self, targets = None ):
         """Initialize the control voltages class"""
+        if targets is None:
+            targets = ["R_in","R_out","Rx_lower"]
+        self.targets = targets 
 
     def assign_eqi():
 
         pass
 
-    def get_active_coils(self, eq): 
-        """ set default coils to be used and set the order according to that in the tokamak description 
+    def get_active_coils(self, eq):
+        """set default coils to be used and set the order according to that in the tokamak description
         get all active ones
-        assign reduced set of coils without solenoid and p6 (these voltages will be set via  different method)
+        assigne reduced set of coils without solenoid and p6 (these voltages will be set via  different method)
         """
 
+        active_coils = eq.tokamak.coils_list[:12]
+        active_coils_reduced = [
+            coil for coil in active_coils if coil not in {"Solenoid", "p6"}
+        ]
 
+        self.active_coils_all = active_coils
+        self.active_coils_reduced = active_coils_reduced
 
-    def get_inductance(self, coils = None):
+        print("all active coils", self.active_coils_all)
+        print("redduced set of active coils", self.active_coils_reduced)
+
+        # create a dictionary to map coil names to their order in the list
+        order_dictionary = {coil: i for i, coil in enumerate(active_coils)}
+        self.order_dictionary = order_dictionary
+        print("order dictionary", self.order_dictionary)
+
+        return active_coils, active_coils_reduced, order_dictionary
+
+    def get_inductance(self, coils=None):
         """retrieve inductance matrix from machine config
-        
-        comes from machine_config.coil_self_ind . only want active part 
-        """ 
 
-        pass
-    
-    def get_vc():
-        """ 
-        If a vc ojbject is not provided, compute using freegsnke calculate_VC methods.
-        Add option to provide vc object from another source (stored in file or NN emulator)
+        machine_config.coil_self_ind . only want active part
+        coils : list of coils to use
         """
-        pass
+        if coils is None:
+            # use default of all acitve coils from tokamak
+            coils_dict = machine_config.coils_dict
+            inductance_active = machine_config.coil_self_ind[:12, :12]
 
-    def feedback_current_vector(
+        else:  # use coils provided and select apropriate part of inductance matrix
+            mask = [self.order_dictionary[coil] for coil in coils]
+            inductance_active = machine_config.coil_self_ind[np.ix_(mask, mask)]
+        self.inductance_matrix = inductance_active
+
+        return inductance_active
+
+    def get_vc(self, eq, profiles, targets=None, origin=None):
+        """
+        Get a virtual circuit object from freegsnke or from a file or NN emulator.
+
+        parameters
+        ----------
+        eq : object
+            equilibrium object
+
+        profiles : object
+            profiles object
+
+        origin : str
+            origin of the virtual circuit object. Defaults to None, in which case the virtual circuit is computed from the equilibrium.
+            options are "file" or "emulator". These methods are not yet implemented.
+
+
+        returns
+        -------
+        virtual_circuit : object
+            virtual circuit object
+        """
+
+        # assert hasattr(self,active_coils_reduced) , "coils haven't been set yet"
+        if origin is None:
+            # create virtual circuit object using freegsnke
+            vc.VirtualCircuitHandling().calculate_VC(
+                eq, profiles, coils=self.active_coils_reduced, targets=self.targets
+            )
+
+            # get the virtual circuit object
+            virtual_circuit = vc.VirtualCircuitHandling().latest_VC
+        elif origin == "emulator":
+            # create virtual circuit object using nn emulator
+            print("building VC from emulator")
+        elif origin == "file":
+            # create virtual circuit object using file
+            print("building VC from file")
+            pass
+        return virtual_circuit
+
+    def calculate_feedback_voltage_vector(
+        self,
         eq,
         profiles,
-        time,
         targets_req,
         targets_obs=None,
-        virtucal_circuit=None,
+        target_names=None,
+        virtual_circuit=None,
         gain_matrix=None,
     ):
         """
-        Compute current given a set of target value shifs and vc matrix, at a given time
+        Compute current given a set of target value shifs and vc matrix, at a given time.
+
+        Assigns attributes in place for feedback voltages, and returns them.
 
         Parameters
         ----------
+        eq : object
+            equilibrium object
+
+        profiles : object
+            profiles object
+
         targets_req : array
-            array function of target values for each control voltage as a function of time
+            array function of target values for each control voltage at a given time
 
         targets_obs : array
-            array function of target values for each control voltage as a function of time.
+            array function of target values for each control voltage at given  time
             Defaults to None, in which case the targets are computed from the equilibrium.
 
-        gain_matrix : array
-            array function of target gains. Defaults to identiy matrix
 
-        time : float
-            time at which to compute feedback current
+        targets_names : list
+            list of target names. Defaults to None, in which case the targets taken to be all active.
 
-        virtucal_circuit : object
+        virtual_circuit : object
             virtual circuit object. Defaults to None, in which case the virtual circuit is computed from the equilibrium.
             with default currents of the Tokamak minus p6, and solenoid (these are determined differently)
 
+        gain_matrix : array
+            diagonal square matrix of target gains. Defaults to identity matrix
 
         Returns
         -------
         feedback_current : array
-
-
-        Notes (to do)
-        - check that target vector is same length as config of virtual circuit
-        - check
         """
+        # get active coils and ordering dictionary
+        _,active_coils, order_dict = self.get_active_coils(eq)
 
-        pass
+        # check dimensions
+        assert len(targets_req) == len(
+            targets_obs
+        ), "The target required and observed vectors are not the same length"
 
-    def feedback_voltage(feedback_current):
-        """
-        Compute feedback voltage from feedback current, by multiplying current by inductance matrix.
+        # set default gain matrix if not provided
+        if gain_matrix is None:
+            gain_matrix = np.identity(len(targets_req))
+            print("gain matrix not provided, using identity matrix")
+            print(gain_matrix)
 
-        Notes (to do)
-        - check that current vector is the same length as the inductance matrix,
-        - check ordering of currents in inductacne matrix, and in VC.
-        - multiply current array by inductance matrix
+        assert gain_matrix.shape[0] == len(
+            targets_req
+        ), "The gain matrix is not the same length as the target vector"
 
-        """
+        # build VC object if not provided
+        if virtual_circuit is None:
+            virtual_circuit = self.get_vc(eq=eq, profiles=profiles)
 
-        pass
+        self.virtual_circuit = virtual_circuit
+
+        # check coils in virtual circuit match those in the tokamak
+        assert (
+            target_names == virtual_circuit.targets
+        ), "The virtual circuit targets do not match the targets in the tokamak"
+
+        if targets_obs is None:
+            # get the targets from the equilibrium
+            targets_obs = vc.VirtualCircuitHandling().calculate_targets(
+                eq, self.targets
+            )
+
+        # shifts required
+        target_deltas = targets_req - targets_obs
+        print("target deltas", target_deltas)
+
+
+        # do matrix multiplication VC @ G @ delta
+        delta_currents = virtual_circuit.VCs_matrix @ gain_matrix @ target_deltas
+
+        # bulid inductance matrix
+        inductance_matrix = self.get_inductance(coils=self.active_coils_all)
+        print("full inductance matrix", inductance_matrix.shape)
+
+        # option 1 reorder currents, fill in zeros and multiply by inductance matrix
+        reshaped_currents = np.zeros(len(self.active_coils_all))
+        for i, coil in enumerate(virtual_circuit.coils):
+            # voltages_v1[i] = np.dot(inductance_matrix[self.order_dictionary[coil],:], delta_currents[:])
+            reshaped_currents[self.order_dictionary[coil]] = delta_currents[i]
+        voltages_v1 = np.dot(inductance_matrix, reshaped_currents)
+
+        print(
+            "volatges v1 : reorder currents, fill in zeros and multiply by full active coil inductance matrix"
+        )
+        print("voltages v1 : shape", voltages_v1.shape)
+        print(voltages_v1)
+
+        # option 2 reshape inductance matrix, muiltply by currents and then fill in zeros
+        inductance_matrix_reduced = self.get_inductance(coils=virtual_circuit.coils)
+        voltages_v2_temp = np.dot(inductance_matrix_reduced, delta_currents)
+        # fill in zeros
+        voltages_v2 = np.zeros(len(self.active_coils_all))
+        for i, coil in enumerate(virtual_circuit.coils):
+            voltages_v2[self.order_dictionary[coil]] = voltages_v2_temp[i]
+
+        print(
+            "voltages v2 : rehaped inductance matrix, then fill in zeros in voltage vector"
+        )
+        print("voltages v2 : shape", voltages_v2.shape)
+        print(voltages_v2)
+
+        self.feedback_voltages_v1 = voltages_v1
+        self.feedback_voltages_v2 = voltages_v2
+
+        return voltages_v1, voltages_v2
+
+    # def feedback_voltage(feedback_current, inductance_matrix):
+    #     """
+    #     Compute feedback voltage from feedback current, by multiplying current by inductance matrix.
+
+    #     Notes (to do)
+    #     - check that current vector is the same length as the inductance matrix,
+    #     - check ordering of currents in inductacne matrix, and in VC.
+    #     - multiply current array by inductance matrix
+
+    #     """
+    #     # check dimensions
+    #     assert inductance_matrix.shape[0] == len(
+    #         feedback_current
+    #     ), "The inductance matrix is not the same length as the current vector"
+
+    #     voltage_array = np.dot(inductance_matrix, feedback_current)
+
+    #     pass
+
+
+### TESTING ###
+# if __name__ == "__main__":
+
+#     pass

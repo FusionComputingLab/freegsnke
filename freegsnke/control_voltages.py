@@ -13,14 +13,16 @@ from freegsnke import GSstaticsolver
 
 class ControlVoltages:
     """
-    Class to implement control voltages from virtual circuit, and given a set of requested target shifts.
+    Class to implement control voltages from virtual circuit, and given a set of observed target values, and a set of requested target values.
 
     Attributes :
     ???
 
     Methods :
-    ???
-
+    get_active_coils : retrieve the active coils from the equilibrium object.
+    get_inductance : retrieve inductance matrix from machine config
+    get_vc : retrieve from file or compute a virtual circuit object from freegsnke or NN emulator.
+    calculate_feedback_voltage_vector : compute feedback voltages from a virtual circuit object and a set of target shifts.
     """
 
     def __init__(self, targets=None):
@@ -34,9 +36,26 @@ class ControlVoltages:
         pass
 
     def get_active_coils(self, eq):
-        """set default coils to be used and set the order according to that in the tokamak description
+        """
+        Retrieve the active coils from the equilibrium object.
+
+        set default coils to be used and set the order according to that in the tokamak description
         get all active ones
         assigne reduced set of coils without solenoid and p6 (these voltages will be set via  different method)
+
+        Parameters
+        ----------
+        eq : object
+            equilibrium object
+
+        Returns
+        -------
+        active_coils : list
+            list of all active coils
+        active_coils_reduced : list
+            list of default reduced set of active coils with solenoid and p6 removed
+        order_dictionary : dict
+            dictionary of coil names and their order in the list
         """
 
         active_coils = eq.tokamak.coils_list[:12]
@@ -58,10 +77,17 @@ class ControlVoltages:
         return active_coils, active_coils_reduced, order_dictionary
 
     def get_inductance(self, coils=None):
-        """retrieve inductance matrix from machine config
+        """retrieve inductance matrix from machine config, located in machine_config.coil_self_ind
 
-        machine_config.coil_self_ind . only want active part
-        coils : list of coils to use
+        parameters
+        ----------
+        coils : list
+            list of coils to use. Defaults to None, in which case the inductance matrix is built from all active coils.
+
+        Returns
+        -------
+        inductance_matrix : np.array
+            inductance matrix
         """
         if coils is None:
             # use default of all acitve coils from tokamak
@@ -79,7 +105,7 @@ class ControlVoltages:
         """
         Get a virtual circuit object from freegsnke or from a file or NN emulator.
 
-        parameters
+        Parameters
         ----------
         eq : object
             equilibrium object
@@ -92,18 +118,19 @@ class ControlVoltages:
             options are "file" or "emulator". These methods are not yet implemented.
 
 
-        returns
+        Returns
         -------
         virtual_circuit : object
             virtual circuit object
         """
-        solver = GSstaticsolver.NKGSsolver(eq)
 
         # assert hasattr(self,active_coils_reduced) , "coils haven't been set yet"
         _, coils_active, order_dict = self.get_active_coils(eq)
+
         if origin is None:
             # create virtual circuit object using freegsnke
             print("building virtual circuit from freegsnke")
+            solver = GSstaticsolver.NKGSsolver(eq)
             vch = vc.VirtualCircuitHandling()
             vch.define_solver(solver)
             vch.calculate_VC(
@@ -123,6 +150,7 @@ class ControlVoltages:
             # create virtual circuit object using file
             print("building VC from file")
             pass
+
         return virtual_circuit
 
     def calculate_feedback_voltage_vector(
@@ -168,7 +196,8 @@ class ControlVoltages:
 
         Returns
         -------
-        feedback_current : array
+        feedback_voltages : array
+            feedback voltages
         """
         self.targets = target_names
         # get active coils and ordering dictionary
@@ -253,25 +282,6 @@ class ControlVoltages:
         self.feedback_voltages_v2 = voltages_v2
 
         return voltages_v1, voltages_v2
-
-    # def feedback_voltage(feedback_current, inductance_matrix):
-    #     """
-    #     Compute feedback voltage from feedback current, by multiplying current by inductance matrix.
-
-    #     Notes (to do)
-    #     - check that current vector is the same length as the inductance matrix,
-    #     - check ordering of currents in inductacne matrix, and in VC.
-    #     - multiply current array by inductance matrix
-
-    #     """
-    #     # check dimensions
-    #     assert inductance_matrix.shape[0] == len(
-    #         feedback_current
-    #     ), "The inductance matrix is not the same length as the current vector"
-
-    #     voltage_array = np.dot(inductance_matrix, feedback_current)
-
-    #     pass
 
 
 ### TESTING ###

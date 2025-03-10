@@ -38,23 +38,29 @@ class ControlVoltages:
             targets : list[str] (optional)
                 list of target names, defaults to ["R_in", "R_out", "Rx_lower","Rs_lower_outer"]
             coils : list[str]   (optional)
-                list of coil names defaults to ["d1", "d2", "d3", "dp", "d5", "d6", "d7", "p4", "p5"]
-
-
+                list of coil names defaults to the reduced set defined in get_active_coils.
         """
-        if targets is None:
-            targets = ["R_in", "R_out", "Rx_lower", "Rs_lower_outer"]
-        self.targets = targets
-        if coils is None:
-            self.coils = ["d1", "d2", "d3", "dp", "d5", "d6", "d7", "p4", "p5"]
-
+        # assign equi and profiles objects
         self.eq = eq
         self.profiles = profiles
+
+        # initialse targets with defaults or lists given
+        if targets is None:
+            targets = ["R_in", "R_out", "Rx_lower", "Rs_lower_outer"]
+            self.targets = targets
+        else:
+            self.targets = targets
 
         # set coil lists and dictionary for all active coils
         # assigns self.active_coils_all, self.active_coils_reduced, self.order_dictionary
         self.get_active_coils(self.eq)
         print("all active coils", self.active_coils_all)
+
+        # assign coils to default or
+        if coils is None:
+            self.coils = np.copy(self.active_coils_reduced)
+        else:
+            self.coils = coils
 
         # get inductance matrix (full with all active coils)
         # ??Machine config and inductance matrix will come from stepper function later??
@@ -82,7 +88,7 @@ class ControlVoltages:
         active_coils_reduced : list
             list of default reduced set of active coils with solenoid and p6 removed
         order_dictionary : dict
-            dictionary of coil names and their order in the list
+            dictionary of coil names and their order in the list of all active coils
         """
 
         active_coils = eq.tokamak.coils_list[:12]
@@ -114,14 +120,14 @@ class ControlVoltages:
 
         Returns
         -------
-        None
-            modifies inductance matrix attribute
+        inductance_reduced : np.array
+            inductance matrix of reduced set of coils. Also updates inductance matrix attribute
 
 
         """
         if coils is None:  # use default of all acitve coils from tokamak
             print("Inductance matrix for default of all acitve coils")
-            coils = self.active_coils_all
+            coils = self.coils
         else:  # use coils provided and select apropriate part of inductance matrix
             print(f"Inductance matrix for coils provided {coils}")
             pass
@@ -158,6 +164,11 @@ class ControlVoltages:
         virtual_circuit : object
             virtual circuit object
         """
+        # if targets and coils provided, update targets/coils attributes
+        if targets is not None:
+            self.targets = targets
+        if coils is not None:
+            self.coils = coils
 
         print("building virtual circuit from freegsnke")
         solver = GSstaticsolver.NKGSsolver(eq)
@@ -222,13 +233,6 @@ class ControlVoltages:
             feedback voltages
         """
 
-        self.targets = target_names
-
-        # check dimensions
-        assert len(targets_req) == len(
-            targets_obs
-        ), "The target required and observed vectors are not the same length"
-
         # set default gain matrix if not provided
         if gain_matrix is None:
             gain_matrix = np.identity(len(targets_req))
@@ -239,18 +243,22 @@ class ControlVoltages:
             targets_req
         ), "The gain matrix is not the same length as the target vector"
 
+        # check coils and targets and update attributes accordingly
+        if target_names is not None:
+            self.targets = target_names
+
         # build VC object if not provided
         if virtual_circuit is None:
-            print("building virtual circuit")
             virtual_circuit = self.calc_vc(
-                eq=eq,
-                profiles=profiles,
-                targets=self.targets,
+                eq=eq, profiles=profiles, targets=self.targets, coils=self.coils
             )
         # assign virtual circuit attribute to class
         self.virtual_circuit = virtual_circuit
 
         # check coils in virtual circuit match those in the tokamak
+        print("target names provided ", target_names)
+        print("self targets", self.targets)
+        print("vc targs, ", virtual_circuit.targets)
         assert (
             target_names == virtual_circuit.targets
         ), "The virtual circuit targets do not match the targets requested"
@@ -260,6 +268,10 @@ class ControlVoltages:
             targets_obs = vc.VirtualCircuitHandling().calculate_targets(
                 eq, self.targets
             )
+            # check dimensions of target values
+        assert len(targets_req) == len(
+            targets_obs
+        ), "The target required and observed vectors are not the same length"
 
         # shifts required
         target_deltas = targets_req - targets_obs
@@ -292,7 +304,7 @@ class ControlVoltages:
             voltages_v2[self.order_dictionary[coil]] = voltages_v2_temp[i]
 
         print(
-            "voltages v2 : rehaped inductance matrix, then fill in zeros in voltage vector"
+            "voltages v2 : reshaped inductance matrix, then fill in zeros in voltage vector"
         )
         print("voltages v2 : shape", voltages_v2.shape)
         print(voltages_v2)
@@ -334,18 +346,19 @@ class BuildVirtualCircuits:
         self.vc_coils = []  # list of virtual circuit coils
         self.vc_times = []  # list of virtual circuit time stamps
         self.vc_time_dict = {time: ind for ind, time in enumerate(self.vc_times)}
+        self.vc_sequence = []
 
     def load_vcs_fromfile(self):
         """
         ?? what format file will vc be saved in (csv, pickle,hdf5)??
         ?? what data will be saved (e.g. shape matrix, vcs matrix, targets, coils, etc.)
 
-        Load the virtual circuit from a file, and save as attribute
+        Load the virtual circuit, coils and targets from a file, and save as attributes.
 
         Returns
         -------
         virtual_circuit : object
-            virtual circuit object  "
+            virtual circuit object
         """
 
         pass
@@ -361,10 +374,14 @@ class BuildVirtualCircuits:
         time_stamp : float
             time stamp of the virtual circuit
 
+        Returns
         -------
         None
+            modifies object in place
         """
         vc_mat, vc_time, vc_targets, vc_coils = load_vcs_fromfile(self.vc_path)
+        self.vc_times.append(vc_time)
+        self.vc_sequence.append(vc_mat)
 
     def retrieve_vc(self, time_stamp):
         """
@@ -386,7 +403,7 @@ class BuildVirtualCircuits:
         vc_coils = self.vc_coils
 
         # retrieve vc matrix from the sequence
-        vc_mat = np.zeros((len(vc_targs), len(vc_coils)))
+        vc_mat = np.zeros((len(vc_targs), len(vc_coils)))  # place holder for now
 
         # assign to VC object ??? needs eqi and profiles???
         # only assign coils, targets and vc matrix. We don't have other data to initalise like eqi, profiles.

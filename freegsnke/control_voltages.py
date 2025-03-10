@@ -21,41 +21,45 @@ class ControlVoltages:
     Methods :
     get_active_coils : retrieve the active coils from the equilibrium object.
     get_inductance : retrieve inductance matrix from machine config
-    get_vc : retrieve from file or compute a virtual circuit object from freegsnke or NN emulator.
+    calc_vc : retrieve from file or compute a virtual circuit object from freegsnke or NN emulator.
     calculate_feedback_voltage_vector : compute feedback voltages from a virtual circuit object and a set of target shifts.
     """
 
-    def __init__(self, eq, targets=None, coils = None ):
-        """Initialize the control voltages class"""
+    def __init__(self, eq, profiles, targets=None, coils=None):
+        """
+        Initialize the control voltages class
+
+        Parameters
+        ----------
+            eq : equilibrium object
+                equilibrium object
+            profiles : list of profiles
+                list of profiles
+            targets : list[str] (optional)
+                list of target names, defaults to ["R_in", "R_out", "Rx_lower","Rs_lower_outer"]
+            coils : list[str]   (optional)
+                list of coil names defaults to ["d1", "d2", "d3", "dp", "d5", "d6", "d7", "p4", "p5"]
+
+
+        """
         if targets is None:
-            targets = ["R_in", "R_out", "Rx_lower","Rs_lower_outer"]
+            targets = ["R_in", "R_out", "Rx_lower", "Rs_lower_outer"]
         self.targets = targets
         if coils is None:
-            self.coils = ['d1', 'd2', 'd3', 'dp', 'd5', 'd6', 'd7', 'p4', 'p5']
+            self.coils = ["d1", "d2", "d3", "dp", "d5", "d6", "d7", "p4", "p5"]
 
         self.eq = eq
+        self.profiles = profiles
 
-        #set coil lists and dictionary for all active coils
+        # set coil lists and dictionary for all active coils
+        # assigns self.active_coils_all, self.active_coils_reduced, self.order_dictionary
         self.get_active_coils(self.eq)
+        print("all active coils", self.active_coils_all)
 
-
-    # def assign_eqi(self,eq, profiles):
-    #     """
-    #     Assign eq and profiles to the class object.
-    #     Parameters
-    #     ----------
-    #     eq : object
-    #         equilibrium object
-    #     profiles : object        
-    #         profiles object
-    #     Returns
-    #     -------
-    #     None
-    #     """
-    #     self.eq = eq
-    #     self.profiles = profiles
-
-    #     pass
+        # get inductance matrix (full with all active coils)
+        self.inductance_full = machine_config.coil_self_ind[
+            len(self.active_coils_all), len(self.active_coils_all)
+        ]
 
     def get_active_coils(self, eq):
         """
@@ -98,43 +102,42 @@ class ControlVoltages:
 
         return active_coils, active_coils_reduced, order_dictionary
 
-    def get_inductance(self, coils=None):
-        """retrieve inductance matrix from machine config, located in machine_config.coil_self_ind
+    def get_inductance_reduced(self, coils=None):
+        """
+        retrieve inductance matrix from machine config, located in machine_config.coil_self_ind
         assings inductance matrix attribute to class
 
         parameters
         ----------
-        coils : list
-            list of coils to use. Defaults to None, in which case the inductance matrix is built from all active coils.
+        None
 
         Returns
         -------
-        inductance_matrix : np.array
-            inductance matrix
+        None
+            modifes inductance matrix attribute
 
 
         REMARKS
         ??Machine config and inductance matrix will come from stepper function later??
         """
-        if coils is None: # use default of all acitve coils from tokamak
+        if coils is None:  # use default of all acitve coils from tokamak
             print("Inductance matrix for default of all acitve coils")
             coils = self.active_coils_all
-        else : # use coils provided and select apropriate part of inductance matrix
+        else:  # use coils provided and select apropriate part of inductance matrix
             print(f"Inductance matrix for coils provided {coils}")
             pass
-        
+
         # create mask for selecting part of inductance matrix
         mask = [self.order_dictionary[coil] for coil in coils]
-        inductance_active = machine_config.coil_self_ind[np.ix_(mask, mask)]    
-        self.inductance_matrix = inductance_active
+        inductance_reduced = machine_config.coil_self_ind[np.ix_(mask, mask)]
+        self.inductance_reduced = inductance_reduced
 
-        return inductance_active
-
+        return inductance_reduced
 
     ## this function will be repalced by instance of build virtual circuit class.
-    def get_vc(self, eq, profiles, targets=None,coils = None, origin=None):
+    def calc_vc(self, eq, profiles, targets=None, coils=None):
         """
-        Get a virtual circuit object from freegsnke or from a file or NN emulator.
+        Compute a VC using freegsnke VirtualCircuitHandling if no vc is provided.
 
         Parameters
         ----------
@@ -144,9 +147,11 @@ class ControlVoltages:
         profiles : object
             profiles object
 
-        origin : str
-            origin of the virtual circuit object. Defaults to None, in which case the virtual circuit is computed from the equilibrium.
-            options are "file" or "emulator". These methods are not yet implemented.
+        targets : list[str]
+            list of targets (optional)
+
+        coils : list[str]
+            list of coils (optional)
 
 
         Returns
@@ -155,29 +160,20 @@ class ControlVoltages:
             virtual circuit object
         """
 
-        if origin is None:
-            # create virtual circuit object using freegsnke
-            print("building virtual circuit from freegsnke")
-            solver = GSstaticsolver.NKGSsolver(eq)
-            vch = vc.VirtualCircuitHandling()
-            vch.define_solver(solver)
-            vch.calculate_VC(
-                self.eq,
-                profiles,
-                coils=self.coils,
-                targets=self.targets,
-                targets_options=None,
-            )
+        print("building virtual circuit from freegsnke")
+        solver = GSstaticsolver.NKGSsolver(eq)
+        vch = vc.VirtualCircuitHandling()
+        vch.define_solver(solver)
+        vch.calculate_VC(
+            self.eq,
+            profiles,
+            coils=self.coils,
+            targets=self.targets,
+            targets_options=None,
+        )
 
-            # get the virtual circuit object
-            virtual_circuit = vch.latest_VC
-        elif origin == "emulator":
-            # create virtual circuit object using nn emulator
-            print("building VC from emulator")
-        elif origin == "file":
-            # create virtual circuit object using file
-            print("building VC from file")
-            pass
+        # get the virtual circuit object
+        virtual_circuit = vch.latest_VC
 
         return virtual_circuit
 
@@ -226,7 +222,7 @@ class ControlVoltages:
         feedback_voltages : array
             feedback voltages
         """
-        
+
         self.targets = target_names
 
         # check dimensions
@@ -247,7 +243,7 @@ class ControlVoltages:
         # build VC object if not provided
         if virtual_circuit is None:
             print("building virtual circuit")
-            virtual_circuit = self.get_vc(
+            virtual_circuit = self.calc_vc(
                 eq=eq,
                 profiles=profiles,
                 targets=self.targets,
@@ -274,6 +270,7 @@ class ControlVoltages:
         delta_currents = virtual_circuit.VCs_matrix @ gain_matrix @ target_deltas
 
         # bulid inductance matrix
+        ## ?? does this want to go in init and then select rows appropraitely here??
         inductance_matrix = self.get_inductance(coils=self.active_coils_all)
         print("full inductance matrix", inductance_matrix.shape)
 
@@ -310,51 +307,87 @@ class ControlVoltages:
         return voltages_v1, voltages_v2
 
 
-class BuildVirtualCircuit:
+class BuildVirtualCircuits:
     """
-    Class to build a virtual circuit objects from either a file or freegsnke or emulators
-    
-    """
+    Class to build a virtual circuit objects from either a file, and store the sequence of virtual circuits along with apropriate time stamsp
 
+
+    Q's:
+        ?? what format file will vc be saved in (csv, pickle,hdf5)??
+        ?? what data will be saved (e.g. shape matrix, vcs matrix, targets, coils, etc.)
+        ??
+    """
 
     def __init__(self, path):
         """
         Initialize the class
-        
+
         Parameters
         ----------
         path : str
-            path to the virtual circuit file
-        """
-        self.vc_path = path #path to the virtual circuit file
+            path to the file containing VC's
 
+        Returns
+        -------
+        None
+        """
+        self.vc_path = path  # path to the virtual circuit file
+
+        self.vc_config = {}  # dictionary of vc coil/target configurations
+        self.vc_sequence = []  # list of virtual circuit arrays
+        self.vc_times = []
+        self.vc_time_dict = {time: ind for ind, time in enumerate(self.vc_times)}
 
     def load_vc_fromfile(self):
         """
-        ?? what format file will vc be saved in.
+        ?? what format file will vc be saved in (csv, pickle,hdf5)??
         ?? what data will be saved (e.g. shape matrix, vcs matrix, targets, coils, etc.)
 
         Load the virtual circuit from a file, and save as attribute
-        
+
         Returns
         -------
         virtual_circuit : object
             virtual circuit object  "
-        """ 
-
-
-    def build_sequence(self):
         """
-        Build sequence of virtual circuits from the virtual circuit file and save as attribute
-        
+
+    def add_vc_to_sequence(self, vc, time_stamp):
+        """
+        Add virtual circuit to sequence
+
+        Parameters
+        ----------
+        vc : object
+            virtual circuit object
+        time_stamp : float
+            time stamp of the virtual circuit
+
+
+        -------
+        None
+        """
+        vc_mat, vc_time, vc_targets, vc_coils = load_vc_fromfile(self.vc_path)
+
+    def retrieve_vc(self, time_stamp):
+        """
+        Retrieve apropriate virtual circuit object from the sequence of virtual circuits
+
+        Parameters
+        ----------
+        time_stamp : float
+            time stamp of the virtual circuit to be retrieved
+
         Returns
         -------
-        virtual_circuit_sequence : list
-            list of virtual circuit objects
-
-        ?? will we want time stamps for each vc?
+        vc : object (VirtualCircuit)
+            virtual circuit object to be used by the control voltages class
         """
 
+        # retrieve vc matrix from the sequence
+
+        # retrieve vc targets and coils
+
+        # assign to VC object ??? needs eqi and profiles???
 
 
 ### TESTING ###

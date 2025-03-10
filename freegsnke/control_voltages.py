@@ -330,11 +330,12 @@ class BuildVirtualCircuits:
         self.vc_path = path  # path to the virtual circuit file
 
         self.vc_config = {}  # dictionary of vc coil/target configurations
-        self.vc_sequence = []  # list of virtual circuit arrays
-        self.vc_times = []
+        self.vc_targs = []  # list of virtual circuit targets
+        self.vc_coils = []  # list of virtual circuit coils
+        self.vc_times = []  # list of virtual circuit time stamps
         self.vc_time_dict = {time: ind for ind, time in enumerate(self.vc_times)}
 
-    def load_vc_fromfile(self):
+    def load_vcs_fromfile(self):
         """
         ?? what format file will vc be saved in (csv, pickle,hdf5)??
         ?? what data will be saved (e.g. shape matrix, vcs matrix, targets, coils, etc.)
@@ -347,6 +348,8 @@ class BuildVirtualCircuits:
             virtual circuit object  "
         """
 
+        pass
+
     def add_vc_to_sequence(self, vc, time_stamp):
         """
         Add virtual circuit to sequence
@@ -358,11 +361,10 @@ class BuildVirtualCircuits:
         time_stamp : float
             time stamp of the virtual circuit
 
-
         -------
         None
         """
-        vc_mat, vc_time, vc_targets, vc_coils = load_vc_fromfile(self.vc_path)
+        vc_mat, vc_time, vc_targets, vc_coils = load_vcs_fromfile(self.vc_path)
 
     def retrieve_vc(self, time_stamp):
         """
@@ -379,11 +381,27 @@ class BuildVirtualCircuits:
             virtual circuit object to be used by the control voltages class
         """
 
-        # retrieve vc matrix from the sequence
-
         # retrieve vc targets and coils
+        vc_targs = self.vc_targs
+        vc_coils = self.vc_coils
+
+        # retrieve vc matrix from the sequence
+        vc_mat = np.zeros((len(vc_targs), len(vc_coils)))
 
         # assign to VC object ??? needs eqi and profiles???
+        # only assign coils, targets and vc matrix. We don't have other data to initalise like eqi, profiles.
+        virual_circuit = vc.VirtualCircuit(
+            name=f"VC_at_time{time_stamp}",
+            eq=None,
+            profiles=None,
+            shape_matrix=None,
+            VCs_matrix=vc_mat,
+            targets=vc_targs,
+            coils=vc_coils,
+            targets_options=None,
+            non_standard_targets=None,
+        )
+        return virual_circuit
 
 
 ### TESTING ###

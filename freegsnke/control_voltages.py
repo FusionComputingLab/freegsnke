@@ -57,6 +57,7 @@ class ControlVoltages:
         print("all active coils", self.active_coils_all)
 
         # get inductance matrix (full with all active coils)
+        # ??Machine config and inductance matrix will come from stepper function later??
         self.inductance_full = machine_config.coil_self_ind[
             len(self.active_coils_all), len(self.active_coils_all)
         ]
@@ -104,21 +105,19 @@ class ControlVoltages:
 
     def get_inductance_reduced(self, coils=None):
         """
-        retrieve inductance matrix from machine config, located in machine_config.coil_self_ind
-        assings inductance matrix attribute to class
+        Select appropriate inductance rows and columns from inductance matrix, given set of coils in the VC.
 
         parameters
         ----------
-        None
+        coils : list[str]
+            list of coil names
 
         Returns
         -------
         None
-            modifes inductance matrix attribute
+            modifies inductance matrix attribute
 
 
-        REMARKS
-        ??Machine config and inductance matrix will come from stepper function later??
         """
         if coils is None:  # use default of all acitve coils from tokamak
             print("Inductance matrix for default of all acitve coils")
@@ -248,7 +247,7 @@ class ControlVoltages:
                 profiles=profiles,
                 targets=self.targets,
             )
-
+        # assign virtual circuit attribute to class
         self.virtual_circuit = virtual_circuit
 
         # check coils in virtual circuit match those in the tokamak
@@ -269,17 +268,12 @@ class ControlVoltages:
         # do matrix multiplication VC @ G @ delta
         delta_currents = virtual_circuit.VCs_matrix @ gain_matrix @ target_deltas
 
-        # bulid inductance matrix
-        ## ?? does this want to go in init and then select rows appropraitely here??
-        inductance_matrix = self.get_inductance(coils=self.active_coils_all)
-        print("full inductance matrix", inductance_matrix.shape)
-
         # option 1 reorder currents, fill in zeros and multiply by inductance matrix
         reshaped_currents = np.zeros(len(self.active_coils_all))
         for i, coil in enumerate(virtual_circuit.coils):
             # voltages_v1[i] = np.dot(inductance_matrix[self.order_dictionary[coil],:], delta_currents[:])
             reshaped_currents[self.order_dictionary[coil]] = delta_currents[i]
-        voltages_v1 = np.dot(inductance_matrix, reshaped_currents)
+        voltages_v1 = np.dot(self.inductance_full, reshaped_currents)
 
         print(
             "volatges v1 : reorder currents, fill in zeros and multiply by full active coil inductance matrix"
@@ -288,7 +282,9 @@ class ControlVoltages:
         print(voltages_v1)
 
         # option 2 reshape inductance matrix, muiltply by currents and then fill in zeros
-        inductance_matrix_reduced = self.get_inductance(coils=virtual_circuit.coils)
+        inductance_matrix_reduced = self.get_inductance_reduced(
+            coils=virtual_circuit.coils
+        )
         voltages_v2_temp = np.dot(inductance_matrix_reduced, delta_currents)
         # fill in zeros
         voltages_v2 = np.zeros(len(self.active_coils_all))

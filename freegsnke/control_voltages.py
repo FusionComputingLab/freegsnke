@@ -79,6 +79,10 @@ class ControlVoltages:
             len(self.active_coils_all), len(self.active_coils_all)
         ]
 
+        # initialise a VC handling ojbect
+        self.VCH = vc.VirtualCircuitHandling()
+        self.VCH.define_solver(self.stepping.NK, target_relative_tolerance=1e-7)
+
     def get_active_coils(self, eq):
         """
         Retrieve the active coils from the equilibrium object.
@@ -177,10 +181,7 @@ class ControlVoltages:
             self.coils = coils
 
         print("building virtual circuit from freegsnke")
-        solver = GSstaticsolver.NKGSsolver(eq)
-        vch = vc.VirtualCircuitHandling()
-        vch.define_solver(solver)
-        vch.calculate_VC(
+        self.VCH.calculate_VC(
             self.eq,
             profiles,
             coils=self.coils,
@@ -189,7 +190,7 @@ class ControlVoltages:
         )
 
         # get the virtual circuit object
-        virtual_circuit = vch.latest_VC
+        virtual_circuit = self.VCH.latest_VC
 
         return virtual_circuit
 
@@ -271,9 +272,7 @@ class ControlVoltages:
 
         if targets_obs is None:
             # get the targets from the equilibrium
-            targets_obs = vc.VirtualCircuitHandling().calculate_targets(
-                eq, self.targets
-            )
+            targets_obs = self.VCH.calculate_targets(eq, self.targets)
             # check dimensions of target values
         assert len(targets_req) == len(
             targets_obs

@@ -27,7 +27,7 @@ class ControlVoltages:
     calculate_feedback_voltage_vector : compute feedback voltages from a virtual circuit object and a set of target shifts.
     """
 
-    def __init__(self, eq, profiles, targets=None, coils=None):
+    def __init__(self, eq, profiles, stepping, targets=None, coils=None):
         """
         Initialize the control voltages class
 
@@ -37,14 +37,23 @@ class ControlVoltages:
                 equilibrium object
             profiles : list of profiles
                 list of profiles
+
+            stepping : Non Linear Solver object
+                Non Linear Solver object
+
             targets : list[str] (optional)
                 list of target names, defaults to ["R_in", "R_out", "Rx_lower","Rs_lower_outer"]
             coils : list[str]   (optional)
-                list of coil names defaults to the reduced set defined in get_active_coils.
+                list of coil names defaults to all active coils defined in get_active_coils.
         """
         # assign equi and profiles objects
         self.eq = eq
         self.profiles = profiles
+
+        self.stepping = stepping
+        self.n_active_coils = (
+            self.stepping.n_active_coils
+        )  # could also be eq.tokamak.n_active_coils
 
         # initialse targets with defaults or lists given
         if targets is None:
@@ -93,23 +102,18 @@ class ControlVoltages:
             dictionary of coil names and their order in the list of all active coils
         """
 
-        active_coils = eq.tokamak.coils_list[:12]
-        active_coils_reduced = [
-            coil for coil in active_coils if coil not in {"Solenoid", "p6"}
-        ]
+        active_coils = eq.tokamak.coils_list[self.n_active_coils]
 
         self.active_coils_all = active_coils
-        self.active_coils_reduced = active_coils_reduced
 
         print("all active coils", self.active_coils_all)
-        print("reduced set of active coils", self.active_coils_reduced)
 
         # create a dictionary to map coil names to their order in the list
         order_dictionary = {coil: i for i, coil in enumerate(active_coils)}
         self.order_dictionary = order_dictionary
         print("order dictionary", self.order_dictionary)
 
-        return active_coils, active_coils_reduced, order_dictionary
+        return active_coils, order_dictionary
 
     def get_inductance_reduced(self, coils=None):
         """

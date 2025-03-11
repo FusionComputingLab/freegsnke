@@ -5,6 +5,8 @@ Module to obtain control voltages from virtual circuits.
 
 import numpy as np
 from copy import deepcopy
+import pickle
+import h5py
 
 from . import virtual_circuits as vc  # import the virtual circuit class
 from . import machine_config
@@ -346,7 +348,9 @@ class BuildVirtualCircuits:
         self.vc_coils = []  # list of virtual circuit coils
         self.vc_times = []  # list of virtual circuit time stamps
         self.vc_time_dict = {time: ind for ind, time in enumerate(self.vc_times)}
-        self.vc_sequence = []
+        self.vc_matrix_sequence = []
+        self.target_sequence = []
+        self.shape_matrix_sequence = []
 
     def load_vcs_fromfile(self):
         """
@@ -360,17 +364,53 @@ class BuildVirtualCircuits:
         virtual_circuit : object
             virtual circuit object
         """
+        # file extension - hdf5 or csv or ???
+        file_ext = (self.path).split(".")[-1]
+        if file_ext == "hdf5" or "h5":
+            # load vcs from hdf5 file
+
+            with h5py.File(self.path, "r") as f:
+                timestamps = f["timestamps"]
+                timestamp_dict = {time: i for i, time in enumerate(timestamps)}
+                target_names = [name.decode() for name in f["targets"][:]]
+                coil_names = [name.decode() for name in f["coils"][:]]
+
+                print("loading VC's from hdf5 file")
+                print("VC's have the following targets and coils:")
+                print(f"Targets: {target_names}")
+                print(f"Coils: {coil_names}")
+
+                # Iterate over stored iterations
+                for iter_key in f.keys():
+                    if iter_key.startswith("time_step"):
+                        group = f[iter_key]
+                        timestamp = group.attrs["time"]
+                        shape_mat = group["shape_matrix"][:]
+                        vc_mat = group["vc_matrix"][:]
+                        targ_vals = group["target_values"][:]
+
+                        # add vc data to sequence
+                        self.vc_matrix_sequence.append(vc_mat)
+                        self.shape_matrix_sequence.append(shape_mat)
+                        self.vc_targs.append(targ_vals)
+                        self.vc_coils.append(coil_names)
+                        self.vc_times.append(timestamp)
+
+        elif file_ext == "pkl":
+            # load vcs from pickle file
+            with open(self.path, "rb") as fp:
+                vcs = pickle.load(fp)
 
         pass
 
-    def add_vc_to_sequence(self, vc, time_stamp):
+    def add_vc_to_sequence(self, vc_mat, time_stamp):
         """
         Add virtual circuit to sequence
 
         Parameters
         ----------
-        vc : object
-            virtual circuit object
+        vc : np.array
+            virtual circuit matrix
         time_stamp : float
             time stamp of the virtual circuit
 
@@ -379,11 +419,10 @@ class BuildVirtualCircuits:
         None
             modifies object in place
         """
-        vc_mat, vc_time, vc_targets, vc_coils = load_vcs_fromfile(self.vc_path)
-        self.vc_times.append(vc_time)
+        self.vc_times.append(time_stamp)
         self.vc_sequence.append(vc_mat)
 
-    def retrieve_vc(self, time_stamp):
+    def retrieve_vc(self, time_stamp=None, time_step=None):
         """
         Retrieve apropriate virtual circuit object from the sequence of virtual circuits
 
@@ -402,8 +441,19 @@ class BuildVirtualCircuits:
         vc_targs = self.vc_targs
         vc_coils = self.vc_coils
 
-        # retrieve vc matrix from the sequence
-        vc_mat = np.zeros((len(vc_targs), len(vc_coils)))  # place holder for now
+        # select desired point in sequence
+        ### maybe can use np.where for this???
+        if time_stamp is not None and time_step is None:
+            postition = self.vc_time_dict[time_stamp]
+        elif time_stamp is None and time_step is not None:
+            postition = time_step
+        else:
+            print("Please specify either a time stamp or a time step")
+            return None
+
+        # retrieve vc and shape atrix from the sequence
+        vc_mat = self.vc_matrix_sequence[postition]
+        shape_mat = self.shape_matrix_sequence[postition]
 
         # assign to VC object ??? needs eqi and profiles???
         # only assign coils, targets and vc matrix. We don't have other data to initalise like eqi, profiles.
@@ -411,7 +461,7 @@ class BuildVirtualCircuits:
             name=f"VC_at_time{time_stamp}",
             eq=None,
             profiles=None,
-            shape_matrix=None,
+            shape_matrix=shape_mat,
             VCs_matrix=vc_mat,
             targets=vc_targs,
             coils=vc_coils,

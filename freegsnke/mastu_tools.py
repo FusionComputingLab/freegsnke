@@ -2332,6 +2332,51 @@ def get_element_vertices(
 
     return [rr, zz, dR, dZ]
 
+# ------------
+def find_strikepoints(R, Z, psi, psi_boundary, wall):
+    """
+    This function can be used to find the strikepoints of an equilibrium using
+    the:
+        - R and Z grids (2D)
+        - psi_total (2D) (i.e. the poloidal flux map)
+        - psi_boundary (single value)
+        - limiter/wall coordinates (N x 2)
+
+    """
+
+    # find contour object for psi_boundary
+    cs = plt.contour(R, Z, psi, levels=[psi_boundary])
+    plt.close()  # this isn't the most elegant but we don't need the plot itself
+
+    # for each item in the contour object there's a list of points in (r,z) (i.e. a line)
+    psi_boundary_lines = []
+    for i, item in enumerate(cs.allsegs[0]):
+        psi_boundary_lines.append(item)
+
+    # use the shapely package to find where each psi_boundary_line intersects the limiter (or not)
+    strikes = []
+    curve1 = sh.LineString(wall)
+    for j, line in enumerate(psi_boundary_lines):
+        curve2 = sh.LineString(line)
+
+        # find the intersection points
+        intersection = curve2.intersection(curve1)
+
+        # extract intersection points
+        if intersection.geom_type == "Point":
+            strikes.append(np.squeeze(np.array(intersection.xy).T))
+        elif intersection.geom_type == "MultiPoint":
+            strikes.append(
+                np.squeeze(np.array([geom.xy for geom in intersection.geoms]))
+            )
+
+    # check how many strikepoints
+    if len(strikes) == 0:
+        out = None
+    else:
+        out = np.concatenate(strikes, axis=0)
+
+    return out
 
 def Separatrix(R, Z, psi, ntheta, psival=1.0, theta_grid=None, input_opoint=None):
     """Find the R, Z coordinates of the separatrix for equilbrium

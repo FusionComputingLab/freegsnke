@@ -56,7 +56,7 @@ class ControlVoltages:
         self.n_active_coils = (
             self.stepping.n_active_coils
         )  # could also be eq.tokamak.n_active_coils
-
+        print("number active coils", self.n_active_coils)
         # initialse targets with defaults or lists given
         if targets is None:
             targets = ["R_in", "R_out", "Rx_lower", "Rs_lower_outer"]
@@ -65,7 +65,7 @@ class ControlVoltages:
             self.targets = targets
 
         # set coil lists and dictionary for all active coils
-        self.active_coils = self.eq.tokamak.coils_list[self.n_active_coils]
+        self.active_coils = self.eq.tokamak.coils_list[: self.n_active_coils]
 
         # create a dictionary to map coil names to their order in the list
         order_dictionary = {coil: i for i, coil in enumerate(self.active_coils)}
@@ -73,16 +73,22 @@ class ControlVoltages:
 
         # assign coils to default or
         if coils is None:
-            self.coils = np.copy(self.active_coils)
+            print("initilasing with default all active coils")
+            self.coils = self.active_coils
         else:
+            print("initilasing with custom coils")
             self.coils = coils
+
+        print("Default targets and current's initialised")
+        print(self.coils)
+        print(self.targets)
+        print(self.active_coils)
 
         # get inductance matrix (full with all active coils)
         # ??Machine config and inductance matrix will come from stepper function later??
         self.inductance_full = machine_config.coil_self_ind[
-            len(self.active_coils), len(self.active_coils)
+            : len(self.active_coils), : len(self.active_coils)
         ]
-
         # initialise a VC handling ojbect
         self.VCH = vc.VirtualCircuitHandling()
         self.VCH.define_solver(self.stepping.NK, target_relative_tolerance=1e-7)
@@ -148,7 +154,8 @@ class ControlVoltages:
 
         # create mask for selecting part of inductance matrix
         mask = [self.order_dictionary[coil] for coil in coils]
-        inductance_reduced = machine_config.coil_self_ind[np.ix_(mask, mask)]
+        print("coil ordering mask ", mask)
+        inductance_reduced = self.inductance_full[np.ix_(mask, mask)]
         self.inductance_reduced = inductance_reduced
 
         return inductance_reduced
@@ -210,6 +217,7 @@ class ControlVoltages:
         targets_req,
         targets_obs=None,
         target_names=None,
+        coil_names=None,
         virtual_circuit: VirtualCircuit = None,
         gain_matrix=None,
     ):
@@ -263,16 +271,24 @@ class ControlVoltages:
         if target_names is not None:
             self.targets = target_names
 
+        if coil_names is not None:
+            print("updating coils to", coil_names)
+            self.coils = coil_names
         # build VC object if not provided
         if virtual_circuit is None:
-            print("No VC ojbec achieved, building one")
+            print("No VC ojbect passed, building one with ")
             # check coils in virtual circuit match those in the tokamak
             print("target names provided ", target_names)
             print("self targets", self.targets)
-            print("vc targs, ", virtual_circuit.targets)
+            print("self coils", self.coils)
             virtual_circuit = self.calc_vc(
                 eq=eq, profiles=profiles, targets=self.targets, coils=self.coils
             )
+        else:
+            print("virtual circuit provided")
+            print("targets", virtual_circuit.targets)
+            print("coils", virtual_circuit.coils)
+
         # assign virtual circuit attribute to class
         self.virtual_circuit = virtual_circuit
 
@@ -294,14 +310,18 @@ class ControlVoltages:
 
         # do matrix multiplication VC @ G @ delta
         delta_currents = virtual_circuit.VCs_matrix @ gain_matrix @ target_deltas
+        print("delta currents", delta_currents)
 
         # option 1 reorder currents, fill in zeros and multiply by inductance matrix
         reshaped_currents = np.zeros(len(self.active_coils))
         for i, coil in enumerate(virtual_circuit.coils):
             # voltages_v1[i] = np.dot(inductance_matrix[self.order_dictionary[coil],:], delta_currents[:])
             reshaped_currents[self.order_dictionary[coil]] = delta_currents[i]
+        print("reshaped currents")
+        print(reshaped_currents)
         voltages_v1 = np.dot(self.inductance_full, reshaped_currents)
 
+        print("------------- \n compuiting voltages \n -------------")
         print(
             "volatges v1 : reorder currents, fill in zeros and multiply by full active coil inductance matrix"
         )
@@ -309,6 +329,8 @@ class ControlVoltages:
         print(voltages_v1)
 
         # option 2 reshape inductance matrix, muiltply by currents and then fill in zeros
+        print("doing option 2")
+        print("delta currents", delta_currents)
         inductance_matrix_reduced = self.get_inductance_reduced(
             coils=virtual_circuit.coils
         )

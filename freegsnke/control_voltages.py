@@ -10,7 +10,8 @@ import h5py
 
 from . import virtual_circuits as vc  # import the virtual circuit class
 from . import machine_config
-from freegsnke import GSstaticsolver
+from .nonlinear_solve import nl_solver
+from .equilibrium_update import Equilibrium
 
 
 class ControlVoltages:
@@ -27,7 +28,9 @@ class ControlVoltages:
     calculate_feedback_voltage_vector : compute feedback voltages from a virtual circuit object and a set of target shifts.
     """
 
-    def __init__(self, eq, profiles, stepping, targets=None, coils=None):
+    def __init__(
+        self, eq: Equilibrium, profiles, stepping: nl_solver, targets=None, coils=None
+    ):
         """
         Initialize the control voltages class
 
@@ -37,10 +40,8 @@ class ControlVoltages:
                 equilibrium object
             profiles : list of profiles
                 list of profiles
-
             stepping : Non Linear Solver object
                 Non Linear Solver object
-
             targets : list[str] (optional)
                 list of target names, defaults to ["R_in", "R_out", "Rx_lower","Rs_lower_outer"]
             coils : list[str]   (optional)
@@ -63,61 +64,63 @@ class ControlVoltages:
             self.targets = targets
 
         # set coil lists and dictionary for all active coils
-        # assigns self.active_coils_all, self.active_coils_reduced, self.order_dictionary
-        self.get_active_coils(self.eq)
-        print("all active coils", self.active_coils_all)
+        self.active_coils = self.eq.tokamak.coils_list[self.n_active_coils]
+
+        # create a dictionary to map coil names to their order in the list
+        order_dictionary = {coil: i for i, coil in enumerate(self.active_coils)}
+        self.order_dictionary = order_dictionary
 
         # assign coils to default or
         if coils is None:
-            self.coils = np.copy(self.active_coils_reduced)
+            self.coils = np.copy(self.active_coils)
         else:
             self.coils = coils
 
         # get inductance matrix (full with all active coils)
         # ??Machine config and inductance matrix will come from stepper function later??
         self.inductance_full = machine_config.coil_self_ind[
-            len(self.active_coils_all), len(self.active_coils_all)
+            len(self.active_coils), len(self.active_coils)
         ]
 
         # initialise a VC handling ojbect
         self.VCH = vc.VirtualCircuitHandling()
         self.VCH.define_solver(self.stepping.NK, target_relative_tolerance=1e-7)
 
-    def get_active_coils(self, eq):
-        """
-        Retrieve the active coils from the equilibrium object.
+    # def get_active_coils(self, eq):
+    #     """
+    #     Retrieve the active coils from the equilibrium object.
 
-        set default coils to be used and set the order according to that in the tokamak description
-        get all active ones
-        assigne reduced set of coils without solenoid and p6 (these voltages will be set via  different method)
+    #     set default coils to be used and set the order according to that in the tokamak description
+    #     get all active ones
+    #     assigne reduced set of coils without solenoid and p6 (these voltages will be set via  different method)
 
-        Parameters
-        ----------
-        eq : object
-            equilibrium object
+    #     Parameters
+    #     ----------
+    #     eq : object
+    #         equilibrium object
 
-        Returns
-        -------
-        active_coils : list
-            list of all active coils
-        active_coils_reduced : list
-            list of default reduced set of active coils with solenoid and p6 removed
-        order_dictionary : dict
-            dictionary of coil names and their order in the list of all active coils
-        """
+    #     Returns
+    #     -------
+    #     active_coils : list
+    #         list of all active coils
+    #     active_coils_reduced : list
+    #         list of default reduced set of active coils with solenoid and p6 removed
+    #     order_dictionary : dict
+    #         dictionary of coil names and their order in the list of all active coils
+    #     """
 
-        active_coils = eq.tokamak.coils_list[self.n_active_coils]
+    #     active_coils = eq.tokamak.coils_list[self.n_active_coils]
 
-        self.active_coils_all = active_coils
+    #     self.active_coils = active_coils
 
-        print("all active coils", self.active_coils_all)
+    #     print("all active coils", self.active_coils)
 
-        # create a dictionary to map coil names to their order in the list
-        order_dictionary = {coil: i for i, coil in enumerate(active_coils)}
-        self.order_dictionary = order_dictionary
-        print("order dictionary", self.order_dictionary)
+    #     # create a dictionary to map coil names to their order in the list
+    #     order_dictionary = {coil: i for i, coil in enumerate(active_coils)}
+    #     self.order_dictionary = order_dictionary
+    #     print("order dictionary", self.order_dictionary)
 
-        return active_coils, order_dictionary
+    #     return active_coils, order_dictionary
 
     def get_inductance_reduced(self, coils=None):
         """
@@ -150,7 +153,7 @@ class ControlVoltages:
         return inductance_reduced
 
     ## this function will be repalced by instance of build virtual circuit class.
-    def calc_vc(self, eq, profiles, targets=None, coils=None):
+    def calc_vc(self, eq=None, profiles=None, targets=None, coils=None):
         """
         Compute a VC using freegsnke VirtualCircuitHandling if no vc is provided.
 
@@ -174,6 +177,11 @@ class ControlVoltages:
         virtual_circuit : object
             virtual circuit object
         """
+        if eq is None:
+            eq = self.eq
+        if profiles is None:
+            profiles = self.profiles
+
         # if targets and coils provided, update targets/coils attributes
         if targets is not None:
             self.targets = targets
@@ -182,7 +190,7 @@ class ControlVoltages:
 
         print("building virtual circuit from freegsnke")
         self.VCH.calculate_VC(
-            self.eq,
+            eq,
             profiles,
             coils=self.coils,
             targets=self.targets,
@@ -286,7 +294,7 @@ class ControlVoltages:
         delta_currents = virtual_circuit.VCs_matrix @ gain_matrix @ target_deltas
 
         # option 1 reorder currents, fill in zeros and multiply by inductance matrix
-        reshaped_currents = np.zeros(len(self.active_coils_all))
+        reshaped_currents = np.zeros(len(self.active_coils))
         for i, coil in enumerate(virtual_circuit.coils):
             # voltages_v1[i] = np.dot(inductance_matrix[self.order_dictionary[coil],:], delta_currents[:])
             reshaped_currents[self.order_dictionary[coil]] = delta_currents[i]
@@ -304,7 +312,7 @@ class ControlVoltages:
         )
         voltages_v2_temp = np.dot(inductance_matrix_reduced, delta_currents)
         # fill in zeros
-        voltages_v2 = np.zeros(len(self.active_coils_all))
+        voltages_v2 = np.zeros(len(self.active_coils))
         for i, coil in enumerate(virtual_circuit.coils):
             voltages_v2[self.order_dictionary[coil]] = voltages_v2_temp[i]
 

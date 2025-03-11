@@ -9,6 +9,7 @@ import pickle
 import h5py
 
 from . import virtual_circuits as vc  # import the virtual circuit class
+from .virtual_circuits import VirtualCircuit
 from . import machine_config
 from .nonlinear_solve import nl_solver
 from .equilibrium_update import Equilibrium
@@ -209,7 +210,7 @@ class ControlVoltages:
         targets_req,
         targets_obs=None,
         target_names=None,
-        virtual_circuit=None,
+        virtual_circuit: VirtualCircuit = None,
         gain_matrix=None,
     ):
         """
@@ -264,16 +265,17 @@ class ControlVoltages:
 
         # build VC object if not provided
         if virtual_circuit is None:
+            print("No VC ojbec achieved, building one")
+            # check coils in virtual circuit match those in the tokamak
+            print("target names provided ", target_names)
+            print("self targets", self.targets)
+            print("vc targs, ", virtual_circuit.targets)
             virtual_circuit = self.calc_vc(
                 eq=eq, profiles=profiles, targets=self.targets, coils=self.coils
             )
         # assign virtual circuit attribute to class
         self.virtual_circuit = virtual_circuit
 
-        # check coils in virtual circuit match those in the tokamak
-        print("target names provided ", target_names)
-        print("self targets", self.targets)
-        print("vc targs, ", virtual_circuit.targets)
         assert (
             target_names == virtual_circuit.targets
         ), "The virtual circuit targets do not match the targets requested"
@@ -328,15 +330,10 @@ class ControlVoltages:
         return voltages_v1, voltages_v2
 
 
-class BuildVirtualCircuits:
+class VirtualCircuitSequence:
     """
     Class to build a virtual circuit objects from either a file, and store the sequence of virtual circuits along with apropriate time stamsp
 
-
-    Q's:
-        ?? what format file will vc be saved in (csv, pickle,hdf5)??
-        ?? what data will be saved (e.g. shape matrix, vcs matrix, targets, coils, etc.)
-        ??
     """
 
     def __init__(self, path):
@@ -354,14 +351,18 @@ class BuildVirtualCircuits:
         """
         self.vc_path = path  # path to the virtual circuit file
 
-        self.vc_config = {}  # dictionary of vc coil/target configurations
-        self.vc_targs = []  # list of virtual circuit targets
-        self.vc_coils = []  # list of virtual circuit coils
         self.vc_times = []  # list of virtual circuit time stamps
+        self.vc_index = []  # list of virtual circuit indices
+        self.vc_sequence = []  # list of virtual circuit ojbects
+
+        # input currents and profile parameters to recreate eq if needed
+        self.input_currents = []  # list of input current dictionaries
+        self.input_profile_pars = []  # list of input profile parameter dictionaries
+
+        # populate the vc_sequence
+        self.load_vcs_fromfile()
+        # create dictionary of vc times and corresponding index
         self.vc_time_dict = {time: ind for ind, time in enumerate(self.vc_times)}
-        self.vc_matrix_sequence = []
-        self.target_sequence = []
-        self.shape_matrix_sequence = []
 
     def load_vcs_fromfile(self):
         """
@@ -379,42 +380,79 @@ class BuildVirtualCircuits:
         file_ext = (self.path).split(".")[-1]
         if file_ext == "hdf5" or "h5":
             # load vcs from hdf5 file
+            print("loading VC's from hdf5 file")
 
             with h5py.File(self.path, "r") as f:
                 timestamps = f["timestamps"]
                 timestamp_dict = {time: i for i, time in enumerate(timestamps)}
-                target_names = [name.decode() for name in f["targets"][:]]
-                coil_names = [name.decode() for name in f["coils"][:]]
-
-                print("loading VC's from hdf5 file")
-                print("VC's have the following targets and coils:")
-                print(f"Targets: {target_names}")
-                print(f"Coils: {coil_names}")
 
                 # Iterate over stored iterations
                 for iter_key in f.keys():
                     if iter_key.startswith("time_step"):
                         group = f[iter_key]
                         timestamp = group.attrs["time"]
+                        index = group.attrs["index"]
+                        target_names = [name.decode() for name in group["targets"][:]]
+                        coil_names = [name.decode() for name in group["coils"][:]]
                         shape_mat = group["shape_matrix"][:]
                         vc_mat = group["vc_matrix"][:]
                         targ_vals = group["target_values"][:]
 
+                        input_currents = group["input_currents"][:]
+                        input_profile_pars = group["input_profile_pars"][:]
+
                         # add vc data to sequence
-                        self.vc_matrix_sequence.append(vc_mat)
-                        self.shape_matrix_sequence.append(shape_mat)
-                        self.vc_targs.append(targ_vals)
-                        self.vc_coils.append(coil_names)
+                        vc_ojbect = vc.VirtualCircuit(
+                            f"vc_{index}_from_time_{timestamp}",
+                            eq=None,
+                            profiles=None,
+                            shape_matrix=shape_mat,
+                            VCs_matrix=vc_mat,
+                            targets=target_names,
+                            targets_val=targ_vals,
+                            targets_options=None,
+                            non_standard_targets=None,
+                            coils=coil_names,
+                        )
+                        self.vc_sequence.append(vc_ojbect)
                         self.vc_times.append(timestamp)
+                        self.input_currents.append(input_currents)
+                        self.input_profile_pars.append(input_profile_pars)
 
         elif file_ext == "pkl":
             # load vcs from pickle file
             with open(self.path, "rb") as fp:
-                vcs = pickle.load(fp)
+                vcs_pkl = pickle.load(fp)
 
-        pass
+                for key, item in vcs_pkl.items():
+                    index = item["index"]
+                    timestamp = item["timestamp"]
+                    vc_matrix = item["vc_matrix"]
+                    shape_matrix = item["shape_matrix"]
+                    targets = item["targets"]
+                    coils = item["coils"]
+                    target_vals = item["target_vals"]
+                    input_currents = item["input_currents"]
+                    input_profile_pars = item["input_profile_pars"]
 
-    def add_vc_to_sequence(self, vc_mat, time_stamp):
+                    vc_ojbect = VirtualCircuit(
+                        name=f"vc_{index}_time_from_{timestamp}",
+                        eq=None,
+                        profiles=None,
+                        shape_matrix=shape_matrix,
+                        VCs_matrix=vc_matrix,
+                        targets=targets,
+                        coils=coils,
+                        target_vals=target_vals,
+                    )
+
+                    self.vc_sequence.append(vc_ojbect)
+                    self.vc_times.append(timestamp)
+                    self.vc_index.append(index)
+                    self.input_currents.append(input_currents)
+                    self.input_profile_pars.append(input_profile_pars)
+
+    def add_vc_to_sequence(self, virtual_circuit, time_stamp):
         """
         Add virtual circuit to sequence
 
@@ -431,7 +469,9 @@ class BuildVirtualCircuits:
             modifies object in place
         """
         self.vc_times.append(time_stamp)
-        self.vc_sequence.append(vc_mat)
+        self.vc_sequence.append(virtual_circuit)
+
+        # check ordreing and reorder appropriately
 
     def retrieve_vc(self, time_stamp=None, time_step=None):
         """
@@ -441,6 +481,8 @@ class BuildVirtualCircuits:
         ----------
         time_stamp : float
             time stamp of the virtual circuit to be retrieved
+        time_step : int
+            index in the sequence of virtual circuits to be retrieved. start at zero
 
         Returns
         -------
@@ -448,37 +490,43 @@ class BuildVirtualCircuits:
             virtual circuit object to be used by the control voltages class
         """
 
-        # retrieve vc targets and coils
-        vc_targs = self.vc_targs
-        vc_coils = self.vc_coils
-
         # select desired point in sequence
-        ### maybe can use np.where for this???
+        def find_time_interval_index(times, target_time):
+            """
+            Finds the index of the interval in which the target_time falls.
+
+            Parameters:
+            - times (list of float): A sorted list of timestamps.
+            - target_time (float): The time to locate within the intervals.
+
+            Returns:
+            - int: The index of the interval where target_time lies (between times[i] and times[i+1]).
+                Returns -1 if target_time is out of range.
+            """
+            if target_time < times[0] or target_time > times[-1]:
+                return -1  # Out of range
+
+            for i in range(len(times) - 1):
+                if times[i] <= target_time < times[i + 1]:
+                    return i
+
+            # Handle edge case where target_time matches the last timestamp exactly
+            if target_time == times[-1]:
+                return len(times) - 2
+
+            return -1  # Should never reach this line
+
         if time_stamp is not None and time_step is None:
-            postition = self.vc_time_dict[time_stamp]
+            postition = find_time_interval_index(
+                times=self.vc_times, target_time=time_stamp
+            )
         elif time_stamp is None and time_step is not None:
             postition = time_step
         else:
             print("Please specify either a time stamp or a time step")
             return None
 
-        # retrieve vc and shape atrix from the sequence
-        vc_mat = self.vc_matrix_sequence[postition]
-        shape_mat = self.shape_matrix_sequence[postition]
-
-        # assign to VC object ??? needs eqi and profiles???
-        # only assign coils, targets and vc matrix. We don't have other data to initalise like eqi, profiles.
-        virual_circuit = vc.VirtualCircuit(
-            name=f"VC_at_time{time_stamp}",
-            eq=None,
-            profiles=None,
-            shape_matrix=shape_mat,
-            VCs_matrix=vc_mat,
-            targets=vc_targs,
-            coils=vc_coils,
-            targets_options=None,
-            non_standard_targets=None,
-        )
+        virual_circuit = self.vc_sequence[postition]
         return virual_circuit
 
 

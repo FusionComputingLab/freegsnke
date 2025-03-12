@@ -292,9 +292,11 @@ class ControlVoltages:
         # assign virtual circuit attribute to class
         self.virtual_circuit = virtual_circuit
 
-        assert (
-            target_names == virtual_circuit.targets
-        ), "The virtual circuit targets do not match the targets requested"
+        if not target_names == virtual_circuit.targets:
+            print(
+                "The virtual circuit targets do not match the targets requested \n targets being updated to those in the VC"
+            )
+            self.targets = virtual_circuit.targets
 
         if targets_obs is None:
             # get the targets from the equilibrium
@@ -387,6 +389,8 @@ class VirtualCircuitSequence:
             self.load_vcs_fromfile()
             # create dictionary of vc times and corresponding index
             self.vc_time_dict = {time: ind for ind, time in enumerate(self.vc_times)}
+            n_vc = len(self.vc_times)
+            print(f"there are {n_vc} VC's loaded")
         else:
             print("No file path provided. Add VC's manually if desired")
 

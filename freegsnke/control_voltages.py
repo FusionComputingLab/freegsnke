@@ -401,47 +401,8 @@ class VirtualCircuitSequence:
         """
         # file extension - hdf5 or csv or ???
         file_ext = (self.vc_path).split(".")[-1]
-        print(file_ext)
-        if file_ext == ("hdf5" or "h5"):
-            # load vcs from hdf5 file
-            print("loading VC's from hdf5 file")
-            with h5py.File(self.vc_path, "r") as f:
-                timestamps = f["timestamps"]
-                timestamp_dict = {time: i for i, time in enumerate(timestamps)}
-
-                # Iterate over stored iterations
-                for iter_key in f.keys():
-                    if iter_key.startswith("time_step"):
-                        group = f[iter_key]
-                        timestamp = group.attrs["time"]
-                        index = group.attrs["index"]
-                        target_names = [name.decode() for name in group["targets"][:]]
-                        coil_names = [name.decode() for name in group["coils"][:]]
-                        shape_mat = group["shape_matrix"][:]
-                        vc_mat = group["vc_matrix"][:]
-                        targets_val = group["targets_val"][:]
-                        input_currents = group["input_currents"][:]
-                        input_profile_pars = group["input_profile_pars"][:]
-
-                        # add vc data to sequence
-                        vc_ojbect = vc.VirtualCircuit(
-                            f"vc_{index}_from_time_{timestamp}",
-                            eq=None,
-                            profiles=None,
-                            shape_matrix=shape_mat,
-                            VCs_matrix=vc_mat,
-                            targets=target_names,
-                            targets_val=targets_val,
-                            targets_options=None,
-                            non_standard_targets=None,
-                            coils=coil_names,
-                        )
-                        self.vc_sequence.append(vc_ojbect)
-                        self.vc_times.append(timestamp)
-                        self.input_currents.append(input_currents)
-                        self.input_profile_pars.append(input_profile_pars)
-
-        elif file_ext == ("pkl" or "pickle"):
+        if file_ext == ("pkl" or "pickle"):
+            print("loading VC's from pickle file")
             # load vcs from pickle file
             with open(self.vc_path, "rb") as fp:
                 vcs_pkl = pickle.load(fp)
@@ -458,7 +419,7 @@ class VirtualCircuitSequence:
                     input_profile_pars = item["input_profile_pars"]
 
                     vc_ojbect = VirtualCircuit(
-                        name=f"vc_{index}_time_from_{timestamp}",
+                        name=f"vc_{index}_time_from_{timestamp:.4f}",
                         eq=None,
                         profiles=None,
                         shape_matrix=shape_matrix,
@@ -475,6 +436,45 @@ class VirtualCircuitSequence:
                     self.vc_index.append(index)
                     self.input_currents.append(input_currents)
                     self.input_profile_pars.append(input_profile_pars)
+
+        # elif file_ext == ("hdf5" or "h5"):
+        #     # load vcs from hdf5 file
+        #     print("loading VC's from hdf5 file")
+        #     with h5py.File(self.vc_path, "r") as f:
+        #         timestamps = f["timestamps"]
+        #         timestamp_dict = {time: i for i, time in enumerate(timestamps)}
+
+        #         # Iterate over stored iterations
+        #         for iter_key in f.keys():
+        #             if iter_key.startswith("time_step"):
+        #                 group = f[iter_key]
+        #                 timestamp = group.attrs["time"]
+        #                 index = group.attrs["index"]
+        #                 target_names = [name.decode() for name in group["targets"][:]]
+        #                 coil_names = [name.decode() for name in group["coils"][:]]
+        #                 shape_mat = group["shape_matrix"][:]
+        #                 vc_mat = group["vc_matrix"][:]
+        #                 targets_val = group["targets_val"][:]
+        #                 input_currents = group["input_currents"][:]
+        #                 input_profile_pars = group["input_profile_pars"][:]
+
+        #                 # add vc data to sequence
+        #                 vc_ojbect = vc.VirtualCircuit(
+        #                     f"vc_{index}_from_time_{timestamp:.4f}",
+        #                     eq=None,
+        #                     profiles=None,
+        #                     shape_matrix=shape_mat,
+        #                     VCs_matrix=vc_mat,
+        #                     targets=target_names,
+        #                     targets_val=targets_val,
+        #                     targets_options=None,
+        #                     non_standard_targets=None,
+        #                     coils=coil_names,
+        #                 )
+        #                 self.vc_sequence.append(vc_ojbect)
+        #                 self.vc_times.append(timestamp)
+        #                 self.input_currents.append(input_currents)
+        #                 self.input_profile_pars.append(input_profile_pars)
 
     def add_vc_to_sequence(self, virtual_circuit, time_stamp):
         """
@@ -500,12 +500,12 @@ class VirtualCircuitSequence:
 
     def retrieve_vc(self, time_stamp=None, time_step=None):
         """
-        Retrieve apropriate virtual circuit object from the sequence of virtual circuits.
+        Retrieve appropriate virtual circuit object from the sequence of virtual circuits.
         prr
 
         Parameters
         ----------
-        time_stamp : float
+        time_stamp : float (4 decimal places)
             time stamp of the virtual circuit to be retrieved
         time_step : int
             index in the sequence of virtual circuits to be retrieved. start at zero
@@ -520,13 +520,15 @@ class VirtualCircuitSequence:
         def find_time_interval_index(times, target_time):
             """
             Finds the index of the interval in which the target_time falls.
+            times array must be ordered.
 
             Parameters:
-            - times (list of float): A sorted list of timestamps.
-            - target_time (float): The time to locate within the intervals.
+            -----------
+            times (list of float): A sorted list of timestamps.
+            target_time (float): The time to locate within the intervals.
 
             Returns:
-            - int: The index of the interval where target_time lies (between times[i] and times[i+1]).
+            int: The index of the interval where target_time lies (between times[i] and times[i+1]).
                 Returns -1 if target_time is out of range.
             """
             if target_time < times[0] or target_time > times[-1]:

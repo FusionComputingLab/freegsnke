@@ -300,7 +300,10 @@ class ControlVoltages:
 
         if targets_obs is None:
             # get the targets from the equilibrium
-            targets_obs = self.VCH.calculate_targets(eq, self.targets)
+            print("observed targets not provided, calculating from equilibrium")
+            _, targets_obs = self.VCH.calculate_targets(eq, self.targets)
+            print(targets_obs)
+
             # check dimensions of target values
         assert len(targets_req) == len(
             targets_obs

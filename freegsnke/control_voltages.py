@@ -399,12 +399,13 @@ class VirtualCircuitSequence:
             virtual circuit object
         """
         # file extension - hdf5 or csv or ???
-        file_ext = (self.path).split(".")[-1]
-        if file_ext == "hdf5" or "h5":
+        file_ext = (self.vc_path).split(".")[-1]
+        print(file_ext)
+        if file_ext == ("hdf5" or "h5"):
             # load vcs from hdf5 file
             print("loading VC's from hdf5 file")
 
-            with h5py.File(self.path, "r") as f:
+            with h5py.File(self.vc_path, "r") as f:
                 timestamps = f["timestamps"]
                 timestamp_dict = {time: i for i, time in enumerate(timestamps)}
 
@@ -443,17 +444,17 @@ class VirtualCircuitSequence:
 
         elif file_ext == "pkl":
             # load vcs from pickle file
-            with open(self.path, "rb") as fp:
+            with open(self.vc_path, "rb") as fp:
                 vcs_pkl = pickle.load(fp)
 
                 for key, item in vcs_pkl.items():
                     index = item["index"]
-                    timestamp = item["timestamp"]
+                    timestamp = item["time"]
                     vc_matrix = item["vc_matrix"]
                     shape_matrix = item["shape_matrix"]
                     targets = item["targets"]
                     coils = item["coils"]
-                    target_vals = item["target_vals"]
+                    targets_val = item["targets_val"]
                     input_currents = item["input_currents"]
                     input_profile_pars = item["input_profile_pars"]
 
@@ -465,7 +466,9 @@ class VirtualCircuitSequence:
                         VCs_matrix=vc_matrix,
                         targets=targets,
                         coils=coils,
-                        target_vals=target_vals,
+                        targets_val=targets_val,
+                        targets_options=None,
+                        non_standard_targets=None,
                     )
 
                     self.vc_sequence.append(vc_ojbect)

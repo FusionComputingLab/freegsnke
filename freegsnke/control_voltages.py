@@ -354,18 +354,18 @@ class ControlVoltages:
 
 class VirtualCircuitSequence:
     """
-    Class to build a virtual circuit objects from either a file, and store the sequence of virtual circuits along with apropriate time stamsp
+    Class to build a virtual circuit objects from file, and store the sequence of virtual circuits along with appropriate time stamsp.
 
     """
 
-    def __init__(self, path):
+    def __init__(self, path=None):
         """
         Initialize the class
 
         Parameters
         ----------
         path : str
-            path to the file containing VC's
+            path to the file containing VC's. Include file extension either hdf5 or pkl.
 
         Returns
         -------
@@ -381,22 +381,23 @@ class VirtualCircuitSequence:
         self.input_currents = []  # list of input current dictionaries
         self.input_profile_pars = []  # list of input profile parameter dictionaries
 
-        # populate the vc_sequence
-        self.load_vcs_fromfile()
-        # create dictionary of vc times and corresponding index
-        self.vc_time_dict = {time: ind for ind, time in enumerate(self.vc_times)}
+        if path is not None:
+            print("loading vcs from file")
+            # populate the vc_sequence
+            self.load_vcs_fromfile()
+            # create dictionary of vc times and corresponding index
+            self.vc_time_dict = {time: ind for ind, time in enumerate(self.vc_times)}
+        else:
+            print("No file path provided. Add VC's manually if desired")
 
     def load_vcs_fromfile(self):
         """
-        ?? what format file will vc be saved in (csv, pickle,hdf5)??
-        ?? what data will be saved (e.g. shape matrix, vcs matrix, targets, coils, etc.)
-
-        Load the virtual circuit, coils and targets from a file, and save as attributes.
+        Load the virtual circuit matrix, shape matrix, coils and targets from a file, and save a list of VC objects.
 
         Returns
         -------
-        virtual_circuit : object
-            virtual circuit object
+        None :
+            Modifies the attributes of the class.
         """
         # file extension - hdf5 or csv or ???
         file_ext = (self.vc_path).split(".")[-1]
@@ -404,7 +405,6 @@ class VirtualCircuitSequence:
         if file_ext == ("hdf5" or "h5"):
             # load vcs from hdf5 file
             print("loading VC's from hdf5 file")
-
             with h5py.File(self.vc_path, "r") as f:
                 timestamps = f["timestamps"]
                 timestamp_dict = {time: i for i, time in enumerate(timestamps)}
@@ -419,8 +419,7 @@ class VirtualCircuitSequence:
                         coil_names = [name.decode() for name in group["coils"][:]]
                         shape_mat = group["shape_matrix"][:]
                         vc_mat = group["vc_matrix"][:]
-                        targ_vals = group["target_values"][:]
-
+                        targets_val = group["targets_val"][:]
                         input_currents = group["input_currents"][:]
                         input_profile_pars = group["input_profile_pars"][:]
 
@@ -432,7 +431,7 @@ class VirtualCircuitSequence:
                             shape_matrix=shape_mat,
                             VCs_matrix=vc_mat,
                             targets=target_names,
-                            targets_val=targ_vals,
+                            targets_val=targets_val,
                             targets_options=None,
                             non_standard_targets=None,
                             coils=coil_names,
@@ -442,7 +441,7 @@ class VirtualCircuitSequence:
                         self.input_currents.append(input_currents)
                         self.input_profile_pars.append(input_profile_pars)
 
-        elif file_ext == "pkl":
+        elif file_ext == ("pkl" or "pickle"):
             # load vcs from pickle file
             with open(self.vc_path, "rb") as fp:
                 vcs_pkl = pickle.load(fp)
@@ -479,12 +478,12 @@ class VirtualCircuitSequence:
 
     def add_vc_to_sequence(self, virtual_circuit, time_stamp):
         """
-        Add virtual circuit to sequence
+        Add virtual circuit to sequence.
 
         Parameters
         ----------
-        vc : np.array
-            virtual circuit matrix
+        virtual_circuit : object
+            virtual circuit object
         time_stamp : float
             time stamp of the virtual circuit
 
@@ -493,14 +492,16 @@ class VirtualCircuitSequence:
         None
             modifies object in place
         """
+        print("adding vc to sequence")
         self.vc_times.append(time_stamp)
         self.vc_sequence.append(virtual_circuit)
-
-        # check ordreing and reorder appropriately
+        # update vc time dictionary
+        self.vc_time_dict = {time: ind for ind, time in enumerate(self.vc_times)}
 
     def retrieve_vc(self, time_stamp=None, time_step=None):
         """
-        Retrieve apropriate virtual circuit object from the sequence of virtual circuits
+        Retrieve apropriate virtual circuit object from the sequence of virtual circuits.
+        prr
 
         Parameters
         ----------

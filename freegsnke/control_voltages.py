@@ -74,7 +74,7 @@ class ControlVoltages:
         # assign coils to default or
         if coils is None:
             print("initilasing with default all active coils")
-            self.coils = self.active_coils
+            self.coils = deepcopy(self.active_coils)
         else:
             print("initilasing with custom coils")
             self.coils = coils
@@ -92,42 +92,6 @@ class ControlVoltages:
         # initialise a VC handling ojbect
         self.VCH = vc.VirtualCircuitHandling()
         self.VCH.define_solver(self.stepping.NK, target_relative_tolerance=1e-7)
-
-    # def get_active_coils(self, eq):
-    #     """
-    #     Retrieve the active coils from the equilibrium object.
-
-    #     set default coils to be used and set the order according to that in the tokamak description
-    #     get all active ones
-    #     assigne reduced set of coils without solenoid and p6 (these voltages will be set via  different method)
-
-    #     Parameters
-    #     ----------
-    #     eq : object
-    #         equilibrium object
-
-    #     Returns
-    #     -------
-    #     active_coils : list
-    #         list of all active coils
-    #     active_coils_reduced : list
-    #         list of default reduced set of active coils with solenoid and p6 removed
-    #     order_dictionary : dict
-    #         dictionary of coil names and their order in the list of all active coils
-    #     """
-
-    #     active_coils = eq.tokamak.coils_list[self.n_active_coils]
-
-    #     self.active_coils = active_coils
-
-    #     print("all active coils", self.active_coils)
-
-    #     # create a dictionary to map coil names to their order in the list
-    #     order_dictionary = {coil: i for i, coil in enumerate(active_coils)}
-    #     self.order_dictionary = order_dictionary
-    #     print("order dictionary", self.order_dictionary)
-
-    #     return active_coils, order_dictionary
 
     def get_inductance_reduced(self, coils=None):
         """
@@ -453,7 +417,7 @@ class VirtualCircuitSequence:
 
         #         # Iterate over stored iterations
         #         for iter_key in f.keys():
-        #             if iter_key.startswith("time_step"):
+        #             if iter_key.startswith("time_index"):
         #                 group = f[iter_key]
         #                 timestamp = group.attrs["time"]
         #                 index = group.attrs["index"]
@@ -505,7 +469,7 @@ class VirtualCircuitSequence:
         # update vc time dictionary
         self.vc_time_dict = {time: ind for ind, time in enumerate(self.vc_times)}
 
-    def retrieve_vc(self, time_stamp=None, time_step=None):
+    def retrieve_vc(self, time_stamp=None, time_index=None):
         """
         Retrieve appropriate virtual circuit object from the sequence of virtual circuits.
         prr
@@ -514,7 +478,7 @@ class VirtualCircuitSequence:
         ----------
         time_stamp : float (4 decimal places)
             time stamp of the virtual circuit to be retrieved
-        time_step : int
+        time_index : int
             index in the sequence of virtual circuits to be retrieved. start at zero
 
         Returns
@@ -551,12 +515,12 @@ class VirtualCircuitSequence:
 
             return -1  # Should never reach this line
 
-        if time_stamp is not None and time_step is None:
+        if time_stamp is not None and time_index is None:
             postition = find_time_interval_index(
                 times=self.vc_times, target_time=time_stamp
             )
-        elif time_stamp is None and time_step is not None:
-            postition = time_step
+        elif time_stamp is None and time_index is not None:
+            postition = time_index
         else:
             print("Please specify either a time stamp or a time step")
             return None

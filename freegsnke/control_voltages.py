@@ -342,8 +342,9 @@ class VirtualCircuitSequence:
         """
         self.vc_path = path  # path to the virtual circuit file
 
-        self.vc_times = []  # list of virtual circuit time stamps
-        self.vc_index = []  # list of virtual circuit indices
+        self.vc_times_calc = []  # times at which vcs are calculated
+        self.vc_times_stop = []  # times at which vcs are to be stopped using
+        self.vc_index = []  #
         self.vc_sequence = []  # list of virtual circuit ojbects
 
         # input currents and profile parameters to recreate eq if needed
@@ -354,9 +355,11 @@ class VirtualCircuitSequence:
             print("loading vcs from file")
             # populate the vc_sequence
             self.load_vcs_fromfile()
-            # create dictionary of vc times and corresponding index
-            self.vc_time_dict = {time: ind for ind, time in enumerate(self.vc_times)}
-            n_vc = len(self.vc_times)
+            # create dictionary of vc times and corresponding index (using stop times)
+            self.vc_time_stop_dict = {
+                time: ind for ind, time in enumerate(self.vc_times_stop)
+            }
+            n_vc = len(self.vc_times_calc)
             print(f"there are {n_vc} VC's loaded")
         else:
             print("No file path provided. Add VC's manually if desired")
@@ -380,7 +383,8 @@ class VirtualCircuitSequence:
 
                 for key, item in vcs_pkl.items():
                     index = item["index"]
-                    timestamp = item["time"]
+                    time_calc = item["time_calc"]
+                    time_stop = item["time_stop"]
                     vc_matrix = item["vc_matrix"]
                     shape_matrix = item["shape_matrix"]
                     targets = item["targets"]
@@ -390,7 +394,7 @@ class VirtualCircuitSequence:
                     input_profile_pars = item["input_profile_pars"]
 
                     vc_ojbect = VirtualCircuit(
-                        name=f"vc_{index}_time_from_{timestamp:.4f}",
+                        name=f"vc_{index}_time_upto_{time_stop:.4f}",
                         eq=None,
                         profiles=None,
                         shape_matrix=shape_matrix,
@@ -403,10 +407,14 @@ class VirtualCircuitSequence:
                     )
 
                     self.vc_sequence.append(vc_ojbect)
-                    self.vc_times.append(timestamp)
+                    self.vc_times_calc.append(time_calc)
+                    self.vc_times_stop.append(time_stop)
                     self.vc_index.append(index)
                     self.input_currents.append(input_currents)
                     self.input_profile_pars.append(input_profile_pars)
+        # convert times to numpy array
+        self.vc_times_stop = np.array(self.vc_times_stop)
+        self.vc_times_calc = np.array(self.vc_times_calc)
 
         # elif file_ext == ("hdf5" or "h5"):
         #     # load vcs from hdf5 file
@@ -447,7 +455,7 @@ class VirtualCircuitSequence:
         #                 self.input_currents.append(input_currents)
         #                 self.input_profile_pars.append(input_profile_pars)
 
-    def add_vc_to_sequence(self, virtual_circuit, time_stamp):
+    def add_vc_to_sequence(self, virtual_circuit, time_stop):
         """
         Add virtual circuit to sequence.
 
@@ -464,7 +472,7 @@ class VirtualCircuitSequence:
             modifies object in place
         """
         print("adding vc to sequence")
-        self.vc_times.append(time_stamp)
+        self.vc_times_stop.append(time_stop)
         self.vc_sequence.append(virtual_circuit)
         # update vc time dictionary
         self.vc_time_dict = {time: ind for ind, time in enumerate(self.vc_times)}
@@ -487,43 +495,32 @@ class VirtualCircuitSequence:
             virtual circuit object to be used by the control voltages class
         """
 
-        # select desired point in sequence
-        def find_time_interval_index(times, target_time):
+        # find index for time stamp
+        def get_index(times, target_time):
             """
             Finds the index of the interval in which the target_time falls.
-            times array must be ordered.
 
-            Parameters:
-            -----------
-            times (list of float): A sorted list of timestamps.
-            target_time (float): The time to locate within the intervals.
-
-            Returns:
-            int: The index of the interval where target_time lies (between times[i] and times[i+1]).
-                Returns -1 if target_time is out of range.
+            returns index or -1 if time beyond range
             """
-            if target_time < times[0] or target_time > times[-1]:
-                return -1  # Out of range
-
-            for i in range(len(times) - 1):
-                if times[i] <= target_time < times[i + 1]:
-                    return i
-
-            # Handle edge case where target_time matches the last timestamp exactly
-            if target_time == times[-1]:
-                return len(times) - 2
-
-            return -1  # Should never reach this line
+            postition = np.sum(self.vc_times_stop < time_stamp)
+            if postition >= len(self.vc_times_stop):
+                return -1
+            else:
+                return postition
 
         if time_stamp is not None and time_index is None:
-            postition = find_time_interval_index(
-                times=self.vc_times, target_time=time_stamp
-            )
+            postition = get_index(self.vc_times_stop, time_stamp)
         elif time_stamp is None and time_index is not None:
             postition = time_index
         else:
             print("Please specify either a time stamp or a time step")
             return None
+        # sanity check outputs
+        # print("VC retrieval : ")
+        # print("times calcs", self.vc_times_calc)
+        # print("times stops", self.vc_times_stop)
+        # print("index", postition)
+        # print("virtual circuit", self.vc_sequence[postition].__dict__)
 
         virual_circuit = self.vc_sequence[postition]
         return virual_circuit

@@ -549,8 +549,12 @@ class TargetSequence:
         """
         self.target_path = path  # path to the target sequence file
 
+        self.target_names = []
+        self.target_vals = []
         self.target_name_dict = {}
         self.target_val_dict = {}
+
+        self.load_target_sequence()
 
     def load_target_sequence(self):
         """
@@ -570,27 +574,29 @@ class TargetSequence:
 
                 n_times = len(target_sequence_pkl.keys())
                 self.target_times = np.zeros(n_times)
-                self.target_names = np.zeros(n_times)
-                self.target_vals = np.zeros(n_times)
 
                 i = 0
                 for key, item in target_sequence_pkl.items():
                     timestamp = item["time"]
                     target_names = item["target_names"]
-                    target_vals = item["target_vals"]
+                    targets_val = item["targets_val"]
+
+                    print(targets_val)
+                    print(type(targets_val))
                     self.target_times[i] = timestamp
-                    self.target_names[i] = target_names
-                    self.target_vals[i] = target_vals
+                    self.target_names.append(target_names)
+                    self.target_vals.append(targets_val)
                     self.target_name_dict[timestamp] = target_names
-                    self.target_val_dict[timestamp] = target_vals
+                    self.target_val_dict[timestamp] = targets_val
                     i += 1
 
             # sort target times and rest of target sequence according to target times
             # needed for doing interpolation
             ind = np.argsort(self.target_times)
+            print("ind mask", ind)
             self.target_times = np.array(self.target_times)[ind]
-            self.target_names = np.array(self.target_names)[ind]
             self.target_vals = np.array(self.target_vals)[ind]
+            self.target_names = [self.target_names[i] for i in ind]
 
         # testing print statments
         print("target times", self.target_times)
@@ -620,6 +626,9 @@ class TargetSequence:
         # linearly interpolate target sequence
         # check target names at time t_i and t_i+1  are the same
         index = np.sum(self.target_times < time_stamp)
+        print("target times ", self.target_times)
+        print("timestamp", time_stamp)
+        print("index", index)
         targets_left = self.target_names[index]
         targets_right = self.target_names[index + 1]
         if targets_left != targets_right:
@@ -632,9 +641,14 @@ class TargetSequence:
 
             return None
 
-        target_values = np.interp(
-            time_stamp, self.target_times, self.target_vals[index]
-        )
+        target_values = [
+            np.interp(time_stamp, self.target_times, self.target_vals[:, j])
+            for j in range(len(self.target_names[index]))
+        ]
+
+        print("target names", self.target_names[index])
+        print("target values", target_values)
+        print("targets left", self.target_vals)
         return target_values, targets_left
 
 

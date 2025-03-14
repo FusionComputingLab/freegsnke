@@ -529,6 +529,118 @@ class VirtualCircuitSequence:
         return virual_circuit
 
 
+class TargetSequence:
+    """
+    Class to build a target sequence from file, and store the sequence of desired targets along with appropriate time stamps.
+
+    Method to return desired target via a linear interpolation of the target sequence.
+
+    """
+
+    def __init__(self, path=None):
+        """
+        Initialize the class
+
+        Parameters
+        ----------
+        path : str
+            path to the file containing target sequence
+
+        Returns
+        -------
+        None
+        """
+        self.target_path = path  # path to the target sequence file
+
+        self.target_name_dict = {}
+        self.target_val_dict = {}
+
+    def load_target_sequence(self):
+        """
+        Load the target sequence from the file.
+
+        Returns
+        -------
+        None
+            Modifies the attributes of the class.
+        """
+        file_ext = (self.target_path).split(".")[-1]
+        if file_ext == ("pkl" or "pickle"):
+            print("loading target sequence from pickle file")
+            # load target sequence from pickle file
+            with open(self.target_path, "rb") as fp:
+                target_sequence_pkl = pickle.load(fp)
+
+                n_times = len(target_sequence_pkl.keys())
+                self.target_times = np.zeros(n_times)
+                self.target_names = np.zeros(n_times)
+                self.target_vals = np.zeros(n_times)
+
+                i = 0
+                for key, item in target_sequence_pkl.items():
+                    timestamp = item["time"]
+                    target_names = item["target_names"]
+                    target_vals = item["target_vals"]
+                    self.target_times[i] = timestamp
+                    self.target_names[i] = target_names
+                    self.target_vals[i] = target_vals
+                    self.target_name_dict[timestamp] = target_names
+                    self.target_val_dict[timestamp] = target_vals
+                    i += 1
+
+            # sort target times and rest of target sequence according to target times
+            # needed for doing interpolation
+            ind = np.argsort(self.target_times)
+            self.target_times = np.array(self.target_times)[ind]
+            self.target_names = np.array(self.target_names)[ind]
+            self.target_vals = np.array(self.target_vals)[ind]
+
+        # testing print statments
+        print("target times", self.target_times)
+        print("target names", self.target_names)
+        print("target vals", self.target_vals)
+        print("target name dict", self.target_name_dict)
+        print("target val dict", self.target_val_dict)
+
+    def retrieve_targets(self, time_stamp):
+        """
+        Retrieve appropriate target sequence from the sequence of target sequences, as linear interpolation between values at two adjacent time stamps.
+
+
+        Parameters
+        ----------
+        time_stamp : float (4 decimal places)
+            time stamp of the target to be retrieved
+
+        Returns
+        -------
+        target_values : array
+            requested target values to be used by the control voltages class
+        target_name : list[str]
+            list of target names
+        """
+
+        # linearly interpolate target sequence
+        # check target names at time t_i and t_i+1  are the same
+        index = np.sum(self.target_times < time_stamp)
+        targets_left = self.target_names[index]
+        targets_right = self.target_names[index + 1]
+        if targets_left != targets_right:
+            print("target names at time t_i and t_i+1 are not the same")
+            print("targets at t_i", targets_left)
+            print("targets at t_i+1", targets_right)
+
+            print("filling in missing target values")
+            ##### do this later - get from vc that is passed in  when this is used???
+
+            return None
+
+        target_values = np.interp(
+            time_stamp, self.target_times, self.target_vals[index]
+        )
+        return target_values, targets_left
+
+
 ### TESTING ###
 # if __name__ == "__main__":
 

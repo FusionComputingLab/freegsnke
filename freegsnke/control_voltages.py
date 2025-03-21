@@ -6,6 +6,7 @@ Module to obtain control voltages from virtual circuits.
 import numpy as np
 from copy import deepcopy
 import pickle
+
 # import h5py
 
 from . import virtual_circuits as vc  # import the virtual circuit class
@@ -65,7 +66,7 @@ class ControlVoltages:
             self.targets = targets
 
         # set coil lists and dictionary for all active coils
-        self.active_coils = self.eq.tokamak.coils_list[:self.n_active_coils]
+        self.active_coils = self.eq.tokamak.coils_list[: self.n_active_coils]
 
         # create a dictionary to map coil names to their order in the list
         order_dictionary = {coil: i for i, coil in enumerate(self.active_coils)}
@@ -328,20 +329,20 @@ class VirtualCircuitSequence:
 
     """
 
-    def __init__(self, path=None):
+    def __init__(self, sequence_path=None):
         """
         Initialise the class
 
         Parameters
         ----------
-        path : str
-            path to the file containing VC's. Include file extension either hdf5 or pkl.
+        sequence_path : str
+            sequence_path to the file containing VC's. Include file extension either hdf5 or pkl.
 
         Returns
         -------
         None
         """
-        self.vc_path = path  # path to the virtual circuit file
+        self.vc_path = sequence_path  # sequence_path to the virtual circuit file
 
         self.vc_times_calc = []  # times at which vcs are calculated
         self.vc_times_stop = []  # times at which vcs are to be stopped using
@@ -352,7 +353,7 @@ class VirtualCircuitSequence:
         self.input_currents = []  # list of input current dictionaries
         self.input_profile_pars = []  # list of input profile parameter dictionaries
 
-        if path is not None:
+        if sequence_path is not None:
             print("loading vcs from file")
             # populate the vc_sequence
             self.load_vcs_fromfile()
@@ -363,7 +364,7 @@ class VirtualCircuitSequence:
             n_vc = len(self.vc_times_calc)
             print(f"there are {n_vc} VC's loaded")
         else:
-            print("No file path provided. Add VC's manually if desired")
+            print("No file sequence_path provided. Add VC's manually if desired")
 
     def load_vcs_fromfile(self):
         """
@@ -499,11 +500,12 @@ class VirtualCircuitSequence:
         def get_index(times, target_time):
             """
             Finds the index of the interval in which the target_time falls.
+            times  is list of times at which vcs are to be stopped being used.
 
             returns index or -1 if time beyond range
             """
-            position = np.sum(self.vc_times_stop < time_stamp)
-            if position >= len(self.vc_times_stop):
+            position = np.sum(times < target_time)
+            if position >= len(times):
                 return -1
             else:
                 return position
@@ -526,7 +528,7 @@ class VirtualCircuitSequence:
         return virtual_circuit
 
 
-class TargetSequence:
+class TargetSequencer:
     """
     Class to build a target sequence from file, and store the sequence of desired targets along with appropriate time stamps.
 
@@ -534,7 +536,7 @@ class TargetSequence:
 
     """
 
-    def __init__(self, path=None):
+    def __init__(self, sequence_path, schedule_path):
         """
         Initialise the class
 
@@ -547,7 +549,11 @@ class TargetSequence:
         -------
         None
         """
-        self.target_path = path  # path to the target sequence file
+        self.target_sequence_path = sequence_path  # path to the target sequence file
+        self.target_schedule_path = schedule_path
+
+        # load schedule
+        self.target_schedule = self.load_target_schedule(self.target_schedule_path)
 
         self.target_names = []
         self.target_vals = []
@@ -555,6 +561,68 @@ class TargetSequence:
         self.target_val_dict = {}
 
         self.load_target_sequence()
+
+    def load_target_schedule(self, path):
+        """
+        Load the target schedule from the file. File should be a dictionary of lists of targets, indexed by times at which to start controlling that set of targets
+        dict ~ {t_1_start : [targets], ..., }
+
+
+        Parameters
+        ----------
+        path : str
+            path to the file containing target schedule
+
+        Returns
+        -------
+        None
+            Modifies the attributes of the class.
+        """
+        self.target_schedule_dict = {}
+
+        file_ext = (path).split(".")[-1]
+        if file_ext == ("pkl" or "pickle"):
+            print("loading target schedule from pickle file")
+            # load target sequence from pickle file
+            with open(path, "rb") as fp:
+                target_schedule_pkl = pickle.load(fp)
+
+                self.target_schedule_times = list[target_schedule_pkl.keys()].sort()
+                print(self.target_schedule_times)
+
+                for key, item in target_schedule_pkl.items():
+                    self.target_schedule_dict[key] = (
+                        item  # add  list of targets to dictionary
+                    )
+        print("target schedule dict", self.target_schedule_dict)
+        return self.target_schedule_dict
+
+    def retrieve_controlled_targets(self, time_stamp):
+        """
+        Retrieve the list of targets to be controlled at a given time, given target schedule.
+
+        Parameters
+        ----------
+        time_stamp : float (4 decimal places)
+            time stamp of the target to be retrieved
+
+        Returns
+        -------
+        target_names : list[str]
+            list of target names
+        """
+        # find index for time stamp
+        index = (
+            np.sum(self.target_schedule_times < time_stamp) - 1
+        )  # subtract 1 to get index of t_start
+        if index == -1:
+            print("time reqquested is before first target schedule time")
+
+        else:
+            print("index", index)
+            target_names = self.target_schedule_dict[self.target_schedule_times[index]]
+            print("targets being controlled now are", target_names)
+            return target_names
 
     def load_target_sequence(self):
         """
@@ -565,11 +633,11 @@ class TargetSequence:
         None
             Modifies the attributes of the class.
         """
-        file_ext = (self.target_path).split(".")[-1]
+        file_ext = (self.target_sequence_path).split(".")[-1]
         if file_ext == ("pkl" or "pickle"):
             print("loading target sequence from pickle file")
             # load target sequence from pickle file
-            with open(self.target_path, "rb") as fp:
+            with open(self.target_sequence_path, "rb") as fp:
                 target_sequence_pkl = pickle.load(fp)
 
                 n_times = len(target_sequence_pkl.keys())

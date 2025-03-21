@@ -549,12 +549,12 @@ class TargetSequencer:
         -------
         None
         """
-        self.target_sequence_path = sequence_path  # path to the target sequence file
-        self.target_schedule_path = schedule_path
+        self.sequence_path = sequence_path  # path to the target sequence file
+        self.schedule_path = schedule_path
 
         # load schedule
-        self.target_schedule = self.load_target_schedule(self.target_schedule_path)
-
+        self.target_schedule = self.load_target_schedule(self.schedule_path)
+        # load target time series'
         self.load_target_sequence(self.sequence_path)
 
     def load_target_schedule(self, path):
@@ -581,14 +581,15 @@ class TargetSequencer:
             # load target sequence from pickle file
             with open(path, "rb") as fp:
                 target_schedule_pkl = pickle.load(fp)
-
-                self.target_schedule_times = list[target_schedule_pkl.keys()].sort()
-                print(self.target_schedule_times)
+                times = list(target_schedule_pkl.keys())
+                times.sort()
+                self.target_schedule_times = np.array(times)
 
                 for key, item in target_schedule_pkl.items():
                     self.target_schedule_dict[key] = (
                         item  # add  list of targets to dictionary
                     )
+        print("target schedule times", self.target_schedule_times)
         print("target schedule dict", self.target_schedule_dict)
         return self.target_schedule_dict
 
@@ -611,7 +612,7 @@ class TargetSequencer:
             np.sum(self.target_schedule_times < time_stamp) - 1
         )  # subtract 1 to get index of t_start
         if index == -1:
-            print("time reqquested is before first target schedule time")
+            print("time requested is before first target schedule time")
 
         else:
             print("index", index)
@@ -664,8 +665,8 @@ class TargetSequencer:
             [
                 np.interp(
                     time_stamp,
-                    self.target_schedule_dict[targ]["times"],
-                    self.target_schedule_dict[targ]["vals"],
+                    self.target_sequence[targ]["times"],
+                    self.target_sequence[targ]["vals"],
                 )
                 for targ in controlled_targets
             ]

@@ -555,12 +555,7 @@ class TargetSequencer:
         # load schedule
         self.target_schedule = self.load_target_schedule(self.target_schedule_path)
 
-        self.target_names = []
-        self.target_vals = []
-        self.target_name_dict = {}
-        self.target_val_dict = {}
-
-        self.load_target_sequence()
+        self.load_target_sequence(self.sequence_path)
 
     def load_target_schedule(self, path):
         """
@@ -624,56 +619,31 @@ class TargetSequencer:
             print("targets being controlled now are", target_names)
             return target_names
 
-    def load_target_sequence(self):
+    def load_target_sequence(self, path):
         """
-        Load the target sequence from the file.
+        Load the target sequence from the file, and store it in a nested dictionary.
+        dict ~ {target_name : {"times":[time list], "vals": [vals list] , }
+
+        Parameters
+        ----------
+        path : str
+            path to the file containing target sequence
 
         Returns
         -------
         None
             Modifies the attributes of the class.
         """
-        file_ext = (self.target_sequence_path).split(".")[-1]
+
+        file_ext = (path).split(".")[-1]
         if file_ext == ("pkl" or "pickle"):
             print("loading target sequence from pickle file")
             # load target sequence from pickle file
-            with open(self.target_sequence_path, "rb") as fp:
+            with open(path, "rb") as fp:
                 target_sequence_pkl = pickle.load(fp)
+                self.target_sequence = target_sequence_pkl  # assign dictionary of target sequences to class
 
-                n_times = len(target_sequence_pkl.keys())
-                self.target_times = np.zeros(n_times)
-
-                i = 0
-                for key, item in target_sequence_pkl.items():
-                    timestamp = item["time"]
-                    target_names = item["target_names"]
-                    targets_val = item["targets_val"]
-
-                    print(targets_val)
-                    print(type(targets_val))
-                    self.target_times[i] = timestamp
-                    self.target_names.append(target_names)
-                    self.target_vals.append(targets_val)
-                    self.target_name_dict[timestamp] = target_names
-                    self.target_val_dict[timestamp] = targets_val
-                    i += 1
-
-            # sort target times and rest of target sequence according to target times
-            # needed for doing interpolation
-            ind = np.argsort(self.target_times)
-            print("ind mask", ind)
-            self.target_times = np.array(self.target_times)[ind]
-            self.target_vals = np.array(self.target_vals)[ind]
-            self.target_names = [self.target_names[i] for i in ind]
-
-        # testing print statements
-        print("target times", self.target_times)
-        print("target names", self.target_names)
-        print("target vals", self.target_vals)
-        print("target name dict", self.target_name_dict)
-        print("target val dict", self.target_val_dict)
-
-    def retrieve_targets(self, time_stamp):
+    def desired_target_values(self, time_stamp):
         """
         Retrieve appropriate target sequence from the sequence of target sequences, as linear interpolation between values at two adjacent time stamps.
 
@@ -685,39 +655,22 @@ class TargetSequencer:
 
         Returns
         -------
-        target_values : array
-            requested target values to be used by the control voltages class
-        target_name : list[str]
-            list of target names
+        ????????
         """
+        # get set of targets being controlled at this time
+        controlled_targets = self.retrieve_controlled_targets(time_stamp)
 
-        # linearly interpolate target sequence
-        # check target names at time t_i and t_i+1  are the same
-        index = np.sum(self.target_times < time_stamp)
-        print("target times ", self.target_times)
-        print("timestamp", time_stamp)
-        print("index", index)
-        targets_left = self.target_names[index]
-        targets_right = self.target_names[index + 1]
-        if targets_left != targets_right:
-            print("target names at time t_i and t_i+1 are not the same")
-            print("targets at t_i", targets_left)
-            print("targets at t_i+1", targets_right)
-
-            print("filling in missing target values")
-            ##### do this later - get from vc that is passed in  when this is used???
-
-            return None
-
-        target_values = [
-            np.interp(time_stamp, self.target_times, self.target_vals[:, j])
-            for j in range(len(self.target_names[index]))
-        ]
-
-        print("target names", self.target_names[index])
-        print("target values", target_values)
-        print("targets left", self.target_vals)
-        return target_values, targets_left
+        target_values = np.array(
+            [
+                np.interp(
+                    time_stamp,
+                    self.target_schedule_dict[targ]["times"],
+                    self.target_schedule_dict[targ]["vals"],
+                )
+                for targ in controlled_targets
+            ]
+        )
+        return target_values
 
 
 ### TESTING ###

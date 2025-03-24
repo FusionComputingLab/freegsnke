@@ -245,7 +245,7 @@ class Jtor_universal:
         )
         refined_jtor = refined_jtor.reshape(
             -1, self.jtor_refiner.nnx, self.jtor_refiner.nny
-        ) / (self.jtor_refiner.nnx * self.jtor_refiner.nny)
+        )
         self.jtor = self.jtor_refiner.build_from_refined_jtor(
             self.pure_jtor, refined_jtor
         )

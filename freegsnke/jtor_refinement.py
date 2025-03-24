@@ -30,19 +30,30 @@ class Jtor_refiner:
 
         self.nnx = nnx
         self.nny = nny
+        self.hnnx = nnx // 2
+        self.hnny = nny // 2
+        self.nnxy = nnx * nny
 
         self.path = eq.limiter_handler.path
         self.prepare_for_refinement()
+
+        self.edges_mask = np.ones_like(eq.R)
+        self.edges_mask[0, :] = 0
+        self.edges_mask[:, 0] = 0
+        self.edges_mask[-1, :] = 0
+        self.edges_mask[:, -1] = 0
 
     def prepare_for_refinement(
         self,
     ):
         """Prepares necessary quantities to operate refinement."""
-        self.Ridx = np.tile(np.arange(self.nx - 1), (self.ny - 1, 1)).T
-        self.Zidx = np.tile(np.arange(self.ny - 1), (self.nx - 1, 1))
+        self.Ridx = np.tile(np.arange(self.nx), (self.ny, 1)).T
+        self.Zidx = np.tile(np.arange(self.ny), (self.nx, 1))
 
         self.xx = np.linspace(0, 1 - 1 / self.nnx, self.nnx) + 1 / (2 * self.nnx)
         self.yy = np.linspace(0, 1 - 1 / self.nny, self.nny) + 1 / (2 * self.nny)
+        self.xxc = self.xx - 0.5
+        self.yyc = self.yy - 0.5
 
         self.xxx = np.concatenate(
             (1 - self.xx[:, np.newaxis], self.xx[:, np.newaxis]), axis=-1
@@ -50,17 +61,37 @@ class Jtor_refiner:
         self.yyy = np.concatenate(
             (1 - self.yy[:, np.newaxis], self.yy[:, np.newaxis]), axis=-1
         )
+        self.xxxx = np.concatenate(
+            (
+                self.xxx[np.newaxis, : self.hnnx],
+                self.xxx[np.newaxis, self.hnnx :],
+                self.xxx[np.newaxis, self.hnnx :],
+                self.xxx[np.newaxis, : self.hnnx],
+            ),
+            axis=0,
+        )
+        self.yyyy = np.concatenate(
+            (
+                self.yyy[np.newaxis, : self.hnnx],
+                self.yyy[np.newaxis, : self.hnnx],
+                self.yyy[np.newaxis, self.hnnx :],
+                self.yyy[np.newaxis, self.hnnx :],
+            ),
+            axis=0,
+        )
 
         fullr = np.tile(
-            (self.eqR[:, :, np.newaxis] + self.dR * self.xx[np.newaxis, np.newaxis, :])[
-                :, :, :, np.newaxis
-            ],
+            (
+                self.eqR[:, :, np.newaxis]
+                + self.dR * self.xxc[np.newaxis, np.newaxis, :]
+            )[:, :, :, np.newaxis],
             [1, 1, 1, self.nny],
         )
         fullz = np.tile(
-            (self.eqZ[:, :, np.newaxis] + self.dZ * self.yy[np.newaxis, np.newaxis, :])[
-                :, :, np.newaxis, :
-            ],
+            (
+                self.eqZ[:, :, np.newaxis]
+                + self.dZ * self.yyc[np.newaxis, np.newaxis, :]
+            )[:, :, np.newaxis, :],
             [1, 1, self.nnx, 1],
         )
         fullg = np.concatenate(
@@ -72,10 +103,10 @@ class Jtor_refiner:
 
         srr, szz = np.meshgrid(np.arange(self.nnx), np.arange(self.nny), indexing="ij")
         quartermasks = np.zeros((self.nnx, self.nny, 4))
-        quartermasks[:, :, 0] = (srr < (self.nnx / 2)) * (szz < (self.nny / 2))
-        quartermasks[:, :, 1] = (srr >= (self.nnx / 2)) * (szz < (self.nny / 2))
-        quartermasks[:, :, 3] = (srr < (self.nnx / 2)) * (szz >= (self.nny / 2))
-        quartermasks[:, :, 2] = (srr >= (self.nnx / 2)) * (szz >= (self.nny / 2))
+        quartermasks[:, :, 2] = (srr < (self.nnx / 2)) * (szz < (self.nny / 2))
+        quartermasks[:, :, 3] = (srr >= (self.nnx / 2)) * (szz < (self.nny / 2))
+        quartermasks[:, :, 1] = (srr < (self.nnx / 2)) * (szz >= (self.nny / 2))
+        quartermasks[:, :, 0] = (srr >= (self.nnx / 2)) * (szz >= (self.nny / 2))
         self.quartermasks = quartermasks
 
     def get_indexes_for_refinement(self, mask_to_refine):
@@ -97,40 +128,166 @@ class Jtor_refiner:
             (
                 np.concatenate(
                     (
-                        self.Ridx[mask_to_refine][:, np.newaxis],
-                        self.Ridx[mask_to_refine][:, np.newaxis],
+                        np.concatenate(
+                            (
+                                self.Ridx[mask_to_refine][:, np.newaxis],
+                                self.Ridx[mask_to_refine][:, np.newaxis],
+                            ),
+                            axis=-1,
+                        )[:, np.newaxis, :],
+                        np.concatenate(
+                            (
+                                self.Ridx[mask_to_refine][:, np.newaxis] + 1,
+                                self.Ridx[mask_to_refine][:, np.newaxis] + 1,
+                            ),
+                            axis=-1,
+                        )[:, np.newaxis, :],
                     ),
-                    axis=-1,
-                )[:, np.newaxis, :],
+                    axis=1,
+                )[:, np.newaxis, :, :],
                 np.concatenate(
                     (
-                        self.Ridx[mask_to_refine][:, np.newaxis] + 1,
-                        self.Ridx[mask_to_refine][:, np.newaxis] + 1,
+                        np.concatenate(
+                            (
+                                self.Ridx[mask_to_refine][:, np.newaxis] - 1,
+                                self.Ridx[mask_to_refine][:, np.newaxis] - 1,
+                            ),
+                            axis=-1,
+                        )[:, np.newaxis, :],
+                        np.concatenate(
+                            (
+                                self.Ridx[mask_to_refine][:, np.newaxis],
+                                self.Ridx[mask_to_refine][:, np.newaxis],
+                            ),
+                            axis=-1,
+                        )[:, np.newaxis, :],
                     ),
-                    axis=-1,
-                )[:, np.newaxis, :],
+                    axis=1,
+                )[:, np.newaxis, :, :],
+                np.concatenate(
+                    (
+                        np.concatenate(
+                            (
+                                self.Ridx[mask_to_refine][:, np.newaxis] - 1,
+                                self.Ridx[mask_to_refine][:, np.newaxis] - 1,
+                            ),
+                            axis=-1,
+                        )[:, np.newaxis, :],
+                        np.concatenate(
+                            (
+                                self.Ridx[mask_to_refine][:, np.newaxis],
+                                self.Ridx[mask_to_refine][:, np.newaxis],
+                            ),
+                            axis=-1,
+                        )[:, np.newaxis, :],
+                    ),
+                    axis=1,
+                )[:, np.newaxis, :, :],
+                np.concatenate(
+                    (
+                        np.concatenate(
+                            (
+                                self.Ridx[mask_to_refine][:, np.newaxis],
+                                self.Ridx[mask_to_refine][:, np.newaxis],
+                            ),
+                            axis=-1,
+                        )[:, np.newaxis, :],
+                        np.concatenate(
+                            (
+                                self.Ridx[mask_to_refine][:, np.newaxis] + 1,
+                                self.Ridx[mask_to_refine][:, np.newaxis] + 1,
+                            ),
+                            axis=-1,
+                        )[:, np.newaxis, :],
+                    ),
+                    axis=1,
+                )[:, np.newaxis, :, :],
             ),
             axis=1,
         )
+
         ZZidxs = np.concatenate(
             (
                 np.concatenate(
                     (
-                        self.Zidx[mask_to_refine][:, np.newaxis],
-                        self.Zidx[mask_to_refine][:, np.newaxis] + 1,
+                        np.concatenate(
+                            (
+                                self.Zidx[mask_to_refine][:, np.newaxis],
+                                self.Zidx[mask_to_refine][:, np.newaxis] + 1,
+                            ),
+                            axis=-1,
+                        )[:, np.newaxis, :],
+                        np.concatenate(
+                            (
+                                self.Zidx[mask_to_refine][:, np.newaxis],
+                                self.Zidx[mask_to_refine][:, np.newaxis] + 1,
+                            ),
+                            axis=-1,
+                        )[:, np.newaxis, :],
                     ),
-                    axis=-1,
-                )[:, np.newaxis, :],
+                    axis=1,
+                )[:, np.newaxis, :, :],
                 np.concatenate(
                     (
-                        self.Zidx[mask_to_refine][:, np.newaxis],
-                        self.Zidx[mask_to_refine][:, np.newaxis] + 1,
+                        np.concatenate(
+                            (
+                                self.Zidx[mask_to_refine][:, np.newaxis],
+                                self.Zidx[mask_to_refine][:, np.newaxis] + 1,
+                            ),
+                            axis=-1,
+                        )[:, np.newaxis, :],
+                        np.concatenate(
+                            (
+                                self.Zidx[mask_to_refine][:, np.newaxis],
+                                self.Zidx[mask_to_refine][:, np.newaxis] + 1,
+                            ),
+                            axis=-1,
+                        )[:, np.newaxis, :],
                     ),
-                    axis=-1,
-                )[:, np.newaxis, :],
+                    axis=1,
+                )[:, np.newaxis, :, :],
+                np.concatenate(
+                    (
+                        np.concatenate(
+                            (
+                                self.Zidx[mask_to_refine][:, np.newaxis] - 1,
+                                self.Zidx[mask_to_refine][:, np.newaxis],
+                            ),
+                            axis=-1,
+                        )[:, np.newaxis, :],
+                        np.concatenate(
+                            (
+                                self.Zidx[mask_to_refine][:, np.newaxis] - 1,
+                                self.Zidx[mask_to_refine][:, np.newaxis],
+                            ),
+                            axis=-1,
+                        )[:, np.newaxis, :],
+                    ),
+                    axis=1,
+                )[:, np.newaxis, :, :],
+                np.concatenate(
+                    (
+                        np.concatenate(
+                            (
+                                self.Zidx[mask_to_refine][:, np.newaxis] - 1,
+                                self.Zidx[mask_to_refine][:, np.newaxis],
+                            ),
+                            axis=-1,
+                        )[:, np.newaxis, :],
+                        np.concatenate(
+                            (
+                                self.Zidx[mask_to_refine][:, np.newaxis] - 1,
+                                self.Zidx[mask_to_refine][:, np.newaxis],
+                            ),
+                            axis=-1,
+                        )[:, np.newaxis, :],
+                    ),
+                    axis=1,
+                )[:, np.newaxis, :, :],
             ),
             axis=1,
         )
+
         return RRidxs, ZZidxs
 
     def build_jtor_value_mask(self, unrefined_jtor, threshold, quantiles=(0.5, 0.9)):
@@ -164,20 +321,50 @@ class Jtor_refiner:
         thresholds : float
             the relevant value (in the tuple) used to identify where to apply refinement
         """
+        gradient_mask = np.zeros_like(unrefined_jtor)
 
         # right
-        gradient_mask = (unrefined_jtor[:-1, :-1] - unrefined_jtor[1:, :-1]) ** 2
-        # up
-        gradient_mask += (unrefined_jtor[:-1, :-1] - unrefined_jtor[:-1, 1:]) ** 2
-        # up-right
-        gradient_mask += (unrefined_jtor[:-1, :-1] - unrefined_jtor[1:, 1:]) ** 2
-
-        gradient_mask = gradient_mask**0.5
-
-        self.gradient_mask = self.build_jtor_value_mask(
-            gradient_mask, threshold, quantiles
+        right_gradient = np.abs(unrefined_jtor[:-1, :-1] - unrefined_jtor[1:, :-1])
+        right_gradient = self.build_jtor_value_mask(
+            right_gradient, threshold, quantiles
         )
-        return self.gradient_mask
+        # include both indexes in refinement:
+        gradient_mask[:-1, :-1] += right_gradient
+        gradient_mask[1:, :-1] += right_gradient
+
+        # up
+        up_gradient = np.abs(unrefined_jtor[:-1, :-1] - unrefined_jtor[:-1, 1:])
+        up_gradient = self.build_jtor_value_mask(up_gradient, threshold, quantiles)
+        # include both indexes in refinement:
+        gradient_mask[:-1, :-1] += up_gradient
+        gradient_mask[:-1, 1:] += up_gradient
+
+        return gradient_mask > 0
+
+    def build_LCFS_mask(self, core_mask):
+        """Builds a mask composed of all gridpoints connected to edges crossed by the LCFS.
+        These trigger refinement.
+
+        Parameters
+        ----------
+        core_mask : np.array
+            Plasma core mask on the standard domain (self.nx, self.ny)
+        """
+
+        core_mask = core_mask.astype(float)
+        lcfs_mask = np.zeros_like(core_mask)
+        # right
+        right_mask = core_mask[:-1, :] + core_mask[1:, :] == 1
+        # include both indexes in refinement:
+        lcfs_mask[:-1, :] += right_mask
+        lcfs_mask[1:, :] += right_mask
+        # up
+        up_mask = core_mask[:, :-1] + core_mask[:, 1:] == 1
+        # include both indexes in refinement:
+        lcfs_mask[:, :-1] += up_mask
+        lcfs_mask[:, 1:] += up_mask
+
+        return lcfs_mask
 
     def build_mask_to_refine(self, unrefined_jtor, core_mask, thresholds):
         """Selects the cells that need to be refined, using the user-defined thresholds
@@ -192,26 +379,27 @@ class Jtor_refiner:
             tuple of values used to identify where to apply refinement, by default None
         """
 
+        mask_to_refine = np.zeros_like(unrefined_jtor)
+
         # include all cells that are crossed by the lcfs:
-        core_mask = core_mask.astype(float)
-        mask_to_refine = (
-            core_mask[:-1, :-1]
-            + core_mask[1:, :-1]
-            + core_mask[:-1, 1:]
-            + core_mask[1:, 1:]
-        )
-        self.mask_to_refine = (mask_to_refine > 0) * (mask_to_refine < 4)
+        self.lcfs_mask = self.build_LCFS_mask(core_mask)
+        mask_to_refine += self.lcfs_mask
 
         # include cells that warrant refinement according to criterion on jtor value:
-        value_mask = self.build_jtor_value_mask(unrefined_jtor, thresholds[0])
-        self.mask_to_refine += value_mask[:-1, :-1]
+        self.value_mask = self.build_jtor_value_mask(unrefined_jtor, thresholds[0])
+        mask_to_refine += self.value_mask
 
         # include cells that warrant refinement according to criterion on gradient value:
-        self.mask_to_refine += self.build_jtor_gradient_mask(
+        self.gradient_mask = self.build_jtor_gradient_mask(
             unrefined_jtor, thresholds[1]
         )
+        mask_to_refine += self.gradient_mask
 
-        self.mask_to_refine = self.mask_to_refine.astype(bool)
+        # remove all edges, as these cannot be refined
+        mask_to_refine *= self.edges_mask
+
+        # make bool mask
+        self.mask_to_refine = mask_to_refine.astype(bool)
 
     def build_bilinear_psi_interp(self, psi, core_mask, unrefined_jtor, thresholds):
         """Builds the mask of cells on which to operate refinement.
@@ -231,31 +419,41 @@ class Jtor_refiner:
         """
 
         self.build_mask_to_refine(unrefined_jtor, core_mask, thresholds)
-        # this is a vector of Rvalues in the refined cells
+
+        # this is a vector of R values at the refined calculation points
         refined_R = np.tile(
             (
                 self.eqR[self.Ridx[self.mask_to_refine], 0][:, np.newaxis]
-                + self.dR * self.xx[np.newaxis, :]
+                + self.dR * self.xxc[np.newaxis, :]
             )[:, :, np.newaxis],
             (1, 1, self.nny),
         )
+
+        # build refined psi
+        # get indexes to build psi for bilinear interp
         RRidxs, ZZidxs = self.get_indexes_for_refinement(self.mask_to_refine)
-        # this is psi on the 4 vertices of the grids to refine
+        # this is psi on the vertices as needed for each grid point to be refined
         psi_where_needed = psi[RRidxs, ZZidxs]
-        # R_where_needed = self.eqR[RRidxs,ZZidxs]
-        # this is psi refined in the cells
+        # this is psi refined at the refined calculation points
         bilinear_psi = np.sum(
             np.sum(
-                psi_where_needed[:, :, np.newaxis, :]
-                * self.yyy[np.newaxis, np.newaxis],
+                psi_where_needed[:, :, np.newaxis, :, :]
+                * self.yyyy[np.newaxis, :, :, np.newaxis, :],
                 -1,
-            )[:, np.newaxis, :, :]
-            * self.xxx[np.newaxis, :, :, np.newaxis],
-            axis=-2,
+            )[:, :, np.newaxis, :, :]
+            * self.xxxx[np.newaxis, :, :, np.newaxis, :],
+            axis=-1,
         )
-        # this is a vector of Rvalues in the refined cells
-        # refined_R = np.sum(np.sum(R_where_needed[:,:,np.newaxis,:]*self.yyy[np.newaxis, np.newaxis], -1)[:,np.newaxis,:,:]*self.xxx[np.newaxis,:,:, np.newaxis], axis=-2)
-        return bilinear_psi, refined_R
+        # reformat so to have same structure as refined_R
+        format_bilinear_psi = np.zeros(
+            (np.sum(self.mask_to_refine), self.nnx, self.nny)
+        )
+        format_bilinear_psi[:, self.hnnx :, self.hnny :] = bilinear_psi[:, 0]
+        format_bilinear_psi[:, : self.hnnx, self.hnny :] = bilinear_psi[:, 1]
+        format_bilinear_psi[:, : self.hnnx :, : self.hnny] = bilinear_psi[:, 2]
+        format_bilinear_psi[:, self.hnnx :, : self.hnny] = bilinear_psi[:, 3]
+
+        return format_bilinear_psi, refined_R
 
     def build_from_refined_jtor(self, unrefined_jtor, refined_jtor):
         """Averages the refined maps to the (nx, ny) domain grid.
@@ -272,33 +470,20 @@ class Jtor_refiner:
         -------
         Refined jtor on the (nx, ny) domain grid
         """
-        # mask refined sub-cells outside the limiter
+        # mask out refinement points that are outside the limiter
         masked_refined_jtor = (
             refined_jtor
             * self.full_masks[
                 self.Ridx[self.mask_to_refine], self.Zidx[self.mask_to_refine], :, :
             ]
         )
-        # average refined jtor on quarters
-        refined_jtor_on_quarters = np.sum(
-            masked_refined_jtor[:, :, :, np.newaxis]
-            * self.quartermasks[np.newaxis, :, :, :],
-            axis=(1, 2),
+        # average in each refinement region
+        masked_refined_jtor = np.sum(masked_refined_jtor, axis=(1, 2)) / self.nnxy
+
+        # assign to jtor
+        jtor = 1.0 * unrefined_jtor
+        jtor[self.Ridx[self.mask_to_refine], self.Zidx[self.mask_to_refine]] = (
+            masked_refined_jtor
         )
-        # explode the unrefined jtor on corresponding quarters
-        jtor_on_quarters = np.tile(unrefined_jtor[:, :, np.newaxis], [1, 1, 4]) / 4
-        # assign the refined averages to the corresponding grid cells
-        jtor_on_quarters[
-            self.Ridx[self.mask_to_refine], self.Zidx[self.mask_to_refine], 0
-        ] = refined_jtor_on_quarters[:, 0]
-        jtor_on_quarters[
-            self.Ridx[self.mask_to_refine] + 1, self.Zidx[self.mask_to_refine], 1
-        ] = refined_jtor_on_quarters[:, 1]
-        jtor_on_quarters[
-            self.Ridx[self.mask_to_refine] + 1, self.Zidx[self.mask_to_refine] + 1, 2
-        ] = refined_jtor_on_quarters[:, 2]
-        jtor_on_quarters[
-            self.Ridx[self.mask_to_refine], self.Zidx[self.mask_to_refine] + 1, 3
-        ] = refined_jtor_on_quarters[:, 3]
-        self.jtor_on_quarters = 1.0 * jtor_on_quarters
-        return np.sum(jtor_on_quarters, axis=-1)
+
+        return jtor

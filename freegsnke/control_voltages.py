@@ -369,6 +369,11 @@ class TargetSequencer:
             # load target sequence from pickle file
             with open(path, "rb") as fp:
                 target_sequence_pkl = pickle.load(fp)
+                for key, item in target_sequence_pkl.items():
+                    if len(item["times"]) != len(item["vals"]):
+                        raise ValueError(
+                            "times array and vals array must be same length"
+                        )
                 self.target_sequence = target_sequence_pkl  # assign dictionary of target sequences to class
 
     def desired_target_values(self, time_stamp):

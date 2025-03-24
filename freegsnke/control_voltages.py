@@ -212,6 +212,46 @@ class TargetSequencer:
             self.vc_sequencer = VirtualCircuitSequence(self.vc_sequence_path)
 
             # add check to see if targets in VC's match targets in target schedule
+            # merge the time sequence from both target and vc, and check the targets match at each midpiont.
+            print("checking target schedule and vc sequence")
+            change_times = np.sort(
+                np.concatenate(
+                    (
+                        self.target_schedule_times,
+                        self.vc_sequencer.vc_times_stop,
+                    )
+                )
+            )
+            midpoints = (change_times[:-1] + change_times[1:]) / 2
+            for i, midpoint in enumerate(midpoints):
+                vc_targs = self.vc_sequencer.retrieve_vc(time_stamp=midpoint).targets
+                controlled_targs = self.retrieve_controlled_targets(time_stamp=midpoint)
+                # if vc.targets != self.retrieve_controlled_targets(time_stamp=midpoint):
+                #     print(
+                #         "target schedule and vc sequence do not match at time", midpoint
+                #     )
+                #     print("target schedule", self.target_schedule_dict[midpoint])
+                #     print(
+                #         "vc sequence",
+                #         self.vc_sequencer.retrieve_vc(time_stamp=midpoint).targets,
+                #     )
+                #     raise ValueError(
+                #         "target schedule and vc sequence do not match at time", midpoint
+                # )
+
+                # check that the target schedule is a subset of the vc sequence
+                if not set(controlled_targs).issubset(set(vc_targs)):
+                    raise ValueError(
+                        "targets scheduled not a subset of vc computable targets at time ",
+                        midpoint,
+                    )
+                else:
+                    # check the order of the targets
+                    print("checking order of targets")
+                    print("controlled targets")
+                    print(controlled_targs)
+                    print("VC available targets")
+                    print(vc_targs)
 
         elif vc_flag == "emulator":
             # initilase an Emulator sequencer
@@ -277,10 +317,11 @@ class TargetSequencer:
             print("time requested is before first target schedule time")
 
         else:
-            print("index", index)
+            # print("index", index)
             target_names = self.target_schedule_dict[self.target_schedule_times[index]]
-            print("targets being controlled now are", target_names)
+            # print("targets being controlled now are", target_names)
             return target_names
+        return target_names
 
     def load_target_sequence(self, path):
         """

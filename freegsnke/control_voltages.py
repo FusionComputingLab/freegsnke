@@ -246,6 +246,9 @@ class TargetSequencer:
             )
             midpoints = (change_times[:-1] + change_times[1:]) / 2
             for i, midpoint in enumerate(midpoints):
+                print(
+                    f"checking compatibility of target schedule and vc sequence at time {midpoint}"
+                )
                 vc_targs = self.vc_sequencer.retrieve_vc(time_stamp=midpoint).targets
                 controlled_targs = self.retrieve_controlled_targets(time_stamp=midpoint)
                 # if vc.targets != self.retrieve_controlled_targets(time_stamp=midpoint):
@@ -264,8 +267,7 @@ class TargetSequencer:
                 # check that the target schedule is a subset of the vc sequence
                 if not set(controlled_targs).issubset(set(vc_targs)):
                     raise ValueError(
-                        "targets scheduled not a subset of vc computable targets at time ",
-                        midpoint,
+                        f"targets scheduled not a subset of vc computable targets at time {midpoint} ",
                     )
                 else:
                     # check the order of the targets
@@ -335,7 +337,7 @@ class TargetSequencer:
         """
         # find index for time stamp
         index = (
-            np.sum(self.target_schedule_times < time_stamp) - 1
+            np.sum(self.target_schedule_times <= time_stamp) - 1
         )  # subtract 1 to get index of t_start
         if index == -1:
             print("time requested is before first target schedule time")
@@ -345,7 +347,6 @@ class TargetSequencer:
             target_names = self.target_schedule_dict[self.target_schedule_times[index]]
             # print("targets being controlled now are", target_names)
             return target_names
-        return target_names
 
     def load_target_sequence(self, path):
         """

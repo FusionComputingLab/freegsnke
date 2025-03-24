@@ -43,8 +43,6 @@ class Jtor_refiner:
 
         self.xx = np.linspace(0, 1 - 1 / self.nnx, self.nnx) + 1 / (2 * self.nnx)
         self.yy = np.linspace(0, 1 - 1 / self.nny, self.nny) + 1 / (2 * self.nny)
-        # self.xx = np.linspace(0,1,self.nnx)
-        # self.yy = np.linspace(0,1,self.nny)
 
         self.xxx = np.concatenate(
             (1 - self.xx[:, np.newaxis], self.xx[:, np.newaxis]), axis=-1
@@ -135,7 +133,7 @@ class Jtor_refiner:
         )
         return RRidxs, ZZidxs
 
-    def build_jtor_value_mask(self, unrefined_jtor, thresholds, quantiles=(0.5, 0.9)):
+    def build_jtor_value_mask(self, unrefined_jtor, threshold, quantiles=(0.5, 0.9)):
         """Selects the cells that need to be refined based on their value of jtor.
         Selection is such that it includes cells where jtor exceeds the value calculated
         based on the quantiles and threshold[0].
@@ -144,19 +142,17 @@ class Jtor_refiner:
         ----------
         unrefined_jtor : np.array
             The jtor distribution
-        thresholds : tuple (threshold for jtor criterion, threshold for gradient criterion)
-            tuple of values used to identify where to apply refinement, by default None
+        thresholds : float
+            the relevant value (in the tuple) used to identify where to apply refinement
         """
 
         jtor_quantiles = np.quantile(unrefined_jtor.reshape(-1), quantiles)
-        mask = (unrefined_jtor - jtor_quantiles[0]) > thresholds[0] * (
+        mask = (unrefined_jtor - jtor_quantiles[0]) > threshold * (
             jtor_quantiles[1] - jtor_quantiles[0]
         )
         return mask
 
-    def build_jtor_gradient_mask(
-        self, unrefined_jtor, thresholds, quantiles=(0.5, 0.9)
-    ):
+    def build_jtor_gradient_mask(self, unrefined_jtor, threshold, quantiles=(0.5, 0.9)):
         """Selects the cells that need to be refined based on their value of the gradient of jtor.
         Selection is such that it includes cells where the norm of the gradient exceeds the value calculated
         based on the quantiles and threshold[1].
@@ -165,8 +161,8 @@ class Jtor_refiner:
         ----------
         unrefined_jtor : np.array
             The jtor distribution
-        thresholds : tuple (threshold for jtor criterion, threshold for gradient criterion)
-            tuple of values used to identify where to apply refinement, by default None
+        thresholds : float
+            the relevant value (in the tuple) used to identify where to apply refinement
         """
 
         # right
@@ -178,8 +174,10 @@ class Jtor_refiner:
 
         gradient_mask = gradient_mask**0.5
 
-        mask = self.build_jtor_value_mask(gradient_mask, thresholds, quantiles)
-        return mask
+        self.gradient_mask = self.build_jtor_value_mask(
+            gradient_mask, threshold, quantiles
+        )
+        return self.gradient_mask
 
     def build_mask_to_refine(self, unrefined_jtor, core_mask, thresholds):
         """Selects the cells that need to be refined, using the user-defined thresholds
@@ -205,11 +203,13 @@ class Jtor_refiner:
         self.mask_to_refine = (mask_to_refine > 0) * (mask_to_refine < 4)
 
         # include cells that warrant refinement according to criterion on jtor value:
-        value_mask = self.build_jtor_value_mask(unrefined_jtor, thresholds)
-        self.mask_to_refine += value_mask[1:-1, 1:-1]
+        value_mask = self.build_jtor_value_mask(unrefined_jtor, thresholds[0])
+        self.mask_to_refine += value_mask[:-1, :-1]
 
         # include cells that warrant refinement according to criterion on gradient value:
-        self.mask_to_refine += self.build_jtor_value_mask(unrefined_jtor, thresholds)
+        self.mask_to_refine += self.build_jtor_gradient_mask(
+            unrefined_jtor, thresholds[1]
+        )
 
         self.mask_to_refine = self.mask_to_refine.astype(bool)
 

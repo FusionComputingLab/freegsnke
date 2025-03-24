@@ -72,9 +72,20 @@ class Jtor_universal:
         """
         if refine_jtor:
             self.jtor_refiner = jtor_refinement.Jtor_refiner(eq, nnx, nny)
+            self.set_refinement_thresholds()
             self.Jtor = self.Jtor_refined
         else:
             self.Jtor = self.Jtor_unrefined
+
+    def set_refinement_thresholds(self, thresholds=(1.0, 1.0)):
+        """Sets the default criteria for refinement -- used when not directly set.
+
+        Parameters
+        ----------
+        thresholds : tuple (threshold for jtor criterion, threshold for gradient criterion)
+            tuple of values used to identify where to apply refinement
+        """
+        self.refinement_thresholds = thresholds
 
     def Jtor_build(
         self,
@@ -202,7 +213,8 @@ class Jtor_universal:
         psi_bndry : float, optional
             Value of the poloidal field flux at the boundary of the plasma (last closed flux surface), by default None
         thresholds : tuple (threshold for jtor criterion, threshold for gradient criterion)
-            tuple of values used to identify where to apply refinement, by default None
+            tuple of values used to identify where to apply refinement
+            when None, the default refinement_thresholds are used
 
         Returns
         -------
@@ -213,7 +225,10 @@ class Jtor_universal:
         unrefined_jtor = self.Jtor_unrefined(R, Z, psi, psi_bndry)
         self.unrefined_jtor = 1.0 * unrefined_jtor
         self.pure_jtor = unrefined_jtor / self.L
-        core_mask = self.limiter_core_mask.copy()
+        core_mask = 1.0 * self.limiter_core_mask
+
+        if thresholds == None:
+            thresholds = self.refinement_thresholds
 
         bilinear_psi_interp, refined_R = self.jtor_refiner.build_bilinear_psi_interp(
             psi, core_mask, unrefined_jtor, thresholds
@@ -235,9 +250,9 @@ class Jtor_universal:
             self.pure_jtor, refined_jtor
         )
         if self.Ip_logic:
-            self.refined_jtor = 1.0 * self.jtor
-            self.refined_L = self.Ip / (np.sum(self.jtor) * self.dRdZ)
-            self.jtor *= self.refined_L
+            self.L = self.Ip / (np.sum(self.jtor) * self.dRdZ)
+            self.jtor *= self.L
+
         return self.jtor
 
 
@@ -249,7 +264,7 @@ class ConstrainBetapIp(freegs4e.jtor.ConstrainBetapIp, Jtor_universal):
 
     """
 
-    def __init__(self, eq, refine_jtor=False, nnx=None, nny=None, *args, **kwargs):
+    def __init__(self, eq, *args, refine_jtor=False, nnx=None, nny=None, **kwargs):
         """Instantiates the object.
 
         Parameters
@@ -307,7 +322,7 @@ class ConstrainPaxisIp(freegs4e.jtor.ConstrainPaxisIp, Jtor_universal):
 
     """
 
-    def __init__(self, eq, refine_jtor=False, nnx=None, nny=None, *args, **kwargs):
+    def __init__(self, eq, *args, refine_jtor=False, nnx=None, nny=None, **kwargs):
         """Instantiates the object.
 
         Parameters
@@ -366,7 +381,7 @@ class Fiesta_Topeol(freegs4e.jtor.Fiesta_Topeol, Jtor_universal):
 
     """
 
-    def __init__(self, eq, refine_jtor=False, nnx=None, nny=None, *args, **kwargs):
+    def __init__(self, eq, *args, refine_jtor=False, nnx=None, nny=None, **kwargs):
         """Instantiates the object.
 
         Parameters
@@ -425,7 +440,7 @@ class Lao85(freegs4e.jtor.Lao85, Jtor_universal):
 
     """
 
-    def __init__(self, eq, refine_jtor=False, nnx=None, nny=None, *args, **kwargs):
+    def __init__(self, eq, *args, refine_jtor=False, nnx=None, nny=None, **kwargs):
         """Instantiates the object.
 
         Parameters

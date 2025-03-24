@@ -206,6 +206,28 @@ class TargetSequencer:
         self.target_schedule = self.load_target_schedule(self.schedule_path)
         # load target time series'
         self.load_target_sequence(self.sequence_path)
+
+        # check compatibility of target schedule and target sequence
+        schedule_times = list(self.target_schedule_dict.keys())
+        for time in schedule_times:
+            targ_names = self.target_schedule_dict[time]
+            for targ in targ_names:
+                # check 1 : check if all targets in target schedule are in target sequence
+                if targ not in self.target_sequence.keys():
+                    raise ValueError(
+                        f"Target {targ} is in schedule but is not defined in target sequence"
+                    )
+                # check 2 : check if targets in each interval lie within time ranges of target sequence
+                time_start = self.target_sequence[targ]["times"][0]
+                time_end = self.target_sequence[targ]["times"][-1]
+                if time_start > time or time_end < time:
+                    print(f"time range for {targ}", time_start, time_end)
+                    print(f"target schedule time", time)
+                    raise ValueError(
+                        f"Range of defined values for Target {targ} not compatible with schedule"
+                    )
+
+        # check if vc_flag is file and load VC's from file.
         if vc_flag == "file":
             # initilase a vc sequence object
             assert vc_sequence_path is not None, "Please provide a vc sequence path"
@@ -252,6 +274,8 @@ class TargetSequencer:
                     print(controlled_targs)
                     print("VC available targets")
                     print(vc_targs)
+
+                    # if order is different, or not full set, then recompute VC from sensitivity
 
         elif vc_flag == "emulator":
             # initilase an Emulator sequencer
@@ -397,7 +421,7 @@ class ControlVoltages:
         eq: Equilibrium,
         profiles,
         stepping: nl_solver,
-        vc_sequencer: VirtualCircuitSequence,
+        target_sequencer: TargetSequencer,
         targets=None,
         coils=None,
     ):
@@ -412,6 +436,8 @@ class ControlVoltages:
                 list of profiles
             stepping : Non Linear Solver object
                 Non Linear Solver object
+            target_sequencer : TargetSequencer object
+                TargetSequencer object - contains targets and vc schedule for simulation.
             targets : list[str] (optional)
                 list of target names, defaults to ["R_in", "R_out", "Rx_lower","Rs_lower_outer"]
             coils : list[str]   (optional)
@@ -462,7 +488,8 @@ class ControlVoltages:
         self.VCH = vc.VirtualCircuitHandling()
         self.VCH.define_solver(self.stepping.NK, target_relative_tolerance=1e-7)
 
-        self.VC_sequencer = vc_sequencer
+        # initialise a target sequencer object
+        self.target_sequencer = target_sequencer
 
     def get_inductance_reduced(self, coils=None):
         """
@@ -688,6 +715,59 @@ class ControlVoltages:
 
         self.feedback_voltages_v1 = voltages_v1
         self.feedback_voltages_v2 = voltages_v2
+
+        return voltages_v1, voltages_v2
+
+    def feeback_voltage_control_timefunc(
+        self,
+        time_stamp,
+        eq,
+        profiles,
+        gain_matrix=None,
+    ):
+        """
+        Compute current given a set of target value shifts and vc matrix, at a time provided.
+
+        Parameters
+        ----------
+        time_stamp : float
+            time stamp of the target to be retrieved
+        eq : object
+            equilibrium object
+
+        profiles : object
+            profiles object
+
+        gain_matrix : array
+            diagonal square matrix of target gains. Defaults to identity matrix
+
+        Returns
+        -------
+        voltage_array : array
+            feedback voltages
+        """
+        controlled_targets = self.target_sequencer.retrieve_controlled_targets(
+            time_stamp
+        )
+        # get the virtual circuit object
+        virtual_circuit = self.target_sequencer.vc_sequencer.retrieve_vc(
+            time_stamp=time_stamp
+        )
+        desired_target_values = self.target_sequencer.desired_target_values(time_stamp)
+
+        # compute the proportional voltages
+        voltages_v1, voltages_v2 = self.calculate_voltage_vc_feedback_proportional(
+            eq,
+            profiles,
+            target_names=controlled_targets,
+            targets_req=desired_target_values,
+            targets_obs=None,
+            virtual_circuit=virtual_circuit,
+            gain_matrix=gain_matrix,
+        )
+
+        # TO DO
+        # add in other voltage computations (integral, ip etc here)
 
         return voltages_v1, voltages_v2
 

@@ -410,16 +410,16 @@ class TargetSequencer:
 
 class ControlVoltages:
     """
-        Class to implement control voltages from virtual circuit, and given a set of observed target values, and a set of requested target values.
+    Class to implement control voltages from virtual circuit, and given a set of observed target values, and a set of requested target values.
 
-        Attributes :
-        ???
+    Attributes :
+    ???
 
-        Methods :
-        get_active_coils : retrieve the active coils from the equilibrium object.
-        get_inductance : retrieve inductance matrix from machine config
-        calc_vc_from_eq : retrieve from file or compute a virtual circuit object from freegsnke or NN emulator.
-    def calculate_voltage_vc_feedback_proportional : compute feedback voltages from a virtual circuit object and a set of target shifts.
+    Methods :
+    get_active_coils : retrieve the active coils from the equilibrium object.
+    get_inductance : retrieve inductance matrix from machine config
+    calc_vc_from_eq : retrieve from file or compute a virtual circuit object from freegsnke or NN emulator.
+    calculate_voltage_vc_feedback_proportional : compute feedback voltages from a virtual circuit object and a set of target shifts.
     """
 
     def __init__(
@@ -428,7 +428,6 @@ class ControlVoltages:
         profiles,
         stepping: nl_solver,
         target_sequencer: TargetSequencer,
-        targets=None,
         coils=None,
     ):
         """
@@ -444,8 +443,6 @@ class ControlVoltages:
                 Non Linear Solver object
             target_sequencer : TargetSequencer object
                 TargetSequencer object - contains targets and vc schedule for simulation.
-            targets : list[str] (optional)
-                list of target names, defaults to ["R_in", "R_out", "Rx_lower","Rs_lower_outer"]
             coils : list[str]   (optional)
                 list of coil names, defaults to all active coils defined in get_active_coils.
         """
@@ -459,11 +456,11 @@ class ControlVoltages:
         )  # could also be eq.tokamak.n_active_coils
         print("number active coils", self.n_active_coils)
         # initialise targets with defaults or lists given
-        if targets is None:
-            targets = ["R_in", "R_out", "Rx_lower", "Rs_lower_outer"]
-            self.targets = targets
-        else:
-            self.targets = targets
+        # if targets is None:
+        #     targets = ["R_in", "R_out", "Rx_lower", "Rs_lower_outer"]
+        #     self.targets = targets
+        # else:
+        #     self.targets = targets
 
         # set coil lists and dictionary for all active coils
         self.active_coils = self.eq.tokamak.coils_list[: self.n_active_coils]
@@ -482,7 +479,6 @@ class ControlVoltages:
 
         print("Default targets and current's initialised")
         print(self.coils)
-        print(self.targets)
         print(self.active_coils)
 
         # get inductance matrix (full with all active coils)
@@ -529,7 +525,7 @@ class ControlVoltages:
         return inductance_reduced
 
     ## this function will be replaced by instance of build virtual circuit class.
-    def calc_vc_from_eq(self, eq=None, profiles=None, targets=None, coils=None):
+    def calc_vc_from_eq(self, targets, eq=None, profiles=None, coils=None):
         """
         Compute a VC using freegsnke VirtualCircuitHandling.
 
@@ -542,7 +538,7 @@ class ControlVoltages:
             profiles object
 
         targets : list[str]
-            list of targets (optional)
+            list of targets
 
         coils : list[str]
             list of coils (optional)
@@ -559,8 +555,6 @@ class ControlVoltages:
             profiles = self.profiles
 
         # if targets and coils are provided, update targets/coils attributes
-        if targets is not None:
-            self.targets = targets
         if coils is not None:
             self.coils = coils
 
@@ -569,7 +563,7 @@ class ControlVoltages:
             eq,
             profiles,
             coils=self.coils,
-            targets=self.targets,
+            targets=targets,
             targets_options=None,
         )
 
@@ -635,9 +629,9 @@ class ControlVoltages:
             targets_req
         ), "The gain matrix is not the same length as the target vector"
 
-        # check coils and targets and update attributes accordingly
-        if target_names is not None:
-            self.targets = target_names
+        # # check coils and targets and update attributes accordingly
+        # if target_names is not None:
+        #     self.targets = target_names
 
         if coil_names is not None:
             print("updating coils to", coil_names)
@@ -647,10 +641,9 @@ class ControlVoltages:
             print("No VC object passed, building one with ")
             # check coils in virtual circuit match those in the tokamak
             print("target names provided ", target_names)
-            print("self targets", self.targets)
             print("self coils", self.coils)
             virtual_circuit = self.calc_vc_from_eq(
-                eq=eq, profiles=profiles, targets=self.targets, coils=self.coils
+                eq=eq, profiles=profiles, targets=target_names, coils=self.coils
             )
         else:
             print("Virtual circuit provided")
@@ -661,10 +654,12 @@ class ControlVoltages:
         self.virtual_circuit = virtual_circuit
 
         if not target_names == virtual_circuit.targets:
-            print(
-                "The virtual circuit targets do not match the targets requested \n targets being updated to those in the VC"
+            # raise error ? or recompute VC from sensitivity
+            print(f"target names provided {target_names}")
+            print(f"virtual circuit targets {virtual_circuit.targets}")
+            raise ValueError(
+                "The virtual circuit targets do not match the targets requested. Check the VC and Target sequence"
             )
-            self.targets = virtual_circuit.targets
 
         if targets_obs is None:
             # get the targets from the equilibrium

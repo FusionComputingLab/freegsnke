@@ -14,6 +14,8 @@ from ..equilibrium_update import Equilibrium
 from ..nonlinear_solve import nl_solver
 from ..virtual_circuits import VirtualCircuit
 
+from .scheduler import TargetSequencer
+
 
 class ControlVoltages:
     """
@@ -28,7 +30,7 @@ class ControlVoltages:
     coils : list of coils to be used in controller
     coil_order_dictionary : dictionary mapping coil names to their order in the list
     inductance_full : full inductance matrix for all active coils
-    VCH (virtual cirucit handling class)
+    VCH (virtual circuit handling class)
     target_sequencer (target sequencer class)
 
 

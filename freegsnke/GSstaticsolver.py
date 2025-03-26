@@ -445,38 +445,44 @@ class NKGSsolver:
                 else:
                     # update = -1.0 * res0
                     picard_flag = 1
+                # standard Picard update
+                update = -1.0 * res0
 
                 # test Picard update
                 nres0 = np.linalg.norm(res0)
-                res1 = self.F_function(
-                    trial_plasma_psi - res0, self.tokamak_psi, profiles
-                )
-                nres1 = np.linalg.norm(res1)
-                if nres1 > nres0:
-                    vals = [-1, 0]
-                    res_vals = [nres1, nres0]
-                    while res_vals[-1] < res_vals[-2]:
-                        vals.append(vals[-1] + 1)
-                        res_vals.append(
-                            np.linalg.norm(
-                                self.F_function(
-                                    trial_plasma_psi + vals[-1] * res0,
+                try:
+                    res1 = self.F_function(
+                        trial_plasma_psi - res0, self.tokamak_psi, profiles
+                    )
+                    nres1 = np.linalg.norm(res1)
+                    successful = True
+                except:
+                    successful = False
+                if successful:
+                    if nres1 > 1.5 * nres0:
+                        vals = [-1, 0]
+                        res_vals = [nres1, nres0]
+                        while res_vals[-1] < res_vals[-2] and successful:
+                            try:
+                                new_res = self.F_function(
+                                    trial_plasma_psi + (vals[-1] + 1) * res0,
                                     self.tokamak_psi,
                                     profiles,
                                 )
-                            )
+                                vals.append(vals[-1] + 1)
+                                res_vals.append(np.linalg.norm(new_res))
+                                successful = True
+                            except:
+                                successful = False
+
+                        # find best quadratic polyfit
+                        poly_coeffs = np.polyfit(vals, res_vals, deg=2)
+                        # find minimum accordingly
+                        update = -res0 * 0.5 * poly_coeffs[1] / poly_coeffs[0]
+                        print(
+                            "custom Picard accepted, with coeff",
+                            -0.5 * poly_coeffs[1] / poly_coeffs[0],
                         )
-                    # find best quadratic polyfit
-                    poly_coeffs = np.polyfit(vals, res_vals, deg=2)
-                    # find minimum accordingly
-                    update = -res0 * 0.5 * poly_coeffs[1] / poly_coeffs[0]
-                    print(
-                        "custom Picard accepted, with coeff",
-                        -0.5 * poly_coeffs[1] / poly_coeffs[0],
-                    )
-                else:
-                    # standard Picard update
-                    update = -1.0 * res0
 
             else:
                 # using NK

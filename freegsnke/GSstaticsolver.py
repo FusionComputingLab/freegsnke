@@ -357,6 +357,58 @@ class NKGSsolver:
             res0 = self.F_function(trial_plasma_psi, self.tokamak_psi, profiles)
             control_trial_psi = True
 
+        # try to rescale if necessary
+        nres0 = np.linalg.norm(res0)
+        if nres0 / np.linalg.norm(trial_plasma_psi) > 0.1:
+            # try scale up
+            res_vals = [nres0]
+            val = 1
+            successful = True
+            while successful:
+                try:
+                    val *= 1.1
+                    res1 = self.F_function(
+                        trial_plasma_psi * val, self.tokamak_psi, profiles
+                    )
+                    nres1 = np.linalg.norm(res1)
+                    if nres1 < res_vals[-1]:
+                        res_vals.append(nres1)
+                        successful = True
+                    else:
+                        val /= 1.1
+                        successful = False
+                except:
+                    val /= 1.1
+                    successful = False
+            # try scale down if scale up was not successful
+            if len(res_vals) > 1:
+                print("rescaling accepted by", val)
+                trial_plasma_psi *= val
+                res0 = self.F_function(trial_plasma_psi, self.tokamak_psi, profiles)
+            else:
+                val = 1
+                successful = True
+                while successful:
+                    try:
+                        val /= 1.1
+                        res1 = self.F_function(
+                            trial_plasma_psi * val, self.tokamak_psi, profiles
+                        )
+                        nres1 = np.linalg.norm(res1)
+                        if nres1 < res_vals[-1]:
+                            res_vals.append(nres1)
+                            successful = True
+                        else:
+                            val *= 1.1
+                            successful = False
+                    except:
+                        val *= 1.1
+                        successful = False
+                if len(res_vals) > 1:
+                    print("rescaling accepted by" + str(val))
+                    trial_plasma_psi *= val
+                    res0 = self.F_function(trial_plasma_psi, self.tokamak_psi, profiles)
+
         self.jtor_at_start = profiles.jtor.copy()
 
         norm_rel_change = self.relative_norm_residual(res0, trial_plasma_psi)
@@ -388,11 +440,43 @@ class NKGSsolver:
                     # make picard update to the flux up-down symmetric
                     # this combats the instability of picard iterations
                     res0_2d = res0.reshape(self.nx, self.ny)
-                    update = -0.5 * (res0_2d + res0_2d[:, ::-1]).reshape(-1)
+                    res0 = 0.5 * (res0_2d + res0_2d[:, ::-1]).reshape(-1)
                     picard_flag += 1
                 else:
-                    update = -1.0 * res0
+                    # update = -1.0 * res0
                     picard_flag = 1
+
+                # test Picard update
+                nres0 = np.linalg.norm(res0)
+                res1 = self.F_function(
+                    trial_plasma_psi - res0, self.tokamak_psi, profiles
+                )
+                nres1 = np.linalg.norm(res1)
+                if nres1 > nres0:
+                    vals = [-1, 0]
+                    res_vals = [nres1, nres0]
+                    while res_vals[-1] < res_vals[-2]:
+                        vals.append(vals[-1] + 1)
+                        res_vals.append(
+                            np.linalg.norm(
+                                self.F_function(
+                                    trial_plasma_psi + vals[-1] * res0,
+                                    self.tokamak_psi,
+                                    profiles,
+                                )
+                            )
+                        )
+                    # find best quadratic polyfit
+                    poly_coeffs = np.polyfit(vals, res_vals, deg=2)
+                    # find minimum accordingly
+                    update = -res0 * 0.5 * poly_coeffs[1] / poly_coeffs[0]
+                    print(
+                        "custom Picard accepted, with coeff",
+                        -0.5 * poly_coeffs[1] / poly_coeffs[0],
+                    )
+                else:
+                    # standard Picard update
+                    update = -1.0 * res0
 
             else:
                 # using NK

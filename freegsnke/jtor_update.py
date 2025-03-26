@@ -56,6 +56,12 @@ class Jtor_universal:
             )
         ) > 0
 
+        # set mask of the edge domain pixels
+        self.edge_mask = np.zeros_like(eq.R)
+        self.edge_mask[0, :] = self.edge_mask[:, 0] = self.edge_mask[-1, :] = (
+            self.edge_mask[:, -1]
+        ) = 1
+
     def select_refinement(self, eq, refine_jtor, nnx, nny):
         """Initializes the object that handles the subgrid refinement of jtor
 

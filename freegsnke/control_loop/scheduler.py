@@ -14,6 +14,8 @@ from ..equilibrium_update import Equilibrium
 from ..nonlinear_solve import nl_solver
 from ..virtual_circuits import VirtualCircuit
 
+from fnkemu.virtual_circuits.virtual_circuit_generator import VC_Generator as VCG
+
 # import h5py
 
 
@@ -188,6 +190,9 @@ class TargetSequencer:
         target_schedule_path,
         vc_flag="file",
         vc_schedule_path=None,
+        model_path=None,
+        model_names=None,
+        n_models=None,
     ):
         """
         Initialise the class
@@ -291,8 +296,7 @@ class TargetSequencer:
         elif vc_flag == "emulator":
             # initilase an Emulator sequencer
             print("initilising an emulator sequencer")
-            # self.vc_scheduler = EmulatorSequencer()
-            pass
+            self.vc_scheduler = VCG(model_path, model_names=None, n_models=None)
 
     def load_target_schedule(self, path):
         """
@@ -414,3 +418,18 @@ class TargetSequencer:
             ]
         )
         return targets_required
+
+    def get_vc(self, time_stamp, coils):
+        """
+        Get VC object given time stamp.
+        - load from file if provided or compute with emulator
+        """
+
+        if self.vc_flag == "file":
+            vc = self.vc_scheduler.retrieve_vc(time_stamp=time_stamp)
+        elif self.vc_flag == "emulator":
+            control_targs = self.retrieve_controlled_targets(time_stamp)
+            vc = self.vc_scheduler.build_vc(
+                self.eq, self.profiles, coils=coils, targets=control_targs
+            )
+        return vc

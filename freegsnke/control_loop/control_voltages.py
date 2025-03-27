@@ -84,6 +84,14 @@ class ControlVoltages:
         # set coil lists and dictionary for all active coils
         self.active_coils = self.eq.tokamak.coils_list[: self.n_active_coils]
 
+        self.active_coils_reduced = deepcopy(self.active_coils)
+        print(self.active_coils)
+        self.active_coils_reduced.remove("Solenoid")
+        self.active_coils_reduced.remove("px")
+        self.active_coils_reduced.remove("p6")
+        print(self.active_coils_reduced)
+        # .remove("px").remove("p6")
+
         # create a dictionary to map coil names to their order in the list
         coil_order_dictionary = {coil: i for i, coil in enumerate(self.active_coils)}
         self.coil_order_dictionary = coil_order_dictionary
@@ -91,14 +99,14 @@ class ControlVoltages:
         # assign coils to default or
         if coils is None:
             print("initialising with default all active coils")
-            self.coils = deepcopy(self.active_coils)
+            self.coils = deepcopy(self.active_coils_reduced)
         else:
             print("initialising with custom coils")
             self.coils = coils
 
         print("Default targets and current's initialised")
-        print(self.coils)
-        print(self.active_coils)
+        print("all active", self.active_coils)
+        print("control coilds", self.coils)
 
         # get inductance matrix (full with all active coils)
         # ??Machine config and inductance matrix will come from stepper function later??
@@ -369,10 +377,12 @@ class ControlVoltages:
         controlled_targets = self.target_sequencer.retrieve_controlled_targets(
             time_stamp
         )
+        print("controlled targets are ", controlled_targets)
         # get the virtual circuit object
-        virtual_circuit = self.target_sequencer.vc_scheduler.retrieve_vc(
-            time_stamp=time_stamp
+        virtual_circuit = self.target_sequencer.get_vc(
+            time_stamp=time_stamp, coils=self.coils
         )
+
         desired_target_values = self.target_sequencer.desired_target_values(time_stamp)
 
         # compute the proportional voltages

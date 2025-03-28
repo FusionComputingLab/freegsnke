@@ -182,8 +182,8 @@ class ControlVoltages:
             profiles = self.profiles
 
         # if targets and coils are provided, update targets/coils attributes
-        if coils is not None:
-            self.coils = coils
+        if coils is None:
+            coils = self.active_coils_reduced
 
         print("building virtual circuit from freegsnke")
         self.VCH.calculate_VC(
@@ -205,8 +205,8 @@ class ControlVoltages:
         profiles,
         targets_req,
         targets_obs=None,
-        target_names=None,
-        coil_names=None,
+        targets=None,
+        coils=None,
         virtual_circuit: VirtualCircuit = None,
         gain_matrix=None,
     ):
@@ -230,8 +230,11 @@ class ControlVoltages:
             array function of target values for each control voltage at given  time
             Defaults to None, in which case the targets are computed from the equilibrium.
 
-        targets_names : list
+        targets : list
             list of target names. Defaults to None, in which case the targets taken to be all active.
+
+        coils : list
+            list of coil names. Defaults to None, in which case the coils taken to be all active.
 
         virtual_circuit : object
             virtual circuit object. Defaults to None, in which case the virtual circuit is computed from the equilibrium.
@@ -252,25 +255,25 @@ class ControlVoltages:
             print("Gain matrix not provided, using identity matrix")
             print(gain_matrix)
 
-        assert gain_matrix.shape[0] == len(
-            targets_req
-        ), "The gain matrix is not the same length as the target vector"
+        assert (
+            gain_matrix.shape[0] == gain_matrix.shape[1] == len(targets_req)
+        ), "The gain matrix is not the square or same size as the target vector"
 
         # # check coils and targets and update attributes accordingly
-        # if target_names is not None:
-        #     self.targets = target_names
+        # if targets is not None:
+        #     self.targets = targets
 
-        if coil_names is not None:
-            print("updating coils to", coil_names)
-            self.coils = coil_names
+        if coils is None:
+            print("updating coils to", coils)
+            coils = self.active_coils_reduced
         # build VC object if not provided
         if virtual_circuit is None:
             print("No VC object passed, building one with ")
             # check coils in virtual circuit match those in the tokamak
-            print("target names provided ", target_names)
+            print("target names provided ", targets)
             print("self coils", self.coils)
             virtual_circuit = self.calc_vc_from_eq(
-                eq=eq, profiles=profiles, targets=target_names, coils=self.coils
+                eq=eq, profiles=profiles, targets=targets, coils=coils
             )
         else:
             print("Virtual circuit provided")
@@ -278,11 +281,11 @@ class ControlVoltages:
             print("coils", virtual_circuit.coils)
 
         # assign virtual circuit attribute to class
-        self.virtual_circuit = virtual_circuit
+        # self.virtual_circuit = virtual_circuit
 
-        if not target_names == virtual_circuit.targets:
+        if not targets == virtual_circuit.targets:
             # raise error ? or recompute VC from sensitivity
-            print(f"target names provided {target_names}")
+            print(f"target names provided {targets}")
             print(f"virtual circuit targets {virtual_circuit.targets}")
             raise ValueError(
                 "The virtual circuit targets do not match the targets requested. Check the VC and Target sequence"
@@ -291,7 +294,7 @@ class ControlVoltages:
         if targets_obs is None:
             # get the targets from the equilibrium
             print("Observed targets not provided, calculating from equilibrium")
-            _, targets_obs = self.VCH.calculate_targets(eq, target_names)
+            _, targets_obs = self.VCH.calculate_targets(eq, targets)
             print(targets_obs)
 
             # check dimensions of target values
@@ -326,14 +329,14 @@ class ControlVoltages:
         # option 2 reshape inductance matrix, multiply by currents and then fill in zeros
         print("doing option 2")
         print("delta currents", delta_currents)
-        inductance_matrix_reduced = self.get_inductance_reduced(
+        inductance_matrix_controlled = self.get_inductance_reduced(
             coils=virtual_circuit.coils
         )
-        voltages_v2_temp = np.dot(inductance_matrix_reduced, delta_currents)
+        voltages_v2_controlled = np.dot(inductance_matrix_controlled, delta_currents)
         # fill in zeros
         voltages_v2 = np.zeros(len(self.active_coils))
         for i, coil in enumerate(virtual_circuit.coils):
-            voltages_v2[self.coil_order_dictionary[coil]] = voltages_v2_temp[i]
+            voltages_v2[self.coil_order_dictionary[coil]] = voltages_v2_controlled[i]
 
         print(
             "voltages v2 : reshaped inductance matrix, then fill in zeros in voltage vector"
@@ -380,7 +383,7 @@ class ControlVoltages:
         print("controlled targets are ", controlled_targets)
         # get the virtual circuit object
         virtual_circuit = self.target_sequencer.get_vc(
-            time_stamp=time_stamp, coils=self.coils
+            eq=eq, profiles=profiles, time_stamp=time_stamp, coils=self.coils
         )
 
         desired_target_values = self.target_sequencer.desired_target_values(time_stamp)
@@ -389,9 +392,9 @@ class ControlVoltages:
         voltages_v1, voltages_v2 = self.calculate_voltage_vc_feedback_proportional(
             eq,
             profiles,
+            targets=controlled_targets,
             targets_req=desired_target_values,
             targets_obs=None,
-            target_names=controlled_targets,
             virtual_circuit=virtual_circuit,
             gain_matrix=gain_matrix,
         )

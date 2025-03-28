@@ -119,6 +119,19 @@ class ControlVoltages:
 
         # initialise a target sequencer object
         self.target_sequencer = target_sequencer
+        print("target sequencer flag :", self.target_sequencer.vc_flag)
+        if self.target_sequencer.vc_flag == ("Emulator" or "emu" or "emulator"):
+
+            # pre run the emulators so future calls to calculate_voltage_vc_feedback_proportional are quicker
+            start_targs = self.target_sequencer.target_schedule_dict[
+                self.target_sequencer.target_schedule_times[0]
+            ]
+            self.target_sequencer.vc_scheduler.build_vc(
+                eq=self.eq,
+                profiles=self.profiles,
+                targets=start_targs,
+                coils=self.coils,
+            )
 
     def get_inductance_reduced(self, coils=None):
         """

@@ -199,6 +199,49 @@ class ControlVoltages:
 
         return virtual_circuit
 
+    def calculate_target_deltas(self, eq, targets, targets_req, targets_obs=None):
+        """Calculate the target deltas between the required and observed targets
+
+        Parameters
+        ----------
+        eq : object
+            equilibrium object
+
+        profiles : object
+            profiles object
+
+        targets : list
+            list of target names
+
+        targets_req : array
+            array of required/desired target values for each shape target
+
+        targets_obs : array, Optional
+            array of target values for each shape target. If not provided, the observed targets are calculated from the equilibrium.
+
+
+        Returns
+        -------
+        target_deltas : array
+            array of target deltas
+        """
+
+        if targets_obs is None:
+            # get the targets from the equilibrium
+            print("Observed targets not provided, calculating from equilibrium")
+            _, targets_obs = self.VCH.calculate_targets(eq, targets)
+            print(targets_obs)
+
+            # check dimensions of target values
+        assert len(targets_req) == len(
+            targets_obs
+        ), "The target required and observed vectors are not the same length"
+
+        # shifts required
+        target_deltas = targets_req - targets_obs
+        print("target deltas", target_deltas)
+        return target_deltas
+
     def calculate_voltage_vc_feedback_proportional(
         self,
         eq,
@@ -290,21 +333,10 @@ class ControlVoltages:
             raise ValueError(
                 "The virtual circuit targets do not match the targets requested. Check the VC and Target sequence"
             )
-
-        if targets_obs is None:
-            # get the targets from the equilibrium
-            print("Observed targets not provided, calculating from equilibrium")
-            _, targets_obs = self.VCH.calculate_targets(eq, targets)
-            print(targets_obs)
-
-            # check dimensions of target values
-        assert len(targets_req) == len(
-            targets_obs
-        ), "The target required and observed vectors are not the same length"
-
-        # shifts required
-        target_deltas = targets_req - targets_obs
-        print("target deltas", target_deltas)
+        # compute the shape target deltas
+        target_deltas = self.calculate_target_deltas(
+            eq, targets, targets_req, targets_obs
+        )
 
         # do matrix multiplication VC @ G @ delta
         delta_currents = virtual_circuit.VCs_matrix @ gain_matrix @ target_deltas

@@ -425,8 +425,10 @@ class TargetSequencer:
         """
 
         if self.vc_flag == "file":
+            print("loading VC from file")
             vc = self.vc_scheduler.retrieve_vc(time_stamp=time_stamp)
         elif self.vc_flag == "Emulator" or "emulator" or "emu":
+            print("Computing VC from emulator")
             control_targs = self.retrieve_controlled_targets(time_stamp)
             vc = self.vc_scheduler.build_vc(
                 eq, profiles, coils=coils, targets=control_targs

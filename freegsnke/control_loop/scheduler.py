@@ -26,22 +26,20 @@ class VirtualCircuitSequence:
 
     """
 
-    def __init__(self, target_sequence_path=None):
+    def __init__(self, vc_sequence_path=None):
         """
         Initialise the class
 
         Parameters
         ----------
-        target_sequence_path : str
-            target_sequence_path to the file containing VC's. Include file extension either hdf5 or pkl.
+        vc_sequence_path : str
+            vc_sequence_path to the file containing VC's. Include file extension either hdf5 or pkl.
 
         Returns
         -------
         None
         """
-        self.vc_path = (
-            target_sequence_path  # target_sequence_path to the virtual circuit file
-        )
+        self.vc_path = vc_sequence_path  # vc_sequence_path to the virtual circuit file
 
         self.vc_times_calc = []  # times at which vcs are calculated
         self.vc_times_stop = []  # times at which vcs are to be stopped using
@@ -52,7 +50,7 @@ class VirtualCircuitSequence:
         self.input_currents = []  # list of input current dictionaries
         self.input_profile_pars = []  # list of input profile parameter dictionaries
 
-        if target_sequence_path is not None:
+        if vc_sequence_path is not None:
             print("loading vcs from file")
             # populate the vc_schedule
             self.load_vcs_fromfile()
@@ -293,8 +291,9 @@ class TargetSequencer:
 
                     # if order is different, or not full set, then recompute VC from sensitivity???
 
-        elif vc_flag == "emulator":
+        elif vc_flag == "emulator" or "emu" or "Emulator":
             # initilase an Emulator sequencer
+            assert model_path is not None, "Please provide a model path"
             print("initilising an emulator sequencer")
             self.vc_scheduler = VCG(model_path, model_names=None, n_models=None)
 
@@ -419,7 +418,7 @@ class TargetSequencer:
         )
         return targets_required
 
-    def get_vc(self, time_stamp, coils):
+    def get_vc(self, eq, profiles, time_stamp, coils):
         """
         Get VC object given time stamp.
         - load from file if provided or compute with emulator
@@ -427,9 +426,9 @@ class TargetSequencer:
 
         if self.vc_flag == "file":
             vc = self.vc_scheduler.retrieve_vc(time_stamp=time_stamp)
-        elif self.vc_flag == "emulator":
+        elif self.vc_flag == "Emulator" or "emulator" or "emu":
             control_targs = self.retrieve_controlled_targets(time_stamp)
             vc = self.vc_scheduler.build_vc(
-                self.eq, self.profiles, coils=coils, targets=control_targs
+                eq, profiles, coils=coils, targets=control_targs
             )
         return vc

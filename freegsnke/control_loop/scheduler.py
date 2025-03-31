@@ -19,7 +19,7 @@ from fnkemu.virtual_circuits.virtual_circuit_generator import VC_Generator as VC
 # import h5py
 
 
-class VirtualCircuitSequence:
+class VirtualCircuitSchduler:
     """
     Class to build a virtual circuit objects from file, and store the sequence
     of virtual circuits along with appropriate time stamps.
@@ -170,7 +170,7 @@ class VirtualCircuitSequence:
         return virtual_circuit
 
 
-class TargetSequencer:
+class TargetScheduler:
     """
     Class to build a target sequences from file, and store the sequence of desired targets along with appropriate time stamps.
     Naming conventions:
@@ -245,7 +245,7 @@ class TargetSequencer:
         if vc_flag == "file":
             # initilase a vc sequence object
             assert vc_schedule_path is not None, "Please provide a vc sequence path"
-            self.vc_scheduler = VirtualCircuitSequence(self.vc_schedule_path)
+            self.vc_scheduler = VirtualCircuitSchduler(self.vc_schedule_path)
 
             # add check to see if targets in VC's match targets in target schedule
             # merge the time sequence from both target and vc, and check the targets match at each midpiont.

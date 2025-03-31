@@ -1,5 +1,5 @@
 """
-Module for computing feeback control voltages from virtual circuits.
+Module for computing feedback control voltages from virtual circuits.
 
 """
 
@@ -23,9 +23,9 @@ class ControlVoltages:
 
     Attributes :
     ------------
-    eq : eq ojbect
-    profiles : profiles ojbect
-    stepping :  stepping ojbect (nl solver)
+    eq : eq object
+    profiles : profiles object
+    stepping :  stepping object (nl solver)
     active_coils : list of all active coils
     coils : list of coils to be used in controller
     coil_order_dictionary : dictionary mapping coil names to their order in the list
@@ -38,7 +38,7 @@ class ControlVoltages:
     get_inductance_reduced : retrieve inductance matrix from machine config, and select rows/columns
     calc_vc_from_eq : retrieve from file or compute a virtual circuit object from freegsnke or NN emulator.
     calculate_voltage_vc_feedback_proportional : compute feedback voltages from a virtual circuit object and a set of target shifts.
-    feeback_voltage_control_timefunc : compute feedback voltages from a time provided by retrieving targets at given time from the target sequencer and computing with calculate_voltage_vc_feedback_proportional.
+    feedback_voltage_control_timefunc : compute feedback voltages from a time provided by retrieving targets at given time from the target sequencer and computing with calculate_voltage_vc_feedback_proportional.
     """
 
     def __init__(
@@ -338,7 +338,7 @@ class ControlVoltages:
 
         return voltages_v1, voltages_v2
 
-    def feeback_voltage_control_timefunc(
+    def feedback_voltage_control_timefunc(
         self,
         time_stamp,
         eq,
@@ -379,20 +379,11 @@ class ControlVoltages:
         voltages_v1, voltages_v2 = self.calculate_voltage_vc_feedback_proportional(
             eq,
             profiles,
-            target_names=controlled_targets,
             targets_req=desired_target_values,
             targets_obs=None,
+            target_names=controlled_targets,
             virtual_circuit=virtual_circuit,
             gain_matrix=gain_matrix,
         )
 
-        # TO DO
-        # add in other voltage computations (integral, ip etc here)
-
         return voltages_v1, voltages_v2
-
-
-### TESTING ###
-# if __name__ == "__main__":
-
-#     pass

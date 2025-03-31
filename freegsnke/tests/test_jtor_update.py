@@ -11,7 +11,7 @@ os.environ["LIMITER_PATH"] = "./machine_configs/test/limiter.pickle"
 os.environ["PROBE_PATH"] = "./machine_configs/test/magnetic_probes.pickle"
 
 import freegsnke.jtor_update as jtor
-from freegsnke import build_machine
+from freegsnke import build_machine, equilibrium_update
 
 
 @pytest.fixture()
@@ -21,7 +21,7 @@ def create_machine():
     # Creates equilibrium object and initializes it with
     # a "good" solution
     # plasma_psi = np.loadtxt('plasma_psi_example.txt')
-    eq = freegs4e.Equilibrium(
+    eq = equilibrium_update.Equilibrium(
         tokamak=tokamak,
         # domains can be changed
         Rmin=0.1,
@@ -42,7 +42,6 @@ def test_profiles_PaxisIp(create_machine):
 
     profiles = jtor.ConstrainPaxisIp(
         eq,
-        tokamak.limiter,
         8.1e3,  # Plasma pressure on axis [Pascals]
         6.2e5,  # Plasma current [Amps]
         0.5,  # vacuum f = R*Bt
@@ -64,7 +63,6 @@ def test_profiles_BetapIp(create_machine):
 
     profiles = jtor.ConstrainBetapIp(
         eq,
-        tokamak.limiter,
         8.1e3,  # Plasma pressure on axis [Pascals]
         6.2e5,  # Plasma current [Amps]
         0.5,  # vacuum f = R*Bt

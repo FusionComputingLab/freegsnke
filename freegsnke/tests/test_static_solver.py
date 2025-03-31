@@ -57,7 +57,6 @@ def create_machine():
 
     profiles = ConstrainPaxisIp(
         eq,
-        tokamak.limiter,
         8.1e3,  # Plasma pressure on axis [Pascals]
         6.2e5,  # Plasma current [Amps]
         0.5,  # vacuum f = R*Bt

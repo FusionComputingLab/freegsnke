@@ -463,9 +463,7 @@ class VirtualCircuitHandling:
         self.assign_currents_solve_GS(currents, coils, self.target_relative_tolerance)
 
         # difference between plasma current vectors (before and after the solve)
-        dIy_0 = (
-            self._profiles2.limiter_handler.Iy_from_jtor(self._profiles2.jtor) - self.Iy
-        )
+        dIy_0 = self._eq2.limiter_handler.Iy_from_jtor(self._profiles2.jtor) - self.Iy
 
         # relative norm of plasma current change
         rel_ndIy_0 = np.linalg.norm(dIy_0) / self._nIy

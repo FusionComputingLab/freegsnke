@@ -25,6 +25,8 @@ from scipy.linalg import solve_sylvester
 from . import machine_config
 from .implicit_euler import implicit_euler_solver
 
+# from .Myy_builder import Myy_handler
+
 
 class linear_solver:
     """Interface between the linearised system of circuit equations and the implicit-Euler
@@ -39,7 +41,7 @@ class linear_solver:
         Pm1,
         Rm1,
         Mey,
-        Myy,
+        # limiter_handler,
         plasma_norm_factor,
         plasma_resistance_1d,
         max_internal_timestep=0.0001,
@@ -65,9 +67,6 @@ class linear_solver:
             matrix of inductance values between grid points in the reduced plasma domain and all metal coils
             (active coils and passive-structure filaments)
             Calculated by the metal_currents object
-        Myy: np.array
-            inductance matrix of grid points in the reduced plasma domain
-            Calculated by plasma_current object
         plasma_norm_factor: float
             an overall factor to work with a rescaled plasma current, so that
             it's within a comparable range with metal currents
@@ -103,7 +102,7 @@ class linear_solver:
         self.Pm1Rm1 = Pm1 @ Rm1
         self.Pm1Rm1Mey = np.matmul(self.Pm1Rm1, Mey)
         self.MyeP_T = Pm1 @ Mey
-        self.Myy = Myy
+        # self.handleMyy = Myy_handler(limiter_handler)
 
         self.n_active_coils = machine_config.n_active_coils
 
@@ -139,9 +138,9 @@ class linear_solver:
 
         Parameters
         ----------
-        max_internal_timestep: float
+        max_internal_timestep : float
             integration substep of the ciruit equation, calling an implicit-Euler solver
-        full_timestep: float
+        full_timestep : float
             integration timestep of the circuit equation
         """
         self.max_internal_timestep = max_internal_timestep
@@ -150,24 +149,29 @@ class linear_solver:
             full_timestep=full_timestep, max_internal_timestep=max_internal_timestep
         )
 
-    def set_linearization_point(self, dIydI, hatIy0):
+    def set_linearization_point(self, dIydI, hatIy0, Myy_hatIy0):
         """Initialises an implicit-Euler solver with the appropriate matrices for the linearised dynamic problem.
 
         Parameters
         ----------
-        dIydI = np.array
+        dIydI : np.array
             partial derivatives of plasma-cell currents on the reduced plasma domain with respect to all intependent metal currents
             (active coil currents, vessel normal modes, total plasma current divided by plasma_norm_factor).
             These would typically come from having solved the forward Grad-Shafranov problem. Finite difference Jacobian.
             Calculated by the nl_solver object
-        hatIy0 = np.array
+        hatIy0 : np.array
             Plasma current distribution on the reduced plasma domain (1d) of the equilibrium around which the dynamics is linearised.
             This is normalised by the total plasma current, so that this vector sums to 1.
+        Myy_hatIy0 : np.array
+            The matrix product np.dot(Myy, hatIy0) in the same reduced domain as hatIy0
+            This is provided by Myy_handler
         """
         if dIydI is not None:
             self.dIydI = dIydI
         if hatIy0 is not None:
             self.hatIy0 = hatIy0
+        if Myy_hatIy0 is not None:
+            self.Myy_hatIy0 = Myy_hatIy0
 
         self.build_Mmatrix()
 
@@ -234,12 +238,9 @@ class linear_solver:
         # metal to plasma
         self.M0matrix[-1, :-1] = np.dot(self.MyeP_T, self.hatIy0)
         # metal to plasma plasma-mediated
-        self.dMmatrix[-1, :-1] = np.dot(
-            np.matmul(self.Myy, self.dIydI[:, :-1]).T, self.hatIy0
-        )
+        self.dMmatrix[-1, :-1] = np.dot(self.dIydI[:, :-1].T, self.Myy_hatIy0)
 
-        JMyy = np.dot(self.Myy, self.hatIy0)
-        self.dMmatrix[-1, -1] = np.dot(self.dIydI[:, -1], JMyy)
+        self.dMmatrix[-1, -1] = np.dot(self.dIydI[:, -1], self.Myy_hatIy0)
 
         self.dMmatrix[-1, :] /= nRp
         self.M0matrix[-1, :] /= nRp
@@ -259,12 +260,12 @@ class linear_solver:
 
         Parameters
         ----------
-        It = np.array
+        It : np.array
             vector of all independent currents that are solved for by the linearides problem, in terms of normal modes:
             (active currents, vessel normal modes, total plasma current divided by normalisation factor)
-        active_voltage_vec = np.array
+        active_voltage_vec : np.array
             voltages applied to the active coils
-        d_profile_pars_dt = np.array
+        d_profile_pars_dt : np.array
             time derivative of the profile parameters, not used atm
         other parameters are passed in as object attributes
         """

@@ -19,27 +19,27 @@ from fnkemu.virtual_circuits.virtual_circuit_generator import VC_Generator as VC
 # import h5py
 
 
-class VirtualCircuitSchduler:
+class VirtualCircuitScheduler:
     """
     Class to build a virtual circuit objects from file, and store the sequence
     of virtual circuits along with appropriate time stamps.
 
     """
 
-    def __init__(self, vc_sequence_path=None):
+    def __init__(self, vc_schedule_path=None):
         """
         Initialise the class
 
         Parameters
         ----------
-        vc_sequence_path : str
-            vc_sequence_path to the file containing VC's. Include file extension either hdf5 or pkl.
+        vc_schedule_path : str
+            vc_schedule_path to the file containing VC's. Include file extension either hdf5 or pkl.
 
         Returns
         -------
         None
         """
-        self.vc_path = vc_sequence_path  # vc_sequence_path to the virtual circuit file
+        self.vc_path = vc_schedule_path  # vc_schedule_path to the virtual circuit file
 
         self.vc_times_calc = []  # times at which vcs are calculated
         self.vc_times_stop = []  # times at which vcs are to be stopped using
@@ -50,7 +50,7 @@ class VirtualCircuitSchduler:
         self.input_currents = []  # list of input current dictionaries
         self.input_profile_pars = []  # list of input profile parameter dictionaries
 
-        if vc_sequence_path is not None:
+        if vc_schedule_path is not None:
             print("loading vcs from file")
             # populate the vc_schedule
             self.load_vcs_fromfile()
@@ -245,7 +245,7 @@ class TargetScheduler:
         if vc_flag == "file":
             # initilase a vc sequence object
             assert vc_schedule_path is not None, "Please provide a vc sequence path"
-            self.vc_scheduler = VirtualCircuitSchduler(self.vc_schedule_path)
+            self.vc_scheduler = VirtualCircuitScheduler(self.vc_schedule_path)
 
             # add check to see if targets in VC's match targets in target schedule
             # merge the time sequence from both target and vc, and check the targets match at each midpiont.

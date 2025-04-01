@@ -40,7 +40,7 @@ class Equilibrium(freegs4e.equilibrium.Equilibrium):
         self.equilibrium_path = os.environ.get("EQUILIBRIUM_PATH", None)
         if self.equilibrium_path is not None:
             self.initialize_from_equilibrium()
-            
+
         # redefine interpolating function
         self.psi_func_interp = interpolate.RectBivariateSpline(
             self.R[:, 0], self.Z[0, :], self.plasma_psi
@@ -216,10 +216,10 @@ class Equilibrium(freegs4e.equilibrium.Equilibrium):
     def initialize_from_equilibrium(self):
         """
         This function loads a pickle file containing an initial guess for the plasma
-        flux (and the corners of the grid points it is located on). 
-        
+        flux (and the corners of the grid points it is located on).
+
         Interpolation is carried out and mapped to the computational grid specified in the
-        eq class. 
+        eq class.
 
         Parameters
         ----------
@@ -234,14 +234,16 @@ class Equilibrium(freegs4e.equilibrium.Equilibrium):
             data = pickle.load(f)
 
         # extract the data (will fail if not in this format)
-        try: 
+        try:
             Rmin = data["Rmin"]
             Rmax = data["Rmax"]
             Zmin = data["Zmin"]
             Zmax = data["Zmax"]
             psi_plasma = data["psi_plasma"]
         except:
-            raise ValueError("Data in EQUILIBRIUM_PATH pickle not in correct format or missing.")
+            raise ValueError(
+                "Data in EQUILIBRIUM_PATH pickle not in correct format or missing."
+            )
 
         # interpolate the plasma psi on the grid given in the data file
         plasma_psi_func = interpolate.RectBivariateSpline(
@@ -252,7 +254,7 @@ class Equilibrium(freegs4e.equilibrium.Equilibrium):
 
         # extract the values on the grid given in the eq object (this is the initial guess)
         self.plasma_psi = plasma_psi_func(self.R, self.Z, grid=False)
-            
+
         print(
             "Initial guess for plasma flux initialised using file provided at EQUILIBRIUM_PATH."
         )

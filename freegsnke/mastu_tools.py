@@ -21,25 +21,19 @@ You should have received a copy of the GNU Lesser General Public License
 along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 """
 
-import numpy as np
-from numpy.polynomial import Polynomial
-import scipy as sp
-from scipy.interpolate import interp1d
-import shapely as sh
-import matplotlib.pyplot as plt
-import pickle
 import math
 import os
-import pyuda
-from freegs4e import critical
+import pickle
 
-from numpy import (
-    abs,
-    argmax,
-    clip,
-    linspace,
-    pi,
-)
+import matplotlib.pyplot as plt
+import numpy as np
+import pyuda
+import scipy as sp
+import shapely as sh
+from freegs4e import critical
+from numpy import abs, argmax, clip, linspace, pi
+from numpy.polynomial import Polynomial
+from scipy.interpolate import interp1d
 
 # --------------------------------
 # EXTRACTING EFIT++ DATA
@@ -2332,6 +2326,7 @@ def get_element_vertices(
 
     return [rr, zz, dR, dZ]
 
+
 # ------------
 def find_strikepoints(R, Z, psi, psi_boundary, wall):
     """
@@ -2377,6 +2372,7 @@ def find_strikepoints(R, Z, psi, psi_boundary, wall):
         out = np.concatenate(strikes, axis=0)
 
     return out
+
 
 def Separatrix(R, Z, psi, ntheta, psival=1.0, theta_grid=None, input_opoint=None):
     """Find the R, Z coordinates of the separatrix for equilbrium

@@ -57,9 +57,9 @@ FreeGSNKE is constantly evolving and so we hope to provide users with more advan
 
 **Get familiar with FreeGS(NKE)**: given FreeGSNKE relies on some core FreeGS functionality, it is strongly recommended to first familiarise yourself with how it works by taking a look at the documentation [here](https://freegs.readthedocs.io/en/latest/).
 
-**After installation (below), check out the FreeGSNKE examples**: in addition to the FreeGS docs, Jupyter notebooks with examples of how to solve each of the above equilibrium problems using FreeGSNKE can be found in the `examples/` directory.
+**After installation (see below), check out the FreeGSNKE user guide**: the FreeGSNKE docs are hosted at [docs.freegsnke.com](https://docs.freegsnke.com/), and the [user guide](https://docs.freegsnke.com/user_guide/) contains several examples to get started. You can also build the documentation yourself by following the instructions in the `docs/README.md` file. The user guide is built from Jupyter notebooks in the `examples/` directory, where you can also find more demos beyond those included in the user guide.
 
-**Refer to the documentation**: once you are a bit more familiar with FreeGSNKE, check out the code documentation (build instructions can be found in the `docs/README.md` document).
+**Refer to the documentation**: once you are a bit more familiar with FreeGSNKE, have a look through the [API documentation](https://docs.freegsnke.com/api/freegsnke).
 
 **References**: check out the references at the bottom of this page for even more detailed information about FreeGSNKE and how it is being used in the community!
 
@@ -89,17 +89,11 @@ The recommended way to install FreeGSNKE is inside a virtual environment, for ex
 
 ### Stage two: install FreeGSNKE
 
-1. Clone the FreeGSNKE repository or download a release from the releases page.
-
-2. Enter the FreeGSNKE directory.
-   
-3. Install FreeGSNKE and its dependencies with:
-
    ```shell
-   pip install ".[freegs4e]"
+   pip install "freegsnke[freegs4e]"
    ```
 
-The extra `freegs4e` dependency in the last step installs [FreeGS4E](https://github.com/FusionComputingLab/freegs4e) automatically (and is required for FreeGSNKE to run). 
+The extra `freegs4e` dependency installs [FreeGS4E](https://github.com/FusionComputingLab/freegs4e) automatically (and is required for FreeGSNKE to run). 
 
 If you are planning to develop FreeGSNKE, see the below section on [contributing](#contributing) code.
 
@@ -126,11 +120,16 @@ We welcome contributions including **bug fixes** or **new feature** requests for
 
 To make code contributions, please do so via a **merge request**. This will require working on your own branch, making the desired changes, and then submitting a merge request. The request will then be considered by the repository maintainers. 
 
-To work on your code in development mode, run the following in place of the final step in [installation](#installation) from your FreeGSNKE root directory:
+To work on your code in development mode, first clone the repository:
+
+```
+git clone https://github.com/FusionComputingLab/freegsnke
+```
+
+From your FreeGSNKE root directory, run:
 
 ```shell
 pip install -e ".[freegs4e,dev]"
-
 ```
 
 This will install FreeGSNKE in editable mode, including the optional development dependencies.

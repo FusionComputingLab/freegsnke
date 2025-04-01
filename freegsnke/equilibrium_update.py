@@ -27,7 +27,7 @@ import numpy as np
 from freegs4e import critical
 from scipy import interpolate
 
-from . import limiter_func
+from . import limiter_func, virtual_circuits
 
 
 class Equilibrium(freegs4e.equilibrium.Equilibrium):

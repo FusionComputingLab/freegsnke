@@ -21,14 +21,38 @@ along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 
 import freegs4e
 import numpy as np
-from freegs4e import critical
-from freegs4e.gradshafranov import mu0
 
 from . import limiter_func
 from . import switch_profile as swp
 
 
 class Jtor_universal:
+
+    def set_masks(self, eq):
+        """Universal function to set all masks related to the limiter.
+
+        Parameters
+        ----------
+        eq : FreeGSNKE Equilibrium object
+            Specifies the domain properties
+        """
+        self.core_mask_limiter = eq.limiter_handler.core_mask_limiter
+
+        self.mask_inside_limiter = eq.limiter_handler.mask_inside_limiter
+
+        mask_outside_limiter = np.logical_not(eq.limiter_handler.mask_inside_limiter)
+        # Note the factor 2 is not a typo: used in critical.inside_mask
+        self.mask_outside_limiter = (2 * mask_outside_limiter).astype(float)
+
+        self.limiter_mask_out = eq.limiter_handler.limiter_mask_out
+
+        self.limiter_mask_for_plotting = (
+            eq.limiter_handler.mask_inside_limiter
+            + eq.limiter_handler.make_layer_mask(
+                eq.limiter_handler.mask_inside_limiter, layer_size=1
+            )
+        ) > 0
+
     def Jtor_build(
         self,
         Jtor_part1,
@@ -130,7 +154,8 @@ class Jtor_universal:
         ) = self.Jtor_build(
             self.Jtor_part1,
             self.Jtor_part2,
-            self.limiter_handler.core_mask_limiter,
+            # self.limiter_handler.core_mask_limiter,
+            self.core_mask_limiter,
             R,
             Z,
             psi,
@@ -149,32 +174,17 @@ class ConstrainBetapIp(freegs4e.jtor.ConstrainBetapIp, Jtor_universal):
 
     """
 
-    def __init__(self, eq, limiter=None, *args, **kwargs):
+    def __init__(self, eq, *args, **kwargs):
         """Instantiates the object.
 
         Parameters
         ----------
         eq : FreeGSNKE Equilibrium object
             Specifies the domain properties
-        limiter : freegs4e.machine.Wall object
-            Specifies the limiter contour points.
-            Only needs to be set here if purposedly using a limiter that is different from eq.tokamak.limiter.
-            Otherwise use None
         """
         super().__init__(*args, **kwargs)
         self.profile_parameter = self.betap
-
-        if limiter is None:
-            self.limiter_handler = eq.limiter_handler
-        else:
-            self.limiter_handler = limiter_func.Limiter_handler(eq, limiter)
-
-        self.mask_inside_limiter = self.limiter_handler.mask_inside_limiter
-        self.mask_outside_limiter = np.logical_not(self.mask_inside_limiter)
-        self.limiter_mask_out = self.limiter_handler.limiter_mask_out
-
-        # Note the factor 2 is not a typo: used in critical.inside_mask
-        self.mask_outside_limiter = (2 * self.mask_outside_limiter).astype(float)
+        self.set_masks(eq=eq)
 
     def Lao_parameters(
         self, n_alpha, n_beta, alpha_logic=True, beta_logic=True, Ip_logic=True, nn=100
@@ -212,38 +222,17 @@ class ConstrainPaxisIp(freegs4e.jtor.ConstrainPaxisIp, Jtor_universal):
 
     """
 
-    def __init__(self, eq, limiter=None, *args, **kwargs):
+    def __init__(self, eq, *args, **kwargs):
         """Instantiates the object.
 
         Parameters
         ----------
         eq : FreeGSNKE Equilibrium object
             Specifies the domain properties
-        limiter : freegs4e.machine.Wall object
-            Specifies the limiter contour points
-            Only needs to be set here if purposedly using a limiter that is different from eq.tokamak.limiter.
-            Otherwise use None
         """
         super().__init__(*args, **kwargs)
         self.profile_parameter = self.paxis
-
-        if limiter is None:
-            self.limiter_handler = eq.limiter_handler
-        else:
-            self.limiter_handler = limiter_func.Limiter_handler(eq, limiter)
-
-        self.mask_inside_limiter = self.limiter_handler.mask_inside_limiter
-        self.mask_outside_limiter = np.logical_not(self.mask_inside_limiter)
-        self.limiter_mask_out = self.limiter_handler.limiter_mask_out
-        self.limiter_mask_for_plotting = (
-            self.mask_inside_limiter
-            + self.limiter_handler.make_layer_mask(
-                self.mask_inside_limiter, layer_size=1
-            )
-        ) > 0
-
-        # Note the factor 2 is not a typo: used in critical.inside_mask
-        self.mask_outside_limiter = (2 * self.mask_outside_limiter).astype(float)
+        self.set_masks(eq=eq)
 
     def Lao_parameters(
         self, n_alpha, n_beta, alpha_logic=True, beta_logic=True, Ip_logic=True, nn=100
@@ -281,38 +270,17 @@ class Fiesta_Topeol(freegs4e.jtor.Fiesta_Topeol, Jtor_universal):
 
     """
 
-    def __init__(self, eq, limiter=None, *args, **kwargs):
+    def __init__(self, eq, *args, **kwargs):
         """Instantiates the object.
 
         Parameters
         ----------
         eq : FreeGSNKE Equilibrium object
             Specifies the domain properties
-        limiter : freegs4e.machine.Wall object
-            Specifies the limiter contour points
-            Only needs to be set here if purposedly using a limiter that is different from eq.tokamak.limiter.
-            Otherwise use None
         """
         super().__init__(*args, **kwargs)
         self.profile_parameter = self.Beta0
-
-        if limiter is None:
-            self.limiter_handler = eq.limiter_handler
-        else:
-            self.limiter_handler = limiter_func.Limiter_handler(eq, limiter)
-
-        self.mask_inside_limiter = self.limiter_handler.mask_inside_limiter
-        self.mask_outside_limiter = np.logical_not(self.mask_inside_limiter)
-        self.limiter_mask_out = self.limiter_handler.limiter_mask_out
-        self.limiter_mask_for_plotting = (
-            self.mask_inside_limiter
-            + self.limiter_handler.make_layer_mask(
-                self.mask_inside_limiter, layer_size=1
-            )
-        ) > 0
-
-        # Note the factor 2 is not a typo: used in critical.inside_mask
-        self.mask_outside_limiter = (2 * self.mask_outside_limiter).astype(float)
+        self.set_masks(eq=eq)
 
     def Lao_parameters(
         self, n_alpha, n_beta, alpha_logic=True, beta_logic=True, Ip_logic=True, nn=100
@@ -350,37 +318,16 @@ class Lao85(freegs4e.jtor.Lao85, Jtor_universal):
 
     """
 
-    def __init__(self, eq, limiter=None, *args, **kwargs):
+    def __init__(self, eq, *args, **kwargs):
         """Instantiates the object.
 
         Parameters
         ----------
         eq : freegs4e Equilibrium object
             Specifies the domain properties
-        limiter : freegs4e.machine.Wall object
-            Specifies the limiter contour points
-            Only set if a limiter different from eq.tokamak.limiter is to be used.
-
         """
         super().__init__(*args, **kwargs)
-
-        if limiter is None:
-            self.limiter_handler = eq.limiter_handler
-        else:
-            self.limiter_handler = limiter_func.Limiter_handler(eq, limiter)
-
-        self.mask_inside_limiter = self.limiter_handler.mask_inside_limiter
-        self.mask_outside_limiter = np.logical_not(self.mask_inside_limiter)
-        self.limiter_mask_out = self.limiter_handler.limiter_mask_out
-        self.limiter_mask_for_plotting = (
-            self.mask_inside_limiter
-            + self.limiter_handler.make_layer_mask(
-                self.mask_inside_limiter, layer_size=1
-            )
-        ) > 0
-
-        # Note the factor 2 is not a typo: used in critical.inside_mask
-        self.mask_outside_limiter = (2 * self.mask_outside_limiter).astype(float)
+        self.set_masks(eq=eq)
 
     def Topeol_parameters(self, nn=100, max_it=100, tol=1e-5):
         """Fids best combination of
@@ -419,17 +366,13 @@ class TensionSpline(freegs4e.jtor.TensionSpline, Jtor_universal):
     - deal with limiter plasma configurations
     """
 
-    def __init__(self, eq, limiter=None, *args, **kwargs):
+    def __init__(self, eq, *args, **kwargs):
         """Instantiates the object.
 
         Parameters
         ----------
         eq : FreeGSNKE Equilibrium object
             Specifies the domain properties
-        limiter : freegs4e.machine.Wall object
-            Specifies the limiter contour points
-            Only needs to be set here if purposedly using a limiter that is different from eq.tokamak.limiter.
-            Otherwise use None
         """
 
         super().__init__(*args, **kwargs)
@@ -444,23 +387,7 @@ class TensionSpline(freegs4e.jtor.TensionSpline, Jtor_universal):
             self.ffp_sigma,
         ]
 
-        if limiter is None:
-            self.limiter_handler = eq.limiter_handler
-        else:
-            self.limiter_handler = limiter_func.Limiter_handler(eq, limiter)
-
-        self.mask_inside_limiter = self.limiter_handler.mask_inside_limiter
-        self.mask_outside_limiter = np.logical_not(self.mask_inside_limiter)
-        self.limiter_mask_out = self.limiter_handler.limiter_mask_out
-        self.limiter_mask_for_plotting = (
-            self.mask_inside_limiter
-            + self.limiter_handler.make_layer_mask(
-                self.mask_inside_limiter, layer_size=1
-            )
-        ) > 0
-
-        # Note the factor 2 is not a typo: used in critical.inside_mask
-        self.mask_outside_limiter = (2 * self.mask_outside_limiter).astype(float)
+        self.set_masks(eq=eq)
 
     def assign_profile_parameter(
         self,

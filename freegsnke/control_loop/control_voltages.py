@@ -3,7 +3,6 @@ Module for computing feedback control voltages from virtual circuits.
 
 """
 
-import pickle
 from copy import deepcopy
 
 import numpy as np

@@ -273,9 +273,10 @@ class NKGSsolver:
         scaling_with_n=-1.0,
         target_relative_unexplained_residual=0.2,
         max_n_directions=16,
-        clip=10,
-        verbose=False,
         max_rel_update_size=0.2,
+        clip=10,
+        clip_quantiles=None,
+        verbose=False,
     ):
         """The method that actually solves the forward static GS problem.
 
@@ -500,6 +501,7 @@ class NKGSsolver:
                     target_relative_unexplained_residual=target_relative_unexplained_residual,
                     max_n_directions=max_n_directions,
                     clip=clip,
+                    clip_quantiles=clip_quantiles,
                 )
                 update = 1.0 * self.nksolver.dx
 

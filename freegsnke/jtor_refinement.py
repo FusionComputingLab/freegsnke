@@ -72,10 +72,10 @@ class Jtor_refiner:
         )
         self.yyyy = np.concatenate(
             (
-                self.yyy[np.newaxis, : self.hnnx],
-                self.yyy[np.newaxis, : self.hnnx],
-                self.yyy[np.newaxis, self.hnnx :],
-                self.yyy[np.newaxis, self.hnnx :],
+                self.yyy[np.newaxis, : self.hnny],
+                self.yyy[np.newaxis, : self.hnny],
+                self.yyy[np.newaxis, self.hnny :],
+                self.yyy[np.newaxis, self.hnny :],
             ),
             axis=0,
         )
@@ -358,12 +358,17 @@ class Jtor_refiner:
         # include both indexes in refinement:
         lcfs_mask[:-1, :] += right_mask
         lcfs_mask[1:, :] += right_mask
+        # # include one more pixel
+        # lcfs_mask[:-2, :] += right_mask[1:,:]
+        # lcfs_mask[2:, :] += right_mask[:-1,:]
         # up
         up_mask = core_mask[:, :-1] + core_mask[:, 1:] == 1
         # include both indexes in refinement:
         lcfs_mask[:, :-1] += up_mask
         lcfs_mask[:, 1:] += up_mask
-
+        # # include one more pixel
+        # lcfs_mask[:, :-2] += up_mask[:,1:]
+        # lcfs_mask[:, 2:] += up_mask[:,:-1]
         return lcfs_mask
 
     def build_mask_to_refine(self, unrefined_jtor, core_mask, thresholds):

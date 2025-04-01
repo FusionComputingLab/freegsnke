@@ -39,7 +39,7 @@ class VirtualCircuitScheduler:
         -------
         None
         """
-        self.vc_path = vc_schedule_path  # vc_schedule_path to the virtual circuit file
+        # self.vc_path = vc_schedule_path  # vc_schedule_path to the virtual circuit file
 
         self.vc_times_calc = []  # times at which vcs are calculated
         self.vc_times_stop = []  # times at which vcs are to be stopped using
@@ -53,7 +53,7 @@ class VirtualCircuitScheduler:
         if vc_schedule_path is not None:
             print("loading vcs from file")
             # populate the vc_schedule
-            self.load_vcs_fromfile()
+            self.load_vcs_fromfile(vc_schedule_path)
             # create dictionary of vc times and corresponding index (using stop times)
             self.vc_time_stop_dict = {
                 time: ind for ind, time in enumerate(self.vc_times_stop)
@@ -63,7 +63,7 @@ class VirtualCircuitScheduler:
         else:
             print("No file target_sequence_path provided. Add VC's manually if desired")
 
-    def load_vcs_fromfile(self):
+    def load_vcs_fromfile(self, path):
         """
         Load the virtual circuit matrix, shape matrix, coils and targets from a file, and save a list of VC objects.
 
@@ -73,11 +73,11 @@ class VirtualCircuitScheduler:
             Modifies the attributes of the class.
         """
         # file extension - hdf5 or csv or ???
-        file_ext = (self.vc_path).split(".")[-1]
+        file_ext = (path).split(".")[-1]
         if file_ext == ("pkl" or "pickle"):
             print("loading VC's from pickle file")
             # load vcs from pickle file
-            with open(self.vc_path, "rb") as fp:
+            with open(path, "rb") as fp:
                 vcs_pkl = pickle.load(fp)
 
                 for key, item in vcs_pkl.items():
@@ -115,6 +115,7 @@ class VirtualCircuitScheduler:
         self.vc_times_stop = np.array(self.vc_times_stop)
         self.vc_times_calc = np.array(self.vc_times_calc)
 
+    # ???? Do we need this???? Maybe delete this method.
     def add_vc_to_sequence(self, virtual_circuit, time_stop):
         """
         Add virtual circuit to sequence.
@@ -135,7 +136,11 @@ class VirtualCircuitScheduler:
         self.vc_times_stop.append(time_stop)
         self.vc_schedule.append(virtual_circuit)
         # update vc time dictionary
-        self.vc_time_dict = {time: ind for ind, time in enumerate(self.vc_times_stop)}
+        self.vc_time_stop_dict = {
+            time: ind for ind, time in enumerate(self.vc_times_stop)
+        }
+
+        # update other parts such as vc_index, input currents, profile pars etc.
 
     def retrieve_vc(self, time_stamp=None, time_index=None):
         """
@@ -155,16 +160,20 @@ class VirtualCircuitScheduler:
         """
 
         # get index for time stamp
-        if time_stamp is not None and time_index is None:
+        if bool(time_index) ^ bool(time_stamp) is False:
+            print("Please specify either a time stamp or a time step")
+            # Maybe raise error instead
+            return None
+
+        # if time_stamp is not None and time_index is None:
+        if time_stamp is not None:
             position = np.sum(self.vc_times_stop < time_stamp)
             if position >= len(self.vc_times_stop):
                 # use last vc if time beyond range
                 position = -1
-        elif time_stamp is None and time_index is not None:
+        # elif time_stamp is None and time_index is not None:
+        elif time_index is not None:
             position = time_index
-        else:
-            print("Please specify either a time stamp or a time step")
-            return None
 
         virtual_circuit = self.vc_schedule[position]
         return virtual_circuit
@@ -222,8 +231,11 @@ class TargetScheduler:
         self.load_target_schedule(self.target_schedule_path)
         self.load_target_sequence(self.target_sequence_path)
 
+        # check stuff/compatibility
+
         # check compatibility of target schedule and target sequence
         for time in self.target_schedule_times:
+            # ### do this with set check...
             targ_names = self.target_schedule_dict[time]
             for targ in targ_names:
                 # check 1 : check if all targets in target schedule are in target sequence
@@ -236,7 +248,7 @@ class TargetScheduler:
                 time_end = self.target_sequence[targ]["times"][-1]
                 if time_start > time or time_end < time:
                     print(f"time range for {targ}", time_start, time_end)
-                    print(f"target schedule time", time)
+                    print(f"target schedule time, {time}")
                     raise ValueError(
                         f"Range of defined values for Target {targ} not compatible with schedule"
                     )
@@ -259,7 +271,8 @@ class TargetScheduler:
                 )
             )
             midpoints = (change_times[:-1] + change_times[1:]) / 2
-            for _, midpoint in enumerate(midpoints):
+            # for _, midpoint in enumerate(midpoints):
+            for midpoint in midpoints:
                 print(
                     f"checking compatibility of target schedule and vc sequence at time {midpoint}"
                 )
@@ -313,22 +326,22 @@ class TargetScheduler:
         None
             Modifies the attributes of the class.
         """
-        self.target_schedule_dict = {}
-
         file_ext = (path).split(".")[-1]
         if file_ext == ("pkl" or "pickle"):
             print("loading target schedule from pickle file")
             # load target sequence from pickle file
             with open(path, "rb") as fp:
                 target_schedule_pkl = pickle.load(fp)
-                times = list(target_schedule_pkl.keys())
-                times.sort()
+                self.target_schedule_dict = target_schedule_pkl
+
+                times = sorted(list(self.target_schedule_dict.keys()))
+                # times.sort()  # this may not be necessary - python might order things by default already
                 self.target_schedule_times = np.array(times)
 
-                for key, item in target_schedule_pkl.items():
-                    self.target_schedule_dict[key] = (
-                        item  # add  list of targets to dictionary
-                    )
+                # for key, item in target_schedule_pkl.items():
+                #     self.target_schedule_dict[key] = (
+                #         item  # add  list of targets to dictionary
+                #     )
         print("target schedule times", self.target_schedule_times)
         print("target schedule dict", self.target_schedule_dict)
         return self.target_schedule_dict

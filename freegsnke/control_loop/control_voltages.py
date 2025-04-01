@@ -14,7 +14,7 @@ from ..equilibrium_update import Equilibrium
 from ..nonlinear_solve import nl_solver
 from ..virtual_circuits import VirtualCircuit
 
-from .scheduler import TargetSequencer
+from .scheduler import TargetScheduler
 
 
 class ControlVoltages:
@@ -46,7 +46,7 @@ class ControlVoltages:
         eq: Equilibrium,
         profiles,
         stepping: nl_solver,
-        target_sequencer: TargetSequencer,
+        target_sequencer: TargetScheduler,
         coils=None,
     ):
         """
@@ -60,8 +60,8 @@ class ControlVoltages:
                 list of profiles
             stepping : Non Linear Solver object
                 Non Linear Solver object
-            target_sequencer : TargetSequencer object
-                TargetSequencer object - contains targets and vc schedule for simulation.
+            target_sequencer : TargetScheduler object
+                TargetScheduler object - contains targets and vc schedule for simulation.
             coils : list[str]   (optional)
                 list of coil names, defaults to all active coils defined in get_active_coils.
         """
@@ -212,7 +212,14 @@ class ControlVoltages:
 
         return virtual_circuit
 
-    def calculate_target_deltas(self, eq, targets, targets_req, targets_obs=None):
+    def calculate_target_deltas(
+        self,
+        eq,
+        targets,
+        gain_matrix,
+        targets_req,
+        targets_obs=None,
+    ):
         """Calculate the target deltas between the required and observed targets
 
         Parameters
@@ -226,6 +233,8 @@ class ControlVoltages:
         targets : list
             list of target names
 
+        gain_matrix : np.array() (2d array))
+            diagonal square matrix of target gains.
         targets_req : array
             array of required/desired target values for each shape target
 
@@ -250,10 +259,15 @@ class ControlVoltages:
             targets_obs
         ), "The target required and observed vectors are not the same length"
 
+        assert (
+            gain_matrix.shape[0] == gain_matrix.shape[1] == len(targets_req)
+        ), "The gain matrix is not the square or same size as the target vector"
+
         # shifts required
         target_deltas = targets_req - targets_obs
+        gained_target_deltas = gain_matrix @ target_deltas
         print("target deltas", target_deltas)
-        return target_deltas
+        return gained_target_deltas
 
     def calculate_voltage_vc_feedback_proportional(
         self,
@@ -311,10 +325,6 @@ class ControlVoltages:
             print("Gain matrix not provided, using identity matrix")
             print(gain_matrix)
 
-        assert (
-            gain_matrix.shape[0] == gain_matrix.shape[1] == len(targets_req)
-        ), "The gain matrix is not the square or same size as the target vector"
-
         # # check coils and targets and update attributes accordingly
         # if targets is not None:
         #     self.targets = targets
@@ -347,12 +357,12 @@ class ControlVoltages:
                 "The virtual circuit targets do not match the targets requested. Check the VC and Target sequence"
             )
         # compute the shape target deltas
-        target_deltas = self.calculate_target_deltas(
-            eq, targets, targets_req, targets_obs
+        gained_target_deltas = self.calculate_target_deltas(
+            eq, targets, gain_matrix, targets_req, targets_obs
         )
 
         # do matrix multiplication VC @ G @ delta
-        delta_currents = virtual_circuit.VCs_matrix @ gain_matrix @ target_deltas
+        delta_currents = virtual_circuit.VCs_matrix @ gained_target_deltas
         print("delta currents", delta_currents)
 
         # option 1 reorder currents, fill in zeros and multiply by inductance matrix

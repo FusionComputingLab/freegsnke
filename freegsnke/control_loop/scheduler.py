@@ -307,7 +307,7 @@ class TargetScheduler:
         elif vc_flag == "emulator" or "emu" or "Emulator":
             # initilase an Emulator sequencer
             assert model_path is not None, "Please provide a model path"
-            print("initilising an emulator sequencer")
+            print("initialising an emulator sequencer")
             self.vc_scheduler = VCG(model_path, model_names=None, n_models=None)
 
     def load_target_schedule(self, path):

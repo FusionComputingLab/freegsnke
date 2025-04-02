@@ -373,7 +373,7 @@ class ControlVoltages:
         print(reshaped_currents)
         voltages_v1 = np.dot(self.inductance_full, reshaped_currents)
 
-        print("------------- \n compuiting voltages \n -------------")
+        print("------------- \n computing voltages \n -------------")
         print(
             "voltages v1 : reorder currents, fill in zeros and multiply by full active coil inductance matrix"
         )

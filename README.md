@@ -97,6 +97,13 @@ The extra `freegs4e` dependency installs [FreeGS4E](https://github.com/FusionCom
 
 If you are planning to develop FreeGSNKE, see the below section on [contributing](#contributing) code.
 
+#### Installing FreeGSNKE with UDA
+
+FreeGSNKE also interfaces with [UDA](https://github.com/ukaea/UDA), for example, to simulate past MAST-U shots. See examples 6a, 6b and 6c for more information. If you require this functionality and have the necessary privileges, follow these steps to install the required packages:
+
+1. Log into your account at https://git.ccfe.ac.uk/ and follow the instructions [here](https://docs.gitlab.com/user/ssh/) to set up an SSH key to communicate with the CCFE GitLab instance.
+2. Establish a connection to the UKAEA VPN.
+3. When installing FreeGSNKE, specify the `uda` extra: `pip install freegsnke[uda]`. To install both the `uda` and `freegs4e` extras, separate them with a comma: `pip install freegsnke[freegs4e,uda]`.
 
 ## Contributing
 

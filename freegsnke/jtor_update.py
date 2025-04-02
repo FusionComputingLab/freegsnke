@@ -21,8 +21,8 @@ along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 
 import freegs4e
 import numpy as np
+from freegs4e.gradshafranov import mu0
 
-from . import limiter_func
 from . import switch_profile as swp
 
 

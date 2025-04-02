@@ -270,6 +270,61 @@ class ControlVoltages:
         print("target deltas", target_deltas)
         return gained_target_deltas
 
+    @staticmethod
+    def recompute_vc_from_sensitivity(virtual_circuit, targets):
+        """
+        Recompute a virtual circuit from the sensitivity matrix, using the targets provided.
+
+        Parameters
+        ----------
+        virtual_circuit : object
+            virtual circuit object
+
+        targets : list[str]
+            list of target names
+
+        Returns
+        -------
+        virtual_circuit : object
+            virtual circuit object
+        """
+        # get the sensitivity matrix, and select columns corresponding to the targets
+        sensitivity_matrix = virtual_circuit.shape_matrix
+        vc_targ_order_dict = dict(
+            zip(virtual_circuit.targets, np.arange(len(virtual_circuit.targets)))
+        )
+
+        sens_reduced = sensitivity_matrix[
+            np.array([vc_targ_order_dict[targ] for targ in targets]),
+        ]
+        vc_mat_reduced = np.linalg.pinv(sens_reduced)
+
+        targs_reduced = [
+            targets[i] for i in np.array([vc_targ_order_dict[targ] for targ in targets])
+        ]
+
+        targ_values = np.array(
+            [
+                virtual_circuit.targets_val[i]
+                for i in np.array([vc_targ_order_dict[targ] for targ in targets])
+            ]
+        )
+
+        virtualcircuit = vc.VirtualCircuit(
+            name="recomputed_vc",
+            eq=virtual_circuit.eq,
+            profiles=virtual_circuit.profiles,
+            shape_matrix=sens_reduced,
+            VCs_matrix=vc_mat_reduced,
+            targets=targs_reduced,
+            targets_val=targ_values,
+            non_standard_targets=None,
+            targets_options=None,
+            coils=virtual_circuit.coils,
+        )
+
+        return virtualcircuit
+
     def calculate_voltage_vc_feedback_proportional(
         self,
         eq,
@@ -350,13 +405,35 @@ class ControlVoltages:
         # assign virtual circuit attribute to class
         # self.virtual_circuit = virtual_circuit
 
-        if not targets == virtual_circuit.targets:
-            # raise error ? or recompute VC from sensitivity
-            print(f"target names provided {targets}")
-            print(f"virtual circuit targets {virtual_circuit.targets}")
+        # if not targets == virtual_circuit.targets:
+        #     # raise error ? or recompute VC from sensitivity
+        #     print(f"target names provided {targets}")
+        #     print(f"virtual circuit targets {virtual_circuit.targets}")
+        #     raise ValueError(
+        #         "The virtual circuit targets do not match the targets requested. Check the VC and Target sequence"
+        #     )
+
+        if targets == virtual_circuit.targets:
+            # targets match - do nothing and use VC provided
+            pass
+        elif set(targets).issubset(set(virtual_circuit.targets)):
+            # targets are a subset of the VC targets - recompute VC from sensitivity
+            print(
+                "targets are a subset of the VC targets - recomputing VC from sensitivity"
+            )
+            virtual_circuit = self.recompute_vc_from_sensitivity(
+                virtual_circuit, targets
+            )
+
+        else:
+            # targets are not a subset of the VC targets - raise error
+            print("targets are not a subset of the VC targets - raising error")
+            print("targets", targets)
+            print("VC targets", virtual_circuit.targets)
             raise ValueError(
                 "The virtual circuit targets do not match the targets requested. Check the VC and Target sequence"
             )
+
         # compute the shape target deltas
         gained_target_deltas = self.calculate_target_deltas(
             eq, targets, gain_matrix, targets_req, targets_obs

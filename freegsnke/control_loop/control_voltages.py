@@ -99,14 +99,14 @@ class ControlVoltages:
         # assign coils to default or
         if coils is None:
             print("initialising with default all active coils")
-            self.coils = deepcopy(self.active_coils_reduced)
+            self.control_coils = deepcopy(self.active_coils_reduced)
         else:
             print("initialising with custom coils")
-            self.coils = coils
+            self.control_coils = coils
 
         print("Default targets and current's initialised")
         print("all active", self.active_coils)
-        print("control coilds", self.coils)
+        print("control coilds", self.control_coils)
 
         # get inductance matrix (full with all active coils)
         # ??Machine config and inductance matrix will come from stepper function later??
@@ -130,7 +130,7 @@ class ControlVoltages:
                 eq=self.eq,
                 profiles=self.profiles,
                 targets=start_targs,
-                coils=self.coils,
+                coils=self.control_coils,
             )
 
     def get_inductance_reduced(self, coils=None):
@@ -150,8 +150,10 @@ class ControlVoltages:
 
         """
         if coils is None:  # use default of all active coils from tokamak
-            print("Inductance matrix for default of all active coils")
-            coils = self.coils
+            print(
+                "Inductance matrix for default of default reduced set of active coils"
+            )
+            coils = self.control_coils
         else:  # use coils provided and select apropriate part of inductance matrix
             print(f"Inductance matrix for coils provided {coils}")
             pass
@@ -196,13 +198,13 @@ class ControlVoltages:
 
         # if targets and coils are provided, update targets/coils attributes
         if coils is None:
-            coils = self.active_coils_reduced
+            coils = self.control_coils
 
         print("building virtual circuit from freegsnke")
         self.VCH.calculate_VC(
             eq,
             profiles,
-            coils=self.coils,
+            coils=coils,
             targets=targets,
             targets_options=None,
         )
@@ -337,7 +339,7 @@ class ControlVoltages:
             print("No VC object passed, building one with ")
             # check coils in virtual circuit match those in the tokamak
             print("target names provided ", targets)
-            print("self coils", self.coils)
+            print("self coils", self.control_coils)
             virtual_circuit = self.calc_vc_from_eq(
                 eq=eq, profiles=profiles, targets=targets, coils=coils
             )
@@ -399,8 +401,9 @@ class ControlVoltages:
         print("voltages v2 : shape", voltages_v2.shape)
         print(voltages_v2)
 
-        self.feedback_voltages_v1 = voltages_v1
-        self.feedback_voltages_v2 = voltages_v2
+        # if we want to keep the latest voltages
+        # self.feedback_voltages_v1 = voltages_v1
+        # self.feedback_voltages_v2 = voltages_v2
 
         return voltages_v1, voltages_v2
 
@@ -438,7 +441,7 @@ class ControlVoltages:
         print("controlled targets are ", controlled_targets)
         # get the virtual circuit object
         virtual_circuit = self.target_sequencer.get_vc(
-            eq=eq, profiles=profiles, time_stamp=time_stamp, coils=self.coils
+            eq=eq, profiles=profiles, time_stamp=time_stamp, coils=self.control_coils
         )
 
         desired_target_values = self.target_sequencer.desired_target_values(time_stamp)

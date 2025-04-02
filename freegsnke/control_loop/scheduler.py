@@ -160,7 +160,7 @@ class VirtualCircuitScheduler:
         """
 
         # get index for time stamp
-        if bool(time_index) ^ bool(time_stamp) is False:
+        if ((time_stamp is None) ^ (time_index is None)) is False:
             print("Please specify either a time stamp or a time step")
             # Maybe raise error instead
             return None
@@ -220,16 +220,11 @@ class TargetScheduler:
         -------
         None
         """
-        self.target_sequence_path = (
-            target_sequence_path  # path to the target sequence file
-        )
-        self.target_schedule_path = target_schedule_path
         self.vc_flag = vc_flag
-        self.vc_schedule_path = vc_schedule_path
 
         # load schedule and sequence
-        self.load_target_schedule(self.target_schedule_path)
-        self.load_target_sequence(self.target_sequence_path)
+        self.load_target_schedule(target_schedule_path)
+        self.load_target_sequence(target_sequence_path)
 
         # check stuff/compatibility
 
@@ -239,13 +234,13 @@ class TargetScheduler:
             targ_names = self.target_schedule_dict[time]
             for targ in targ_names:
                 # check 1 : check if all targets in target schedule are in target sequence
-                if targ not in self.target_sequence.keys():
+                if targ not in self.target_sequence_dict.keys():
                     raise ValueError(
                         f"Target {targ} is in schedule but is not defined in target sequence"
                     )
                 # check 2 : check if targets in each interval lie within time ranges of target sequence
-                time_start = self.target_sequence[targ]["times"][0]
-                time_end = self.target_sequence[targ]["times"][-1]
+                time_start = self.target_sequence_dict[targ]["times"][0]
+                time_end = self.target_sequence_dict[targ]["times"][-1]
                 if time_start > time or time_end < time:
                     print(f"time range for {targ}", time_start, time_end)
                     print(f"target schedule time, {time}")
@@ -257,7 +252,7 @@ class TargetScheduler:
         if vc_flag == "file":
             # initilase a vc sequence object
             assert vc_schedule_path is not None, "Please provide a vc sequence path"
-            self.vc_scheduler = VirtualCircuitScheduler(self.vc_schedule_path)
+            self.vc_scheduler = VirtualCircuitScheduler(vc_schedule_path)
 
             # add check to see if targets in VC's match targets in target schedule
             # merge the time sequence from both target and vc, and check the targets match at each midpiont.
@@ -400,7 +395,7 @@ class TargetScheduler:
                         raise ValueError(
                             "times array and vals array must be same length"
                         )
-                self.target_sequence = target_sequence_pkl  # assign dictionary of target sequences to class
+                self.target_sequence_dict = target_sequence_pkl  # assign dictionary of target sequences to class
 
     def desired_target_values(self, time_stamp):
         """
@@ -423,8 +418,8 @@ class TargetScheduler:
             [
                 np.interp(
                     time_stamp,
-                    self.target_sequence[targ]["times"],
-                    self.target_sequence[targ]["vals"],
+                    self.target_sequence_dict[targ]["times"],
+                    self.target_sequence_dict[targ]["vals"],
                 )
                 for targ in controlled_targets
             ]

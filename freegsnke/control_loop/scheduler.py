@@ -116,7 +116,7 @@ class VirtualCircuitScheduler:
         self.vc_times_calc = np.array(self.vc_times_calc)
 
     # ???? Do we need this???? Maybe delete this method.
-    def add_vc_to_sequence(self, virtual_circuit, time_stop):
+    def add_vc_to_sequence(self, virtual_circuit, time_start, time_stop):
         """
         Add virtual circuit to sequence.
 
@@ -301,7 +301,7 @@ class TargetScheduler:
                 # check that the target schedule is a subset of the vc sequence
                 if not set(controlled_targs).issubset(set(vc_targs)):
                     raise ValueError(
-                        f"targets scheduled not a subset of vc computable targets at time {midpoint} ",
+                        f"targets scheduled for control not a subset of vc computable targets at time {midpoint} ",
                     )
                 else:
                     # check the order of the targets

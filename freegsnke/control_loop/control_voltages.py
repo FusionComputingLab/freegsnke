@@ -106,7 +106,7 @@ class ControlVoltages:
 
         print("Default targets and current's initialised")
         print("all active", self.active_coils)
-        print("control coilds", self.control_coils)
+        print("control coils", self.control_coils)
 
         # get inductance matrix (full with all active coils)
         # ??Machine config and inductance matrix will come from stepper function later??
@@ -387,7 +387,7 @@ class ControlVoltages:
         #     self.targets = targets
 
         if coils is None:
-            print("updating coils to", coils)
+            print("coils being set to default active coils reduced")
             coils = self.active_coils_reduced
         # build VC object if not provided
         if virtual_circuit is None:
@@ -425,6 +425,8 @@ class ControlVoltages:
             virtual_circuit = self.recompute_vc_from_sensitivity(
                 virtual_circuit, targets
             )
+            print("VC targets now ", virtual_circuit.targets)
+            print("coils now ", virtual_circuit.coils)
 
         else:
             # targets are not a subset of the VC targets - raise error

@@ -131,7 +131,7 @@ class linear_solver:
             Vector of 2pi resistivity R/dA for all domain grid points in the reduced plasma domain
         """
         self.plasma_resistance_1d = plasma_resistance_1d
-        self.set_linearization_point(None, None)
+        self.set_linearization_point(None, None, None)
 
     def reset_timesteps(self, max_internal_timestep, full_timestep):
         """Resets the integration timesteps, calling self.solver.set_timesteps

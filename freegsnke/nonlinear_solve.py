@@ -758,7 +758,6 @@ class nl_solver:
 
         self.linearised_sol.reset_plasma_resistivity(self.plasma_resistance_1d)
         self.simplified_solver_J1.reset_plasma_resistivity(self.plasma_resistance_1d)
-        self.evol_plasma_curr.Ryy = self.plasma_resistance_1d
 
     def check_and_change_plasma_resistivity(
         self, plasma_resistivity, relative_threshold_difference=0.01

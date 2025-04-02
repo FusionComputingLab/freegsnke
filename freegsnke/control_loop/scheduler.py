@@ -222,13 +222,25 @@ class TargetScheduler:
         """
         self.vc_flag = vc_flag
 
-        # load schedule and sequence
-        self.load_target_schedule(target_schedule_path)
-        self.load_target_sequence(target_sequence_path)
+        # load schedule
+        self.target_schedule_dict = self.load_pickle_dict(target_schedule_path)
+        # schedule file should be a dictionary of lists of targets, indexed by times at which to start controlling that set of targets
 
-        # check stuff/compatibility
+        times = sorted(list(self.target_schedule_dict.keys()))
+        self.target_schedule_times = np.array(times)
+
+        print("target schedule times", self.target_schedule_times)
+        print("target schedule dict", self.target_schedule_dict)
+
+        # load target sequence
+        # target sequence  dict ~ {target_name : {"times":[time list], "vals": [vals list] , }
+        self.target_sequence_dict = self.load_pickle_dict(target_sequence_path)
+        for key, item in self.target_sequence_dict.items():
+            if len(item["times"]) != len(item["vals"]):
+                raise ValueError("times array and vals array must be same length")
 
         # check compatibility of target schedule and target sequence
+        # checks that ...
         for time in self.target_schedule_times:
             # ### do this with set check...
             targ_names = self.target_schedule_dict[time]
@@ -305,11 +317,9 @@ class TargetScheduler:
             print("initialising an emulator sequencer")
             self.vc_scheduler = VCG(model_path, model_names=None, n_models=None)
 
-    def load_target_schedule(self, path):
+    def load_pickle_dict(self, path):
         """
-        Load the target schedule from the file. File should be a dictionary of lists of targets, indexed by times at which to start controlling that set of targets
-        dict ~ {t_1_start : [target_names], t_2_start : [target_names], ... }
-
+        Load the dictionary from the file.
 
         Parameters
         ----------
@@ -318,28 +328,15 @@ class TargetScheduler:
 
         Returns
         -------
-        None
-            Modifies the attributes of the class.
+        dictionary
         """
         file_ext = (path).split(".")[-1]
         if file_ext == ("pkl" or "pickle"):
             print("loading target schedule from pickle file")
             # load target sequence from pickle file
             with open(path, "rb") as fp:
-                target_schedule_pkl = pickle.load(fp)
-                self.target_schedule_dict = target_schedule_pkl
-
-                times = sorted(list(self.target_schedule_dict.keys()))
-                # times.sort()  # this may not be necessary - python might order things by default already
-                self.target_schedule_times = np.array(times)
-
-                # for key, item in target_schedule_pkl.items():
-                #     self.target_schedule_dict[key] = (
-                #         item  # add  list of targets to dictionary
-                #     )
-        print("target schedule times", self.target_schedule_times)
-        print("target schedule dict", self.target_schedule_dict)
-        return self.target_schedule_dict
+                pickle_dict = pickle.load(fp)
+        return pickle_dict
 
     def retrieve_controlled_targets(self, time_stamp):
         """
@@ -367,35 +364,6 @@ class TargetScheduler:
             target_names = self.target_schedule_dict[self.target_schedule_times[index]]
             # print("targets being controlled now are", target_names)
             return target_names
-
-    def load_target_sequence(self, path):
-        """
-        Load the target sequence from the file, and store it in a nested dictionary.
-        dict ~ {target_name : {"times":[time list], "vals": [vals list] , }
-
-        Parameters
-        ----------
-        path : str
-            path to the file containing target sequence
-
-        Returns
-        -------
-        None
-            Modifies the attributes of the class.
-        """
-
-        file_ext = (path).split(".")[-1]
-        if file_ext == ("pkl" or "pickle"):
-            print("loading target sequence from pickle file")
-            # load target sequence from pickle file
-            with open(path, "rb") as fp:
-                target_sequence_pkl = pickle.load(fp)
-                for key, item in target_sequence_pkl.items():
-                    if len(item["times"]) != len(item["vals"]):
-                        raise ValueError(
-                            "times array and vals array must be same length"
-                        )
-                self.target_sequence_dict = target_sequence_pkl  # assign dictionary of target sequences to class
 
     def desired_target_values(self, time_stamp):
         """

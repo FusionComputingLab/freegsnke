@@ -457,3 +457,22 @@ class ControlVoltages:
         )
 
         return voltages_v1, voltages_v2
+
+    def calculate_solenoid_delta():
+        # get plasma inductance
+        # get delta of plasma currents
+        # get gain matrix
+        # get mutual inductance sol-plasma
+        pass
+
+    def compute_accumulate_currents():
+        # check that Isol doesn't have virtual circuit associated
+        pass
+
+    def check_currents():
+        # maybe perform two dummy checks
+        pass
+
+    def calculate_solenoid_voltage():
+        # get (M_FF + M_FB)/2 as an input
+        pass

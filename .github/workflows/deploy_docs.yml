@@ -1,0 +1,23 @@
+name: Deploy docs
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  build-and-publish-docs:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup
+      uses: './.github/actions/cicd-setup'
+
+    - name: Build docs
+      run: bash docs/build_documentation.sh
+
+    - name: Deploy docs to netlify
+      run: netlify deploy --site ${{ secrets.NETLIFY_SITE_ID }}  --auth ${{ secrets.NETLIFY_DOCS_DEPLOY_API_TOKEN }} --prod --dir docs/_build/html

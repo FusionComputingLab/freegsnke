@@ -1,0 +1,23 @@
+name: Publish to PyPI
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup
+      uses: './.github/actions/cicd-setup'
+
+    - name: Build
+      run: python -m build
+
+    - name: Publish
+      run: python -m twine upload dist/* --username __token__ --password ${{ secrets.PYPI_API_TOKEN }}

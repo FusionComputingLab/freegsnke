@@ -31,6 +31,12 @@ machine_configs/*/resistance_*.pickle
 machine_configs/*/resistance.pickle
 machine_configs/*/self_inductance.pickle
 machine_configs/*/machine_data.pickle
+machine_configs/MAST-U/MAST-U_active_coils_nonsym.pickle
+machine_configs/MAST-U/MAST-U_active_coils.pickle
+machine_configs/MAST-U/MAST-U_limiter.pickle
+machine_configs/MAST-U/MAST-U_magnetic_probes.pickle
+machine_configs/MAST-U/MAST-U_passive_coils.pickle
+machine_configs/MAST-U/MAST-U_wall.pickle
 examples/example_nonlinear_evolution_diverted_*
 docs/_build
 docs/api

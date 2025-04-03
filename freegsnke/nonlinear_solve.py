@@ -315,9 +315,12 @@ class nl_solver:
         # check if input equilibrium and associated linearization have an instability, and its timescale
         if automatic_timestep_flag + mode_removal + linearize:
             self.linearised_sol.calculate_linear_growth_rate()
-            self.linearised_sol.calculate_stability_margin()
-            self.unstable_mode_deformations()
             if len(self.linearised_sol.growth_rates):
+
+                # find stabiltiy margins and unstable modes
+                self.linearised_sol.calculate_stability_margin()
+                self.unstable_mode_deformations()
+
                 print(
                     "The linear growth rate of this equilibrium corresponds to a characteristic timescale of",
                     self.linearised_sol.instability_timescale,
@@ -1725,7 +1728,8 @@ class nl_solver:
         # apply self.linearised_sol.unstable_modes[:,0] shift to the currents
         # so that the Iy vector changes by a target_dIy relative change
         current_ = np.copy(self.currents_vec)
-        current_[:-1] += starting_dI * self.linearised_sol.unstable_modes[:, 0]
+
+        current_[:-1] += starting_dI * np.real(self.linearised_sol.unstable_modes[:, 0])
         self.assign_currents_solve_GS(current_, rtol_NK)
 
         dIy_0 = self.limiter_handler.Iy_from_jtor(self.profiles2.jtor) - self.Iy
@@ -1734,7 +1738,7 @@ class nl_solver:
         final_dI = starting_dI * target_dIy / rel_ndIy_0
 
         current_ = np.copy(self.currents_vec)
-        current_[:-1] += final_dI * self.linearised_sol.unstable_modes[:, 0]
+        current_[:-1] += final_dI * np.real(self.linearised_sol.unstable_modes[:, 0])
         self.assign_currents_solve_GS(current_, rtol_NK)
 
         # calculcate resulting positions

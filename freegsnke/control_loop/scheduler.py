@@ -303,13 +303,13 @@ class TargetScheduler:
                     raise ValueError(
                         f"targets scheduled for control not a subset of vc computable targets at time {midpoint} ",
                     )
-                else:
+                elif controlled_targs != vc_targs:
                     # check the order of the targets
-                    print("checking order of targets")
+                    print(
+                        "targets requested and vc available targets do not match : vc's will be recomputed as necessary"
+                    )
                     print("controlled targets", controlled_targs)
                     print("VC available targets", vc_targs)
-
-                    # if order is different, or not full set, then recompute VC from sensitivity???
 
         elif vc_flag == "emulator" or "emu" or "Emulator":
             # initilase an Emulator sequencer

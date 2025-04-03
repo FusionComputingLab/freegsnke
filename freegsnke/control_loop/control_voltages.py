@@ -295,6 +295,19 @@ class ControlVoltages:
             zip(virtual_circuit.targets, np.arange(len(virtual_circuit.targets)))
         )
 
+        vc_coil_order_dict = dict(
+            zip(virtual_circuit.coils, np.arange(len(virtual_circuit.coils)))
+        )
+
+        if virtual_circuit.coils != self.control_coils:
+            print(
+                "Warning : the virtual circuit provided does not match the control coils"
+            )
+            # raise error or shrink the vc to the control coils?????
+            control_coils_indices = np.array(
+                [vc_coil_order_dict[coil] for coil in self.control_coils]
+            )
+
         sens_reduced = sensitivity_matrix[
             np.array([vc_targ_order_dict[targ] for targ in targets]),
         ]

@@ -1,0 +1,33 @@
+name: Notebooks Check
+
+on:
+  pull_request:
+    branches:
+      - main
+    types: [labeled]
+
+jobs:
+  notebooks:
+    if: ${{ github.event.label.name == 'ready-for-final-tests' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup
+        uses: './.github/actions/cicd-setup'
+      - name: Check build tokamak machine notebook
+        run: jupyter nbconvert --execute --to notebook --inplace "examples/example0 - build_tokamak_machine.ipynb"
+      - name: Check static inverse solve MAST-U notebook
+        run: jupyter nbconvert --execute --to notebook --inplace "examples/example1 - static_inverse_solve_MASTU.ipynb"
+      - name: Check static forward solve MAST-U notebook
+        run: jupyter nbconvert --execute --to notebook --inplace "examples/example2 - static_forward_solve_MASTU.ipynb"
+      - name: Check extracting equilibrium quantities notebook
+        run: jupyter nbconvert --execute --to notebook --inplace "examples/example3 - extracting_equilibrium_quantites.ipynb"
+      - name: Check using magnetic probes notebook
+        run: jupyter nbconvert --execute --to notebook --inplace "examples/example4 - using_magnetic_probes.ipynb"
+      - name: Check evolutive forward solve notebook
+        run: jupyter nbconvert --execute --to notebook --inplace "examples/example5 - evolutive_forward_solve.ipynb"
+      - name: Check static inverse solve SPARC notebook
+        run: jupyter nbconvert --execute --to notebook --inplace "examples/example7 - static_inverse_solve_SPARC.ipynb"
+      - name: Check static inverse solve ITER notebook
+        run: jupyter nbconvert --execute --to notebook --inplace "examples/example8 - static_inverse_solve_ITER.ipynb"

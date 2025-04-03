@@ -131,7 +131,7 @@ class linear_solver:
             Vector of 2pi resistivity R/dA for all domain grid points in the reduced plasma domain
         """
         self.plasma_resistance_1d = plasma_resistance_1d
-        self.set_linearization_point(None, None)
+        self.set_linearization_point(None, None, None)
 
     def reset_timesteps(self, max_internal_timestep, full_timestep):
         """Resets the integration timesteps, calling self.solver.set_timesteps
@@ -291,18 +291,51 @@ class linear_solver:
         parameters are passed in as object attributes
         """
         # full set of characteristic timescales
-        self.all_timescales = np.sort(np.linalg.eigvals(self.Mmatrix))
-        # full set of characteristic timescales of the metal circuit equations
-        self.all_timescales_const_Ip = np.sort(
-            np.linalg.eigvals(self.Mmatrix[:-1, :-1])
-        )
-        mask = self.all_timescales < 0
-        # the negative (i.e. unstable) eigenvalues
-        self.instability_timescale = -self.all_timescales[mask]
+        self.all_timescales = -np.sort(np.linalg.eigvals(self.Mmatrix))
+        mask = self.all_timescales > 0
+        # the positive (i.e. unstable) eigenvalues
+        self.instability_timescale = self.all_timescales[mask]
         self.growth_rates = 1 / self.instability_timescale
-        mask = self.all_timescales_const_Ip < 0
-        self.instability_timescale_const_Ip = -self.all_timescales_const_Ip[mask]
+
+        # full set of characteristic timescales of the metal circuit equations
+        # with fixed Ip
+        all_timescales_const_Ip, eigv = np.linalg.eig(self.Mmatrix[:-1, :-1])
+        ord = np.argsort(all_timescales_const_Ip)
+        self.all_timescales_const_Ip = -all_timescales_const_Ip[ord]
+        mask = self.all_timescales_const_Ip > 0
+        self.instability_timescale_const_Ip = self.all_timescales_const_Ip[mask]
         self.growth_rates_const_Ip = 1 / self.instability_timescale_const_Ip
+        # extract the unstable mode
+        self.all_modes = eigv[:, ord]
+        self.unstable_modes = self.all_modes[:, mask]
+        self.unstable_modes /= np.linalg.norm(self.unstable_modes, axis=0)
+
+    def calculate_pseudo_rigid_projections(self, dRZdI):
+        """Projects the unstable modes on the vectors of currents
+        which best isolate an R or a Z movement of the plasma
+
+
+        Parameters
+        ----------
+        dRZdI : np.array
+            Jacobian of Rcurrent and Zcurrent shifts wrt the modes,
+            as calculated in nonlinear_solve
+
+        Returns
+        -------
+        np.array
+            proj[i,0] is the scalar product of the unstable mode i on the vector of modes resulting in an Rcurrent shift
+            proj[i,1] is the scalar product of the unstable mode i on the vector of modes resulting in an Zcurrent shift
+        """
+
+        # calculate vectors of currents for R and Z movements
+        rigid_VC = np.linalg.pinv(dRZdI[:, :-1])
+        rigid_VC /= np.linalg.norm(rigid_VC, axis=0)
+        # project on unstable mode
+        proj = np.sum(
+            rigid_VC[:, np.newaxis, :] * self.unstable_modes[:, :, np.newaxis], axis=0
+        )
+        return proj
 
     def calculate_stability_margin(
         self,

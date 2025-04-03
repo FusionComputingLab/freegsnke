@@ -23,6 +23,7 @@ from copy import deepcopy
 
 import matplotlib.pyplot as plt
 import numpy as np
+from freegs4e import bilinear_interpolation
 from scipy.signal import convolve2d
 
 from . import nk_solver_H as nk_solver
@@ -296,8 +297,11 @@ class nl_solver:
                     np.ones(1),
                 )
             ).astype(bool)
+            # apply mask to dIydI, dRZdI and final_dI_record
             self.dIydI = self.dIydI[:, self.selected_modes_mask]
             self.dIydI_ICs = np.copy(self.dIydI)
+            self.dRZdI = self.dRZdI[:, self.selected_modes_mask]
+            self.final_dI_record = self.final_dI_record[self.selected_modes_mask]
 
             # rebuild mask of selected modes with respect to list of all modes, to be used by evolve_metal_currents
             self.selected_modes_mask = np.concatenate(
@@ -312,6 +316,7 @@ class nl_solver:
         if automatic_timestep_flag + mode_removal + linearize:
             self.linearised_sol.calculate_linear_growth_rate()
             self.linearised_sol.calculate_stability_margin()
+            self.unstable_mode_deformations()
             if len(self.linearised_sol.growth_rates):
                 print(
                     "The linear growth rate of this equilibrium corresponds to a characteristic timescale of",
@@ -414,6 +419,8 @@ class nl_solver:
         self.linearised_sol.set_linearization_point(
             dIydI=self.dIydI, hatIy0=self.blended_hatIy, Myy_hatIy0=self.Myy_hatIy0
         )
+
+        self.build_current_vec(self.eq1, self.profiles1)
 
     def set_linear_solution(self, active_voltage_vec, d_profile_pars_dt=None):
         """Uses the solver of the linearised problem to set up an initial guess for the nonlinear solver
@@ -673,8 +680,8 @@ class nl_solver:
             self.Iy = self.limiter_handler.Iy_from_jtor(profile.jtor).copy()
             self.nIy = np.linalg.norm(self.Iy)
 
-        self.R0 = np.sum(eq.R * profile.jtor) / np.sum(profile.jtor)
-        self.Z0 = np.sum(eq.Z * profile.jtor) / np.sum(profile.jtor)
+        self.R0 = eq.Rcurrent()
+        self.Z0 = eq.Zcurrent()
         self.dRZdI = np.zeros((2, self.n_metal_modes + 1))
 
         if starting_dI is None:
@@ -698,12 +705,8 @@ class nl_solver:
 
                 for j in self.arange_currents:
                     self.dIydI[:, j] = self.build_dIydI_j(j, rtol_NK, verbose)
-                    R0 = np.sum(eq.R * self.profiles2.jtor) / np.sum(
-                        self.profiles2.jtor
-                    )
-                    Z0 = np.sum(eq.Z * self.profiles2.jtor) / np.sum(
-                        self.profiles2.jtor
-                    )
+                    R0 = self.eq2.Rcurrent()
+                    Z0 = self.eq2.Zcurrent()
                     self.dRZdI[0, j] = (R0 - self.R0) / self.final_dI_record[j]
                     self.dRZdI[1, j] = (Z0 - self.Z0) / self.final_dI_record[j]
 
@@ -755,7 +758,6 @@ class nl_solver:
 
         self.linearised_sol.reset_plasma_resistivity(self.plasma_resistance_1d)
         self.simplified_solver_J1.reset_plasma_resistivity(self.plasma_resistance_1d)
-        self.evol_plasma_curr.Ryy = self.plasma_resistance_1d
 
     def check_and_change_plasma_resistivity(
         self, plasma_resistivity, relative_threshold_difference=0.01
@@ -1693,3 +1695,63 @@ class nl_solver:
 
             # convergence checks succeeded, complete step
             self.step_complete_assign(working_relative_tol_GS)
+
+    def unstable_mode_deformations(self, starting_dI=50, rtol_NK=1e-7, target_dIy=2e-3):
+        """Applies the unstable mode m to calculate (dR/dIm, dZ/dIm)
+        where R and Z are the current-averaged coords of the plasma (i.e. eq.Rcurrent and eq.Zcurrent)
+        and Im is the magnitude of the current in the unstable mode.
+        A maps of the current distribution after m is applied is recorded,
+        together with the map having the same R and Z obtained as a rigid displament
+        of the original eq.
+
+        Parameters
+        ----------
+        rtol_NK : float
+            Relative tolerance to be used in the static GS problems.
+        target_dIy : float
+            Target value for the norm of delta(I_y), on which the finite difference derivative is calculated.
+        starting_dI : float
+            Initial value to be used as delta(I_j) to infer the slope of norm(delta(I_y))/delta(Im).
+
+        """
+
+        # apply self.linearised_sol.unstable_modes[:,0] shift to the currents
+        # so that the Iy vector changes by a target_dIy relative change
+        current_ = np.copy(self.currents_vec)
+        current_[:-1] += starting_dI * self.linearised_sol.unstable_modes[:, 0]
+        self.assign_currents_solve_GS(current_, rtol_NK)
+
+        dIy_0 = self.limiter_handler.Iy_from_jtor(self.profiles2.jtor) - self.Iy
+
+        rel_ndIy_0 = np.linalg.norm(dIy_0) / self.nIy
+        final_dI = starting_dI * target_dIy / rel_ndIy_0
+
+        current_ = np.copy(self.currents_vec)
+        current_[:-1] += final_dI * self.linearised_sol.unstable_modes[:, 0]
+        self.assign_currents_solve_GS(current_, rtol_NK)
+
+        # calculcate resulting positions
+        R0n = self.eq2.Rcurrent()
+        Z0n = self.eq2.Zcurrent()
+
+        self.dRZd_unstable_mode = np.array([R0n - self.R0, Z0n - self.Z0]) / final_dI
+
+        # build vector of coordinates as needed by bilint
+        # to 'shift' the original jtor so to match R0n and Z0n
+        grid = np.concatenate(
+            (
+                self.eqR[:, :, np.newaxis] - R0n + self.R0,
+                self.eqZ[:, :, np.newaxis] - Z0n + self.Z0,
+            ),
+            axis=-1,
+        )
+
+        # shift the original current
+        shifted_current = bilinear_interpolation.biliint(
+            self.eqR, self.eqZ, self.eq1._profiles.jtor, grid.reshape(-1, 2).T
+        )
+
+        self.deformable_vs_rigid_jtor = (
+            self.eq2._profiles.jtor,
+            shifted_current.reshape(self.nx, self.ny),
+        )

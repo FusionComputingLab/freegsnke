@@ -1,0 +1,15 @@
+name: CICD Setup
+description: 'Set up the CI/CD environment for FreeGSNKE'
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+    - name: Install freegsnke and dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install ".[freegs4e,dev]"
+      shell: bash

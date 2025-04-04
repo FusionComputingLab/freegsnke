@@ -4,19 +4,12 @@ Module for target and virtual circuit sequencing in control loop.
 """
 
 import pickle
-from copy import deepcopy
-
 import numpy as np
 
-from .. import machine_config
-from .. import virtual_circuits as vc  # import the virtual circuit class
-from ..equilibrium_update import Equilibrium
-from ..nonlinear_solve import nl_solver
+from fnkemu.virtual_circuits.virtual_circuit_generator import (
+        VC_Generator as VCG)
 from ..virtual_circuits import VirtualCircuit
-
-from fnkemu.virtual_circuits.virtual_circuit_generator import VC_Generator as VCG
-
-# import h5py
+from .scheduler import TargetScheduler
 
 
 class VirtualCircuitScheduler:
@@ -33,13 +26,13 @@ class VirtualCircuitScheduler:
         Parameters
         ----------
         vc_schedule_path : str
-            vc_schedule_path to the file containing VC's. Include file extension either hdf5 or pkl.
+            vc_schedule_path to the file containing VC's. Include file
+            extension either hdf5 or pkl.
 
         Returns
         -------
         None
         """
-        # self.vc_path = vc_schedule_path  # vc_schedule_path to the virtual circuit file
 
         self.vc_times_calc = []  # times at which vcs are calculated
         self.vc_times_stop = []  # times at which vcs are to be stopped using
@@ -48,24 +41,27 @@ class VirtualCircuitScheduler:
 
         # input currents and profile parameters to recreate eq if needed
         self.input_currents = []  # list of input current dictionaries
-        self.input_profile_pars = []  # list of input profile parameter dictionaries
+        self.input_profile_pars = []  # list of input profile parameter dicts
 
         if vc_schedule_path is not None:
             print("loading vcs from file")
             # populate the vc_schedule
             self.load_vcs_fromfile(vc_schedule_path)
-            # create dictionary of vc times and corresponding index (using stop times)
+            # create dictionary of vc times and corresponding index
+            # (using stop times)
             self.vc_time_stop_dict = {
                 time: ind for ind, time in enumerate(self.vc_times_stop)
             }
             n_vc = len(self.vc_times_calc)
             print(f"there are {n_vc} VC's loaded")
         else:
-            print("No file target_sequence_path provided. Add VC's manually if desired")
+            print("No file target_sequence_path provided. Add VC's manually if"
+                  "desired")
 
     def load_vcs_fromfile(self, path):
         """
-        Load the virtual circuit matrix, shape matrix, coils and targets from a file, and save a list of VC objects.
+        Load the virtual circuit matrix, shape matrix, coils and targets from a
+        file, and save a list of VC objects.
 
         Returns
         -------
@@ -140,18 +136,20 @@ class VirtualCircuitScheduler:
             time: ind for ind, time in enumerate(self.vc_times_stop)
         }
 
-        # update other parts such as vc_index, input currents, profile pars etc.
+        # update other parts such as vc_index, input currents, profile pars etc
 
     def retrieve_vc(self, time_stamp=None, time_index=None):
         """
-        Retrieve appropriate virtual circuit object from the sequence of virtual circuits.
+        Retrieve appropriate virtual circuit object from the sequence of
+        virtual circuits.
 
         Parameters
         ----------
         time_stamp : float (4 decimal places)
             time stamp of the virtual circuit to be retrieved
         time_index : int
-            index in the sequence of virtual circuits to be retrieved. Start at zero
+            index in the sequence of virtual circuits to be retrieved. Start at
+            zero.
 
         Returns
         -------
@@ -179,15 +177,18 @@ class VirtualCircuitScheduler:
         return virtual_circuit
 
 
-class TargetScheduler:
+class ShapeTargetScheduler(TargetScheduler):
     """
-    Class to build a target sequences from file, and store the sequence of desired targets along with appropriate time stamps.
+    Class to build a target sequences from file, and store the sequence of
+    desired targets along with appropriate time stamps.
     Naming conventions:
     Targets - These refer to 'shape targets'.
-    Target Schedule - This provides which targets are to be controlled at a given time.
-    Target Sequence - This provides the actual desired/requested targets at a given time.
-    VC Schedule - The schedule of VC's to be used up to a given time. Similar to Target Schedule
-
+    Target Schedule - This provides which targets are to be controlled at a
+    given time.
+    Target Sequence - This provides the actual desired/requested targets at a
+    given time.
+    VC Schedule - The schedule of VC's to be used up to a given time. Similar
+    to Target Schedule
 
     """
 
@@ -211,63 +212,34 @@ class TargetScheduler:
         target_schedule_path : str
             path to the file containing target schedule
         vc_flag : str   (optional)
-            flag to indicate whether to load virtual circuit from file or NN emulator (default = "file")
+            flag to indicate whether to load virtual circuit from file or NN
+            emulator (default = "file")
             options = ["file", "Emulator"]
         vc_schedule_path : str (optional)
-            path to the file containing virtual circuit sequence, if vc_flag = "file"
+            path to the file containing virtual circuit sequence, if
+            vc_flag = "file"
 
         Returns
         -------
         None
         """
+
+        super().__init__(target_sequence_path, target_schedule_path)
+
         self.vc_flag = vc_flag
-
-        # load schedule
-        self.target_schedule_dict = self.load_pickle_dict(target_schedule_path)
-        # schedule file should be a dictionary of lists of targets, indexed by times at which to start controlling that set of targets
-
-        times = sorted(list(self.target_schedule_dict.keys()))
-        self.target_schedule_times = np.array(times)
-
-        print("target schedule times", self.target_schedule_times)
-        print("target schedule dict", self.target_schedule_dict)
-
-        # load target sequence
-        # target sequence  dict ~ {target_name : {"times":[time list], "vals": [vals list] , }
-        self.target_sequence_dict = self.load_pickle_dict(target_sequence_path)
-        for key, item in self.target_sequence_dict.items():
-            if len(item["times"]) != len(item["vals"]):
-                raise ValueError("times array and vals array must be same length")
-
-        # check compatibility of target schedule and target sequence
-        # checks that ...
-        for time in self.target_schedule_times:
-            # ### do this with set check...
-            targ_names = self.target_schedule_dict[time]
-            for targ in targ_names:
-                # check 1 : check if all targets in target schedule are in target sequence
-                if targ not in self.target_sequence_dict.keys():
-                    raise ValueError(
-                        f"Target {targ} is in schedule but is not defined in target sequence"
-                    )
-                # check 2 : check if targets in each interval lie within time ranges of target sequence
-                time_start = self.target_sequence_dict[targ]["times"][0]
-                time_end = self.target_sequence_dict[targ]["times"][-1]
-                if time_start > time or time_end < time:
-                    print(f"time range for {targ}", time_start, time_end)
-                    print(f"target schedule time, {time}")
-                    raise ValueError(
-                        f"Range of defined values for Target {targ} not compatible with schedule"
-                    )
 
         # check if vc_flag is file and load VC's from file.
         if vc_flag == "file":
             # initilase a vc sequence object
-            assert vc_schedule_path is not None, "Please provide a vc sequence path"
+            assert (
+                    vc_schedule_path is not None
+                    ), "Please provide a vc sequence path"
             self.vc_scheduler = VirtualCircuitScheduler(vc_schedule_path)
 
-            # add check to see if targets in VC's match targets in target schedule
-            # merge the time sequence from both target and vc, and check the targets match at each midpiont.
+            # add check to see if targets in VC's match targets in target
+            # schedule
+            # merge the time sequence from both target and vc, and check the
+            # targets match at each midpiont.
             print("checking target schedule and vc sequence")
             change_times = np.sort(
                 np.concatenate(
@@ -281,27 +253,20 @@ class TargetScheduler:
             # for _, midpoint in enumerate(midpoints):
             for midpoint in midpoints:
                 print(
-                    f"checking compatibility of target schedule and vc sequence at time {midpoint}"
+                    "checking compatibility of target schedule and vc"
+                    f" sequence at time {midpoint}"
                 )
-                vc_targs = self.vc_scheduler.retrieve_vc(time_stamp=midpoint).targets
-                controlled_targs = self.retrieve_controlled_targets(time_stamp=midpoint)
-                # if vc.targets != self.retrieve_controlled_targets(time_stamp=midpoint):
-                #     print(
-                #         "target schedule and vc sequence do not match at time", midpoint
-                #     )
-                #     print("target schedule", self.target_schedule_dict[midpoint])
-                #     print(
-                #         "vc sequence",
-                #         self.vc_scheduler.retrieve_vc(time_stamp=midpoint).targets,
-                #     )
-                #     raise ValueError(
-                #         "target schedule and vc sequence do not match at time", midpoint
-                # )
-
+                vc_targs = self.vc_scheduler.retrieve_vc(
+                        time_stamp=midpoint
+                        ).targets
+                controlled_targs = self.retrieve_controlled_targets(
+                        time_stamp=midpoint
+                        )
                 # check that the target schedule is a subset of the vc sequence
                 if not set(controlled_targs).issubset(set(vc_targs)):
                     raise ValueError(
-                        f"targets scheduled for control not a subset of vc computable targets at time {midpoint} ",
+                        "targets scheduled for control not a subset of vc "
+                        f"computable targets at time {midpoint} ",
                     )
                 else:
                     # check the order of the targets
@@ -309,90 +274,16 @@ class TargetScheduler:
                     print("controlled targets", controlled_targs)
                     print("VC available targets", vc_targs)
 
-                    # if order is different, or not full set, then recompute VC from sensitivity???
+                    # if order is different, or not full set, then recompute VC
+                    # from sensitivity???
 
         elif vc_flag == "emulator" or "emu" or "Emulator":
             # initilase an Emulator sequencer
             assert model_path is not None, "Please provide a model path"
             print("initialising an emulator sequencer")
-            self.vc_scheduler = VCG(model_path, model_names=None, n_models=None)
-
-    def load_pickle_dict(self, path):
-        """
-        Load the dictionary from the file.
-
-        Parameters
-        ----------
-        path : str
-            path to the file containing target schedule
-
-        Returns
-        -------
-        dictionary
-        """
-        file_ext = (path).split(".")[-1]
-        if file_ext == ("pkl" or "pickle"):
-            print("loading target schedule from pickle file")
-            # load target sequence from pickle file
-            with open(path, "rb") as fp:
-                pickle_dict = pickle.load(fp)
-        return pickle_dict
-
-    def retrieve_controlled_targets(self, time_stamp):
-        """
-        Retrieve the list of targets to be controlled at a given time, given the target schedule.
-
-        Parameters
-        ----------
-        time_stamp : float (4 decimal places)
-            time stamp of the target to be retrieved
-
-        Returns
-        -------
-        target_names : list[str]
-            list of target names
-        """
-        # find index for time stamp
-        index = (
-            np.sum(self.target_schedule_times <= time_stamp) - 1
-        )  # subtract 1 to get index of t_start
-        if index == -1:
-            print("time requested is before first target schedule time")
-
-        else:
-            # print("index", index)
-            target_names = self.target_schedule_dict[self.target_schedule_times[index]]
-            # print("targets being controlled now are", target_names)
-            return target_names
-
-    def desired_target_values(self, time_stamp):
-        """
-        Retrieve values for desired control targets as linear interpolation between values at two adjacent time stamps.
-
-        Parameters
-        ----------
-        time_stamp : float (4 decimal places)
-            time stamp of the target to be retrieved
-
-        Returns
-        -------
-        targets_required : array   (float)
-            requested target values to be used by the control voltages class
-        """
-        # get set of targets being controlled at this time
-        controlled_targets = self.retrieve_controlled_targets(time_stamp)
-
-        targets_required = np.array(
-            [
-                np.interp(
-                    time_stamp,
-                    self.target_sequence_dict[targ]["times"],
-                    self.target_sequence_dict[targ]["vals"],
-                )
-                for targ in controlled_targets
-            ]
-        )
-        return targets_required
+            self.vc_scheduler = VCG(model_path,
+                                    model_names=None,
+                                    n_models=None)
 
     def get_vc(self, eq, profiles, time_stamp, coils):
         """

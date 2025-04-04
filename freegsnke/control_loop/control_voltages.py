@@ -48,6 +48,7 @@ class ControlVoltages:
         stepping: nl_solver,
         target_scheduler: TargetScheduler,
         coils=None,
+        inductance_matrix=None,
     ):
         """
         Initialize the control voltages class
@@ -64,6 +65,8 @@ class ControlVoltages:
                 TargetScheduler object - contains targets and vc schedule for simulation.
             coils : list[str]   (optional)
                 list of coil names, defaults to all active coils defined in get_active_coils.
+            inductance_matrix : np.array (optional)
+                inductance matrix, defaults to machine inductance matrix.
         """
         # assign equi and profiles objects
         self.eq = eq
@@ -110,9 +113,12 @@ class ControlVoltages:
 
         # get inductance matrix (full with all active coils)
         # ??Machine config and inductance matrix will come from stepper function later??
-        self.inductance_full = machine_config.coil_self_ind[
-            : len(self.active_coils), : len(self.active_coils)
-        ]
+        if inductance_matrix is None:
+            self.inductance_full = machine_config.coil_self_ind[
+                : len(self.active_coils), : len(self.active_coils)
+            ]
+        else:
+            self.inductance_full = inductance_matrix
         # initialise a VC handling object
         self.VCH = vc.VirtualCircuitHandling()
         self.VCH.define_solver(self.stepping.NK, target_relative_tolerance=1e-7)

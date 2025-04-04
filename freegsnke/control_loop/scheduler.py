@@ -422,7 +422,7 @@ class TargetScheduler:
             time stamp of the target to be retrieved
         Returns
         -------
-        Gradient : np.array
+        gradient : np.array
         """
         if targets is None:
             targets = self.retrieve_controlled_targets(time_stamp)
@@ -436,8 +436,13 @@ class TargetScheduler:
                 self.target_sequence_dict[target]["times"][1:], time_stamp, side="right"
             )
             print(f"position index {position}")
-            print(f"slope at {time_stamp}", slope[position])
-            gradient = slope[position]
+            if time_stamp > self.target_sequence_dict[target]["times"][-1]:
+                print("time stamp is greater than the last time stamp")
+                gradient = 0
+            else:
+                gradient = slope[position]
+                print(f"slope at {time_stamp}", slope[position])
+
             grad_arr[i] = gradient
 
         return grad_arr

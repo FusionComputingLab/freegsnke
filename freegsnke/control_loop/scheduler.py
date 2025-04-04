@@ -181,7 +181,8 @@ class VirtualCircuitScheduler:
 
 class TargetScheduler:
     """
-    Class to build a target sequences from file, and store the sequence of desired targets along with appropriate time stamps.
+    Class to build a Scheduler for feedback control voltages. Contains a target sequence, a target schedule, and a virtual circuit schedule.
+
     Naming conventions:
     Targets - These refer to 'shape targets'.
     Target Schedule - This provides which targets are to be controlled at a given time.
@@ -410,3 +411,33 @@ class TargetScheduler:
                 eq, profiles, coils=coils, targets=control_targs
             )
         return vc
+
+    def feed_forward_gradient(self, time_stamp, targets=None):
+        """
+        Compute the feed forward gradient of the control voltages.
+
+        Parameters
+        ----------
+        time_stamp : float
+            time stamp of the target to be retrieved
+        Returns
+        -------
+        Gradient : np.array
+        """
+        if targets is None:
+            targets = self.retrieve_controlled_targets(time_stamp)
+
+        grad_arr = np.zeros(len(targets))
+        for i, target in enumerate(targets):
+            slope = np.diff(self.target_sequence_dict[target]["vals"]) / np.diff(
+                self.target_sequence_dict[target]["times"]
+            )
+            position = np.searchsorted(
+                self.target_sequence_dict[target]["times"][1:], time_stamp, side="right"
+            )
+            print(f"position index {position}")
+            print(f"slope at {time_stamp}", slope[position])
+            gradient = slope[position]
+            grad_arr[i] = gradient
+
+        return grad_arr

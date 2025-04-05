@@ -6,7 +6,7 @@ Module to obtain control voltages from virtual circuits.
 import numpy as np
 from copy import deepcopy
 import pickle
-import h5py
+# import h5py
 
 from . import virtual_circuits as vc  # import the virtual circuit class
 from .virtual_circuits import VirtualCircuit
@@ -46,7 +46,7 @@ class ControlVoltages:
             targets : list[str] (optional)
                 list of target names, defaults to ["R_in", "R_out", "Rx_lower","Rs_lower_outer"]
             coils : list[str]   (optional)
-                list of coil names defaults to all active coils defined in get_active_coils.
+                list of coil names, defaults to all active coils defined in get_active_coils.
         """
         # assign equi and profiles objects
         self.eq = eq
@@ -57,7 +57,7 @@ class ControlVoltages:
             self.stepping.n_active_coils
         )  # could also be eq.tokamak.n_active_coils
         print("number active coils", self.n_active_coils)
-        # initialse targets with defaults or lists given
+        # initialise targets with defaults or lists given
         if targets is None:
             targets = ["R_in", "R_out", "Rx_lower", "Rs_lower_outer"]
             self.targets = targets
@@ -65,7 +65,7 @@ class ControlVoltages:
             self.targets = targets
 
         # set coil lists and dictionary for all active coils
-        self.active_coils = self.eq.tokamak.coils_list[: self.n_active_coils]
+        self.active_coils = self.eq.tokamak.coils_list[:self.n_active_coils]
 
         # create a dictionary to map coil names to their order in the list
         order_dictionary = {coil: i for i, coil in enumerate(self.active_coils)}
@@ -73,10 +73,10 @@ class ControlVoltages:
 
         # assign coils to default or
         if coils is None:
-            print("initilasing with default all active coils")
+            print("initialising with default all active coils")
             self.coils = deepcopy(self.active_coils)
         else:
-            print("initilasing with custom coils")
+            print("initialising with custom coils")
             self.coils = coils
 
         print("Default targets and current's initialised")
@@ -89,7 +89,7 @@ class ControlVoltages:
         self.inductance_full = machine_config.coil_self_ind[
             : len(self.active_coils), : len(self.active_coils)
         ]
-        # initialise a VC handling ojbect
+        # initialise a VC handling object
         self.VCH = vc.VirtualCircuitHandling()
         self.VCH.define_solver(self.stepping.NK, target_relative_tolerance=1e-7)
 
@@ -109,8 +109,8 @@ class ControlVoltages:
 
 
         """
-        if coils is None:  # use default of all acitve coils from tokamak
-            print("Inductance matrix for default of all acitve coils")
+        if coils is None:  # use default of all active coils from tokamak
+            print("Inductance matrix for default of all active coils")
             coils = self.coils
         else:  # use coils provided and select apropriate part of inductance matrix
             print(f"Inductance matrix for coils provided {coils}")
@@ -124,10 +124,10 @@ class ControlVoltages:
 
         return inductance_reduced
 
-    ## this function will be repalced by instance of build virtual circuit class.
+    ## this function will be replaced by instance of build virtual circuit class.
     def calc_vc(self, eq=None, profiles=None, targets=None, coils=None):
         """
-        Compute a VC using freegsnke VirtualCircuitHandling if no vc is provided.
+        Compute a VC using freegsnke VirtualCircuitHandling.
 
         Parameters
         ----------
@@ -154,7 +154,7 @@ class ControlVoltages:
         if profiles is None:
             profiles = self.profiles
 
-        # if targets and coils provided, update targets/coils attributes
+        # if targets and coils are provided, update targets/coils attributes
         if targets is not None:
             self.targets = targets
         if coils is not None:
@@ -186,7 +186,7 @@ class ControlVoltages:
         gain_matrix=None,
     ):
         """
-        Compute current given a set of target value shifs and vc matrix, at a given time.
+        Compute current given a set of target value shifts and vc matrix, at a given time.
 
         Assigns attributes in place for feedback voltages, and returns them.
 
@@ -224,7 +224,7 @@ class ControlVoltages:
         # set default gain matrix if not provided
         if gain_matrix is None:
             gain_matrix = np.identity(len(targets_req))
-            print("gain matrix not provided, using identity matrix")
+            print("Gain matrix not provided, using identity matrix")
             print(gain_matrix)
 
         assert gain_matrix.shape[0] == len(
@@ -240,7 +240,7 @@ class ControlVoltages:
             self.coils = coil_names
         # build VC object if not provided
         if virtual_circuit is None:
-            print("No VC ojbect passed, building one with ")
+            print("No VC object passed, building one with ")
             # check coils in virtual circuit match those in the tokamak
             print("target names provided ", target_names)
             print("self targets", self.targets)
@@ -249,7 +249,7 @@ class ControlVoltages:
                 eq=eq, profiles=profiles, targets=self.targets, coils=self.coils
             )
         else:
-            print("virtual circuit provided")
+            print("Virtual circuit provided")
             print("targets", virtual_circuit.targets)
             print("coils", virtual_circuit.coils)
 
@@ -264,7 +264,7 @@ class ControlVoltages:
 
         if targets_obs is None:
             # get the targets from the equilibrium
-            print("observed targets not provided, calculating from equilibrium")
+            print("Observed targets not provided, calculating from equilibrium")
             _, targets_obs = self.VCH.calculate_targets(eq, self.targets)
             print(targets_obs)
 
@@ -292,12 +292,12 @@ class ControlVoltages:
 
         print("------------- \n compuiting voltages \n -------------")
         print(
-            "volatges v1 : reorder currents, fill in zeros and multiply by full active coil inductance matrix"
+            "voltages v1 : reorder currents, fill in zeros and multiply by full active coil inductance matrix"
         )
         print("voltages v1 : shape", voltages_v1.shape)
         print(voltages_v1)
 
-        # option 2 reshape inductance matrix, muiltply by currents and then fill in zeros
+        # option 2 reshape inductance matrix, multiply by currents and then fill in zeros
         print("doing option 2")
         print("delta currents", delta_currents)
         inductance_matrix_reduced = self.get_inductance_reduced(
@@ -323,13 +323,14 @@ class ControlVoltages:
 
 class VirtualCircuitSequence:
     """
-    Class to build a virtual circuit objects from file, and store the sequence of virtual circuits along with appropriate time stamsp.
+    Class to build a virtual circuit objects from file, and store the sequence
+    of virtual circuits along with appropriate time stamps.
 
     """
 
     def __init__(self, path=None):
         """
-        Initialize the class
+        Initialise the class
 
         Parameters
         ----------
@@ -393,7 +394,7 @@ class VirtualCircuitSequence:
                     input_currents = item["input_currents"]
                     input_profile_pars = item["input_profile_pars"]
 
-                    vc_ojbect = VirtualCircuit(
+                    vc_object = VirtualCircuit(
                         name=f"vc_{index}_time_upto_{time_stop:.4f}",
                         eq=None,
                         profiles=None,
@@ -406,7 +407,7 @@ class VirtualCircuitSequence:
                         non_standard_targets=None,
                     )
 
-                    self.vc_sequence.append(vc_ojbect)
+                    self.vc_sequence.append(vc_object)
                     self.vc_times_calc.append(time_calc)
                     self.vc_times_stop.append(time_stop)
                     self.vc_index.append(index)
@@ -438,7 +439,7 @@ class VirtualCircuitSequence:
         #                 input_profile_pars = group["input_profile_pars"][:]
 
         #                 # add vc data to sequence
-        #                 vc_ojbect = vc.VirtualCircuit(
+        #                 vc_object = vc.VirtualCircuit(
         #                     f"vc_{index}_from_time_{timestamp:.4f}",
         #                     eq=None,
         #                     profiles=None,
@@ -450,7 +451,7 @@ class VirtualCircuitSequence:
         #                     non_standard_targets=None,
         #                     coils=coil_names,
         #                 )
-        #                 self.vc_sequence.append(vc_ojbect)
+        #                 self.vc_sequence.append(vc_object)
         #                 self.vc_times.append(timestamp)
         #                 self.input_currents.append(input_currents)
         #                 self.input_profile_pars.append(input_profile_pars)
@@ -480,14 +481,13 @@ class VirtualCircuitSequence:
     def retrieve_vc(self, time_stamp=None, time_index=None):
         """
         Retrieve appropriate virtual circuit object from the sequence of virtual circuits.
-        prr
 
         Parameters
         ----------
         time_stamp : float (4 decimal places)
             time stamp of the virtual circuit to be retrieved
         time_index : int
-            index in the sequence of virtual circuits to be retrieved. start at zero
+            index in the sequence of virtual circuits to be retrieved. Start at zero
 
         Returns
         -------
@@ -502,16 +502,16 @@ class VirtualCircuitSequence:
 
             returns index or -1 if time beyond range
             """
-            postition = np.sum(self.vc_times_stop < time_stamp)
-            if postition >= len(self.vc_times_stop):
+            position = np.sum(self.vc_times_stop < time_stamp)
+            if position >= len(self.vc_times_stop):
                 return -1
             else:
-                return postition
+                return position
 
         if time_stamp is not None and time_index is None:
-            postition = get_index(self.vc_times_stop, time_stamp)
+            position = get_index(self.vc_times_stop, time_stamp)
         elif time_stamp is None and time_index is not None:
-            postition = time_index
+            position = time_index
         else:
             print("Please specify either a time stamp or a time step")
             return None
@@ -522,8 +522,8 @@ class VirtualCircuitSequence:
         # print("index", postition)
         # print("virtual circuit", self.vc_sequence[postition].__dict__)
 
-        virual_circuit = self.vc_sequence[postition]
-        return virual_circuit
+        virtual_circuit = self.vc_sequence[position]
+        return virtual_circuit
 
 
 class TargetSequence:
@@ -536,7 +536,7 @@ class TargetSequence:
 
     def __init__(self, path=None):
         """
-        Initialize the class
+        Initialise the class
 
         Parameters
         ----------
@@ -598,7 +598,7 @@ class TargetSequence:
             self.target_vals = np.array(self.target_vals)[ind]
             self.target_names = [self.target_names[i] for i in ind]
 
-        # testing print statments
+        # testing print statements
         print("target times", self.target_times)
         print("target names", self.target_names)
         print("target vals", self.target_vals)

@@ -2,8 +2,10 @@ import numpy as np
 import pickle
 
 
-class TargetScheduler:
+class TargetScheduler():
     """
+    Generic target scheduler, used for scheduling shape targets and plasma
+    current.
 
     """
 
@@ -18,25 +20,20 @@ class TargetScheduler:
         Parameters
         ----------
         target_sequence_path : str
-            path to the file containing target sequence
+            path to the file containing target sequence.
         target_schedule_path : str
-            path to the file containing target schedule
+            path to the file containing target schedule.
 
         Returns
         -------
         None
 
         """
-        # load schedule
+        # load schedule and create a list of times for it
         self.target_schedule_dict = self.load_pickle_dict(target_schedule_path)
+        schedule_times = sorted(list(self.target_schedule_dict.keys()))
 
-        # schedule file should be a dictionary of lists of targets, indexed by
-        # times at which to start controlling that set of targets
-
-        times = sorted(list(self.target_schedule_dict.keys()))
-        self.target_schedule_times = np.array(times)
-
-        print("target schedule times", self.target_schedule_times)
+        print("target schedule times", schedule_times)
         print("target schedule dict", self.target_schedule_dict)
 
         # load target sequence
@@ -50,7 +47,7 @@ class TargetScheduler:
 
         # check compatibility of target schedule and target sequence
         # checks that ...
-        for time in self.target_schedule_times:
+        for time in schedule_times:
             # ### do this with set check...
             targ_names = self.target_schedule_dict[time]
             for targ in targ_names:
@@ -79,48 +76,74 @@ class TargetScheduler:
 
         Parameters
         ----------
-        path : str
-            path to the file containing target schedule
+        - path : str
+            Path to the file containing target schedule.
 
         Returns
         -------
-        dictionary
+        - pickle_dict : dictionary
+            Dictionary with the file contents.
+
         """
         file_ext = (path).split(".")[-1]
         if file_ext == ("pkl" or "pickle"):
-            print("loading target schedule from pickle file")
+            print(f"loading {file_ext[0]}")
             # load target sequence from pickle file
             with open(path, "rb") as fp:
                 pickle_dict = pickle.load(fp)
         return pickle_dict
 
+    def interpolate(self, time_stamp, target):
+        """
+        Interpolate the target value at time_stamp, from the information in
+        target_sequence_dict.
+
+        Arguments
+        ---------
+        - time_stamp : float (4 decimal places)
+            Time stamp of the target to be retrieved.
+        - target : str
+            Target queried.
+
+        Returns
+        -------
+        - interpolation : float
+            The interpolated value of target at time_stamp.
+
+        """
+        interpolation = np.interp(
+                time_stamp,
+                self.target_sequence_dict[target]["times"],
+                self.target_sequence_dict[target]["vals"]
+                )
+
+        return interpolation
+
     def retrieve_controlled_targets(self, time_stamp):
         """
-        Retrieve the list of targets to be controlled at a given time,
-        given the target schedule.
+        Find the targets that are controlled at time time_stamp.
 
-        Parameters
-        ----------
+        Arguments
+        ---------
         time_stamp : float (4 decimal places)
-            time stamp of the target to be retrieved
+            Time stamp of the target to be retrieved.
 
         Returns
         -------
         target_names : list[str]
-            list of target names
+            List of target names.
+
         """
-        # find index for time stamp
-        index = (
-            np.sum(self.target_schedule_times <= time_stamp) - 1
-        )  # subtract 1 to get index of t_start
-        if index == -1:
+
+        closest_key = max((key for key in self.target_schedule_dict
+                           if key <= time_stamp), default=None)
+
+        if closest_key is None:
             print("time requested is before first target schedule time")
 
-        else:
-            # print("index", index)
-            target_names = self.target_schedule_dict[self.target_schedule_times[index]]
-            # print("targets being controlled now are", target_names)
-            return target_names
+        target_names = self.target_schedule_dict[closest_key]
+
+        return target_names
 
     def desired_target_values(self, time_stamp):
         """
@@ -130,24 +153,21 @@ class TargetScheduler:
         Parameters
         ----------
         time_stamp : float (4 decimal places)
-            time stamp of the target to be retrieved
+            Time stamp of the target to be retrieved.
 
         Returns
         -------
-        targets_required : array   (float)
-            requested target values to be used by the control voltages class
+        targets_required : array (float)
+            Requested target values to be used by the control classes.
         """
         # get set of targets being controlled at this time
         controlled_targets = self.retrieve_controlled_targets(time_stamp)
 
         targets_required = np.array(
             [
-                np.interp(
-                    time_stamp,
-                    self.target_sequence_dict[targ]["times"],
-                    self.target_sequence_dict[targ]["vals"],
-                )
+                self.interpolate(time_stamp, targ)
                 for targ in controlled_targets
             ]
         )
+
         return targets_required

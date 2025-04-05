@@ -244,7 +244,7 @@ class ShapeTargetScheduler(TargetScheduler):
             change_times = np.sort(
                 np.concatenate(
                     (
-                        self.target_schedule_times,
+                        list(self.target_schedule_dict.keys()),
                         self.vc_scheduler.vc_times_stop,
                     )
                 )

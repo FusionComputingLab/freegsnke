@@ -857,6 +857,7 @@ class NKGSsolver:
         """
 
         # forward solve
+        eq._separatrix_data_flag = False
         if constrain is None:
             self.forward_solve(
                 eq=eq,

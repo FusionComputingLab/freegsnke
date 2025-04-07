@@ -653,6 +653,7 @@ class NKGSsolver:
         target_relative_unexplained_residual=0.3,
         max_n_directions=16,
         clip=10,
+        clip_quantiles=None,
         max_rel_update_size=0.2,
         forward_tolerance_increase=5,
     ):
@@ -757,6 +758,7 @@ class NKGSsolver:
                 target_relative_unexplained_residual=target_relative_unexplained_residual,
                 max_n_directions=max_n_directions,
                 clip=clip,
+                clip_quantiles=clip_quantiles,
                 verbose=False,
                 max_rel_update_size=max_rel_update_size,
             )

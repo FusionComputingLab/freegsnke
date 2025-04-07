@@ -11,7 +11,7 @@ FreeGSNKE (pronounced "free-gee-snake") is a **Python**-based code for **simulat
 Based on the well-established [FreeGS](https://github.com/bendudson/freegs) code, it utilises [FreeGS4E](https://github.com/FusionComputingLab/freegs4e) (a fork of FreeGS) to solve different types of free-boundary Grad-Shafranov equilibrium problem and contains a number of new capabilities over FreeGS. 
 
 **NOTE:**  We recommended reading this page in its entirety before attempting to install or run FreeGSNKE!
-
+k
 ## Capabilities
 FreeGSNKE is capable of solving both **static** (time-<u>in</u>dependent) and **evolutive** (time-dependent) **free-boundary equilibrium problems**. For **fixed-boundary** problems we recommend using FreeGS.
 
@@ -19,7 +19,7 @@ FreeGSNKE can solve:
 
 | Problem Type | Objective | Example use cases | 
 | --- | --- | --- |
-| **Static forward** | **Solve for the plasma equilibrium** using user-defined poloidal field coil currents, passive structure currents, and plasma current density profiles. | Plasma scenario design and shape control. Equilibrium library generation (for emulation). Initial condition generation for evolutive simulations. |
+| **Static forward** | **Solve for the plasma equilibrium** using user-defined poloidal field coil currents, passive structure currents, and plasma current density profiles. | Plasma scenario design and shape control. Equilibrium library generation (for emulation). Initial condition generation for evolutive simulations. Vitual circuit design. |
 | **Static inverse** | **Estimate poloidal field coil currents** using user-defined constraints (e.g. isoflux and X-point locations) and plasma current density profiles for a desired plasma equilibrium shape. | Plasma scenario design. Optimisation of poloidal field coil or magnetic probe locations. |
 | **Evolutive forward** | **Solve simultaneously for the plasma equilibrium, the poloidal field coil (and passive structure) currents, and the total plasma current over time from an initial equilibrium** using user-defined time-dependent poloidal field coil voltages and plasma current density profile parameters. | Full shot simulations. Vertical stability analysis. |
 
@@ -143,7 +143,7 @@ This will install FreeGSNKE in editable mode, including the optional development
 
 If you are also planning to co-develop [FreeGS4E](https://github.com/FusionComputingLab/freegs4e), you will need to install it in editable mode as well. This can be done by cloning the FreeGS4E repository, installing using the development instructions, and then installing FreeGSNKE in editable mode with:
 ```shell
-pip install ".[dev]"
+pip install -e ".[dev]"
 ```
 Notice that the `freegs4e` extra has been omitted from the FreeGSNKE installation command in this case.
 
@@ -180,7 +180,8 @@ Here are a list of FreeGSNKE papers that describe or use the code:
 
 - N. C. Amorisco et al, "FreeGSNKE: A Python-based dynamic free-boundary toroidal plasma equilibrium solver", Physics of Plasmas, **31**, 042517 (2024). DOI: [10.1063/5.0188467](https://doi.org/10.1063/5.0188467).
 - A. Agnello et al, "Emulation techniques for scenario and classical control design of tokamak plasmas", Physics of Plasmas, **31**, 043091 (2024). DOI: [10.1063/5.0187822](https://doi.org/10.1063/5.0187822).
-- K. Pentland et al, "Validation of the static forward Grad-Shafranov equilibrium solvers in FreeGSNKE and Fiesta using EFIT++ reconstructions from MAST-U", arXiv (2024). DOI: [2407.12432](https://arxiv.org/abs/2407.12432).
+- K. Pentland et al, "Validation of the static forward Grad-Shafranov equilibrium solvers in FreeGSNKE and Fiesta using EFIT++ reconstructions from MAST-U", Physica Scripta, **100**, 025608 (2025). DOI: [10.1088/1402-4896/ada192](https://iopscience.iop.org/article/10.1088/1402-4896/ada192).
+- K. Pentland et al, "Multiple solutions to the static forward free-boundary Grad-Shafranov problem on MAST-U", arXiv (2025). DOI: [2503.05674](https://arxiv.org/abs/2503.05674).
  
 
 If you would like your FreeGSNKE-related paper to be added, please let us know!

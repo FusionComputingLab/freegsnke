@@ -220,7 +220,7 @@ class ControlVoltages:
 
         return virtual_circuit
 
-    def calculate_target_deltas(
+    def calculate_gained_target_deltas(
         self,
         eq,
         targets,
@@ -457,7 +457,7 @@ class ControlVoltages:
             )
 
         # compute the shape target deltas
-        gained_target_deltas = self.calculate_target_deltas(
+        gained_target_deltas = self.calculate_gained_target_deltas(
             eq, targets, gain_matrix, targets_req, targets_obs
         )
 
@@ -536,6 +536,18 @@ class ControlVoltages:
         controlled_targets = self.target_scheduler.retrieve_controlled_targets(
             time_stamp
         )
+        if self.target_scheduler.vc_flag == "file":
+            gain_matrix = self.target_scheduler.vc_scheduler.retrieve_gains(
+                targets=controlled_targets, time_stamp=time_stamp
+            )
+            print("gain matrix", gain_matrix)
+        elif self.target_scheduler.vc_flag == "emulator" or "emu" or "Emulator":
+            # set default gains for emulators - this may want to be updated in future
+            print("using emulators - gains default to identity matrix ")
+            gain_matrix = np.identity(len(controlled_targets))
+        else:
+            gain_matrix = np.identity(len(controlled_targets))
+
         print("controlled targets are ", controlled_targets)
         # get the virtual circuit object
         virtual_circuit = self.target_scheduler.get_vc(

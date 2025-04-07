@@ -45,6 +45,7 @@ class VirtualCircuitScheduler:
         self.vc_times_stop = []  # times at which vcs are to be stopped using
         self.vc_index = []  #
         self.vc_schedule = []  # list of virtual circuit ojbects
+        self.gains = []
 
         # input currents and profile parameters to recreate eq if needed
         self.input_currents = []  # list of input current dictionaries
@@ -91,6 +92,13 @@ class VirtualCircuitScheduler:
                     targets_val = item["targets_val"]
                     input_currents = item["input_currents"]
                     input_profile_pars = item["input_profile_pars"]
+                    try:
+                        gains_arr = item["target_gains"]
+                    except:
+                        print("no gains provided - default to 1")
+                        gains_arr = np.ones(np.shape(targets))
+
+                    gains_dict = dict(zip(targets, gains_arr))
 
                     vc_object = VirtualCircuit(
                         name=f"vc_{index}_time_upto_{time_stop:.4f}",
@@ -111,6 +119,11 @@ class VirtualCircuitScheduler:
                     self.vc_index.append(index)
                     self.input_currents.append(input_currents)
                     self.input_profile_pars.append(input_profile_pars)
+                    assert len(gains_arr) == len(
+                        targets
+                    ), "gains provided don't match with number of targets"
+                    self.gains.append(gains_dict)
+
         # convert times to numpy array
         self.vc_times_stop = np.array(self.vc_times_stop)
         self.vc_times_calc = np.array(self.vc_times_calc)
@@ -177,6 +190,40 @@ class VirtualCircuitScheduler:
 
         virtual_circuit = self.vc_schedule[position]
         return virtual_circuit
+
+    def retrieve_gains(self, targets, time_stamp=None, time_index=None):
+        """
+        Retrieve the list of targets to be controlled at a given time, given the target schedule.
+        Parameters
+        ----------
+        time_stamp : float (4 decimal places)
+            time stamp of the target to be retrieved
+        Returns
+        -------
+        gains_matrix : np.array
+            gains matrix
+        """
+        # get index for time stamp
+        if ((time_stamp is None) ^ (time_index is None)) is False:
+            print("Please specify either a time stamp or a time step")
+            # Maybe raise error instead
+            return None
+
+        # if time_stamp is not None and time_index is None:
+        if time_stamp is not None:
+            position = np.sum(self.vc_times_stop < time_stamp)
+            if position >= len(self.vc_times_stop):
+                # use last vc if time beyond range
+                position = -1
+        # elif time_stamp is None and time_index is not None:
+        elif time_index is not None:
+            position = time_index
+
+        gains_arr = np.array([self.gains[position][targ] for targ in targets])
+
+        gains_matrix = np.diag(gains_arr)
+
+        return gains_matrix
 
 
 class TargetScheduler:

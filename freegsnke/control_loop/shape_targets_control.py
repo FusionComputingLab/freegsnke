@@ -30,7 +30,7 @@ class ControlVoltages:
     coil_order_dictionary : dictionary mapping coil names to their order in the list
     inductance_full : full inductance matrix for all active coils
     VCH (virtual circuit handling class)
-    target_sequencer (target sequencer class)
+    target_scheduler (target sequencer class)
 
 
     Methods :
@@ -45,7 +45,7 @@ class ControlVoltages:
         eq: Equilibrium,
         profiles,
         stepping: nl_solver,
-        target_sequencer: TargetScheduler,
+        target_scheduler: TargetScheduler,
         coils=None,
     ):
         """
@@ -59,7 +59,7 @@ class ControlVoltages:
                 list of profiles
             stepping : Non Linear Solver object
                 Non Linear Solver object
-            target_sequencer : TargetScheduler object
+            target_scheduler : TargetScheduler object
                 TargetScheduler object - contains targets and vc schedule for simulation.
             coils : list[str]   (optional)
                 list of coil names, defaults to all active coils defined in get_active_coils.
@@ -117,15 +117,15 @@ class ControlVoltages:
         self.VCH.define_solver(self.stepping.NK, target_relative_tolerance=1e-7)
 
         # initialise a target sequencer object
-        self.target_sequencer = target_sequencer
-        print("target sequencer flag :", self.target_sequencer.vc_flag)
-        if self.target_sequencer.vc_flag == ("Emulator" or "emu" or "emulator"):
+        self.target_scheduler = target_scheduler
+        print("target sequencer flag :", self.target_scheduler.vc_flag)
+        if self.target_scheduler.vc_flag == ("Emulator" or "emu" or "emulator"):
 
             # pre run the emulators so future calls to calculate_voltage_vc_feedback_proportional are quicker
-            start_targs = self.target_sequencer.target_schedule_dict[
-                self.target_sequencer.target_schedule_times[0]
+            start_targs = self.target_scheduler.target_schedule_dict[
+                self.target_scheduler.target_schedule_times[0]
             ]
-            self.target_sequencer.vc_scheduler.build_vc(
+            self.target_scheduler.vc_scheduler.build_vc(
                 eq=self.eq,
                 profiles=self.profiles,
                 targets=start_targs,
@@ -213,7 +213,7 @@ class ControlVoltages:
 
         return virtual_circuit
 
-    def calculate_target_deltas(
+    def calculate_gained_target_deltas(
         self,
         eq,
         targets,
@@ -294,6 +294,18 @@ class ControlVoltages:
             zip(virtual_circuit.targets, np.arange(len(virtual_circuit.targets)))
         )
 
+        vc_coil_order_dict = dict(
+            zip(virtual_circuit.coils, np.arange(len(virtual_circuit.coils)))
+        )
+
+        # if virtual_circuit.coils != self.control_coils:
+        #     print(
+        #         "Warning : the virtual circuit provided does not match the control coils"
+        #     )
+        #     # raise error or shrink the vc to the control coils?????
+        #     control_coils_indices = np.array(
+        #         [vc_coil_order_dict[coil] for coil in self.control_coils]
+        #     )
         sens_reduced = sensitivity_matrix[
             np.array([vc_targ_order_dict[targ] for targ in targets]),
         ]
@@ -435,7 +447,7 @@ class ControlVoltages:
             )
 
         # compute the shape target deltas
-        gained_target_deltas = self.calculate_target_deltas(
+        gained_target_deltas = self.calculate_gained_target_deltas(
             eq, targets, gain_matrix, targets_req, targets_obs
         )
 
@@ -511,16 +523,29 @@ class ControlVoltages:
         voltage_array : array
             feedback voltages
         """
-        controlled_targets = self.target_sequencer.retrieve_controlled_targets(
+        controlled_targets = self.target_scheduler.retrieve_controlled_targets(
             time_stamp
         )
+        if self.target_scheduler.vc_flag == "file":
+            gain_matrix = self.target_scheduler.vc_scheduler.retrieve_gains(
+                targets=controlled_targets, time_stamp=time_stamp
+            )
+            print("gain matrix", gain_matrix)
+        elif self.target_scheduler.vc_flag == "emulator" or "emu" or "Emulator":
+            # set default gains for emulators - this may want to be updated in future
+            print("using emulators - gains default to identity matrix ")
+            gain_matrix = np.identity(len(controlled_targets))
+            # or gain matrix is the one provided???
+        else:
+            gain_matrix = np.identity(len(controlled_targets))
+
         print("controlled targets are ", controlled_targets)
         # get the virtual circuit object
-        virtual_circuit = self.target_sequencer.get_vc(
+        virtual_circuit = self.target_scheduler.get_vc(
             eq=eq, profiles=profiles, time_stamp=time_stamp, coils=self.control_coils
         )
 
-        desired_target_values = self.target_sequencer.desired_target_values(time_stamp)
+        desired_target_values = self.target_scheduler.desired_target_values(time_stamp)
 
         # compute the proportional voltages
         voltages_v1, voltages_v2 = self.calculate_voltage_vc_feedback_proportional(

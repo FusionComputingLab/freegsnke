@@ -6,8 +6,7 @@ Module for target and virtual circuit sequencing in control loop.
 import pickle
 import numpy as np
 
-from fnkemu.virtual_circuits.virtual_circuit_generator import (
-        VC_Generator as VCG)
+from fnkemu.virtual_circuits.virtual_circuit_generator import VC_Generator as VCG
 from ..virtual_circuits import VirtualCircuit
 from .scheduler import TargetScheduler
 
@@ -38,6 +37,7 @@ class VirtualCircuitScheduler:
         self.vc_times_stop = []  # times at which vcs are to be stopped using
         self.vc_index = []  #
         self.vc_schedule = []  # list of virtual circuit ojbects
+        self.gains = []
 
         # input currents and profile parameters to recreate eq if needed
         self.input_currents = []  # list of input current dictionaries
@@ -55,8 +55,9 @@ class VirtualCircuitScheduler:
             n_vc = len(self.vc_times_calc)
             print(f"there are {n_vc} VC's loaded")
         else:
-            print("No file target_sequence_path provided. Add VC's manually if"
-                  "desired")
+            print(
+                "No file target_sequence_path provided. Add VC's manually if" "desired"
+            )
 
     def load_vcs_fromfile(self, path):
         """
@@ -87,6 +88,13 @@ class VirtualCircuitScheduler:
                     targets_val = item["targets_val"]
                     input_currents = item["input_currents"]
                     input_profile_pars = item["input_profile_pars"]
+                    try:
+                        gains_arr = item["target_gains"]
+                    except:
+                        print("no gains provided - default to 1")
+                        gains_arr = np.ones(np.shape(targets))
+
+                    gains_dict = dict(zip(targets, gains_arr))
 
                     vc_object = VirtualCircuit(
                         name=f"vc_{index}_time_upto_{time_stop:.4f}",
@@ -107,6 +115,10 @@ class VirtualCircuitScheduler:
                     self.vc_index.append(index)
                     self.input_currents.append(input_currents)
                     self.input_profile_pars.append(input_profile_pars)
+                    assert len(gains_arr) == len(
+                        targets
+                    ), "gains provided don't match with number of targets"
+                    self.gains.append(gains_dict)
         # convert times to numpy array
         self.vc_times_stop = np.array(self.vc_times_stop)
         self.vc_times_calc = np.array(self.vc_times_calc)
@@ -176,6 +188,40 @@ class VirtualCircuitScheduler:
         virtual_circuit = self.vc_schedule[position]
         return virtual_circuit
 
+    def retrieve_gains(self, targets, time_stamp=None, time_index=None):
+        """
+        Retrieve the list of targets to be controlled at a given time, given the target schedule.
+        Parameters
+        ----------
+        time_stamp : float (4 decimal places)
+            time stamp of the target to be retrieved
+        Returns
+        -------
+        gains_matrix : np.array
+            gains matrix
+        """
+        # get index for time stamp
+        if ((time_stamp is None) ^ (time_index is None)) is False:
+            print("Please specify either a time stamp or a time step")
+            # Maybe raise error instead
+            return None
+
+        # if time_stamp is not None and time_index is None:
+        if time_stamp is not None:
+            position = np.sum(self.vc_times_stop < time_stamp)
+            if position >= len(self.vc_times_stop):
+                # use last vc if time beyond range
+                position = -1
+        # elif time_stamp is None and time_index is not None:
+        elif time_index is not None:
+            position = time_index
+
+        gains_arr = np.array([self.gains[position][targ] for targ in targets])
+
+        gains_matrix = np.diag(gains_arr)
+
+        return gains_matrix
+
 
 class ShapeTargetScheduler(TargetScheduler):
     """
@@ -231,9 +277,7 @@ class ShapeTargetScheduler(TargetScheduler):
         # check if vc_flag is file and load VC's from file.
         if vc_flag == "file":
             # initilase a vc sequence object
-            assert (
-                    vc_schedule_path is not None
-                    ), "Please provide a vc sequence path"
+            assert vc_schedule_path is not None, "Please provide a vc sequence path"
             self.vc_scheduler = VirtualCircuitScheduler(vc_schedule_path)
 
             # add check to see if targets in VC's match targets in target
@@ -256,12 +300,8 @@ class ShapeTargetScheduler(TargetScheduler):
                     "checking compatibility of target schedule and vc"
                     f" sequence at time {midpoint}"
                 )
-                vc_targs = self.vc_scheduler.retrieve_vc(
-                        time_stamp=midpoint
-                        ).targets
-                controlled_targs = self.retrieve_controlled_targets(
-                        time_stamp=midpoint
-                        )
+                vc_targs = self.vc_scheduler.retrieve_vc(time_stamp=midpoint).targets
+                controlled_targs = self.retrieve_controlled_targets(time_stamp=midpoint)
                 # check that the target schedule is a subset of the vc sequence
                 if not set(controlled_targs).issubset(set(vc_targs)):
                     raise ValueError(
@@ -281,9 +321,7 @@ class ShapeTargetScheduler(TargetScheduler):
             # initilase an Emulator sequencer
             assert model_path is not None, "Please provide a model path"
             print("initialising an emulator sequencer")
-            self.vc_scheduler = VCG(model_path,
-                                    model_names=None,
-                                    n_models=None)
+            self.vc_scheduler = VCG(model_path, model_names=None, n_models=None)
 
     def get_vc(self, eq, profiles, time_stamp, coils):
         """

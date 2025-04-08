@@ -2,7 +2,7 @@ import numpy as np
 import pickle
 
 
-class TargetScheduler():
+class TargetScheduler:
     """
     Generic target scheduler, used for scheduling shape targets and plasma
     current.
@@ -112,10 +112,10 @@ class TargetScheduler():
 
         """
         interpolation = np.interp(
-                time_stamp,
-                self.target_sequence_dict[target]["times"],
-                self.target_sequence_dict[target]["vals"]
-                )
+            time_stamp,
+            self.target_sequence_dict[target]["times"],
+            self.target_sequence_dict[target]["vals"],
+        )
 
         return interpolation
 
@@ -135,8 +135,10 @@ class TargetScheduler():
 
         """
 
-        closest_key = max((key for key in self.target_schedule_dict
-                           if key <= time_stamp), default=None)
+        closest_key = max(
+            (key for key in self.target_schedule_dict if key <= time_stamp),
+            default=None,
+        )
 
         target_names = self.target_schedule_dict[closest_key]
 
@@ -161,10 +163,42 @@ class TargetScheduler():
         controlled_targets = self.retrieve_controlled_targets(time_stamp)
 
         targets_required = np.array(
-            [
-                self.interpolate(time_stamp, targ)
-                for targ in controlled_targets
-            ]
+            [self.interpolate(time_stamp, targ) for targ in controlled_targets]
         )
 
         return targets_required
+
+    def feed_forward_gradient(self, time_stamp, targets=None):
+        """
+        Compute the feed forward gradient of the control voltages.
+
+        Parameters
+        ----------
+        time_stamp : float
+            time stamp of the target to be retrieved
+        Returns
+        -------
+        gradient : np.array
+        """
+        if targets is None:
+            targets = self.retrieve_controlled_targets(time_stamp)
+
+        grad_arr = np.zeros(len(targets))
+        for i, target in enumerate(targets):
+            slope = np.diff(self.target_sequence_dict[target]["vals"]) / np.diff(
+                self.target_sequence_dict[target]["times"]
+            )
+            position = np.searchsorted(
+                self.target_sequence_dict[target]["times"][1:], time_stamp, side="right"
+            )
+            print(f"position index {position}")
+            if time_stamp > self.target_sequence_dict[target]["times"][-1]:
+                print("time stamp is greater than the last time stamp")
+                gradient = 0
+            else:
+                gradient = slope[position]
+                print(f"slope at {time_stamp}", slope[position])
+
+            grad_arr[i] = gradient
+
+        return grad_arr

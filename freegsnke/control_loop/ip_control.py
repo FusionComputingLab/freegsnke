@@ -5,7 +5,7 @@ Module to control plasma current Ip during a tokamak shot.
 
 from sys import float_info
 from numpy.random import normal
-from .scheduler import TargetScheduler
+from target_scheduler import TargetScheduler
 
 
 class ControlSolenoid:
@@ -100,14 +100,19 @@ class ControlSolenoid:
 
         # Compute the required change for Ip
         Ip_obs = eq.plasmaCurrent()
+        print(f"    The plasma current required: {Ip_req}")
+        print(f"    The plasma current observed: {Ip_obs}")
         delta_Ip = Ip_req - Ip_obs
+        print(f"    The delta plasma current: {delta_Ip}")
 
         # Compute the feedback loop voltage
         M_p = inductances["plasma"]
         Vloop_fb = gain * delta_Ip * M_p
+        print(f"    The feedback loop voltage: {Vloop_fb}")
 
         # Compute the loop voltage as a weighted sum
         Vloop = blend * Vloop_fb + (1 - blend) * Vloop_ff
+        print(f"    The full loop voltage: {Vloop}")
 
         # Compute the rate of change of the solenoid current
         M_sp = inductances["mutual"]
@@ -115,7 +120,7 @@ class ControlSolenoid:
 
         return dIsol
 
-    def compute_accumulated_currents(self):
+    def compute_accumulated_currents(self, eq):
         """
         Computes the predicted current for the solenoid so far in the shot, as
         prescribed in the VC subcategory of the circuit category. At the moment
@@ -133,8 +138,9 @@ class ControlSolenoid:
         """
 
         # Here I mimic the integral for dIsol's
-        real_Isol = self.eq.tokamak['Solenoid'].current
-        predicted_Isol = real_Isol + normal(0, 0.5)
+        real_Isol = eq.tokamak['Solenoid'].current
+        print(f"    The measured solenoid current: {real_Isol}")
+        predicted_Isol = real_Isol + normal(0, 100)
 
         return predicted_Isol
 
@@ -219,13 +225,16 @@ class ControlSolenoid:
         Corrected_Isol = gain * (approved_Isol - measured_Isol)
         Msol_fb = inductances["sol_fb"]
         Vsol_fb = Corrected_Isol * Msol_fb
+        print(f"    The feedback voltage: {Vsol_fb}")
 
         # Compute the feedforward voltage
         M_sol_ff = inductances["sol_ff"]
         Vsol_ff = approved_dIsol * M_sol_ff
+        print(f"    The feedforward voltage: {Vsol_ff}")
 
         # Compute the resistive voltage
         Vsol_res = measured_Isol * Rp
+        print(f"    The resistive voltage: {Vsol_res}")
 
         # Combine all the voltages into the output voltage
         Vsol = Vsol_fb + Vsol_ff + Vsol_res
@@ -260,34 +269,49 @@ class ControlSolenoid:
 
         # Implement the plasma category. First, the relevant entities should be
         # retrieved from the scheduler
-        Ip_req = self.scheduler.desired_target_values(time_stamp)[0]
+        controlled_targets = self.scheduler.desired_target_values(time_stamp)
+        if not controlled_targets:
+            print(f"  The plasma current is not controlled at t: {time_stamp}")
+            return None
+        Ip_req = controlled_targets[0]
+        print(f"  The requested Ip: {Ip_req}")
         Vloop_req = self.scheduler.retrieve_parameter(time_stamp, "Vloop")
-        gain_p = self.scheduler.retrieve_parameter(time_stamp, "plasma")
+        print(f"  The requested Vloop: {Vloop_req}")
+        gain_p = self.scheduler.retrieve_parameter(time_stamp, "Kp")
+        print(f"  The plasma gain: {gain_p}")
         blend = self.scheduler.retrieve_parameter(time_stamp, "blend")
-        dIsol = self.calculate_solenoid_delta(inductances,
-                                              eq,
-                                              Ip_req,
-                                              Vloop_req,
-                                              gain_p,
-                                              blend)
+        print(f"  The blend value: {blend}")
+        dIsol = self.calculate_solenoid_delta(inductances=inductances,
+                                              eq=eq,
+                                              Ip_req=Ip_req,
+                                              Vloop_ff=Vloop_req,
+                                              gain=gain_p,
+                                              blend=blend)
+
+        print(f"  The delta solenoid current: {dIsol}")
 
         # Implement the estimation of the predicted solenoid current in the
         # circuit category
-        Isol = self.compute_accumulated_currents()
+        Isol = self.compute_accumulated_currents(eq)
+        print(f"  The estimated solenoid current: {Isol}")
 
         # Implement the system category
         approved_dIsol, approved_Isol = self.check_currents(dIsol, Isol)
+        print(f"  The approved solenoid currents, (apr_dIsol, apr_Isol): "
+              f"({approved_dIsol}, {approved_Isol})")
 
         # Implement the PF category. First the relevant entities should be
         # retrived
-        measured_Isol = self.eq.tokamak['Solenoid'].current
-        gain_s = self.scheduler.retrieve_parameter(time_stamp, "solenoid")
-        Vsol = self.calculate_solenoid_voltage(Rp,
-                                               inductances,
-                                               gain_s,
-                                               approved_dIsol,
-                                               approved_Isol,
-                                               measured_Isol)
+        measured_Isol = eq.tokamak['Solenoid'].current
+        print(f"  The measured solenoid current: {measured_Isol}")
+        gain_s = self.scheduler.retrieve_parameter(time_stamp, "Ks")
+        print(f"  The solenoid gain: {gain_s}")
+        Vsol = self.calculate_solenoid_voltage(Rp=Rp,
+                                               inductances=inductances,
+                                               gain=gain_s,
+                                               approved_dIsol=approved_dIsol,
+                                               approved_Isol=approved_Isol,
+                                               measured_Isol=measured_Isol)
 
         return Vsol
 
@@ -364,12 +388,12 @@ class SolenoidScheduler(TargetScheduler):
         # Compute the position in the list for query that is the closest lower
         # time to time_stamp
         closest_pos = max((key for key
-                           in self.control_params[query]["times"]
+                           in self.control_params[query].keys()
                            if key <= time_stamp), default=None)
         if closest_pos is None:
             print("time requested is before first control parameter time")
 
         # Retrieved the value for this parameter at the chosen position
-        requested_parameter = self.control_params[query]["vals"][closest_pos]
+        requested_parameter = self.control_params[query][closest_pos]
 
         return requested_parameter

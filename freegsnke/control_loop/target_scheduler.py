@@ -63,10 +63,10 @@ class TargetScheduler():
                 time_start = self.target_sequence_dict[targ]["times"][0]
                 time_end = self.target_sequence_dict[targ]["times"][-1]
                 if time_start > time or time_end < time:
-                    print(f"time range for {targ}", time_start, time_end)
-                    print(f"target schedule time, {time}")
+                    print(f"time range for {targ}: ({time_start}, {time_end})")
+                    print(f"target schedule time: {time}")
                     raise ValueError(
-                        f"Range of defined values for Target {targ} not"
+                        f"Range of defined values for Target {targ} not "
                         "compatible with schedule"
                     )
 
@@ -87,7 +87,7 @@ class TargetScheduler():
         """
         file_ext = (path).split(".")[-1]
         if file_ext == ("pkl" or "pickle"):
-            print(f"loading {file_ext[0]}")
+            print(f"loading {path}")
             # load target sequence from pickle file
             with open(path, "rb") as fp:
                 pickle_dict = pickle.load(fp)
@@ -137,9 +137,6 @@ class TargetScheduler():
 
         closest_key = max((key for key in self.target_schedule_dict
                            if key <= time_stamp), default=None)
-
-        if closest_key is None:
-            print("time requested is before first target schedule time")
 
         target_names = self.target_schedule_dict[closest_key]
 

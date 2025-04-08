@@ -89,7 +89,7 @@ def create_machine():
         (Rx, Zx, 0.45, 1.8),
     ]
 
-    eq.tokamak["P6"].current = 0
+    eq.tokamak.set_coil_current("P6", 0)
     eq.tokamak["P6"].control = False
     eq.tokamak["Solenoid"].control = False
 
@@ -120,10 +120,10 @@ def create_test_files_static_solve(create_machine):
     # from freegsnke import newtonkrylov
     # NK = newtonkrylov.NewtonKrylov(eq)
 
-    eq.tokamak["P6"].current = 0
+    eq.tokamak.set_coil_current("P6", 0)
     eq.tokamak["P6"].control = False
     eq.tokamak["Solenoid"].control = False
-    eq.tokamak["Solenoid"].current = 15000
+    eq.tokamak.set_coil_current("Solenoid", 15000)
 
     freegs4e.solve(
         eq,  # The equilibrium to adjust
@@ -159,10 +159,10 @@ def test_static_solve(create_machine):
     # from freegsnke import newtonkrylov
     # NK = newtonkrylov.NewtonKrylov(eq)
 
-    eq.tokamak["P6"].current = 0
+    eq.tokamak.set_coil_current("P6", 0)
     eq.tokamak["P6"].control = False
     eq.tokamak["Solenoid"].control = False
-    eq.tokamak["Solenoid"].current = 15000
+    eq.tokamak.set_coil_current("Solenoid", 15000)
 
     freegs4e.solve(
         eq,  # The equilibrium to adjust

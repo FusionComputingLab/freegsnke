@@ -388,7 +388,7 @@ class VirtualCircuitHandling:
 
         # directly assign the currents
         for i, coil in enumerate(coils):
-            eq.tokamak[coil].current = currents_vec[i]
+            eq.tokamak.set_coil_current(coil, currents_vec[i])
 
     def assign_currents_solve_GS(self, currents_vec, coils, target_relative_tolerance):
         """

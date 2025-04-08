@@ -74,7 +74,7 @@ def create_machine():
     )
     keys = list(eq.tokamak.getCurrents().keys())
     for i in np.arange(12):
-        eq.tokamak[keys[i]].current = currents[i]
+        eq.tokamak.set_coil_current(keys[i], currents[i])
     NK.solve(eq, profiles, target_relative_tolerance=1e-8)
 
     # Initialize the evolution object

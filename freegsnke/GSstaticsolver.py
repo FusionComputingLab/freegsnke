@@ -328,7 +328,8 @@ class NKGSsolver:
 
         picard_flag = 0
         trial_plasma_psi = np.copy(eq.plasma_psi).reshape(-1)
-        self.tokamak_psi = (eq.tokamak.calcPsiFromGreens(pgreen=eq._pgreen)).reshape(-1)
+        # self.tokamak_psi = (eq.tokamak.calcPsiFromGreens(pgreen=eq._pgreen)).reshape(-1)
+        self.tokamak_psi = eq.tokamak.getPsitokamak(vgreen=eq._vgreen).reshape(-1)
 
         log = []
 
@@ -611,20 +612,21 @@ class NKGSsolver:
                 + f"iterations. Last relative psi change: {rel_change}."
             )
 
-    def get_currents(self, eq):
-        current_vec = np.zeros(self.len_control_coils)
-        for i, coil in enumerate(self.control_coils):
-            current_vec[i] = eq.tokamak[coil].current
-        return current_vec
+    # def get_currents(self, eq):
+    #     current_vec = np.zeros(self.len_control_coils)
+    #     for i, coil in enumerate(self.control_coils):
+    #         current_vec[i] = eq.tokamak[coil].current
+    #     return current_vec
 
-    def assign_currents(self, eq, current_vec):
-        for i, coil in enumerate(self.control_coils):
-            eq.tokamak[coil].current = current_vec[i]
+    # def assign_currents(self, eq, current_vec):
+    #     for i, coil in enumerate(self.control_coils):
+    #         eq.tokamak[coil].current = current_vec[i]
 
     def update_currents(self, constrain, eq, profiles):
-        aux_tokamak_psi = eq.tokamak.calcPsiFromGreens(pgreen=eq._pgreen)
+        aux_tokamak_psi = eq.tokamak.getPsitokamak(vgreen=eq._vgreen)
         constrain(eq)
-        self.tokamak_psi = eq.tokamak.calcPsiFromGreens(pgreen=eq._pgreen)
+        eq.tokamak.getCurrentsVec()
+        self.tokamak_psi = eq.tokamak.getPsitokamak(vgreen=eq._vgreen)
 
         if hasattr(profiles, "limiter_core_mask"):
             norm_delta = np.linalg.norm(
@@ -718,12 +720,12 @@ class NKGSsolver:
 
         log = []
 
-        self.control_coils = list(eq.tokamak.getCurrents().keys())
-        control_mask = np.arange(len(self.control_coils))[
-            np.array([eq.tokamak[coil].control for coil in self.control_coils])
-        ]
-        self.control_coils = [self.control_coils[i] for i in control_mask]
-        self.len_control_coils = len(self.control_coils)
+        # self.control_coils = list(eq.tokamak.getCurrents().keys())
+        # control_mask = np.arange(len(self.control_coils))[
+        #     np.array([eq.tokamak[coil].control for coil in self.control_coils])
+        # ]
+        # self.control_coils = [self.control_coils[i] for i in control_mask]
+        # self.len_control_coils = len(self.control_coils)
 
         if initial_Picard:
             # use freegs4e Picard solver for initial steps to a shallow tolerance
@@ -747,6 +749,7 @@ class NKGSsolver:
             log.append("Newton-Krylov iteration: " + str(iterations))
 
             norm_delta = self.update_currents(constrain, eq, profiles)
+
             self.forward_solve(
                 eq,
                 profiles,

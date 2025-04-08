@@ -882,9 +882,10 @@ class nl_solver:
         eq : FreeGSNKE equilibrium Object
             Initial equilibrium. eq.tokamak is used to extract current values.
         """
-        eq_currents = eq.tokamak.getCurrents()
-        for i, labeli in enumerate(self.coils_order):
-            self.vessel_currents_vec[i] = eq_currents[labeli]
+        self.vessel_currents_vec = eq.tokamak.getCurrentsVec()
+        # eq_currents = eq.tokamak.getCurrents()
+        # for i, labeli in enumerate(self.coils_order):
+        #     self.vessel_currents_vec[i] = eq_currents[labeli]
 
     def build_current_vec(self, eq, profile):
         """Builds the vector of currents in which the dynamics is actually solved, self.currents_vec
@@ -1041,6 +1042,8 @@ class nl_solver:
 
         self.currents_vec = np.copy(self.trial_currents)
         self.assign_currents(self.currents_vec, self.eq1, self.profiles1)
+        self.eq1.tokamak.set_all_coil_currents(self.vessel_currents_vec)
+        self.eq2.tokamak.set_all_coil_currents(self.vessel_currents_vec)
 
         if from_linear:
             self.profiles1 = deepcopy(self.profiles2)
@@ -1070,7 +1073,7 @@ class nl_solver:
         Parameters
         ----------
         currents_vec : np.array
-            Input current values to be assigned.
+            Input current values to be assigned, in terms of mode currents
         eq : FreeGSNKE equilibrium Object
             Equilibrium object to be modified.
         profiles : FreeGSNKE profile Object
@@ -1085,8 +1088,9 @@ class nl_solver:
         self.vessel_currents_vec = self.evol_metal_curr.IdtoIvessel(
             Id=currents_vec[:-1]
         )
-        for i, labeli in enumerate(self.coils_order):
-            eq.tokamak[labeli].current = self.vessel_currents_vec[i]
+        # for i, labeli in enumerate(self.coils_order):
+        #     eq.tokamak[labeli].current = self.vessel_currents_vec[i]
+        eq.tokamak.current_vec = self.vessel_currents_vec.copy()
 
     def assign_currents_solve_GS(self, currents_vec, rtol_NK):
         """Assigns current values as in input currents_vec to private self.eq2 and self.profiles2.
@@ -1209,7 +1213,7 @@ class nl_solver:
             Normalised plasma current distribution. 1d vector on the reduced plasma domain.
         """
         self.assign_currents(trial_currents, profile=self.profiles2, eq=self.eq2)
-        self.tokamak_psi = self.eq2.tokamak.calcPsiFromGreens(pgreen=self.eq2._pgreen)
+        self.tokamak_psi = self.eq2.tokamak.getPsitokamak(vgreen=self.eq2._vgreen)
         jtor_ = self.profiles2.Jtor(self.eqR, self.eqZ, self.tokamak_psi + plasma_psi)
         hat_Iy1 = self.limiter_handler.hat_Iy_from_jtor(jtor_)
         return hat_Iy1

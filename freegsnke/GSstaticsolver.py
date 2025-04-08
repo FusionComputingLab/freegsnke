@@ -856,6 +856,9 @@ class NKGSsolver:
             flag to choose whether inverse solver uses Picard or Newton-Krylov iterations
         """
 
+        # ensure vectorised currents are in place in tokamak object
+        eq.tokamak.getCurrentsVec()
+
         # forward solve
         eq._separatrix_data_flag = False
         if constrain is None:

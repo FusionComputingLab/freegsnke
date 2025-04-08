@@ -294,8 +294,8 @@ class ControlVoltages:
         controlled_targets = self.target_scheduler.retrieve_controlled_targets(
             time_stamp
         )
-        feed_forward_targets = (
-            []
+        feed_forward_targets = list(
+            self.target_scheduler.target_sequence_dict.keys()
         )  # these hard coded, or hard coded in init? or just get all targets from sequencer?
         all_targs = sorted(set(controlled_targets + feed_forward_targets))
         # ?? control targs should be subset of feedforward targets?

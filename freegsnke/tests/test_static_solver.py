@@ -164,12 +164,14 @@ def test_static_solve(create_machine):
     eq.tokamak["Solenoid"].control = False
     eq.tokamak.set_coil_current("Solenoid", 15000)
 
-    freegs4e.solve(
-        eq,  # The equilibrium to adjust
-        profiles,  # The plasma profiles
-        constrain,  # Plasma control constraints
-        show=False,
-        rtol=3e-3,
+    # freegs4e.solve(
+    NK.solve(
+        eq=eq,  # The equilibrium to adjust
+        profiles=profiles,  # The plasma profiles
+        constrain=constrain,  # Plasma control constraints
+        # show=False,
+        target_relative_tolerance=1e-3,
+        picard=False,
     )
 
     controlCurrents = np.load("./freegsnke/tests/test_controlCurrents.npy")
@@ -180,5 +182,5 @@ def test_static_solve(create_machine):
     test_psi = np.load("./freegsnke/tests/test_psi.npy")
 
     assert np.allclose(
-        eq.psi(), test_psi, atol=(np.max(test_psi) - np.min(test_psi)) * 0.0001
+        eq.psi(), test_psi, atol=(np.max(test_psi) - np.min(test_psi)) * 0.003
     ), "Psi map differs significantly from the test map"

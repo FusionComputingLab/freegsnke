@@ -56,7 +56,7 @@ class VirtualCircuitScheduler:
             print(f"there are {n_vc} VC's loaded")
         else:
             print(
-                "No file target_sequence_path provided. Add VC's manually if" "desired"
+                "No file target_sequence_path provided. Add VC's manually if desired"
             )
 
     def load_vcs_fromfile(self, path):
@@ -308,14 +308,13 @@ class ShapeTargetScheduler(TargetScheduler):
                         "targets scheduled for control not a subset of vc "
                         f"computable targets at time {midpoint} ",
                     )
-                else:
+                elif controlled_targs != vc_targs:
                     # check the order of the targets
-                    print("checking order of targets")
-                    print("controlled targets", controlled_targs)
+                    print(
+                        "targets requested and vc available targets do not match : vc's will be recomputed as necessary"
+                    )
+                     print("controlled targets", controlled_targs)
                     print("VC available targets", vc_targs)
-
-                    # if order is different, or not full set, then recompute VC
-                    # from sensitivity???
 
         elif vc_flag == "emulator" or "emu" or "Emulator":
             # initilase an Emulator sequencer

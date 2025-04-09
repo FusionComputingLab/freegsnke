@@ -47,6 +47,7 @@ class ControlVoltages:
         stepping: nl_solver,
         target_scheduler: TargetScheduler,
         coils=None,
+        inductance_matrix=None,
     ):
         """
         Initialize the control voltages class
@@ -63,6 +64,8 @@ class ControlVoltages:
                 TargetScheduler object - contains targets and vc schedule for simulation.
             coils : list[str]   (optional)
                 list of coil names, defaults to all active coils defined in get_active_coils.
+            inductance_matrix : np.array (optional)
+                inductance matrix, defaults to machine inductance matrix.
         """
         # assign equi and profiles objects
         self.eq = eq
@@ -105,13 +108,16 @@ class ControlVoltages:
 
         print("Default targets and current's initialised")
         print("all active", self.active_coils)
-        print("control coilds", self.control_coils)
+        print("control coils", self.control_coils)
 
         # get inductance matrix (full with all active coils)
         # ??Machine config and inductance matrix will come from stepper function later??
-        self.inductance_full = machine_config.coil_self_ind[
-            : len(self.active_coils), : len(self.active_coils)
-        ]
+        if inductance_matrix is None:
+            self.inductance_full = machine_config.coil_self_ind[
+                : len(self.active_coils), : len(self.active_coils)
+            ]
+        else:
+            self.inductance_full = inductance_matrix
         # initialise a VC handling object
         self.VCH = vc.VirtualCircuitHandling()
         self.VCH.define_solver(self.stepping.NK, target_relative_tolerance=1e-7)
@@ -270,6 +276,62 @@ class ControlVoltages:
         print("target deltas", target_deltas)
         return gained_target_deltas
 
+    def blended_ff_fb_targs(self, time_stamp, eq):
+        """
+        Combine feedback and feed forward targets.
+
+        Parameters
+        ----------
+        time_stamp : float
+            time stamp of the target to be retrieved
+        Returns
+        -------
+        combined_targs : list[str]
+            list of target names
+        """
+        # get set of targets being controlled at this time
+        controlled_targets = self.target_scheduler.retrieve_controlled_targets(
+            time_stamp
+        )
+        feed_forward_targets = list(
+            self.target_scheduler.target_sequence_dict.keys()
+        )  # these hard coded, or hard coded in init? or just get all targets from sequencer?
+        all_targs = sorted(set(controlled_targets + feed_forward_targets))
+        # ?? control targs should be subset of feedforward targets?
+        # dictionary of blend vals basaed on if target in controlled or not. ()
+        blend_vals = {
+            targ: 1 if targ in controlled_targets else 0 for targ in all_targs
+        }  # blends for controlled targets 1
+
+        ff_gradients = self.target_scheduler.feed_forward_gradient(
+            time_stamp=time_stamp, targets=all_targs
+        )
+        ff_grad_dict = dict(zip(all_targs, ff_gradients))
+
+        # compute gained control targets
+        gain_matrix = self.target_scheduler.vc_scheduler.retrieve_gains(
+            controlled_targets, time_stamp
+        )
+        targets_req = self.target_scheduler.desired_target_values(time_stamp)
+        gained_control_targs = self.calculate_gained_target_deltas(
+            eq,
+            targets=controlled_targets,
+            gain_matrix=gain_matrix,
+            targets_req=targets_req,
+            targets_obs=None,
+        )
+        gained_targs_dict = dict(zip(controlled_targets, gained_control_targs))
+
+        blended_dict = {}
+        for targ in all_targs:
+            blended_dict[targ] = (
+                ff_grad_dict[targ] + blend_vals[targ] * gained_targs_dict[targ]
+            )
+
+        # convert to array, ordered according to all_targs ?? maybe this need changing/fixing order?
+        blended_array = np.array([blended_dict[targ] for targ in all_targs])
+        return blended_array
+
     @staticmethod
     def recompute_vc_from_sensitivity(virtual_circuit, targets):
         """
@@ -306,6 +368,7 @@ class ControlVoltages:
         #     control_coils_indices = np.array(
         #         [vc_coil_order_dict[coil] for coil in self.control_coils]
         #     )
+
         sens_reduced = sensitivity_matrix[
             np.array([vc_targ_order_dict[targ] for targ in targets]),
         ]
@@ -398,7 +461,7 @@ class ControlVoltages:
         #     self.targets = targets
 
         if coils is None:
-            print("updating coils to", coils)
+            print("coils being set to default active coils reduced")
             coils = self.active_coils_reduced
         # build VC object if not provided
         if virtual_circuit is None:
@@ -436,6 +499,8 @@ class ControlVoltages:
             virtual_circuit = self.recompute_vc_from_sensitivity(
                 virtual_circuit, targets
             )
+            print("VC targets now ", virtual_circuit.targets)
+            print("coils now ", virtual_circuit.coils)
 
         else:
             # targets are not a subset of the VC targets - raise error
@@ -558,23 +623,13 @@ class ControlVoltages:
             gain_matrix=gain_matrix,
         )
 
+        # TO DO
+        # add in other voltage computations (integral, ip etc here)
+
         return voltages_v1, voltages_v2
 
-    def calculate_solenoid_delta():
-        # get plasma inductance
-        # get delta of plasma currents
-        # get gain matrix
-        # get mutual inductance sol-plasma
-        pass
 
-    def compute_accumulate_currents():
-        # check that Isol doesn't have virtual circuit associated
-        pass
+### TESTING ###
+# if __name__ == "__main__":
 
-    def check_currents():
-        # maybe perform two dummy checks
-        pass
-
-    def calculate_solenoid_voltage():
-        # get (M_FF + M_FB)/2 as an input
-        pass
+#     pass

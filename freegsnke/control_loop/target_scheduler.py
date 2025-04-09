@@ -140,6 +140,9 @@ class TargetScheduler:
             default=None,
         )
 
+        if closest_key is None:
+            print("time requested is before first target schedule time")
+
         target_names = self.target_schedule_dict[closest_key]
 
         return target_names

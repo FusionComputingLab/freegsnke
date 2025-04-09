@@ -14,6 +14,8 @@ from ..nonlinear_solve import nl_solver
 from ..virtual_circuits import VirtualCircuit
 
 from .scheduler import TargetScheduler
+from .vc_scheduler import ShapeTargetScheduler
+from .target_scheduler import TargetScheduler
 
 
 class ControlVoltages:
@@ -45,7 +47,8 @@ class ControlVoltages:
         eq: Equilibrium,
         profiles,
         stepping: nl_solver,
-        target_scheduler: TargetScheduler,
+        target_scheduler: ShapeTargetScheduler,
+        feedforward_schedule: TargetScheduler = None,
         coils=None,
         inductance_matrix=None,
     ):
@@ -129,7 +132,7 @@ class ControlVoltages:
 
             # pre run the emulators so future calls to calculate_voltage_vc_feedback_proportional are quicker
             start_targs = self.target_scheduler.target_schedule_dict[
-                self.target_scheduler.target_schedule_times[0]
+                list(self.target_scheduler.target_schedule_dict.keys())[0]
             ]
             self.target_scheduler.vc_scheduler.build_vc(
                 eq=self.eq,

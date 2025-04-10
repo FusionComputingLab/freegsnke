@@ -55,7 +55,7 @@ class VirtualCircuitScheduler:
             n_vc = len(self.vc_times_calc)
             print(f"there are {n_vc} VC's loaded")
         else:
-            print("No file target_sequence_path provided. Add VC's manually if desired")
+            print("No file target_waveform_path provided. Add VC's manually if desired")
 
     def load_vcs_fromfile(self, path):
         """
@@ -237,7 +237,7 @@ class ShapeTargetScheduler(TargetScheduler):
 
     def __init__(
         self,
-        target_sequence_path,
+        target_waveform_path,
         target_schedule_path,
         vc_flag="file",
         vc_schedule_path=None,
@@ -250,7 +250,7 @@ class ShapeTargetScheduler(TargetScheduler):
 
         Parameters
         ----------
-        target_sequence_path : str
+        target_waveform_path : str
             path to the file containing target sequence
         target_schedule_path : str
             path to the file containing target schedule
@@ -267,7 +267,7 @@ class ShapeTargetScheduler(TargetScheduler):
         None
         """
 
-        super().__init__(target_sequence_path, target_schedule_path)
+        super().__init__(target_waveform_path, target_schedule_path)
 
         self.vc_flag = vc_flag
 

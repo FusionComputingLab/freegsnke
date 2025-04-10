@@ -8,7 +8,7 @@ import numpy as np
 
 from fnkemu.virtual_circuits.virtual_circuit_generator import VC_Generator as VCG
 from ..virtual_circuits import VirtualCircuit
-from .scheduler import TargetScheduler
+from .target_scheduler import TargetScheduler
 
 
 class VirtualCircuitScheduler:
@@ -55,9 +55,7 @@ class VirtualCircuitScheduler:
             n_vc = len(self.vc_times_calc)
             print(f"there are {n_vc} VC's loaded")
         else:
-            print(
-                "No file target_sequence_path provided. Add VC's manually if desired"
-            )
+            print("No file target_waveform_path provided. Add VC's manually if desired")
 
     def load_vcs_fromfile(self, path):
         """
@@ -112,7 +110,6 @@ class VirtualCircuitScheduler:
                     self.vc_schedule.append(vc_object)
                     self.vc_times_calc.append(time_calc)
                     self.vc_times_stop.append(time_stop)
-                    self.vc_index.append(index)
                     self.input_currents.append(input_currents)
                     self.input_profile_pars.append(input_profile_pars)
                     assert len(gains_arr) == len(
@@ -240,7 +237,7 @@ class ShapeTargetScheduler(TargetScheduler):
 
     def __init__(
         self,
-        target_sequence_path,
+        target_waveform_path,
         target_schedule_path,
         vc_flag="file",
         vc_schedule_path=None,
@@ -253,7 +250,7 @@ class ShapeTargetScheduler(TargetScheduler):
 
         Parameters
         ----------
-        target_sequence_path : str
+        target_waveform_path : str
             path to the file containing target sequence
         target_schedule_path : str
             path to the file containing target schedule
@@ -270,7 +267,7 @@ class ShapeTargetScheduler(TargetScheduler):
         None
         """
 
-        super().__init__(target_sequence_path, target_schedule_path)
+        super().__init__(target_waveform_path, target_schedule_path)
 
         self.vc_flag = vc_flag
 
@@ -313,7 +310,7 @@ class ShapeTargetScheduler(TargetScheduler):
                     print(
                         "targets requested and vc available targets do not match : vc's will be recomputed as necessary"
                     )
-                     print("controlled targets", controlled_targs)
+                    print("controlled targets", controlled_targs)
                     print("VC available targets", vc_targs)
 
         elif vc_flag == "emulator" or "emu" or "Emulator":

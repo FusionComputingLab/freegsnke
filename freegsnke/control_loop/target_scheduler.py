@@ -11,7 +11,7 @@ class TargetScheduler:
 
     def __init__(
         self,
-        target_sequence_path,
+        target_waveform_path,
         target_schedule_path,
     ):
         """
@@ -19,7 +19,7 @@ class TargetScheduler:
 
         Parameters
         ----------
-        target_sequence_path : str
+        target_waveform_path : str
             path to the file containing target sequence.
         target_schedule_path : str
             path to the file containing target schedule.
@@ -40,8 +40,8 @@ class TargetScheduler:
         # target sequence  dict ~ {target_name : {"times":[time list],
         #                                         "vals": [vals list] , }
 
-        self.target_sequence_dict = self.load_pickle_dict(target_sequence_path)
-        for key, item in self.target_sequence_dict.items():
+        self.target_waveform_dict = self.load_pickle_dict(target_waveform_path)
+        for key, item in self.target_waveform_dict.items():
             if len(item["times"]) != len(item["vals"]):
                 raise ValueError("times and vals arrays must be same length")
 
@@ -53,15 +53,15 @@ class TargetScheduler:
             for targ in targ_names:
                 # check 1 : check if all targets in target schedule are in
                 # target sequence
-                if targ not in self.target_sequence_dict.keys():
+                if targ not in self.target_waveform_dict.keys():
                     raise ValueError(
                         f"Target {targ} is in schedule but is not defined in"
                         "target sequence"
                     )
                 # check 2 : check if targets in each interval lie within time
                 # ranges of target sequence
-                time_start = self.target_sequence_dict[targ]["times"][0]
-                time_end = self.target_sequence_dict[targ]["times"][-1]
+                time_start = self.target_waveform_dict[targ]["times"][0]
+                time_end = self.target_waveform_dict[targ]["times"][-1]
                 if time_start > time or time_end < time:
                     print(f"time range for {targ}: ({time_start}, {time_end})")
                     print(f"target schedule time: {time}")
@@ -96,7 +96,7 @@ class TargetScheduler:
     def interpolate(self, time_stamp, target):
         """
         Interpolate the target value at time_stamp, from the information in
-        target_sequence_dict.
+        target_waveform_dict.
 
         Arguments
         ---------
@@ -113,8 +113,8 @@ class TargetScheduler:
         """
         interpolation = np.interp(
             time_stamp,
-            self.target_sequence_dict[target]["times"],
-            self.target_sequence_dict[target]["vals"],
+            self.target_waveform_dict[target]["times"],
+            self.target_waveform_dict[target]["vals"],
         )
 
         return interpolation
@@ -188,16 +188,18 @@ class TargetScheduler:
 
         grad_arr = np.zeros(len(targets))
         for i, target in enumerate(targets):
-            slope = np.diff(self.target_sequence_dict[target]["vals"]) / np.diff(
-                self.target_sequence_dict[target]["times"]
+            slope = np.diff(self.target_waveform_dict[target]["vals"]) / np.diff(
+                self.target_waveform_dict[target]["times"]
             )
             position = np.searchsorted(
-                self.target_sequence_dict[target]["times"][1:], time_stamp, side="right"
+                self.target_waveform_dict[target]["times"][1:], time_stamp, side="right"
             )
             print(f"position index {position}")
-            if time_stamp > self.target_sequence_dict[target]["times"][-1]:
-                print("time_stamp is greater than the last sequence time stamp "
-                      f"for target {target}")
+            if time_stamp > self.target_waveform_dict[target]["times"][-1]:
+                print(
+                    "time_stamp is greater than the last sequence time stamp "
+                    f"for target {target}"
+                )
                 gradient = 0
             else:
                 gradient = slope[position]

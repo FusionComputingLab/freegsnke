@@ -13,9 +13,9 @@ from ..equilibrium_update import Equilibrium
 from ..nonlinear_solve import nl_solver
 from ..virtual_circuits import VirtualCircuit
 
-from .scheduler import TargetScheduler
+
 from .vc_scheduler import ShapeTargetScheduler
-from .feedback_target_scheduler import TargetScheduler
+from .target_scheduler import TargetScheduler
 
 
 class ControlVoltages:

@@ -63,31 +63,37 @@ class ControlSolenoid:
 
     def calculate_solenoid_delta(self,
                                  inductances,
-                                 eq,
                                  gain,
+                                 vc_vector,
                                  blend,
                                  Ip_req,
+                                 Ip_obs,
                                  Vloop_ff):
         """
-        Calculates the rate of change ΔIsol/Δt, as prescribed in the plasma
-        category of the MAST-U PCS. The equations followed are:
+        Calculates the vector of current trajectories ΔI/Δt, as prescribed
+        in the plasma category (and circuits category, supposedly) of the
+        MAST-U PCS. The equations followed are:
 
         Vloop_fb = gain * (Ip_req - Ip_obs) * M_p
         Vloop = Vloop_fb * blend + Vloop_ff * (1 - blend)
         ΔIsol/Δt = -Vloop / M_sp
+        ΔI/Δt = ΔIsol/Δt * vc_vector
 
         Parameters
         ----------
         - inductances : dict
             A dictionary with all the required inductances.
-        - eq : Equilibrium
-            An equilibrium object from which we get the plasma current.
         - gain : float
             A proportional term used in the Vloop_fb computation.
+        - vc_vector : numpy array of size (12,1).
+            Virtual Circuit 12-element vector for the solenoid current. First
+            element is 1.
         - blend : float
             A value between 0 and 1 that acts as a weight in the Vloops sum.
         - Ip_req : float
             The plasma current requested.
+        - Ip_obs : float
+            The plasma current observed.
         - Vloop_ff : float
             The feedforward Vloop.
 
@@ -99,9 +105,6 @@ class ControlSolenoid:
         """
 
         # Compute the required change for Ip
-        Ip_obs = eq.plasmaCurrent()
-        print(f"    The plasma current required: {Ip_req}")
-        print(f"    The plasma current observed: {Ip_obs}")
         delta_Ip = Ip_req - Ip_obs
         print(f"    The delta plasma current: {delta_Ip}")
 
@@ -118,9 +121,13 @@ class ControlSolenoid:
         M_sp = inductances["mutual"]
         dIsol = - Vloop * (1/M_sp)
 
-        return dIsol
+        # Apply dIsol to virtual circuit vector to get the current trajectories
+        # of the active coils
+        dI = dIsol * vc_vector
 
-    def compute_accumulated_currents(self, eq):
+        return dI
+
+    def compute_accumulated_currents(self, real_Isol):
         """
         Computes the predicted current for the solenoid so far in the shot, as
         prescribed in the VC subcategory of the circuit category. At the moment
@@ -128,7 +135,8 @@ class ControlSolenoid:
 
         Parameters
         ----------
-        So far, none
+        - real_Isol : float
+            This is just to get this going, it'll be changed.
 
         Returns
         -------
@@ -138,7 +146,6 @@ class ControlSolenoid:
         """
 
         # Here I mimic the integral for dIsol's
-        real_Isol = eq.tokamak['Solenoid'].current
         print(f"    The measured solenoid current: {real_Isol}")
         predicted_Isol = real_Isol + normal(0, 100)
 
@@ -241,7 +248,14 @@ class ControlSolenoid:
 
         return Vsol
 
-    def ip_control(self, time_stamp, eq, Rp, inductances):
+    def ip_control(self,
+                   time_stamp,
+                   Rp,
+                   inductances,
+                   Ip_obs=None,
+                   measured_Isol=None,
+                   eq=None,
+                   solenoid_name=None):
         """
         Execute all the steps in the pipeline for the control of the solenoid
         current, as prescribed by the PCS. This method is the API by design of
@@ -252,13 +266,23 @@ class ControlSolenoid:
         ----------
         - time_stamp : float (4 decimal places)
             Timestamp for which this pipeline should provide a control voltage.
-        - eq : Equilibrium
-            An equilibrium object from which we get information about the
-            plasma and currents.
         - Rp : float
             The plasma resistivity.
         - inductances : dict
             A dictionary with all the required inductances.
+        - Ip_obs : float
+            Required plasma current for this time_stamp. It defaults to the
+            current value stored in the Equilibrium (argument eq) if not given.
+        - measured_Isol : float
+            Measured solenoid current from the tokamak. It defaults to the
+            current value stored in the Equilibrium (argument eq) if not given.
+        - eq : Equilibrium
+            An equilibrium object from which we get information about the
+            plasma or solenoid current when Ip_obs or measured_Isol are not
+            given.
+        - solenoid_name : str
+            A string to denote the solenoid current ("Solenoid", "P1", etc).
+            Defaults to "Solenoid" if not given.
 
         Returns
         -------
@@ -266,6 +290,30 @@ class ControlSolenoid:
             Output control voltage of PCS to apply on the solenoid.
 
         """
+
+        if Ip_obs is None or measured_Isol is None:
+            if eq is None:
+                raise Exception("An Equilibrium object should be provided to "
+                                "ip_control() if Ip_req or measured_Isol are "
+                                "not provided.")
+
+            if Ip_obs is None:
+                print("Ip_obs is not provided, using the equilibrium given to "
+                      "estimate it.")
+                Ip_obs = eq.plasmaCurrent()
+                print(f"    The plasma current observed: {Ip_obs}")
+
+            if measured_Isol is None:
+                print("measured_Isol is not provided, using the equilibrium "
+                      "given to estimate it.")
+
+                if solenoid_name is None:
+                    print("solenoid_name is not provided, using 'Solenoid' "
+                          "as label for the solenoid current.")
+                    solenoid_name = 'Solenoid'
+
+                measured_Isol = eq.tokamak[solenoid_name].current
+                print(f"  The measured solenoid current: {measured_Isol}")
 
         # Implement the plasma category. First, the relevant entities should be
         # retrieved from the scheduler
@@ -281,18 +329,21 @@ class ControlSolenoid:
         print(f"  The plasma gain: {gain_p}")
         blend = self.scheduler.retrieve_parameter(time_stamp, "blend")
         print(f"  The blend value: {blend}")
+        vc_vector = self.scheduler.retrieve_parameter(time_stamp, "vc")
+        print(f"  The virtual circuit vector: {vc_vector}")
         dIsol = self.calculate_solenoid_delta(inductances=inductances,
-                                              eq=eq,
+                                              Ip_obs=Ip_obs,
                                               Ip_req=Ip_req,
                                               Vloop_ff=Vloop_req,
                                               gain=gain_p,
-                                              blend=blend)
+                                              blend=blend,
+                                              vc_vector=vc_vector)
 
         print(f"  The delta solenoid current: {dIsol}")
 
         # Implement the estimation of the predicted solenoid current in the
         # circuit category
-        Isol = self.compute_accumulated_currents(eq)
+        Isol = self.compute_accumulated_currents(measured_Isol)
         print(f"  The estimated solenoid current: {Isol}")
 
         # Implement the system category
@@ -302,8 +353,6 @@ class ControlSolenoid:
 
         # Implement the PF category. First the relevant entities should be
         # retrived
-        measured_Isol = eq.tokamak['Solenoid'].current
-        print(f"  The measured solenoid current: {measured_Isol}")
         gain_s = self.scheduler.retrieve_parameter(time_stamp, "Ks")
         print(f"  The solenoid gain: {gain_s}")
         Vsol = self.calculate_solenoid_voltage(Rp=Rp,

@@ -276,6 +276,7 @@ class NKGSsolver:
         max_rel_update_size=0.2,
         clip=10,
         clip_quantiles=None,
+        force_up_down_symmetric=False,
         verbose=False,
     ):
         """The method that actually solves the forward static GS problem.
@@ -327,7 +328,13 @@ class NKGSsolver:
         """
 
         picard_flag = 0
-        trial_plasma_psi = np.copy(eq.plasma_psi).reshape(-1)
+        if force_up_down_symmetric:
+            trial_plasma_psi = 0.5 * (eq.plasma_psi + eq.plasma_psi[:, ::-1]).reshape(
+                -1
+            )
+            self.shape = np.shape(eq.plasma_psi)
+        else:
+            trial_plasma_psi = np.copy(eq.plasma_psi).reshape(-1)
         # self.tokamak_psi = (eq.tokamak.calcPsiFromGreens(pgreen=eq._pgreen)).reshape(-1)
         self.tokamak_psi = eq.tokamak.getPsitokamak(vgreen=eq._vgreen).reshape(-1)
 
@@ -384,7 +391,7 @@ class NKGSsolver:
                     successful = False
             # try scale down if scale up was not successful
             if len(res_vals) > 1:
-                print("rescaling accepted by", val)
+                print("rescaling accepted by ", val)
                 trial_plasma_psi *= val
                 res0 = self.F_function(trial_plasma_psi, self.tokamak_psi, profiles)
             else:
@@ -505,6 +512,9 @@ class NKGSsolver:
                     clip_quantiles=clip_quantiles,
                 )
                 update = 1.0 * self.nksolver.dx
+                if force_up_down_symmetric:
+                    update = update.reshape(self.shape)
+                    update = 0.5 * (update + update[:, ::-1]).reshape(-1)
 
             del_update = np.amax(update) - np.amin(update)
             if del_update / del_psi > max_rel_update_size:

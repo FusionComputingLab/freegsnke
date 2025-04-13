@@ -10,27 +10,6 @@ from sys import float_info
 from ip_control import ControlSolenoid
 
 
-def accumulate_currents(dI, est_I):
-    """
-    Computes the predicted currents for the active coils so far in the shot, as
-    prescribed in the VC subcategory of the circuit category.
-
-    Parameters
-    ----------
-    - dI : numpy 1D array
-        The trajectories of the coil currents that PCS wants to apply
-    - est_I : numpy 1D array
-        The absolute values of the coil currents that PCS wants to apply
-
-    Returns
-    -------
-    None (est_I is modified in place)
-
-    """
-
-    est_I += dI
-
-
 def check_currents(dIvec, Ivec):
     """
     Check the values of the ΔI, I as prescribed in the system
@@ -166,8 +145,8 @@ def main():
         # 3. Combine the currents coming from plasma and shape control
         dI = sol_dI + shp_dI
 
-        # 4. Compute the absolute value of the currents.
-        accumulate_currents(dI, est_I)
+        # 4. Estimate the absolute value of the currents.
+        est_I += dI
 
         # 5. System category
         check_currents(dI, est_I)

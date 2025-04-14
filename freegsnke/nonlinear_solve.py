@@ -19,17 +19,19 @@ You should have received a copy of the GNU Lesser General Public License
 along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.   
 """
 
+import warnings
 from copy import deepcopy
 
 import matplotlib.pyplot as plt
 import numpy as np
+from freegs4e import bilinear_interpolation
 from scipy.signal import convolve2d
 
 from . import nk_solver_H as nk_solver
 from .circuit_eq_metal import metal_currents
-from .circuit_eq_plasma import plasma_current
 from .GSstaticsolver import NKGSsolver
 from .linear_solve import linear_solver
+from .Myy_builder import Myy_handler
 from .simplified_solve import simplified_solver_J1
 
 
@@ -49,7 +51,6 @@ class nl_solver:
         max_internal_timestep=0.0001,
         plasma_resistivity=1e-6,
         plasma_norm_factor=1000,
-        nbroad=1,
         blend_hatJ=0,
         dIydI=None,
         target_dIy=1e-3,
@@ -100,9 +101,6 @@ class nl_solver:
         plasma_norm_factor : float, optional, by default 1000
             The plasma current is re-normalised by this factor,
             to bring to a value more akin to those of the metal currents
-        nbroad : int, optional, by default 1
-            enables the use of a smoothing (with a square smoothing filter of nbroad grid points per side)
-            when building the plasma current distribution used to contract the plasma circuit equations
         blend_hatJ : float, optional, by default 0
             optional coefficient which enables use a blended version of the normalised plasma current distribution
             when contracting the plasma lumped circuit eq. from the left. The blend combines the
@@ -155,10 +153,12 @@ class nl_solver:
         # instantiating static GS solver on eq's domain
         self.NK = NKGSsolver(eq)
 
+        # instantiate the Myy_handler object
+        self.handleMyy = Myy_handler(eq.limiter_handler)
+
         # setting up reduced domain for plasma circuit eq.:
-        self.limiter_handler = profiles.limiter_handler
-        self.plasma_domain_mask = self.limiter_handler.mask_inside_limiter
-        self.plasma_domain_size = np.sum(self.plasma_domain_mask)
+        self.limiter_handler = eq.limiter_handler
+        self.plasma_domain_size = np.sum(self.limiter_handler.mask_inside_limiter)
 
         # Extract relevant information on the type of profile function used and on the actual value of associated parameters
         self.get_profiles_values(profiles)
@@ -194,13 +194,13 @@ class nl_solver:
         self.n_metal_modes = self.evol_metal_curr.n_independent_vars
         self.arange_currents = np.arange(self.n_metal_modes + 1)
 
-        self.evol_plasma_curr = plasma_current(
-            plasma_pts=self.limiter_handler.plasma_pts,
-            Rm1=np.diag(self.evol_metal_curr.Rm1),
-            P=self.evol_metal_curr.P,
-            plasma_resistance_1d=self.plasma_resistance_1d,
-            Mye=self.evol_metal_curr.Mey_matrix.T,
-        )
+        # self.evol_plasma_curr = plasma_current(
+        #     plasma_pts=self.limiter_handler.plasma_pts,
+        #     Rm1=np.diag(self.evol_metal_curr.Rm1),
+        #     P=self.evol_metal_curr.P,
+        #     plasma_resistance_1d=self.plasma_resistance_1d,
+        #     Mye=self.evol_metal_curr.Mey_matrix.T,
+        # )
 
         # This solves the system of circuit eqs based on an assumption
         # for the direction of the plasma current distribution at time t+dt
@@ -209,7 +209,7 @@ class nl_solver:
             Pm1=self.evol_metal_curr.Pm1,
             Rm1=np.diag(self.evol_metal_curr.Rm1),
             Mey=self.evol_metal_curr.Mey_matrix,
-            Myy=self.evol_plasma_curr.Myy_matrix,
+            # limiter_handler=self.limiter_handler,
             plasma_norm_factor=self.plasma_norm_factor,
             plasma_resistance_1d=self.plasma_resistance_1d,
             full_timestep=self.dt_step,
@@ -237,7 +237,7 @@ class nl_solver:
             Pm1=self.evol_metal_curr.Pm1,
             Rm1=np.diag(self.evol_metal_curr.Rm1),
             Mey=self.evol_metal_curr.Mey_matrix,
-            Myy=self.evol_plasma_curr.Myy_matrix,
+            # limiter_handler=self.limiter_handler,
             plasma_norm_factor=self.plasma_norm_factor,
             plasma_resistance_1d=self.plasma_resistance_1d,
             max_internal_timestep=self.max_internal_timestep,
@@ -256,18 +256,10 @@ class nl_solver:
         # counter for the step advancement of the dynamics
         self.step_no = 0
 
-        # this is the filter used to broaden the normalised plasma current distribution
-        # used to contract the system of plasma circuit equations
-        self.ones_to_broaden = np.ones((nbroad, nbroad))
-        # use convolution if nbroad>1
-        if nbroad > 1:
-            self.make_broad_hatIy = lambda x: self.make_broad_hatIy_conv(
-                x, blend=blend_hatJ
-            )
-        else:
-            self.make_broad_hatIy = lambda x: self.make_broad_hatIy_noconv(
-                x, blend=blend_hatJ
-            )
+        # set default blend for contracting the plasma lumped eq
+        self.make_blended_hatIy = lambda x: self.make_blended_hatIy_(
+            x, blend=blend_hatJ
+        )
 
         # self.dIydI is the Jacobian of the plasma current distribution
         # with respect to the independent currents (as in self.currents_vec)
@@ -306,8 +298,11 @@ class nl_solver:
                     np.ones(1),
                 )
             ).astype(bool)
+            # apply mask to dIydI, dRZdI and final_dI_record
             self.dIydI = self.dIydI[:, self.selected_modes_mask]
             self.dIydI_ICs = np.copy(self.dIydI)
+            self.dRZdI = self.dRZdI[:, self.selected_modes_mask]
+            self.final_dI_record = self.final_dI_record[self.selected_modes_mask]
 
             # rebuild mask of selected modes with respect to list of all modes, to be used by evolve_metal_currents
             self.selected_modes_mask = np.concatenate(
@@ -321,8 +316,12 @@ class nl_solver:
         # check if input equilibrium and associated linearization have an instability, and its timescale
         if automatic_timestep_flag + mode_removal + linearize:
             self.linearised_sol.calculate_linear_growth_rate()
-            self.linearised_sol.calculate_stability_margin()
             if len(self.linearised_sol.growth_rates):
+
+                # find stabiltiy margins and unstable modes
+                self.linearised_sol.calculate_stability_margin()
+                self.unstable_mode_deformations()
+
                 print(
                     "The linear growth rate of this equilibrium corresponds to a characteristic timescale of",
                     self.linearised_sol.instability_timescale,
@@ -396,14 +395,14 @@ class nl_solver:
         self.circuit_eq_residual = np.zeros(self.extensive_currents_dim)
         self.currents_nk_solver = nk_solver.nksolver(self.extensive_currents_dim)
 
-        self.evol_plasma_curr.reset_modes(P=self.evol_metal_curr.P)
+        # self.evol_plasma_curr.reset_modes(P=self.evol_metal_curr.P)
 
         self.simplified_solver_J1 = simplified_solver_J1(
             Lambdam1=self.evol_metal_curr.Lambdam1,
             Pm1=self.evol_metal_curr.Pm1,
             Rm1=np.diag(self.evol_metal_curr.Rm1),
             Mey=self.evol_metal_curr.Mey_matrix,
-            Myy=self.evol_plasma_curr.Myy_matrix,
+            # limiter_handler=self.limiter_handler,
             plasma_norm_factor=self.plasma_norm_factor,
             plasma_resistance_1d=self.plasma_resistance_1d,
             full_timestep=self.dt_step,
@@ -414,7 +413,7 @@ class nl_solver:
             Pm1=self.evol_metal_curr.Pm1,
             Rm1=np.diag(self.evol_metal_curr.Rm1),
             Mey=self.evol_metal_curr.Mey_matrix,
-            Myy=self.evol_plasma_curr.Myy_matrix,
+            # limiter_handler=self.limiter_handler,
             plasma_norm_factor=self.plasma_norm_factor,
             plasma_resistance_1d=self.plasma_resistance_1d,
             max_internal_timestep=self.max_internal_timestep,
@@ -422,9 +421,10 @@ class nl_solver:
         )
 
         self.linearised_sol.set_linearization_point(
-            dIydI=self.dIydI,
-            hatIy0=self.broad_hatIy,
+            dIydI=self.dIydI, hatIy0=self.blended_hatIy, Myy_hatIy0=self.Myy_hatIy0
         )
+
+        self.build_current_vec(self.eq1, self.profiles1)
 
     def set_linear_solution(self, active_voltage_vec, d_profile_pars_dt=None):
         """Uses the solver of the linearised problem to set up an initial guess for the nonlinear solver
@@ -684,8 +684,8 @@ class nl_solver:
             self.Iy = self.limiter_handler.Iy_from_jtor(profile.jtor).copy()
             self.nIy = np.linalg.norm(self.Iy)
 
-        self.R0 = np.sum(eq.R * profile.jtor) / np.sum(profile.jtor)
-        self.Z0 = np.sum(eq.Z * profile.jtor) / np.sum(profile.jtor)
+        self.R0 = eq.Rcurrent()
+        self.Z0 = eq.Zcurrent()
         self.dRZdI = np.zeros((2, self.n_metal_modes + 1))
 
         if starting_dI is None:
@@ -709,12 +709,8 @@ class nl_solver:
 
                 for j in self.arange_currents:
                     self.dIydI[:, j] = self.build_dIydI_j(j, rtol_NK, verbose)
-                    R0 = np.sum(eq.R * self.profiles2.jtor) / np.sum(
-                        self.profiles2.jtor
-                    )
-                    Z0 = np.sum(eq.Z * self.profiles2.jtor) / np.sum(
-                        self.profiles2.jtor
-                    )
+                    R0 = self.eq2.Rcurrent()
+                    Z0 = self.eq2.Zcurrent()
                     self.dRZdI[0, j] = (R0 - self.R0) / self.final_dI_record[j]
                     self.dRZdI[1, j] = (Z0 - self.Z0) / self.final_dI_record[j]
 
@@ -741,7 +737,9 @@ class nl_solver:
         plasma_resistance_matrix = (
             self.eqR * (2 * np.pi / self.dRdZ) * self.plasma_resistivity
         )
-        self.plasma_resistance_1d = plasma_resistance_matrix[self.plasma_domain_mask]
+        self.plasma_resistance_1d = plasma_resistance_matrix[
+            self.limiter_handler.mask_inside_limiter
+        ]
 
     def reset_plasma_resistivity(self, plasma_resistivity):
         """Function to reset the resistivity of the plasma.
@@ -758,11 +756,12 @@ class nl_solver:
         plasma_resistance_matrix = (
             self.eqR * (2 * np.pi / self.dRdZ) * self.plasma_resistivity
         )
-        self.plasma_resistance_1d = plasma_resistance_matrix[self.plasma_domain_mask]
+        self.plasma_resistance_1d = plasma_resistance_matrix[
+            self.limiter_handler.mask_inside_limiter
+        ]
 
         self.linearised_sol.reset_plasma_resistivity(self.plasma_resistance_1d)
         self.simplified_solver_J1.reset_plasma_resistivity(self.plasma_resistance_1d)
-        self.evol_plasma_curr.Ryy = self.plasma_resistance_1d
 
     def check_and_change_plasma_resistivity(
         self, plasma_resistivity, relative_threshold_difference=0.01
@@ -992,7 +991,7 @@ class nl_solver:
         self.hatIy = self.limiter_handler.normalize_sum(self.Iy)
         # self.hatIy1 is the normalised plasma current distribution at time t+dt
         self.hatIy1 = np.copy(self.hatIy)
-        self.make_broad_hatIy(self.hatIy1)
+        self.make_blended_hatIy(self.hatIy1)
 
         self.time = 0
         self.step_no = -1
@@ -1007,10 +1006,13 @@ class nl_solver:
             verbose=verbose,
         )
 
-        # transfer linearization to linear solver
+        # set Myy matrix in place throught the handling object
+        self.handleMyy.force_build_Myy(self.hatIy)
+
+        # transfer linearization to linear solver:
+        self.Myy_hatIy0 = self.handleMyy.dot(self.hatIy)
         self.linearised_sol.set_linearization_point(
-            dIydI=self.dIydI_ICs,
-            hatIy0=self.broad_hatIy,
+            dIydI=self.dIydI_ICs, hatIy0=self.blended_hatIy, Myy_hatIy0=self.Myy_hatIy0
         )
 
     def step_complete_assign(self, working_relative_tol_GS, from_linear=False):
@@ -1106,45 +1108,42 @@ class nl_solver:
             self.eq2, self.profiles2, target_relative_tolerance=rtol_NK
         )
 
-    def make_broad_hatIy_conv(self, hatIy1, blend=0):
+    # def make_broad_hatIy_conv(self, hatIy1, blend=0):
+    #     """Averages the normalised plasma current distributions at time t and
+    #     (a guess for the one at) at time t+dt to better contract the system of
+    #     plasma circuit eqs. Applies some 'smoothing' though convolution, when
+    #     setting is nbroad>1.
+
+    #     Parameters
+    #     ----------
+    #     hatIy1 : np.array
+    #         Guess for the normalised plasma current distributions at time t+dt.
+    #         Should be a vector that sums to 1. Reduced plasma domain only.
+    #     blend : float between 0 and 1
+    #         Option to combine the normalised plasma current distributions at time t
+    #         with (a guess for) the one at time t+dt before contraction of the plasma
+    #         lumped circuit eq.
+    #     """
+    #     self.broad_hatIy = self.limiter_handler.rebuild_map2d(
+    #         hatIy1 + blend * self.hatIy
+    #     )
+    #     self.broad_hatIy = convolve2d(
+    #         self.broad_hatIy, self.ones_to_broaden, mode="same"
+    #     )
+    #     self.broad_hatIy = self.limiter_handler.hat_Iy_from_jtor(self.broad_hatIy)
+
+    def make_blended_hatIy_(self, hatIy1, blend):
         """Averages the normalised plasma current distributions at time t and
         (a guess for the one at) at time t+dt to better contract the system of
-        plasma circuit eqs. Applies some 'smoothing' though convolution, when
-        setting is nbroad>1.
+        plasma circuit eqs.
 
         Parameters
         ----------
         hatIy1 : np.array
             Guess for the normalised plasma current distributions at time t+dt.
             Should be a vector that sums to 1. Reduced plasma domain only.
-        blend : float between 0 and 1
-            Option to combine the normalised plasma current distributions at time t
-            with (a guess for) the one at time t+dt before contraction of the plasma
-            lumped circuit eq.
         """
-        self.broad_hatIy = self.limiter_handler.rebuild_map2d(
-            hatIy1 + blend * self.hatIy
-        )
-        self.broad_hatIy = convolve2d(
-            self.broad_hatIy, self.ones_to_broaden, mode="same"
-        )
-        self.broad_hatIy = self.limiter_handler.hat_Iy_from_jtor(self.broad_hatIy)
-
-    def make_broad_hatIy_noconv(self, hatIy1, blend=0):
-        """Averages the normalised plasma current distributions at time t and
-        (a guess for the one at) at time t+dt to better contract the system of
-        plasma circuit eqs. Does not apply convolution: nbroad==1.
-
-        Parameters
-        ----------
-        hatIy1 : np.array
-            Guess for the normalised plasma current distributions at time t+dt.
-            Should be a vector that sums to 1. Reduced plasma domain only.
-        """
-        self.broad_hatIy = self.limiter_handler.rebuild_map2d(
-            hatIy1 + blend * self.hatIy
-        )
-        self.broad_hatIy = self.limiter_handler.hat_Iy_from_jtor(self.broad_hatIy)
+        self.blended_hatIy = (1 - blend) * hatIy1 + blend * self.hatIy
 
     def currents_from_hatIy(self, hatIy1, active_voltage_vec):
         """Uses a guess for the normalised plasma current distribution at time t+dt
@@ -1163,13 +1162,15 @@ class nl_solver:
         np.array
             Current values at time t+dt. Same format as self.currents_vec.
         """
-        self.make_broad_hatIy(hatIy1)
+        self.make_blended_hatIy(hatIy1)
+        Myy_hatIy_left = self.handleMyy.dot(self.blended_hatIy)
         current_from_hatIy = self.simplified_solver_J1.stepper(
             It=self.currents_vec,
-            hatIy_left=self.broad_hatIy,
+            hatIy_left=self.blended_hatIy,
             hatIy_0=self.hatIy,
             hatIy_1=hatIy1,
             active_voltage_vec=active_voltage_vec,
+            Myy_hatIy_left=Myy_hatIy_left,
         )
         return current_from_hatIy
 
@@ -1433,6 +1434,7 @@ class nl_solver:
         clip=5,
         verbose=0,
         linear_only=False,
+        max_solving_iterations=50,
     ):
         """This is the main stepper function.
         If linear_only = True, this advances the linearised dynamic problem.
@@ -1516,6 +1518,8 @@ class nl_solver:
             If linear_only = True the solution of the linearised problem is accepted.
             If linear_only = False, the convergence criteria are used and a solution of
             the full nonlinear problem is seeked.
+        max_solving_iterations : int
+            NK iterations are interrupted when this limit is surpassed.
         """
 
         # check if profile parameters are being evolved
@@ -1535,12 +1539,27 @@ class nl_solver:
         # Solution and GS equilibrium are assigned to self.trial_currents and self.trial_plasma_psi
         self.set_linear_solution(active_voltage_vec)
 
+        # check Matrix is still applicable
+        myy_flag = self.handleMyy.check_Myy(self.hatIy)
+
         if linear_only:
             # assign currents and plasma flux to self.currents_vec, self.eq1 and self.profiles1 and complete step
             self.step_complete_assign(working_relative_tol_GS, from_linear=True)
+            if myy_flag:
+                print(
+                    "The plasma used for calculating the adopted linearization and the plasma in this evolution have departed by more than",
+                    self.handleMyy.tolerance,
+                    "domain pixels. The linearization may not be accurate.",
+                )
 
         else:
             # seek solution of the full nonlinear problem
+
+            if myy_flag:
+                if verbose:
+                    print("The Myy matrix is being recalculated.")
+                # recalculate Myy
+                self.handleMyy.force_build_Myy(self.hatIy)
 
             # this assigns to self.eq2 and self.profiles2
             # also records self.tokamak_psi corresponding to self.trial_currents in 2d
@@ -1571,14 +1590,14 @@ class nl_solver:
             log = []
 
             # counter for number of solution cycles
-            n_it = 0
+            iterations = 0
 
-            while control:
+            while control and (iterations < max_solving_iterations): 
                 if verbose:
                     for _ in log:
                         print(_)
 
-                log = [self.text_nk_cycle.format(nkcycle=n_it)]
+                log = [self.text_nk_cycle.format(nkcycle=iterations)]
 
                 # update plasma flux if trial_currents and plasma_flux exceedingly far from GS solution
                 if control_GS:
@@ -1648,6 +1667,7 @@ class nl_solver:
                 self.trial_currents += self.currents_nk_solver.dx
 
                 # check convergence properties of the pair [trial_currents, trial_plasma_psi]:
+                
                 # relative convergence on the currents:
                 res_curr = self.F_function_curr(
                     self.trial_currents, active_voltage_vec
@@ -1656,6 +1676,7 @@ class nl_solver:
                     res_curr, curr_eps=curr_eps
                 )
                 control = np.any(rel_curr_res > target_relative_tol_currents)
+                
                 # relative convergence on the GS problem
                 r_res_GS = self.calculate_rel_tolerance_GS(self.trial_plasma_psi).copy()
                 control_GS = r_res_GS > target_relative_tol_GS
@@ -1679,7 +1700,76 @@ class nl_solver:
                 log.append(["Residuals on static GS eq (relative): ", r_res_GS])
 
                 # one full cycle completed
-                n_it += 1
-
+                iterations += 1
+                
             # convergence checks succeeded, complete step
             self.step_complete_assign(working_relative_tol_GS)
+            
+            if iterations >= max_solving_iterations:
+                warnings.warn(
+                    f"Evolutive solve failed to converge to requested tolerances "
+                    + f"using less than {max_solving_iterations} iterations. "
+                    + f"Last max. relative currents change: {np.max(rel_curr_res)} (tol = {target_relative_tol_currents}). "
+                    + f"Last max. relative psi change: {np.max(r_res_GS)} (tol = {target_relative_tol_GS}). "
+                )
+
+    def unstable_mode_deformations(self, starting_dI=50, rtol_NK=1e-7, target_dIy=2e-3):
+        """Applies the unstable mode m to calculate (dR/dIm, dZ/dIm)
+        where R and Z are the current-averaged coords of the plasma (i.e. eq.Rcurrent and eq.Zcurrent)
+        and Im is the magnitude of the current in the unstable mode.
+        A maps of the current distribution after m is applied is recorded,
+        together with the map having the same R and Z obtained as a rigid displament
+        of the original eq.
+
+        Parameters
+        ----------
+        rtol_NK : float
+            Relative tolerance to be used in the static GS problems.
+        target_dIy : float
+            Target value for the norm of delta(I_y), on which the finite difference derivative is calculated.
+        starting_dI : float
+            Initial value to be used as delta(I_j) to infer the slope of norm(delta(I_y))/delta(Im).
+
+        """
+
+        # apply self.linearised_sol.unstable_modes[:,0] shift to the currents
+        # so that the Iy vector changes by a target_dIy relative change
+        current_ = np.copy(self.currents_vec)
+
+        current_[:-1] += starting_dI * np.real(self.linearised_sol.unstable_modes[:, 0])
+        self.assign_currents_solve_GS(current_, rtol_NK)
+
+        dIy_0 = self.limiter_handler.Iy_from_jtor(self.profiles2.jtor) - self.Iy
+
+        rel_ndIy_0 = np.linalg.norm(dIy_0) / self.nIy
+        final_dI = starting_dI * target_dIy / rel_ndIy_0
+
+        current_ = np.copy(self.currents_vec)
+        current_[:-1] += final_dI * np.real(self.linearised_sol.unstable_modes[:, 0])
+        self.assign_currents_solve_GS(current_, rtol_NK)
+
+        # calculcate resulting positions
+        R0n = self.eq2.Rcurrent()
+        Z0n = self.eq2.Zcurrent()
+
+        self.dRZd_unstable_mode = np.array([R0n - self.R0, Z0n - self.Z0]) / final_dI
+
+        # build vector of coordinates as needed by bilint
+        # to 'shift' the original jtor so to match R0n and Z0n
+        grid = np.concatenate(
+            (
+                self.eqR[:, :, np.newaxis] - R0n + self.R0,
+                self.eqZ[:, :, np.newaxis] - Z0n + self.Z0,
+            ),
+            axis=-1,
+        )
+
+        # shift the original current
+        shifted_current = bilinear_interpolation.biliint(
+            self.eqR, self.eqZ, self.eq1._profiles.jtor, grid.reshape(-1, 2).T
+        )
+
+        self.deformable_vs_rigid_jtor = (
+            self.eq2._profiles.jtor,
+            shifted_current.reshape(self.nx, self.ny),
+        )

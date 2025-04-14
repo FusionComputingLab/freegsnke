@@ -19,6 +19,7 @@ You should have received a copy of the GNU Lesser General Public License
 along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.   
 """
 
+import warnings
 from copy import deepcopy
 
 import matplotlib.pyplot as plt
@@ -1433,6 +1434,7 @@ class nl_solver:
         clip=5,
         verbose=0,
         linear_only=False,
+        max_solving_iterations=50,
     ):
         """This is the main stepper function.
         If linear_only = True, this advances the linearised dynamic problem.
@@ -1493,7 +1495,7 @@ class nl_solver:
             l2 norm of proposed step for the finite difference calculation, in units of the residual.
         scaling_with_n : int, optional, by default 0
             Used in the NK solvers. Allows to further scale dx candidate steps by factor
-            (1 + self.n_it)**scaling_with_n
+            (1 + self.iterations)**scaling_with_n
         max_no_NK_psi : float, optional, by default 5.
             Execution of NK update on psi for the dynamic problem is triggered when
             relative_psi_residual > max_no_NK_psi * target_relative_tol_GS
@@ -1516,6 +1518,8 @@ class nl_solver:
             If linear_only = True the solution of the linearised problem is accepted.
             If linear_only = False, the convergence criteria are used and a solution of
             the full nonlinear problem is seeked.
+        max_solving_iterations : int
+            NK iterations are interrupted when this limit is surpassed.
         """
 
         # check if profile parameters are being evolved
@@ -1571,14 +1575,14 @@ class nl_solver:
             log = []
 
             # counter for number of solution cycles
-            n_it = 0
+            iterations = 0
 
-            while control:
+            while control and (iterations < max_solving_iterations):
                 if verbose:
                     for _ in log:
                         print(_)
 
-                log = [self.text_nk_cycle.format(nkcycle=n_it)]
+                log = [self.text_nk_cycle.format(nkcycle=iterations)]
 
                 # update plasma flux if trial_currents and plasma_flux exceedingly far from GS solution
                 if control_GS:
@@ -1648,6 +1652,7 @@ class nl_solver:
                 self.trial_currents += self.currents_nk_solver.dx
 
                 # check convergence properties of the pair [trial_currents, trial_plasma_psi]:
+
                 # relative convergence on the currents:
                 res_curr = self.F_function_curr(
                     self.trial_currents, active_voltage_vec
@@ -1656,6 +1661,7 @@ class nl_solver:
                     res_curr, curr_eps=curr_eps
                 )
                 control = np.any(rel_curr_res > target_relative_tol_currents)
+
                 # relative convergence on the GS problem
                 r_res_GS = self.calculate_rel_tolerance_GS(self.trial_plasma_psi).copy()
                 control_GS = r_res_GS > target_relative_tol_GS
@@ -1679,7 +1685,16 @@ class nl_solver:
                 log.append(["Residuals on static GS eq (relative): ", r_res_GS])
 
                 # one full cycle completed
-                n_it += 1
+                iterations += 1
 
             # convergence checks succeeded, complete step
             self.step_complete_assign(working_relative_tol_GS)
+
+            # if max_iterations exceeded, print warning
+            if iterations >= max_solving_iterations:
+                warnings.warn(
+                    f"Evolutive solve failed to converge to requested tolerances "
+                    + f"using less than {max_solving_iterations} iterations. "
+                    + f"Last max. relative currents change: {np.max(rel_curr_res)} (tol = {target_relative_tol_currents}). "
+                    + f"Last max. relative psi change: {np.max(r_res_GS)} (tol = {target_relative_tol_GS}). "
+                )

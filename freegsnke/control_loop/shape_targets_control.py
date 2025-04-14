@@ -18,7 +18,7 @@ from .vc_scheduler import ShapeTargetScheduler
 from .target_scheduler import TargetScheduler
 
 
-class ControlVoltages:
+class ShapeController:
     """
     Class to implement control voltages from virtual circuit, and given a set of observed target values, and a set of requested target values.
 

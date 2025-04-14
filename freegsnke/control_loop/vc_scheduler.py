@@ -7,7 +7,7 @@ import pickle
 import numpy as np
 
 from fnkemu.virtual_circuits.virtual_circuit_generator import VC_Generator as VCG
-from ..virtual_circuits import VirtualCircuit
+from freegsnke.virtual_circuits import VirtualCircuit
 from .target_scheduler import TargetScheduler
 
 

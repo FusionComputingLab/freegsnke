@@ -366,7 +366,6 @@ class ShapeController:
         vc_targ_order_dict = dict(
             zip(virtual_circuit.targets, np.arange(len(virtual_circuit.targets)))
         )
-
         vc_coil_order_dict = dict(
             zip(virtual_circuit.coils, np.arange(len(virtual_circuit.coils)))
         )
@@ -386,9 +385,9 @@ class ShapeController:
         vc_mat_reduced = np.linalg.pinv(sens_reduced)
 
         targs_reduced = [
-            targets[i] for i in np.array([vc_targ_order_dict[targ] for targ in targets])
+            virtual_circuit.targets[i]
+            for i in np.array([vc_targ_order_dict[targ] for targ in targets])
         ]
-
         targ_values = np.array(
             [
                 virtual_circuit.targets_val[i]

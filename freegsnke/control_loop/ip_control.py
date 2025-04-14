@@ -3,7 +3,8 @@ Module to control plasma current Ip during a tokamak shot.
 
 """
 
-from target_scheduler import TargetScheduler
+import numpy as np
+from .target_scheduler import TargetScheduler
 
 
 class ControlSolenoid:
@@ -33,11 +34,9 @@ class ControlSolenoid:
 
     """
 
-    def __init__(self,
-                 target_seq_path,
-                 target_sched_path,
-                 contr_params_path,
-                 solenoid_name=None):
+    def __init__(
+        self, target_seq_path, target_sched_path, contr_params_path, solenoid_name=None
+    ):
         """
         Initialises the ControlSolenoid class.
 
@@ -49,22 +48,15 @@ class ControlSolenoid:
 
         # Load the scheduler
         self.scheduler = SolenoidScheduler(
-            target_seq_path,
-            target_sched_path,
-            contr_params_path,
-            solenoid_name
+            target_seq_path, target_sched_path, contr_params_path, solenoid_name
         )
 
         self.vc = self.scheduler.retrieve_vc()
         print(f"  The virtual circuit vector: {self.vc}")
 
-    def calculate_solenoid_delta(self,
-                                 inductances,
-                                 gain,
-                                 blend,
-                                 Ip_req,
-                                 Ip_obs,
-                                 Vloop_ff):
+    def calculate_solenoid_delta(
+        self, inductances, gain, blend, Ip_req, Ip_obs, Vloop_ff
+    ):
         """
         Calculates the vector of current trajectories ΔI/Δt, as prescribed
         in the plasma category (and circuits category, supposedly) of the
@@ -118,15 +110,12 @@ class ControlSolenoid:
         # Apply dIsol to virtual circuit vector to get the current trajectories
         # of the active coils
         dI = dIsol * self.vc
-
+        print("dIsol shape", np.shape(dIsol))
+        print("Vc shape", np.shape(self.vc))
+        print("dI shape", np.shape(dI))
         return dI
 
-    def ip_control(self,
-                   time_stamp,
-                   Rp,
-                   inductances,
-                   eq=None
-                   ):
+    def ip_control(self, time_stamp, Rp, inductances, eq=None):
         """
         Execute all the steps in the pipeline for the control of the solenoid
         current, as prescribed by the PCS. This method is the API by design of
@@ -157,7 +146,9 @@ class ControlSolenoid:
         controlled_targets = self.scheduler.desired_target_values(time_stamp)
         if not controlled_targets:
             print(f"  The plasma current is not controlled at t: {time_stamp}")
-            return None
+            # return None
+            dI = np.zeros_like(self.vc)  # return array of zeros if not controlled
+            return dI
         Ip_req = controlled_targets[0]
         print(f"  The requested Ip: {Ip_req}")
         Vloop_req = self.scheduler.retrieve_parameter(time_stamp, "Vloop")
@@ -166,13 +157,14 @@ class ControlSolenoid:
         print(f"  The plasma gain: {gain_p}")
         blend = self.scheduler.retrieve_parameter(time_stamp, "blend")
         print(f"  The blend value: {blend}")
-        dI = self.calculate_solenoid_delta(inductances=inductances,
-                                           Ip_obs=Ip_obs,
-                                           Ip_req=Ip_req,
-                                           Vloop_ff=Vloop_req,
-                                           gain=gain_p,
-                                           blend=blend
-                                           )
+        dI = self.calculate_solenoid_delta(
+            inductances=inductances,
+            Ip_obs=Ip_obs,
+            Ip_req=Ip_req,
+            Vloop_ff=Vloop_req,
+            gain=gain_p,
+            blend=blend,
+        )
 
         return dI
 
@@ -198,12 +190,13 @@ class SolenoidScheduler(TargetScheduler):
 
     """
 
-    def __init__(self,
-                 target_waveform_path,
-                 target_schedule_path,
-                 control_params_path,
-                 solenoid_name
-                 ):
+    def __init__(
+        self,
+        target_waveform_path,
+        target_schedule_path,
+        control_params_path,
+        solenoid_name,
+    ):
         """
         Initialise the Solenoid scheduler.
 
@@ -229,9 +222,11 @@ class SolenoidScheduler(TargetScheduler):
         super().__init__(target_waveform_path, target_schedule_path)
 
         if solenoid_name is None:
-            print("A name for the solenoid is not provided, using 'Solenoid' "
-                  "as label for the solenoid current.")
-            self.solenoid_name = 'Solenoid'
+            print(
+                "A name for the solenoid is not provided, using 'Solenoid' "
+                "as label for the solenoid current."
+            )
+            self.solenoid_name = "Solenoid"
         else:
             self.solenoid_name = solenoid_name
 
@@ -273,20 +268,23 @@ class SolenoidScheduler(TargetScheduler):
         """
 
         if query not in self.control_params:
-            print(f"{query} is not present in control_params, returning None "
-                  "from retrieve_parameter()")
+            print(
+                f"{query} is not present in control_params, returning None "
+                "from retrieve_parameter()"
+            )
             requested_parameter = None
         else:
             # Compute the position in the list for query that is the closest
             # lower time to time_stamp
             closest_pos = max(
-                (key for key in self.control_params[query].keys()
-                 if key <= time_stamp),
+                (key for key in self.control_params[query].keys() if key <= time_stamp),
                 default=None,
             )
             if closest_pos is None:
-                print("time requested is before first control parameter time, "
-                      "returning None from retrieve_parameter()")
+                print(
+                    "time requested is before first control parameter time, "
+                    "returning None from retrieve_parameter()"
+                )
                 requested_parameter = None
             else:
                 # Retrieved the value for this parameter at the chosen position
@@ -329,17 +327,23 @@ class SolenoidScheduler(TargetScheduler):
 
         if current is None:
             if eq is None:
-                raise Exception("An Equilibrium object should be provided to "
-                                f"ip_control() if {query} is not provided.")
+                raise Exception(
+                    "An Equilibrium object should be provided to "
+                    f"ip_control() if {query} is not provided."
+                )
 
             if query == "Ip_obs":
-                print("Ip_obs is not provided, using the equilibrium given to "
-                      "estimate it.")
+                print(
+                    "Ip_obs is not provided, using the equilibrium given to "
+                    "estimate it."
+                )
                 current = eq.plasmaCurrent()
 
             if query == "measured_Isol":
-                print("measured_Isol is not provided, using the equilibrium "
-                      "given to estimate it.")
+                print(
+                    "measured_Isol is not provided, using the equilibrium "
+                    "given to estimate it."
+                )
                 current = eq.tokamak[self.solenoid_name].current
 
         return current

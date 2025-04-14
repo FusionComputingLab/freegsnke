@@ -38,8 +38,8 @@ class ShapeController:
     Methods :
     get_inductance_reduced : retrieve inductance matrix from machine config, and select rows/columns
     calc_vc_from_eq : retrieve from file or compute a virtual circuit object from freegsnke or NN emulator.
-    calculate_voltage_vc_feedback_proportional : compute feedback voltages from a virtual circuit object and a set of target shifts.
-    feedback_voltage_control_timefunc : compute feedback voltages from a time provided by retrieving targets at given time from the target sequencer and computing with calculate_voltage_vc_feedback_proportional.
+    calculate_feedback_current_rate_vc_proportional : compute feedback voltages from a virtual circuit object and a set of target shifts.
+    feedback_current_rate_timefunc : compute feedback voltages from a time provided by retrieving targets at given time from the target sequencer and computing with calculate_feedback_current_rate_vc_proportional.
     """
 
     def __init__(
@@ -132,7 +132,7 @@ class ShapeController:
             "Emulator" or "emu" or "emulator"
         ):
 
-            # pre run the emulators so future calls to calculate_voltage_vc_feedback_proportional are quicker
+            # pre run the emulators so future calls to calculate_feedback_current_rate_vc_proportional are quicker
             start_targs = self.feedback_target_scheduler.target_schedule_dict[
                 list(self.feedback_target_scheduler.target_schedule_dict.keys())[0]
             ]
@@ -411,7 +411,7 @@ class ShapeController:
 
         return virtualcircuit
 
-    def calculate_voltage_vc_feedback_proportional(
+    def calculate_feedback_current_rate_vc_proportional(
         self,
         eq,
         profiles,
@@ -538,40 +538,42 @@ class ShapeController:
             reshaped_currents[self.coil_order_dictionary[coil]] = delta_currents[i]
         print("reshaped currents")
         print(reshaped_currents)
-        voltages_v1 = np.dot(self.inductance_full, reshaped_currents)
 
-        print("------------- \n computing voltages \n -------------")
-        print(
-            "voltages v1 : reorder currents, fill in zeros and multiply by full active coil inductance matrix"
-        )
-        print("voltages v1 : shape", voltages_v1.shape)
-        print(voltages_v1)
+        return reshaped_currents
+        # voltages_v1 = np.dot(self.inductance_full, reshaped_currents)
 
-        # option 2 reshape inductance matrix, multiply by currents and then fill in zeros
-        print("doing option 2")
-        print("delta currents", delta_currents)
-        inductance_matrix_controlled = self.get_inductance_reduced(
-            coils=virtual_circuit.coils
-        )
-        voltages_v2_controlled = np.dot(inductance_matrix_controlled, delta_currents)
-        # fill in zeros
-        voltages_v2 = np.zeros(len(self.active_coils))
-        for i, coil in enumerate(virtual_circuit.coils):
-            voltages_v2[self.coil_order_dictionary[coil]] = voltages_v2_controlled[i]
+        # print("------------- \n computing voltages \n -------------")
+        # print(
+        #     "voltages v1 : reorder currents, fill in zeros and multiply by full active coil inductance matrix"
+        # )
+        # print("voltages v1 : shape", voltages_v1.shape)
+        # print(voltages_v1)
 
-        print(
-            "voltages v2 : reshaped inductance matrix, then fill in zeros in voltage vector"
-        )
-        print("voltages v2 : shape", voltages_v2.shape)
-        print(voltages_v2)
+        # # option 2 reshape inductance matrix, multiply by currents and then fill in zeros
+        # print("doing option 2")
+        # print("delta currents", delta_currents)
+        # inductance_matrix_controlled = self.get_inductance_reduced(
+        #     coils=virtual_circuit.coils
+        # )
+        # voltages_v2_controlled = np.dot(inductance_matrix_controlled, delta_currents)
+        # # fill in zeros
+        # voltages_v2 = np.zeros(len(self.active_coils))
+        # for i, coil in enumerate(virtual_circuit.coils):
+        #     voltages_v2[self.coil_order_dictionary[coil]] = voltages_v2_controlled[i]
+
+        # print(
+        #     "voltages v2 : reshaped inductance matrix, then fill in zeros in voltage vector"
+        # )
+        # print("voltages v2 : shape", voltages_v2.shape)
+        # print(voltages_v2)
 
         # if we want to keep the latest voltages
         # self.feedback_voltages_v1 = voltages_v1
         # self.feedback_voltages_v2 = voltages_v2
 
-        return voltages_v1, voltages_v2
+        # return voltages_v1, voltages_v2
 
-    def feedback_voltage_control_timefunc(
+    def feedback_current_rate_timefunc(
         self,
         time_stamp,
         eq,
@@ -628,7 +630,7 @@ class ShapeController:
         )
 
         # compute the proportional voltages
-        voltages_v1, voltages_v2 = self.calculate_voltage_vc_feedback_proportional(
+        current_rate = self.calculate_feedback_current_rate_vc_proportional(
             eq,
             profiles,
             targets=controlled_targets,
@@ -638,10 +640,16 @@ class ShapeController:
             gain_matrix=gain_matrix,
         )
 
-        # TO DO
-        # add in other voltage computations (integral, ip etc here)
+        return current_rate
 
-        return voltages_v1, voltages_v2
+    def feedback_voltage_from_currents(self, current_rate, inductance_matrix=None):
+        """
+        compute feedback voltage from current rate of change vector
+        """
+        if inductance_matrix is None:
+            inductance_matrix = self.inductance_full
+
+        return np.dot(inductance_matrix, current_rate)
 
 
 ### TESTING ###

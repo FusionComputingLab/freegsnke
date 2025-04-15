@@ -39,7 +39,14 @@ def check_currents(dIvec, Ivec):
 
 
 def calculate_voltage(
-    R, inductance_ff, inductance_fb, gains, approved_dI, approved_I, measured_I
+    R,
+    inductance_ff,
+    inductance_fb,
+    gains,
+    approved_dI,
+    approved_I,
+    measured_I,
+    pert_I=None,
 ):
     """
     Calculate the output voltage to apply on the coils, as prescribed in
@@ -99,122 +106,122 @@ def calculate_voltage(
     return Vout
 
 
-def main(eq_start, profiles_start, stepper):
-    """
-    Script that simulates the branch of the PCS that controls the active coil
-    currents.
+# def main(eq_start, profiles_start, stepper):
+#     """
+#     Script that simulates the branch of the PCS that controls the active coil
+#     currents.
 
-    Inputs :
-    --------
-    eq_start : eq object
-        Equilibrium at start of simulation
-    profiles_start : profiles object
-        Profiles at start of simulation
-    stepper : Stepper object (nl_solver)
+#     Inputs :
+#     --------
+#     eq_start : eq object
+#         Equilibrium at start of simulation
+#     profiles_start : profiles object
+#         Profiles at start of simulation
+#     stepper : Stepper object (nl_solver)
 
-    """
+#     """
 
-    pickle_folder = "/Users/alasdair.ross/Documents/HARTREE/freegsnke/freegsnke/control_loop/control_test_files"
+#     pickle_folder = "/Users/alasdair.ross/Documents/HARTREE/freegsnke/freegsnke/control_loop/control_test_files"
 
-    # Initialise the solenoid controller
-    ip_controller = ControlSolenoid(
-        f"{pickle_folder}/ip_sequence.pkl",
-        f"{pickle_folder}/ip_schedule.pkl",
-        f"{pickle_folder}/ip_control_params.pkl",
-    )
+#     # Initialise the solenoid controller
+#     ip_controller = ControlSolenoid(
+#         f"{pickle_folder}/ip_sequence.pkl",
+#         f"{pickle_folder}/ip_schedule.pkl",
+#         f"{pickle_folder}/ip_control_params.pkl",
+#     )
 
-    # Create necessary objects for plasma control that are supposed to be known
-    # at runtime.
-    Rp = 0.84  # Plasma resistivity
-    inductances = {
-        "plasma": 3.9,  # Plasma inductance
-        "mutual": 2.7,  # Plasma-Solenoid inductance
-    }
+#     # Create necessary objects for plasma control that are supposed to be known
+#     # at runtime.
+#     Rp = 0.84  # Plasma resistivity
+#     inductances = {
+#         "plasma": 3.9,  # Plasma inductance
+#         "mutual": 2.7,  # Plasma-Solenoid inductance
+#     }
 
-    # Initialise the shape controller
-    target_fb_scheduler = ShapeTargetScheduler(
-        target_waveform_path=f"{pickle_folder}/target_waveform.pkl",
-        target_schedule_path=f"{pickle_folder}/target_schedule.pkl",
-        vc_flag="file",
-        vc_schedule_path=f"{pickle_folder}/test_vc_set.pkl",
-    )
+#     # Initialise the shape controller
+#     target_fb_scheduler = ShapeTargetScheduler(
+#         target_waveform_path=f"{pickle_folder}/target_waveform.pkl",
+#         target_schedule_path=f"{pickle_folder}/target_schedule.pkl",
+#         vc_flag="file",
+#         vc_schedule_path=f"{pickle_folder}/test_vc_set.pkl",
+#     )
 
-    target_ff_scheduler = TargetScheduler(
-        target_schedule_path=f"{pickle_folder}/target_schedule.pkl",
-        target_waveform_path=f"{pickle_folder}/target_waveform.pkl",
-    )
+#     target_ff_scheduler = TargetScheduler(
+#         target_schedule_path=f"{pickle_folder}/target_schedule.pkl",
+#         target_waveform_path=f"{pickle_folder}/target_waveform.pkl",
+#     )
 
-    shape_controller = ShapeController(
-        eq=eq_start,
-        profiles=profiles_start,
-        stepping=stepper,
-        feedback_target_scheduler=target_fb_scheduler,
-        feedforward_scheduler=target_ff_scheduler,
-        coils=None,
-    )
+#     shape_controller = ShapeController(
+#         eq=eq_start,
+#         profiles=profiles_start,
+#         stepping=stepper,
+#         feedback_target_scheduler=target_fb_scheduler,
+#         feedforward_scheduler=target_ff_scheduler,
+#         coils=None,
+#     )
 
-    # Create necessary objects for the FP category that are supposed to be
-    # known at runtime.
-    Rvec = np.random.rand(
-        12,
-    )  # Vector of resistivities
-    inductance_matrix = deepcopy(shape_controller.inductance_full)
-    gain_matrix = np.diag(
-        np.random.rand(12)
-    )  # Gain matrix for coils(what are these gains??)
-    measured_I = np.random.rand(12) * 1e4  # Vector of measured coil currents
+#     # Create necessary objects for the FP category that are supposed to be
+#     # known at runtime.
+#     Rvec = np.random.rand(
+#         12,
+#     )  # Vector of resistivities
+#     inductance_matrix = deepcopy(shape_controller.inductance_full)
+#     gain_matrix = np.diag(
+#         np.random.rand(12)
+#     )  # Gain matrix for coils(what are these gains??)
+#     measured_I = np.random.rand(12) * 1e4  # Vector of measured coil currents
 
-    # Initialise the estimation of the coil currents from the actions applied
-    # by the PCS on the current trajectories. The PCS takes over when the
-    # currents in the coils are I0.
-    I0 = np.random.rand(12) * 1e4
-    est_I = I0
-    # print("I0", I0, np.shape(I0))
+#     # Initialise the estimation of the coil currents from the actions applied
+#     # by the PCS on the current trajectories. The PCS takes over when the
+#     # currents in the coils are I0.
+#     I0 = np.random.rand(12) * 1e4
+#     est_I = I0
+#     # print("I0", I0, np.shape(I0))
 
-    eq = deepcopy(eq_start)
-    profiles = deepcopy(profiles_start)
+#     eq = deepcopy(eq_start)
+#     profiles = deepcopy(profiles_start)
 
-    # Execute the PCS pipeline. Here it is assumed that the control is
-    # performed over the ticking of some clock (hence the np.arange()).
-    for timestamp in np.arange(0.15, 1, 0.1):
-        print(f"time {timestamp} ")
+#     # Execute the PCS pipeline. Here it is assumed that the control is
+#     # performed over the ticking of some clock (hence the np.arange()).
+#     for timestamp in np.arange(0.15, 1, 0.1):
+#         print(f"time {timestamp} ")
 
-        # 1. Plasma control
-        sol_dI = ip_controller.ip_control(
-            time_stamp=timestamp, Rp=Rp, inductances=inductances, eq=eq
-        )
-        # print("sol dI", sol_dI, np.shape(sol_dI))
+#         # 1. Plasma control
+#         sol_dI = ip_controller.ip_control(
+#             time_stamp=timestamp, Rp=Rp, inductances=inductances, eq=eq
+#         )
+#         # print("sol dI", sol_dI, np.shape(sol_dI))
 
-        # 2. Shape control
-        shp_dI = shape_controller.feedback_current_rate_timefunc(
-            time_stamp=timestamp, eq=eq, profiles=profiles, gain_matrix=None
-        )
-        # print("shp dI", shp_dI, np.shape(shp_dI))
+#         # 2. Shape control
+#         shp_dI = shape_controller.feedback_current_rate_timefunc(
+#             time_stamp=timestamp, eq=eq, profiles=profiles, gain_matrix=None
+#         )
+#         # print("shp dI", shp_dI, np.shape(shp_dI))
 
-        # 3. Combine the currents coming from plasma and shape control
-        dI = sol_dI + shp_dI
-        # print("combined dI", dI, np.shape(dI))
+#         # 3. Combine the currents coming from plasma and shape control
+#         dI = sol_dI + shp_dI
+#         # print("combined dI", dI, np.shape(dI))
 
-        # 4. Estimate the absolute value of the currents.
-        est_I += dI
-        # print("est I", est_I, np.shape(est_I))
+#         # 4. Estimate the absolute value of the currents.
+#         est_I += dI
+#         # print("est I", est_I, np.shape(est_I))
 
-        # 5. System category
-        check_currents(dI, est_I)
+#         # 5. System category
+#         check_currents(dI, est_I)
 
-        # 6. PF category
-        # FIXME As of now, inductance_matrix is used for both inductance_ff and
-        # inductance_fb.
-        V_out = calculate_voltage(
-            R=Rvec,
-            inductance_ff=inductance_matrix,
-            inductance_fb=inductance_matrix,
-            gains=gain_matrix,
-            approved_dI=dI,
-            approved_I=est_I,
-            measured_I=measured_I,
-        )
-        print(f"The requested output voltage is {V_out}")
+#         # 6. PF category
+#         # FIXME As of now, inductance_matrix is used for both inductance_ff and
+#         # inductance_fb.
+#         V_out = calculate_voltage(
+#             R=Rvec,
+#             inductance_ff=inductance_matrix,
+#             inductance_fb=inductance_matrix,
+#             gains=gain_matrix,
+#             approved_dI=dI,
+#             approved_I=est_I,
+#             measured_I=measured_I,
+#         )
+#         print(f"The requested output voltage is {V_out}")
 
 
 def simulate_shot(
@@ -285,6 +292,12 @@ def simulate_shot(
         coils=None,
     )
 
+    # TODO I_Coil_Pert category ....
+    coil_perturbation = TargetScheduler(
+        target_schedule_path=control_kwargs["coil_pert_schedule"],
+        target_waveform_path=control_kwargs["coil_pert_waveform"],
+    )
+
     # Create necessary objects for the FP category that are supposed to be
     # known at runtime.
     Rvec = config_kwargs["R_vec"]  # Vector of resistivities
@@ -332,6 +345,11 @@ def simulate_shot(
         # 4. Estimate the absolute value of the currents.
         est_I += dI
         # print("est I", est_I, np.shape(est_I))
+
+        # 4.1. Coil perturbation
+        Ipert = coil_perturbation.desired_target_values(time_stamp=timestamp)
+        print("coil pert value ", Ipert, np.shape(Ipert))
+        ## add this coil currents to ....????
 
         # 5. System category
         check_currents(dI, est_I)
@@ -423,6 +441,8 @@ if __name__ == "__main__":
         "ff_target_schedule": "../freegsnke/control_loop/control_test_files/target_schedule.pkl",
         "vc_schedule": "../freegsnke/control_loop/control_test_files/test_vc_set.pkl",
         "vc_flag": "file",
+        "coil_pert_schedule": "../freegsnke/control_loop/control_test_files/test_coil_pert_set.pkl",
+        "coil_pert_waveform": "../freegsnke/control_loop/control_test_files/test_coil_pert_set.pkl",
     }
     test_config_kwargs = {
         "plasma_resistivity": 0.84,

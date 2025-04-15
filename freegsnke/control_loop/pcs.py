@@ -75,13 +75,13 @@ def calculate_voltage(
 
     """
 
-    # Compute the feedback voltage
-    print("gains shape,", np.shape(gains), gains)
-    print("approved I shape,", np.shape(approved_I), approved_I)
-    print("measured I shape,", np.shape(measured_I), measured_I)
+    # # Compute the feedback voltage
+    # print("gains shape,", np.shape(gains), gains)
+    # print("approved I shape,", np.shape(approved_I), approved_I)
+    # print("measured I shape,", np.shape(measured_I), measured_I)
     Corrected_I = gains @ (approved_I - measured_I)
-    print("corrected I", np.shape(Corrected_I), Corrected_I)
-    print("inductance_fb", np.shape(inductance_fb), inductance_fb)
+    # print("corrected I", np.shape(Corrected_I), Corrected_I)
+    # print("inductance_fb", np.shape(inductance_fb), inductance_fb)
     V_fb = inductance_fb @ Corrected_I
     print(f"    The feedback voltage: {V_fb}")
 
@@ -169,7 +169,7 @@ def main(eq_start, profiles_start, stepper):
     # currents in the coils are I0.
     I0 = np.random.rand(12) * 1e4
     est_I = I0
-    print("I0", I0, np.shape(I0))
+    # print("I0", I0, np.shape(I0))
 
     eq = deepcopy(eq_start)
     profiles = deepcopy(profiles_start)
@@ -177,6 +177,7 @@ def main(eq_start, profiles_start, stepper):
     # Execute the PCS pipeline. Here it is assumed that the control is
     # performed over the ticking of some clock (hence the np.arange()).
     for timestamp in np.arange(0.15, 1, 0.1):
+        print(f"time {timestamp} ")
 
         # 1. Plasma control
         sol_dI = ip_controller.ip_control(
@@ -213,7 +214,6 @@ def main(eq_start, profiles_start, stepper):
             approved_I=est_I,
             measured_I=measured_I,
         )
-        print(f"time {timestamp} ")
         print(f"The requested output voltage is {V_out}")
 
 
@@ -248,8 +248,6 @@ def simulate_shot(
     None
 
     """
-    print(control_kwargs)
-    print(config_kwargs)
     # Initialise the solenoid controller
     ip_controller = ControlSolenoid(
         target_sched_path=control_kwargs["ip_schedule"],
@@ -269,7 +267,7 @@ def simulate_shot(
     target_fb_scheduler = ShapeTargetScheduler(
         target_waveform_path=control_kwargs["fb_target_waveform"],
         target_schedule_path=control_kwargs["fb_target_schedule"],
-        vc_flag="file",
+        vc_flag=control_kwargs["vc_flag"],
         vc_schedule_path=control_kwargs["vc_schedule"],
     )
 
@@ -312,25 +310,28 @@ def simulate_shot(
     # Execute the PCS pipeline. Here it is assumed that the control is
     # performed over the ticking of some clock (hence the np.arange()).
     for timestamp in time_slices:
+        print(f"time {timestamp} ")
 
         # 1. Plasma control
+        print("\n Plasma Control")
         sol_dI = ip_controller.ip_control(
             time_stamp=timestamp, Rp=Rp, inductances=inductances, eq=eq
         )
-        print("sol dI", sol_dI, np.shape(sol_dI))
+        # print("sol dI", sol_dI, np.shape(sol_dI))
         # 2. Shape control
+        print("\n Shape Control")
         shp_dI = shape_controller.feedback_current_rate_timefunc(
             time_stamp=timestamp, eq=eq, profiles=profiles, gain_matrix=None
         )
-        print("shp dI", shp_dI, np.shape(shp_dI))
+        # print("shp dI", shp_dI, np.shape(shp_dI))
 
         # 3. Combine the currents coming from plasma and shape control
         dI = sol_dI + shp_dI
-        print("combined dI", dI, np.shape(dI))
+        # print("combined dI", dI, np.shape(dI))
 
         # 4. Estimate the absolute value of the currents.
         est_I += dI
-        print("est I", est_I, np.shape(est_I))
+        # print("est I", est_I, np.shape(est_I))
 
         # 5. System category
         check_currents(dI, est_I)
@@ -338,6 +339,7 @@ def simulate_shot(
         # 6. PF category
         # FIXME As of now, inductance_matrix is used for both inductance_ff and
         # inductance_fb.
+        print("\n Calculating Voltage Requests")
         V_out = calculate_voltage(
             R=Rvec,
             inductance_ff=inductance_matrix,
@@ -347,7 +349,6 @@ def simulate_shot(
             approved_I=est_I,
             measured_I=measured_I,
         )
-        print(f"time {timestamp} ")
         print(f"The requested output voltage is {V_out}")
 
 
@@ -421,6 +422,7 @@ if __name__ == "__main__":
         "ff_target_waveform": "../freegsnke/control_loop/control_test_files/target_waveform.pkl",
         "ff_target_schedule": "../freegsnke/control_loop/control_test_files/target_schedule.pkl",
         "vc_schedule": "../freegsnke/control_loop/control_test_files/test_vc_set.pkl",
+        "vc_flag": "file",
     }
     test_config_kwargs = {
         "plasma_resistivity": 0.84,

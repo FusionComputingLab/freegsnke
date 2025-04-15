@@ -53,7 +53,7 @@ class VirtualCircuitScheduler:
                 time: ind for ind, time in enumerate(self.vc_times_stop)
             }
             n_vc = len(self.vc_times_calc)
-            print(f"there are {n_vc} VC's loaded")
+            print(f"{n_vc} VC's loaded")
         else:
             print("No file target_waveform_path provided. Add VC's manually if desired")
 
@@ -70,7 +70,6 @@ class VirtualCircuitScheduler:
         # file extension - hdf5 or csv or ???
         file_ext = (path).split(".")[-1]
         if file_ext == ("pkl" or "pickle"):
-            print("loading VC's from pickle file")
             # load vcs from pickle file
             with open(path, "rb") as fp:
                 vcs_pkl = pickle.load(fp)
@@ -293,10 +292,10 @@ class ShapeTargetScheduler(TargetScheduler):
             midpoints = (change_times[:-1] + change_times[1:]) / 2
             # for _, midpoint in enumerate(midpoints):
             for midpoint in midpoints:
-                print(
-                    "checking compatibility of target schedule and vc"
-                    f" sequence at time {midpoint}"
-                )
+                # print(
+                #     "checking compatibility of target schedule and vc"
+                #     f" sequence at time {midpoint}"
+                # )
                 vc_targs = self.vc_scheduler.retrieve_vc(time_stamp=midpoint).targets
                 controlled_targs = self.retrieve_controlled_targets(time_stamp=midpoint)
                 # check that the target schedule is a subset of the vc sequence
@@ -310,8 +309,8 @@ class ShapeTargetScheduler(TargetScheduler):
                     print(
                         "targets requested and vc available targets do not match : vc's will be recomputed as necessary"
                     )
-                    print("controlled targets", controlled_targs)
-                    print("VC available targets", vc_targs)
+                    # print("controlled targets", controlled_targs)
+                    # print("VC available targets", vc_targs)
 
         elif vc_flag == "emulator" or "emu" or "Emulator":
             # initilase an Emulator scheduler

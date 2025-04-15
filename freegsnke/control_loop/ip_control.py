@@ -114,9 +114,6 @@ class ControlSolenoid:
         # Apply dIsol to virtual circuit vector to get the current trajectories
         # of the active coils
         dI = dIsol * self.vc
-        print("dIsol shape", np.shape(dIsol))
-        print("Vc shape", np.shape(self.vc))
-        print("dI shape", np.shape(dI))
         return dI
 
     def ip_control(self, time_stamp, Rp, inductances, eq=None):

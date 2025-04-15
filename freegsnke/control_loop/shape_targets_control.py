@@ -284,7 +284,6 @@ class ShapeController:
         # shifts required
         target_deltas = targets_req - targets_obs
         gained_target_deltas = gain_matrix @ target_deltas
-        print("target deltas", target_deltas)
         return gained_target_deltas
 
     def blended_ff_fb_targs(self, time_stamp, eq):
@@ -478,12 +477,12 @@ class ShapeController:
             print("No VC object passed, building one with ")
             # check coils in virtual circuit match those in the tokamak
             print("target names provided ", targets)
-            print("self coils", self.control_coils)
+            print("control coils", self.control_coils)
             virtual_circuit = self.calc_vc_from_eq(
                 eq=eq, profiles=profiles, targets=targets, coils=coils
             )
         else:
-            print("Virtual circuit provided")
+            print("Virtual circuit provided with :")
             print("targets", virtual_circuit.targets)
             print("coils", virtual_circuit.coils)
 
@@ -509,8 +508,8 @@ class ShapeController:
             virtual_circuit = self.recompute_vc_from_sensitivity(
                 virtual_circuit, targets
             )
-            print("VC targets now ", virtual_circuit.targets)
-            print("coils now ", virtual_circuit.coils)
+            # print("VC targets now ", virtual_circuit.targets)
+            # print("coils now ", virtual_circuit.coils)
 
         else:
             # targets are not a subset of the VC targets - raise error
@@ -528,15 +527,15 @@ class ShapeController:
 
         # do matrix multiplication VC @ G @ delta
         delta_currents = virtual_circuit.VCs_matrix @ gained_target_deltas
-        print("delta currents", delta_currents)
+        print("shape current deltas", delta_currents)
 
         # option 1 reorder currents, fill in zeros and multiply by inductance matrix
         reshaped_currents = np.zeros(len(self.active_coils))
         for i, coil in enumerate(virtual_circuit.coils):
             # voltages_v1[i] = np.dot(inductance_matrix[self.coil_order_dictionary[coil],:], delta_currents[:])
             reshaped_currents[self.coil_order_dictionary[coil]] = delta_currents[i]
-        print("reshaped currents")
-        print(reshaped_currents)
+        # print("reshaped currents")
+        # print(reshaped_currents)
 
         return reshaped_currents
         # voltages_v1 = np.dot(self.inductance_full, reshaped_currents)
@@ -603,11 +602,12 @@ class ShapeController:
         controlled_targets = self.feedback_target_scheduler.retrieve_controlled_targets(
             time_stamp
         )
+        print("controlled targets are ", controlled_targets)
         if self.feedback_target_scheduler.vc_flag == "file":
             gain_matrix = self.feedback_target_scheduler.vc_scheduler.retrieve_gains(
                 targets=controlled_targets, time_stamp=time_stamp
             )
-            print("gain matrix", gain_matrix)
+            print("shape target gains", gain_matrix)
         elif (
             self.feedback_target_scheduler.vc_flag == "emulator" or "emu" or "Emulator"
         ):
@@ -618,7 +618,6 @@ class ShapeController:
         else:
             gain_matrix = np.identity(len(controlled_targets))
 
-        print("controlled targets are ", controlled_targets)
         # get the virtual circuit object
         virtual_circuit = self.feedback_target_scheduler.get_vc(
             eq=eq, profiles=profiles, time_stamp=time_stamp, coils=self.control_coils

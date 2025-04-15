@@ -32,14 +32,14 @@ class ShapeController:
     coil_order_dictionary : dictionary mapping coil names to their order in the list
     inductance_full : full inductance matrix for all active coils
     VCH (virtual circuit handling class)
-    feedback_target_scheduler (target sequencer class)
+    feedback_target_scheduler (target scheduler class)
 
 
     Methods :
     get_inductance_reduced : retrieve inductance matrix from machine config, and select rows/columns
     calc_vc_from_eq : retrieve from file or compute a virtual circuit object from freegsnke or NN emulator.
     calculate_feedback_current_rate_vc_proportional : compute feedback voltages from a virtual circuit object and a set of target shifts.
-    feedback_current_rate_timefunc : compute feedback voltages from a time provided by retrieving targets at given time from the target sequencer and computing with calculate_feedback_current_rate_vc_proportional.
+    feedback_current_rate_timefunc : compute feedback voltages from a time provided by retrieving targets at given time from the target waveformr and computing with calculate_feedback_current_rate_vc_proportional.
     """
 
     def __init__(
@@ -125,9 +125,9 @@ class ShapeController:
         self.VCH = vc.VirtualCircuitHandling()
         self.VCH.define_solver(self.stepping.NK, target_relative_tolerance=1e-7)
 
-        # initialise a target sequencer object
+        # initialise a target scheduler object
         self.feedback_target_scheduler = feedback_target_scheduler
-        print("target sequencer flag :", self.feedback_target_scheduler.vc_flag)
+        print("target scheduler flag :", self.feedback_target_scheduler.vc_flag)
         if self.feedback_target_scheduler.vc_flag == (
             "Emulator" or "emu" or "emulator"
         ):
@@ -306,7 +306,7 @@ class ShapeController:
         )
         feed_forward_targets = list(
             self.feedforward_scheduler.target_waveform_dict.keys()
-        )  # these hard coded, or hard coded in init? or just get all targets from sequencer?
+        )  # these hard coded, or hard coded in init? or just get all targets from scheduler?
         all_targs = sorted(set(controlled_targets + feed_forward_targets))
         # ?? control targs should be subset of feedforward targets?
         # dictionary of blend vals basaed on if target in controlled or not. ()

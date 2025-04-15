@@ -228,7 +228,7 @@ class ShapeTargetScheduler(TargetScheduler):
     Targets - These refer to 'shape targets'.
     Target Schedule - This provides which targets are to be controlled at a
     given time.
-    Target Sequence - This provides the actual desired/requested targets at a
+    Target waveform - This provides the actual desired/requested targets at a
     given time.
     VC Schedule - The schedule of VC's to be used up to a given time. Similar
     to Target Schedule
@@ -314,9 +314,9 @@ class ShapeTargetScheduler(TargetScheduler):
                     print("VC available targets", vc_targs)
 
         elif vc_flag == "emulator" or "emu" or "Emulator":
-            # initilase an Emulator sequencer
+            # initilase an Emulator scheduler
             assert model_path is not None, "Please provide a model path"
-            print("initialising an emulator sequencer")
+            print("initialising an emulator scheduler")
             self.vc_scheduler = VCG(model_path, model_names=None, n_models=None)
 
     def get_vc(self, eq, profiles, time_stamp, coils):

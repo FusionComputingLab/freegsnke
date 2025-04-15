@@ -182,6 +182,141 @@ def main(eq_start, profiles_start, stepper):
         sol_dI = ip_controller.ip_control(
             time_stamp=timestamp, Rp=Rp, inductances=inductances, eq=eq
         )
+        # print("sol dI", sol_dI, np.shape(sol_dI))
+
+        # 2. Shape control
+        shp_dI = shape_controller.feedback_current_rate_timefunc(
+            time_stamp=timestamp, eq=eq, profiles=profiles, gain_matrix=None
+        )
+        # print("shp dI", shp_dI, np.shape(shp_dI))
+
+        # 3. Combine the currents coming from plasma and shape control
+        dI = sol_dI + shp_dI
+        # print("combined dI", dI, np.shape(dI))
+
+        # 4. Estimate the absolute value of the currents.
+        est_I += dI
+        # print("est I", est_I, np.shape(est_I))
+
+        # 5. System category
+        check_currents(dI, est_I)
+
+        # 6. PF category
+        # FIXME As of now, inductance_matrix is used for both inductance_ff and
+        # inductance_fb.
+        V_out = calculate_voltage(
+            R=Rvec,
+            inductance_ff=inductance_matrix,
+            inductance_fb=inductance_matrix,
+            gains=gain_matrix,
+            approved_dI=dI,
+            approved_I=est_I,
+            measured_I=measured_I,
+        )
+        print(f"time {timestamp} ")
+        print(f"The requested output voltage is {V_out}")
+
+
+def simulate_shot(
+    eq_start,
+    profiles_start,
+    stepper,
+    time_slices,
+    config_kwargs,
+    control_kwargs,
+):
+    """Simulate a single shot
+    Starting from an equilibrium and a profile, simulate the plasma and shape control voltages for a set of time slices.
+
+    Parameters
+    ----------
+    eq : equilibrium object
+        equilibrium object
+    profiles : profiles object
+        profiles object
+    stepper : Stepper object (nl_solver)
+        Non Linear Solver object
+    time_slices : list
+        list of time slices to simulate
+    config_kwargs : dict
+        dictionary of configuration parameters (values for resistances, inductances, etc.)
+    control_kwargs : dict
+        dictionary of configuration filespaths (schedules, waveforms, etc)
+
+    Returns
+    -------
+    None
+
+    """
+    print(control_kwargs)
+    print(config_kwargs)
+    # Initialise the solenoid controller
+    ip_controller = ControlSolenoid(
+        target_sched_path=control_kwargs["ip_schedule"],
+        target_waveform_path=control_kwargs["ip_waveform"],
+        contr_params_path=control_kwargs["ip_control_params"],
+    )
+
+    # Create necessary objects for plasma control that are supposed to be known
+    # at runtime.
+    Rp = config_kwargs["plasma_resistivity"]  # Plasma resistivity
+    inductances = {
+        "plasma": config_kwargs["plasma_inductance"],  # Plasma inductance
+        "mutual": config_kwargs["plas_sol_inductance"],  # Plasma-Solenoid inductance
+    }
+
+    # Initialise the shape controller
+    target_fb_scheduler = ShapeTargetScheduler(
+        target_waveform_path=control_kwargs["fb_target_waveform"],
+        target_schedule_path=control_kwargs["fb_target_schedule"],
+        vc_flag="file",
+        vc_schedule_path=control_kwargs["vc_schedule"],
+    )
+
+    target_ff_scheduler = TargetScheduler(
+        target_schedule_path=control_kwargs["ff_target_schedule"],
+        target_waveform_path=control_kwargs["ff_target_waveform"],
+    )
+
+    shape_controller = ShapeController(
+        eq=eq_start,
+        profiles=profiles_start,
+        stepping=stepper,
+        feedback_target_scheduler=target_fb_scheduler,
+        feedforward_scheduler=target_ff_scheduler,
+        coils=None,
+    )
+
+    # Create necessary objects for the FP category that are supposed to be
+    # known at runtime.
+    Rvec = config_kwargs["R_vec"]  # Vector of resistivities
+    inductance_matrix = deepcopy(shape_controller.inductance_full)
+    gain_matrix = config_kwargs[
+        "coil_gains"
+    ]  # Gain matrix for coils(what are these gains??)
+    active_coils = list(eq_start.tokamak.coils_dict.keys())[
+        : eq_start.tokamak.n_active_coils
+    ]
+    active_currents = [eq_start.tokamak.getCurrents()[key] for key in active_coils]
+    measured_I = deepcopy(active_currents)  # Vector of measured coil currents
+
+    # Initialise the estimation of the coil currents from the actions applied
+    # by the PCS on the current trajectories. The PCS takes over when the
+    # currents in the coils are I0.
+    I0 = deepcopy(active_currents)
+    est_I = I0
+
+    eq = deepcopy(eq_start)
+    profiles = deepcopy(profiles_start)
+
+    # Execute the PCS pipeline. Here it is assumed that the control is
+    # performed over the ticking of some clock (hence the np.arange()).
+    for timestamp in time_slices:
+
+        # 1. Plasma control
+        sol_dI = ip_controller.ip_control(
+            time_stamp=timestamp, Rp=Rp, inductances=inductances, eq=eq
+        )
         print("sol dI", sol_dI, np.shape(sol_dI))
         # 2. Shape control
         shp_dI = shape_controller.feedback_current_rate_timefunc(
@@ -277,4 +412,24 @@ if __name__ == "__main__":
         linearize=False,
     )
 
+    test_control_kwargs = {
+        "ip_schedule": "../freegsnke/control_loop/control_test_files/ip_schedule.pkl",
+        "ip_control_params": "../freegsnke/control_loop/control_test_files/ip_control_params.pkl",
+        "ip_waveform": "../freegsnke/control_loop/control_test_files/ip_waveform.pkl",
+        "fb_target_waveform": "../freegsnke/control_loop/control_test_files/target_waveform.pkl",
+        "fb_target_schedule": "../freegsnke/control_loop/control_test_files/target_schedule.pkl",
+        "ff_target_waveform": "../freegsnke/control_loop/control_test_files/target_waveform.pkl",
+        "ff_target_schedule": "../freegsnke/control_loop/control_test_files/target_schedule.pkl",
+        "vc_schedule": "../freegsnke/control_loop/control_test_files/test_vc_set.pkl",
+    }
+    test_config_kwargs = {
+        "plasma_resistivity": 0.84,
+        "plasma_inductance": 3.9,
+        "plas_sol_inductance": 2.7,
+        "Rp": 0.84,
+        "R_vec": np.random.rand(12),
+        "gain_matrix": np.diag(np.random.rand(12)),
+    }
+
+    tiemslices = np.arange(0.15, 1, 0.1)
     main(eq_start=eq_start, profiles_start=profiles_start, stepper=stepper)

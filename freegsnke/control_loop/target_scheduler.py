@@ -20,7 +20,7 @@ class TargetScheduler:
         Parameters
         ----------
         target_waveform_path : str
-            path to the file containing target sequence.
+            path to the file containing target waveform.
         target_schedule_path : str
             path to the file containing target schedule.
 
@@ -36,8 +36,8 @@ class TargetScheduler:
         print("target schedule times", schedule_times)
         print("target schedule dict", self.target_schedule_dict)
 
-        # load target sequence
-        # target sequence  dict ~ {target_name : {"times":[time list],
+        # load target waveform
+        # target waveform  dict ~ {target_name : {"times":[time list],
         #                                         "vals": [vals list] , }
 
         self.target_waveform_dict = self.load_pickle_dict(target_waveform_path)
@@ -45,21 +45,21 @@ class TargetScheduler:
             if len(item["times"]) != len(item["vals"]):
                 raise ValueError("times and vals arrays must be same length")
 
-        # check compatibility of target schedule and target sequence
+        # check compatibility of target schedule and target waveform
         # checks that ...
         for time in schedule_times:
             # ### do this with set check...
             targ_names = self.target_schedule_dict[time]
             for targ in targ_names:
                 # check 1 : check if all targets in target schedule are in
-                # target sequence
+                # target waveform
                 if targ not in self.target_waveform_dict.keys():
                     raise ValueError(
                         f"Target {targ} is in schedule but is not defined in"
-                        "target sequence"
+                        "target waveform"
                     )
                 # check 2 : check if targets in each interval lie within time
-                # ranges of target sequence
+                # ranges of target waveform
                 time_start = self.target_waveform_dict[targ]["times"][0]
                 time_end = self.target_waveform_dict[targ]["times"][-1]
                 if time_start > time or time_end < time:
@@ -88,7 +88,7 @@ class TargetScheduler:
         file_ext = (path).split(".")[-1]
         if file_ext == ("pkl" or "pickle"):
             print(f"loading {path}")
-            # load target sequence from pickle file
+            # load target waveform from pickle file
             with open(path, "rb") as fp:
                 pickle_dict = pickle.load(fp)
         return pickle_dict
@@ -197,7 +197,7 @@ class TargetScheduler:
             print(f"position index {position}")
             if time_stamp > self.target_waveform_dict[target]["times"][-1]:
                 print(
-                    "time_stamp is greater than the last sequence time stamp "
+                    "time_stamp is greater than the last waveform time stamp "
                     f"for target {target}"
                 )
                 gradient = 0

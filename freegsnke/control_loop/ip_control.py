@@ -15,7 +15,7 @@ class ControlSolenoid:
     Parameters
     ----------
     - target_waveform_path : str
-        path to the file containing target sequence.
+        path to the file containing target waveform.
     - target_schedule_path : str
         path to the file containing target schedule.
     - contr_params_path : str
@@ -35,7 +35,11 @@ class ControlSolenoid:
     """
 
     def __init__(
-        self, target_seq_path, target_sched_path, contr_params_path, solenoid_name=None
+        self,
+        target_waveform_path,
+        target_sched_path,
+        contr_params_path,
+        solenoid_name=None,
     ):
         """
         Initialises the ControlSolenoid class.
@@ -48,7 +52,7 @@ class ControlSolenoid:
 
         # Load the scheduler
         self.scheduler = SolenoidScheduler(
-            target_seq_path, target_sched_path, contr_params_path, solenoid_name
+            target_waveform_path, target_sched_path, contr_params_path, solenoid_name
         )
 
         self.vc = self.scheduler.retrieve_vc()
@@ -203,7 +207,7 @@ class SolenoidScheduler(TargetScheduler):
         Arguments
         ---------
         - target_waveform_path : str
-            path to the file containing target sequence.
+            path to the file containing target waveform.
         - target_schedule_path : str
             path to the file containing target schedule.
         - control_params_path : str

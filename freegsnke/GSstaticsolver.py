@@ -267,7 +267,7 @@ class NKGSsolver:
         eq,
         profiles,
         target_relative_tolerance,
-        max_solving_iterations=50,
+        max_solving_iterations=100,
         Picard_handover=0.15,
         step_size=2.5,
         scaling_with_n=-1.0,
@@ -349,6 +349,7 @@ class NKGSsolver:
                 res0 = self.F_function(trial_plasma_psi, self.tokamak_psi, profiles)
                 control_trial_psi = True
                 log.append("Initial guess for plasma_psi successful, residual found.")
+
             except:
                 trial_plasma_psi /= 0.8
                 n_up += 1
@@ -434,6 +435,8 @@ class NKGSsolver:
             for x in log:
                 print(x)
 
+        self.initial_rel_residual = 1.0 * rel_change
+
         log = []
         iterations = 0
         while (rel_change > target_relative_tolerance) * (
@@ -487,7 +490,12 @@ class NKGSsolver:
                         # find best quadratic polyfit
                         poly_coeffs = np.polyfit(vals, res_vals, deg=2)
                         # find minimum accordingly
-                        update = -res0 * 0.5 * poly_coeffs[1] / poly_coeffs[0]
+                        update = (
+                            -res0
+                            * 0.5
+                            * max(abs(poly_coeffs[1] / poly_coeffs[0]), 0.1)
+                            * np.sign(poly_coeffs[1] / poly_coeffs[0])
+                        )
                         print(
                             "custom Picard accepted, with coeff",
                             -0.5 * poly_coeffs[1] / poly_coeffs[0],
@@ -621,6 +629,8 @@ class NKGSsolver:
                 + f"{target_relative_tolerance} with less than {max_solving_iterations} "
                 + f"iterations. Last relative psi change: {rel_change}."
             )
+        elif verbose:
+            print("Static solve complete. Last relative residual:", rel_change)
 
     # def get_currents(self, eq):
     #     current_vec = np.zeros(self.len_control_coils)

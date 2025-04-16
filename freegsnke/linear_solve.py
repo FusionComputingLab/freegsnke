@@ -119,7 +119,7 @@ class linear_solver:
         self.empty_U = np.zeros(np.shape(self.Pm1Rm1)[1])
         # dummy voltage vec for eig modes
         self.forcing = np.zeros(self.n_independent_vars + 1)
-        self.profile_forcing = np.zeros(self.n_independent_vars + 1)
+        self.profiles_forcing = np.zeros(self.n_independent_vars + 1)
 
     def reset_plasma_resistivity(self, plasma_resistance_1d):
         """Resets the value of the plasma resistivity,
@@ -248,14 +248,14 @@ class linear_solver:
         self.Mmatrix = self.M0matrix + self.dMmatrix
 
         # build necessary terms to incorporate forcing term from variations of the profile parameters
-        # MIdot + RI = V - self.Vm1Rm12Mey_plus@self.dIydpars@d_profile_pars_dt
+        # MIdot + RI = V - self.Vm1Rm12Mey_plus@self.dIydpars@d_profiles_pars_dt
         # if self.dIydpars is not None:
         #     Pm1Rm1Mey_plus = np.concatenate(
         #         (self.Pm1Rm1Mey, JMyy[np.newaxis] / nRp), axis=0
         #     )
         #     self.forcing_pars_matrix = np.matmul(Pm1Rm1Mey_plus, self.dIydpars)
 
-    def stepper(self, It, active_voltage_vec, d_profile_pars_dt=None):
+    def stepper(self, It, active_voltage_vec, d_profiles_pars_dt=None):
         """Executes the time advancement. Uses the implicit_euler instance.
 
         Parameters
@@ -265,7 +265,7 @@ class linear_solver:
             (active currents, vessel normal modes, total plasma current divided by normalisation factor)
         active_voltage_vec : np.array
             voltages applied to the active coils
-        d_profile_pars_dt : np.array
+        d_profiles_pars_dt : np.array
             time derivative of the profile parameters, not used atm
         other parameters are passed in as object attributes
         """
@@ -274,8 +274,8 @@ class linear_solver:
         self.forcing[-1] = 0.0
 
         # add forcing term from time derivative of profile parameters
-        if d_profile_pars_dt is not None:
-            self.forcing -= np.dot(self.forcing_pars_matrix, d_profile_pars_dt)
+        if d_profiles_pars_dt is not None:
+            self.forcing -= np.dot(self.forcing_pars_matrix, d_profiles_pars_dt)
 
         Itpdt = self.solver.full_stepper(It, self.forcing)
         return Itpdt

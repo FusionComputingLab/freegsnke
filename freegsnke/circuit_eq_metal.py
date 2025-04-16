@@ -115,6 +115,7 @@ class metal_currents:
                 n_active_coils=self.n_active_coils,
             )
             self.max_mode_frequency = max_mode_frequency
+            self.initialize_for_eig(selected_modes_mask=False)
 
         else:
             self.max_mode_frequency = 0
@@ -133,31 +134,47 @@ class metal_currents:
         """
         # this is for passives alone
         selected_modes_mask = self.normal_modes.w_passive < self.max_mode_frequency
+        freq_only_number = np.sum(selected_modes_mask)
+
         # selected_modes_mask = [True,...,True, False,...,False]
         # this includes the actives too
         self.selected_modes_mask = np.concatenate(
             (np.ones(self.n_active_coils).astype(bool), selected_modes_mask)
         )
+        if self.verbose:
+            print(
+                "In addition to the",
+                self.n_active_coils,
+                "active coils, there are",
+                freq_only_number,
+                "vessel modes with characteristic timescales slower than 'max_mode_frequency', out of",
+                self.n_coils - self.n_active_coils,
+                ".",
+            )
 
         if mode_coupling_masks is not None:
             # reintroduce modes that couple strongly
             self.selected_modes_mask = (
                 self.selected_modes_mask + mode_coupling_masks[0]
             ).astype(bool)
+            freq_and_thresh_number = np.sum(self.selected_modes_mask)
+            if self.verbose:
+                print(
+                    freq_and_thresh_number - freq_only_number - self.n_active_coils,
+                    "modes couple with the plasma more than 'threshold_dIy_dI', despite having fast timescales.",
+                )
             # exclude modes that do not couple enough
             self.selected_modes_mask = (
                 self.selected_modes_mask * mode_coupling_masks[1]
             ).astype(bool)
+            final_number = np.sum(self.selected_modes_mask)
+            if self.verbose:
+                print(
+                    freq_and_thresh_number - final_number,
+                    "modes couple with the plasma less than requested by 'min_dIy_dI', despite having slow timescales.",
+                )
 
         self.n_independent_vars = np.sum(self.selected_modes_mask)
-        if self.verbose:
-            print(
-                "Input 'max_mode_frequency' corresponds to",
-                self.n_independent_vars - self.n_active_coils,
-                "independent passive structure normal modes (in addition to the",
-                self.n_active_coils,
-                "active coils).",
-            )
 
     def initialize_for_eig(self, selected_modes_mask=None, mode_coupling_masks=None):
         """Initializes the metal_currents object for the case where vessel
@@ -168,6 +185,7 @@ class metal_currents:
         mode_coupling_metric_masks : (np.ndarray of booles, np.ndarray of booles)
         """
         if selected_modes_mask is None:
+            # this is the case when self.selected_modes_mask is built and used
             self.make_selected_mode_mask(mode_coupling_masks)
             # Pmatrix is the full matrix that changes the basis in the current space
             # from the normal modes Id (for diagonal) to the metal currents I:
@@ -176,9 +194,18 @@ class metal_currents:
             # Id = Pmatrix^T I
             # Therefore, taking the truncation into account:
             self.P = self.normal_modes.Pmatrix[:, self.selected_modes_mask]
+        elif selected_modes_mask is False:
+            # this is to include ALL modes
+            self.selected_modes_mask = np.ones(self.n_coils).astype(bool)
+            self.n_independent_vars = np.sum(self.selected_modes_mask)
+            self.P = self.normal_modes.Pmatrix[:, self.selected_modes_mask]
         else:
             # this is the case used by nonlinear_solver.remove_modes
             self.selected_modes_mask_partial = selected_modes_mask
+            print(
+                len(selected_modes_mask) - np.sum(selected_modes_mask),
+                "previously included modes couple less than requested by 'min_dIy_dI'.",
+            )
             self.n_independent_vars = np.sum(self.selected_modes_mask_partial)
             self.P = self.P[:, self.selected_modes_mask_partial]
 

@@ -53,10 +53,10 @@ class nl_solver:
         plasma_resistivity=1e-6,
         plasma_norm_factor=1e3,
         blend_hatJ=0,
-        mode_removal=True,
         max_mode_frequency=10**2.5,
-        mode_coupling_metric_thresholds=(1e-6, 1e-7),
-        min_dIy_dI=0.1,
+        threshold_dIy_dI=0.5,
+        min_dIy_dI=0.01,
+        mode_removal=True,
         linearize=True,
         dIydI=None,
         target_relative_tolerance_linearization=1e-8,
@@ -119,7 +119,7 @@ class nl_solver:
             full_timestep = automatic_timestep[0]*t_growthrate
             max_internal_timestep = automatic_timestep[1]*full_timestep
         mode_removal : bool, optional, by default True
-            It True, vessel normal modes that have little influence on the plasma are dropped.
+            It True, vessel normal modes are dropped after dIydI is calculated
             Criterion is based on norm of d(Iy)/dI of the mode.
         linearize : bool, optional, by default True
             Whether to set up the linearization of the evolutive problem
@@ -151,7 +151,14 @@ class nl_solver:
         self.n_active_coils = eq.tokamak.n_active_coils
         self.n_coils = eq.tokamak.n_coils
         self.coils_order = list(eq.tokamak.coils_dict.keys())
+        self.currents_vec = np.zeros(self.n_coils + 1)
 
+        # setting up reduced domain for plasma circuit eq.:
+        self.limiter_handler = eq.limiter_handler
+        self.plasma_domain_size = np.sum(self.limiter_handler.mask_inside_limiter)
+
+        if verbose:
+            print("Checking that the provided pair (eq, profiles) are a GS solution...")
         # instantiating static GS solver on eq's domain
         self.NK = NKGSsolver(eq)
         # check input eq and profiles are a GS solution
@@ -162,12 +169,16 @@ class nl_solver:
             verbose=verbose,
         )
 
+        # set internal copy of the equilibrium and profile
+        self.eq1 = deepcopy(eq)
+        self.profiles1 = deepcopy(profiles)
+        self.eq2 = deepcopy(eq)
+        self.profiles2 = deepcopy(profiles)
+        self.Iy = self.limiter_handler.Iy_from_jtor(profiles.jtor).copy()
+        self.nIy = np.linalg.norm(self.Iy)
+
         # instantiate the Myy_handler object
         self.handleMyy = Myy_handler(eq.limiter_handler)
-
-        # setting up reduced domain for plasma circuit eq.:
-        self.limiter_handler = eq.limiter_handler
-        self.plasma_domain_size = np.sum(self.limiter_handler.mask_inside_limiter)
 
         # Extract relevant information on the type of profiles function used and on the actual value of associated parameters
         self.get_profiles_values(profiles)
@@ -188,6 +199,9 @@ class nl_solver:
         else:
             self.max_mode_frequency = max_mode_frequency
 
+        if verbose:
+            print("Instantiating necessary objects...")
+
         # handles the metal circuit eq, mode properties, and performs the vessel mode decomposition
         self.evol_metal_curr = metal_currents(
             flag_vessel_eig=1,
@@ -199,46 +213,93 @@ class nl_solver:
             coil_resist=custom_coil_resist,
             coil_self_ind=custom_self_ind,
         )
+        self.n_metal_modes = self.evol_metal_curr.n_independent_vars
 
         # prepare the vectorised green functions of the vessel modes
         self.vessel_modes_greens = (
             self.evol_metal_curr.normal_modes.normal_modes_greens(eq._vgreen)
         )
+        # build full vector of vessel mode currents
+        self.build_current_vec(eq, profiles)
+
         # vanilla metric for the coupling between modes and plasma
         mode_coupling_metric = np.linalg.norm(
-            self.vessel_modes_greens * profiles.diverted_core_mask[np.newaxis],
+            self.vessel_modes_greens * profiles.jtor,
             axis=(1, 2),
         )
         mode_coupling_metric /= np.linalg.norm(
-            eq.tokamak.getPsitokamak(eq._vgreen) * profiles.diverted_core_mask
+            eq.tokamak.getPsitokamak(vgreen=eq._vgreen) * profiles.jtor
         )
         self.mode_coupling_metric = mode_coupling_metric
+        self.starting_dI = target_dIy / mode_coupling_metric
+        self.final_dI_record = np.zeros_like(self.starting_dI)
+        self.approved_target_dIy = target_dIy * np.ones_like(self.starting_dI)
 
-        if mode_coupling_metric_thresholds is None:
-            mode_coupling_masks = None
-        else:
-            # select modes according to the thresholds:
-            # include all modes that couple more than the first provided threshold
-            mode_coupling_mask_include = (
-                mode_coupling_metric > mode_coupling_metric_thresholds[0]
+        if verbose:
+            print("Preparing finite difference delta_currents for the linearization:")
+        # prepare ndIydI_no_GS for mode selection
+        self.build_dIydI_noGS(
+            force_core_mask_linearization,
+            self.starting_dI,
+            profiles.diverted_core_mask,
+            verbose,
+        )
+
+        # if force_core_mask_linearization:
+        #     # check that the delta_currents just calculated still respect the condition force_core_mask_linearization
+        #     self.build_dIydI_noGS(target_dIy,
+        #                       force_core_mask_linearization,
+        #                       self.final_dI_record,
+        #                       profiles.diverted_core_mask,
+        #                       )
+        # self.starting_dI = 1.0*self.final_dI_record
+
+        # select modes according to the provided thresholds:
+        # include all modes that couple more than the threshold_dIy_dI
+        # with respect to the strongest coupling vessel mode
+        strongest_coupling_vessel_mode = max(self.ndIydI_no_GS[self.n_active_coils :])
+        mode_coupling_mask_include = np.concatenate(
+            (
+                [True] * self.n_active_coils,
+                self.ndIydI_no_GS[self.n_active_coils :]
+                > threshold_dIy_dI * strongest_coupling_vessel_mode,
             )
-            # exclude all modes that couple less than the second threshold value
-            mode_coupling_mask_exclude = (
-                mode_coupling_metric > mode_coupling_metric_thresholds[1]
+        )
+        # exclude all modes that couple less than min_dIy_dI
+        mode_coupling_mask_exclude = np.concatenate(
+            (
+                [True] * self.n_active_coils,
+                self.ndIydI_no_GS[self.n_active_coils :]
+                > min_dIy_dI * strongest_coupling_vessel_mode,
             )
-            mode_coupling_masks = (
-                mode_coupling_mask_include,
-                mode_coupling_mask_exclude,
-            )
+        )
+        mode_coupling_masks = (
+            mode_coupling_mask_include,
+            mode_coupling_mask_exclude,
+        )
         # enact the mode selection
         self.evol_metal_curr.initialize_for_eig(
             selected_modes_mask=None,
             mode_coupling_masks=mode_coupling_masks,
         )
-
         # this is the number of independent normal mode currents being used
         self.n_metal_modes = self.evol_metal_curr.n_independent_vars
         self.arange_currents = np.arange(self.n_metal_modes + 1)
+        # re-build vector of vessel mode currents after mode selection
+        self.build_current_vec(eq, profiles)
+
+        # select modes accordingly
+        self.starting_dI = self.starting_dI[self.evol_metal_curr.selected_modes_mask]
+        self.approved_target_dIy = self.approved_target_dIy[
+            self.evol_metal_curr.selected_modes_mask
+        ]
+        # add the plasma
+        self.starting_dI = np.concatenate(
+            (self.starting_dI, [target_dIy * profiles.Ip / plasma_norm_factor])
+        )
+        self.approved_target_dIy = np.concatenate(
+            (self.approved_target_dIy, [target_dIy])
+        )
 
         # self.evol_plasma_curr = plasma_current(
         #     plasma_pts=self.limiter_handler.plasma_pts,
@@ -323,17 +384,6 @@ class nl_solver:
                 )
             automatic_timestep_flag = True
         if automatic_timestep_flag + mode_removal + linearize:
-            # prepare the delta_currents for the finite difference calculations in the linearization
-            # select the metrics of the selected modes
-            mode_coupling_metric = mode_coupling_metric[
-                self.evol_metal_curr.selected_modes_mask
-            ]
-            self.starting_dI = 1 / mode_coupling_metric
-            # add the plasma current
-            self.starting_dI = np.concatenate(
-                (self.starting_dI, [profiles.Ip / plasma_norm_factor])
-            )
-            self.starting_dI *= target_dIy
 
             # builds the linearization and sets everything up for the stepper
             self.initialize_from_ICs(
@@ -349,7 +399,10 @@ class nl_solver:
         # remove passive normal modes that do not affect the plasma
         if mode_removal:
             # selected based on full calculation of the coupling
-            selected_modes_mask = np.linalg.norm(self.dIydI, axis=0) > min_dIy_dI
+            ndIydI = np.linalg.norm(self.dIydI, axis=0)
+            selected_modes_mask = ndIydI > min_dIy_dI * max(
+                ndIydI[self.n_active_coils : -1]
+            )
             # force that active coils and plasma are kept
             actives_and_plasma_mask = (
                 [True] * self.n_active_coils
@@ -398,7 +451,7 @@ class nl_solver:
             else:
                 print(
                     "No unstable modes found.",
-                    "Either plasma is stable or, more likely, it is Alfven unstable (i.e. not enough stabilization from any metal structures).",
+                    "Either plasma is stable or, more likely, it is Alfven unstable (i.e. not enough stabilization from the vessel and coils).",
                 )
                 print(
                     "Try adding more passive modes by increasing the input values of max_mode_frequency and/or by reducing min_dIy_dI.",
@@ -436,6 +489,79 @@ class nl_solver:
         self.text_psi_0 = "NK on psi has been skipped {skippedno} times. The residual on psi is {psi_res:.8f}."
         self.text_psi_1 = "The coefficients applied to psi are"
 
+    def build_dIydI_noGS(
+        self, force_core_mask_linearization, starting_dI, core_mask, verbose
+    ):
+        """Calculates a first estimate of the norm of dIy/dI for each mode without solving GS,
+        i.e. using only the modified psi_tokamak. This is used in the mode selection for a first
+        sifting of the modes. If force_core_mask_linearization is True, then alters
+        self.starting_dI and self.approved_target_dIy so that the core mask is preserved.
+
+        Parameters
+        ----------
+        core_mask : np.array
+            core mask of the reference equilibrium plasma
+        force_core_mask_linearization : bool
+            whether finite difference calculations should all be based on plasmas with the
+            exact same core region
+        """
+
+        self.ndIydI_no_GS = np.zeros(self.n_coils)
+        self.rel_ndIy = np.zeros(self.n_coils)
+        self.dIydI_noGS = np.zeros((len(self.Iy), self.n_coils))
+
+        for j in range(self.n_coils):
+            dIydInoGS, rel_ndIy = self.prepare_build_dIydI_j(
+                j, None, self.approved_target_dIy[j], starting_dI[j], GS=False
+            )
+            core_check = (
+                np.sum(
+                    np.abs(
+                        core_mask.astype(float)
+                        - self.profiles2.diverted_core_mask.astype(float)
+                    )
+                )
+                == 0
+            )
+            # print('mode', j, '; approved starting_dI=', starting_dI[j])
+            # print('approved relative dIy change=', rel_ndIy, '; core_check=', core_check)
+            if force_core_mask_linearization:
+                while core_check == False:
+                    starting_dI[j] /= 1.5
+                    dIydInoGS, rel_ndIy = self.prepare_build_dIydI_j(
+                        j, None, self.approved_target_dIy[j], starting_dI[j], GS=False
+                    )
+                    core_check = (
+                        np.sum(
+                            np.abs(
+                                core_mask.astype(float)
+                                - self.profiles2.diverted_core_mask.astype(float)
+                            )
+                        )
+                        == 0
+                    )
+                    # print('mode', j, '; approved starting_dI=', starting_dI[j])
+                    # print('approved relative dIy change=', rel_ndIy, '; core_check=', core_check)
+                self.approved_target_dIy[j] = rel_ndIy
+
+            else:
+                starting_dI[j] = 1.0 * self.final_dI_record[j]
+
+            if verbose:
+                print("mode", j, "; approved starting_dI=", starting_dI[j])
+                print(
+                    "approved relative dIy change=",
+                    rel_ndIy,
+                    "; core_check=",
+                    core_check,
+                )
+                print(" ")
+            self.dIydI_noGS[:, j] = dIydInoGS
+            self.rel_ndIy[j] = rel_ndIy
+            # self.final_dI_record[j] = starting_dI[j] * self.accepted_target_dIy[j] / rel_ndIy
+            self.ndIydI_no_GS[j] = rel_ndIy * self.nIy / starting_dI[j]
+        self.starting_dI = 1.0 * starting_dI
+
     def remove_modes(self, selected_modes_mask):
         """It actions the removal of the unselected normal modes.
         Given a setup with a set of normal modes and a resulting size of the vector self.currents_vec,
@@ -448,13 +574,7 @@ class nl_solver:
             shape(selected_modes_mask) = shape(self.currents_vec) at the time of calling the function
             indexes corresponding to True are kept, indexes corresponding to False are dropped
         """
-        print(
-            "Mode removal is ON: the input 'min_dIy_dI' corresponds to keeping",
-            np.sum(selected_modes_mask),
-            "out of the original",
-            self.n_metal_modes,
-            "metal modes.",
-        )
+
         self.evol_metal_curr.initialize_for_eig(selected_modes_mask)
         self.n_metal_modes = self.evol_metal_curr.n_independent_vars
         self.extensive_currents_dim = self.n_metal_modes + 1
@@ -516,137 +636,142 @@ class nl_solver:
         self.assign_currents_solve_GS(self.trial_currents, self.rtol_NK)
         self.trial_plasma_psi = np.copy(self.eq2.plasma_psi)
 
-    # not used atm, used when building the Jacobian of the plasma current distribution with respect to the coefficients of the profiles object
-    def prepare_build_dIydpars(self, profiles, rtol_NK, target_dIy, starting_dpars):
-        """Prepares to compute the term d(Iy)/d(alpha_m, alpha_n, profifile_par)
-        where profiles_par = paxis or betap.
-        It infers the value of delta(indep_variable) corresponding to a change delta(I_y)
-        with norm(delta(I_y))=target_dIy.
+    # # not used atm, used when building the Jacobian of the plasma current distribution with respect to the coefficients of the profiles object
+    # def prepare_build_dIydpars(self, profiles, rtol_NK, target_dIy, starting_dpars):
+    #     """Prepares to compute the term d(Iy)/d(alpha_m, alpha_n, profifile_par)
+    #     where profiles_par = paxis or betap.
+    #     It infers the value of delta(indep_variable) corresponding to a change delta(I_y)
+    #     with norm(delta(I_y))=target_dIy.
 
-        Parameters
-        ----------
-        profiles : FreeGS4E profiles object
-            The profiles object of the initial condition equilibrium, i.e. the linearization point.
-        rtol_NK : float
-            Relative tolerance to be used in the static GS problems.
-        target_dIy : float
-            Target value for the norm of delta(I_y), on which th finite difference derivative is calculated.
-        starting_dpars : tuple (d_alpha_m, d_alpha_n, relative_d_profiles_par)
-            Initial value to be used as delta(indep_variable) to infer the slope of norm(delta(I_y))/delta(indep_variable).
-            Note that the first two values in the tuple are absolute deltas,
-            while the third value is relative, d_profiles_par = relative_d_profiles_par * profiles_par
-        """
+    #     Parameters
+    #     ----------
+    #     profiles : FreeGS4E profiles object
+    #         The profiles object of the initial condition equilibrium, i.e. the linearization point.
+    #     rtol_NK : float
+    #         Relative tolerance to be used in the static GS problems.
+    #     target_dIy : float
+    #         Target value for the norm of delta(I_y), on which th finite difference derivative is calculated.
+    #     starting_dpars : tuple (d_alpha_m, d_alpha_n, relative_d_profiles_par)
+    #         Initial value to be used as delta(indep_variable) to infer the slope of norm(delta(I_y))/delta(indep_variable).
+    #         Note that the first two values in the tuple are absolute deltas,
+    #         while the third value is relative, d_profiles_par = relative_d_profiles_par * profiles_par
+    #     """
 
-        current_ = np.copy(self.currents_vec)
+    #     current_ = np.copy(self.currents_vec)
 
-        # vary alpha_m
-        self.check_and_change_profiles(
-            profiles_coefficients=(
-                profiles.alpha_m + starting_dpars[0],
-                profiles.alpha_n,
-            )
-        )
-        self.assign_currents_solve_GS(current_, rtol_NK)
-        dIy_0 = self.limiter_handler.Iy_from_jtor(self.profiles2.jtor) - self.Iy
-        rel_ndIy_0 = np.linalg.norm(dIy_0) / self.nIy
-        self.final_dpars_record[0] = starting_dpars[0] * target_dIy / rel_ndIy_0
+    #     # vary alpha_m
+    #     self.check_and_change_profiles(
+    #         profiles_coefficients=(
+    #             profiles.alpha_m + starting_dpars[0],
+    #             profiles.alpha_n,
+    #         )
+    #     )
+    #     self.assign_currents_solve_GS(current_, rtol_NK)
+    #     dIy_0 = self.limiter_handler.Iy_from_jtor(self.profiles2.jtor) - self.Iy
+    #     rel_ndIy_0 = np.linalg.norm(dIy_0) / self.nIy
+    #     self.final_dpars_record[0] = starting_dpars[0] * target_dIy / rel_ndIy_0
 
-        # vary alpha_n
-        self.check_and_change_profiles(
-            profiles_coefficients=(
-                profiles.alpha_m,
-                profiles.alpha_n + starting_dpars[1],
-            )
-        )
-        self.assign_currents_solve_GS(current_, rtol_NK)
-        dIy_0 = self.limiter_handler.Iy_from_jtor(self.profiles2.jtor) - self.Iy
-        rel_ndIy_0 = np.linalg.norm(dIy_0) / self.nIy
-        self.final_dpars_record[1] = starting_dpars[1] * target_dIy / rel_ndIy_0
+    #     # vary alpha_n
+    #     self.check_and_change_profiles(
+    #         profiles_coefficients=(
+    #             profiles.alpha_m,
+    #             profiles.alpha_n + starting_dpars[1],
+    #         )
+    #     )
+    #     self.assign_currents_solve_GS(current_, rtol_NK)
+    #     dIy_0 = self.limiter_handler.Iy_from_jtor(self.profiles2.jtor) - self.Iy
+    #     rel_ndIy_0 = np.linalg.norm(dIy_0) / self.nIy
+    #     self.final_dpars_record[1] = starting_dpars[1] * target_dIy / rel_ndIy_0
 
-        # vary paxis or betap
-        self.check_and_change_profiles(
-            profiles_coefficients=(profiles.alpha_m, profiles.alpha_n),
-            profiles_parameter=(1 + starting_dpars[2]) * profiles.profiles_parameter,
-        )
-        self.assign_currents_solve_GS(current_, rtol_NK)
-        dIy_0 = self.limiter_handler.Iy_from_jtor(self.profiles2.jtor) - self.Iy
-        rel_ndIy_0 = np.linalg.norm(dIy_0) / self.nIy
-        self.final_dpars_record[2] = (
-            starting_dpars[2] * profiles.profiles_parameter * target_dIy / rel_ndIy_0
-        )
+    #     # vary paxis or betap
+    #     self.check_and_change_profiles(
+    #         profiles_coefficients=(profiles.alpha_m, profiles.alpha_n),
+    #         profiles_parameter=(1 + starting_dpars[2]) * profiles.profiles_parameter,
+    #     )
+    #     self.assign_currents_solve_GS(current_, rtol_NK)
+    #     dIy_0 = self.limiter_handler.Iy_from_jtor(self.profiles2.jtor) - self.Iy
+    #     rel_ndIy_0 = np.linalg.norm(dIy_0) / self.nIy
+    #     self.final_dpars_record[2] = (
+    #         starting_dpars[2] * profiles.profiles_parameter * target_dIy / rel_ndIy_0
+    #     )
 
-    # not used atm, builds the Jacobian of the plasma current distribution with respect to the coefficients of the profiles object
-    # can only handle ConstrainPaxisIp and ConstrainBetapIp profiles families.
-    def build_dIydIpars(self, profiles, rtol_NK, verbose=False):
-        """Compute the matrix d(Iy)/d(alpha_m, alpha_n, profifile_par) as a finite difference derivative,
-        using the value of delta(indep_viriable) inferred earlier by self.prepare_build_dIypars.
+    # # not used atm, builds the Jacobian of the plasma current distribution with respect to the coefficients of the profiles object
+    # # can only handle ConstrainPaxisIp and ConstrainBetapIp profiles families.
+    # def build_dIydIpars(self, profiles, rtol_NK, verbose=False):
+    #     """Compute the matrix d(Iy)/d(alpha_m, alpha_n, profifile_par) as a finite difference derivative,
+    #     using the value of delta(indep_viriable) inferred earlier by self.prepare_build_dIypars.
 
-        Parameters
-        ----------
-        profiles : FreeGS4E profiles object
-            The profiles object of the initial condition equilibrium, i.e. the linearization point.
-        rtol_NK : float
-            Relative tolerance to be used in the static GS problems.
+    #     Parameters
+    #     ----------
+    #     profiles : FreeGS4E profiles object
+    #         The profiles object of the initial condition equilibrium, i.e. the linearization point.
+    #     rtol_NK : float
+    #         Relative tolerance to be used in the static GS problems.
 
-        """
+    #     """
 
-        current_ = np.copy(self.currents_vec)
+    #     current_ = np.copy(self.currents_vec)
 
-        # vary alpha_m
-        self.check_and_change_profiles(
-            profiles_coefficients=(
-                profiles.alpha_m + self.final_dpars_record[0],
-                profiles.alpha_n,
-            ),
-            profiles_parameter=profiles.profiles_parameter,
-        )
-        self.assign_currents_solve_GS(current_, rtol_NK)
-        dIy_1 = self.limiter_handler.Iy_from_jtor(self.profiles2.jtor) - self.Iy
-        self.dIydpars[:, 0] = dIy_1 / self.final_dpars_record[0]
-        if verbose:
-            print(
-                "alpha_m gradient calculated on the finite difference: delta_alpha_m =",
-                self.final_dpars_record[0],
-                ", norm(deltaIy) =",
-                np.linalg.norm(dIy_1),
-            )
+    #     # vary alpha_m
+    #     self.check_and_change_profiles(
+    #         profiles_coefficients=(
+    #             profiles.alpha_m + self.final_dpars_record[0],
+    #             profiles.alpha_n,
+    #         ),
+    #         profiles_parameter=profiles.profiles_parameter,
+    #     )
+    #     self.assign_currents_solve_GS(current_, rtol_NK)
+    #     dIy_1 = self.limiter_handler.Iy_from_jtor(self.profiles2.jtor) - self.Iy
+    #     self.dIydpars[:, 0] = dIy_1 / self.final_dpars_record[0]
+    #     if verbose:
+    #         print(
+    #             "alpha_m gradient calculated on the finite difference: delta_alpha_m =",
+    #             self.final_dpars_record[0],
+    #             ", norm(deltaIy) =",
+    #             np.linalg.norm(dIy_1),
+    #         )
 
-        # vary alpha_n
-        self.check_and_change_profiles(
-            profiles_coefficients=(
-                profiles.alpha_m,
-                profiles.alpha_n + self.final_dpars_record[1],
-            )
-        )
-        self.assign_currents_solve_GS(current_, rtol_NK)
-        dIy_1 = self.limiter_handler.Iy_from_jtor(self.profiles2.jtor) - self.Iy
-        self.dIydpars[:, 1] = dIy_1 / self.final_dpars_record[1]
-        if verbose:
-            print(
-                "alpha_n gradient calculated on the finite difference: delta_alpha_n =",
-                self.final_dpars_record[1],
-                ", norm(deltaIy) =",
-                np.linalg.norm(dIy_1),
-            )
+    #     # vary alpha_n
+    #     self.check_and_change_profiles(
+    #         profiles_coefficients=(
+    #             profiles.alpha_m,
+    #             profiles.alpha_n + self.final_dpars_record[1],
+    #         )
+    #     )
+    #     self.assign_currents_solve_GS(current_, rtol_NK)
+    #     dIy_1 = self.limiter_handler.Iy_from_jtor(self.profiles2.jtor) - self.Iy
+    #     self.dIydpars[:, 1] = dIy_1 / self.final_dpars_record[1]
+    #     if verbose:
+    #         print(
+    #             "alpha_n gradient calculated on the finite difference: delta_alpha_n =",
+    #             self.final_dpars_record[1],
+    #             ", norm(deltaIy) =",
+    #             np.linalg.norm(dIy_1),
+    #         )
 
-        # vary paxis or betap
-        self.check_and_change_profiles(
-            profiles_coefficients=(profiles.alpha_m, profiles.alpha_n),
-            profiles_parameter=profiles.profiles_parameter + self.final_dpars_record[2],
-        )
-        self.assign_currents_solve_GS(current_, rtol_NK)
-        dIy_1 = self.limiter_handler.Iy_from_jtor(self.profiles2.jtor) - self.Iy
-        self.dIydpars[:, 2] = dIy_1 / self.final_dpars_record[2]
-        if verbose:
-            print(
-                "profiles_par gradient calculated on the finite difference: delta_profiles_par =",
-                self.final_dpars_record[2],
-                ", norm(deltaIy) =",
-                np.linalg.norm(dIy_1),
-            )
+    #     # vary paxis or betap
+    #     self.check_and_change_profiles(
+    #         profiles_coefficients=(profiles.alpha_m, profiles.alpha_n),
+    #         profiles_parameter=profiles.profiles_parameter + self.final_dpars_record[2],
+    #     )
+    #     self.assign_currents_solve_GS(current_, rtol_NK)
+    #     dIy_1 = self.limiter_handler.Iy_from_jtor(self.profiles2.jtor) - self.Iy
+    #     self.dIydpars[:, 2] = dIy_1 / self.final_dpars_record[2]
+    #     if verbose:
+    #         print(
+    #             "profiles_par gradient calculated on the finite difference: delta_profiles_par =",
+    #             self.final_dpars_record[2],
+    #             ", norm(deltaIy) =",
+    #             np.linalg.norm(dIy_1),
+    #         )
 
     def prepare_build_dIydI_j(
-        self, j, rtol_NK, target_dIy, starting_dI, min_curr=1e-4, max_curr=300
+        self,
+        j,
+        rtol_NK,
+        target_dIy,
+        starting_dI,
+        GS=True,  # , min_curr=1e-4, max_curr=300
     ):
         """Prepares to compute the term d(Iy)/dI_j of the Jacobian by
         inferring the value of delta(I_j) corresponding to a change delta(I_y)
@@ -672,17 +797,27 @@ class nl_solver:
 
         # reset the auxiliary equilibrium
         self.eq2.plasma_psi = np.copy(self.eq1.plasma_psi)
-        # solve
-        self.assign_currents_solve_GS(current_, rtol_NK)
+        if GS:
+            # solve
+            self.assign_currents_solve_GS(current_, rtol_NK)
+        else:
+            # just use modified tokamak_psi
+            self.assign_currents(current_, self.eq2, self.profiles2)
+            self.profiles2.Jtor(
+                self.eqR,
+                self.eqZ,
+                self.eq2.plasma_psi + self.eq2.tokamak.getPsitokamak(self.eq1._vgreen),
+            )
 
         dIy_0 = self.limiter_handler.Iy_from_jtor(self.profiles2.jtor) - self.Iy
 
         rel_ndIy_0 = np.linalg.norm(dIy_0) / self.nIy
         final_dI = starting_dI * target_dIy / rel_ndIy_0
-        final_dI = np.clip(final_dI, min_curr, max_curr)
+        # final_dI = np.clip(final_dI, min_curr, max_curr)
         self.final_dI_record[j] = final_dI
+        return dIy_0 / starting_dI, rel_ndIy_0
 
-    def build_dIydI_j(self, j, rtol_NK, verbose=False):
+    def build_dIydI_j(self, j, rtol_NK):
         """Computes the term d(Iy)/dI_j of the Jacobian as a finite difference derivative,
         using the value of delta(I_j) inferred earlier by self.prepare_build_dIydI_j.
 
@@ -713,14 +848,15 @@ class nl_solver:
         dIy_1 = self.limiter_handler.Iy_from_jtor(self.profiles2.jtor) - self.Iy
         dIydIj = dIy_1 / final_dI
 
-        return dIydIj
+        rel_ndIy = np.linalg.norm(dIy_1) / self.nIy
+
+        return dIydIj, rel_ndIy
 
     def build_linearization(
         self,
         eq,
         profiles,
         dIydI,
-        target_dIy,
         target_relative_tolerance_linearization,
         force_core_mask_linearization,
         verbose,
@@ -757,7 +893,10 @@ class nl_solver:
         if dIydI is None:
             if self.dIydI_ICs is None:
                 print(
-                    "Linearising with respect to the currents - this may take a minute or two."
+                    "Linearising with respect to the extensive currents - this may take a minute or two.",
+                    "Calculations for all the",
+                    self.n_metal_modes,
+                    "modes retained so far are about to follow:",
                 )
                 self.dIydI = np.zeros((self.plasma_domain_size, self.n_metal_modes + 1))
                 self.ddIyddI = np.zeros(self.n_metal_modes + 1)
@@ -765,12 +904,13 @@ class nl_solver:
 
                 for j in self.arange_currents:
 
-                    this_target_dIy = 1.0 * target_dIy
-                    self.prepare_build_dIydI_j(
+                    this_target_dIy = 1.0 * self.approved_target_dIy[j]
+                    dIydIj, ndIy = self.prepare_build_dIydI_j(
                         j,
                         target_relative_tolerance_linearization,
                         this_target_dIy,
                         self.starting_dI[j],
+                        GS=True,
                     )
                     core_check = (
                         np.sum(
@@ -782,10 +922,10 @@ class nl_solver:
                         == 0
                     )
                     if force_core_mask_linearization:
-                        while core_check is False:
+                        while core_check == False:
                             self.starting_dI[j] /= 1.5
                             this_target_dIy /= 1.5
-                            self.prepare_build_dIydI_j(
+                            dIydIj, ndIy = self.prepare_build_dIydI_j(
                                 j,
                                 target_relative_tolerance_linearization,
                                 this_target_dIy,
@@ -804,50 +944,76 @@ class nl_solver:
                             )
 
                     if verbose:
+                        print("mode", j)
                         print(
-                            "direction", j, "initial current shift", self.starting_dI[j]
+                            "Initial delta_current=",
+                            self.starting_dI[j],
+                        )
+                        print(
+                            "Initial relative Iy change=",
+                            ndIy,
+                            "; core_check=",
+                            core_check,
                         )
 
-                    dIydIj = self.build_dIydI_j(
-                        j, target_relative_tolerance_linearization, verbose
-                    )
-                    core_check = (
-                        np.sum(
-                            np.abs(
-                                self.profiles1.diverted_core_mask.astype(float)
-                                - self.profiles2.diverted_core_mask.astype(float)
-                            )
+                    if (
+                        np.abs(np.log10(self.final_dI_record[j] / self.starting_dI[j]))
+                        > 0.5
+                    ):
+                        dIydIj, rel_ndIy = self.build_dIydI_j(
+                            j,
+                            target_relative_tolerance_linearization,
                         )
-                        == 0
-                    )
-                    if force_core_mask_linearization:
-                        while core_check is False:
-                            self.final_dI_record[j] /= 1.5
-                            dIydIj = self.build_dIydI_j(
-                                j, target_relative_tolerance_linearization, verbose
+                        core_check = (
+                            np.sum(
+                                np.abs(
+                                    self.profiles1.diverted_core_mask.astype(float)
+                                    - self.profiles2.diverted_core_mask.astype(float)
+                                )
                             )
-                            core_check = (
-                                np.sum(
-                                    np.abs(
-                                        self.profiles1.diverted_core_mask.astype(float)
-                                        - self.profiles2.diverted_core_mask.astype(
-                                            float
+                            == 0
+                        )
+                        if force_core_mask_linearization:
+                            while core_check == False:
+                                self.final_dI_record[j] /= 1.2
+                                dIydIj, rel_ndIy = self.build_dIydI_j(
+                                    j,
+                                    target_relative_tolerance_linearization,
+                                )
+                                core_check = (
+                                    np.sum(
+                                        np.abs(
+                                            self.profiles1.diverted_core_mask.astype(
+                                                float
+                                            )
+                                            - self.profiles2.diverted_core_mask.astype(
+                                                float
+                                            )
                                         )
                                     )
+                                    == 0
                                 )
-                                == 0
-                            )
+                    else:
+                        self.final_dI_record[j] = 1.0 * self.starting_dI[j]
 
                     if verbose:
                         print(
-                            "dimension",
-                            j,
-                            "in the vector of metal currents,",
-                            "gradient calculated on the finite difference: norm(deltaI) = ",
+                            "Final current shift=",
                             self.final_dI_record[j],
-                            ", norm(deltaIy) =",
-                            np.linalg.norm(dIydIj) * self.final_dI_record[j],
                         )
+                        print(
+                            "Final relative Iy change=",
+                            rel_ndIy,
+                            "; core_check=",
+                            core_check,
+                        )
+                        print(
+                            "Initial residual=",
+                            self.NK.initial_rel_residual,
+                            ". Final residual=",
+                            self.NK.relative_change,
+                        )
+                        print(" ")
 
                     self.dIydI[:, j] = np.copy(dIydIj)
                     R0 = self.eq2.Rcurrent()
@@ -1147,7 +1313,6 @@ class nl_solver:
             self.profiles1,
             dIydI=dIydI,
             target_relative_tolerance_linearization=target_relative_tolerance_linearization,
-            target_dIy=target_dIy,
             force_core_mask_linearization=force_core_mask_linearization,
             verbose=verbose,
         )

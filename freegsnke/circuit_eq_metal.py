@@ -207,6 +207,11 @@ class metal_currents:
                 "previously included modes couple less than requested by 'min_dIy_dI'.",
             )
             self.n_independent_vars = np.sum(self.selected_modes_mask_partial)
+            print(
+                "A total of ",
+                self.n_independent_vars,
+                "modes are being used, including the active coils.",
+            )
             self.P = self.P[:, self.selected_modes_mask_partial]
 
         self.Pm1 = (self.P).T

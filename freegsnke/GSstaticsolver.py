@@ -367,57 +367,57 @@ class NKGSsolver:
             res0 = self.F_function(trial_plasma_psi, self.tokamak_psi, profiles)
             control_trial_psi = True
 
-        # try to rescale if necessary
-        nres0 = np.linalg.norm(res0)
-        if nres0 / np.linalg.norm(trial_plasma_psi) > 0.1:
-            # try scale up
-            res_vals = [nres0]
-            val = 1
-            successful = True
-            while successful:
-                try:
-                    val *= 1.1
-                    res1 = self.F_function(
-                        trial_plasma_psi * val, self.tokamak_psi, profiles
-                    )
-                    nres1 = np.linalg.norm(res1)
-                    if nres1 < res_vals[-1]:
-                        res_vals.append(nres1)
-                        successful = True
-                    else:
-                        val /= 1.1
-                        successful = False
-                except:
-                    val /= 1.1
-                    successful = False
-            # try scale down if scale up was not successful
-            if len(res_vals) > 1:
-                print("rescaling accepted by ", val)
-                trial_plasma_psi *= val
-                res0 = self.F_function(trial_plasma_psi, self.tokamak_psi, profiles)
-            else:
-                val = 1
-                successful = True
-                while successful:
-                    try:
-                        val /= 1.1
-                        res1 = self.F_function(
-                            trial_plasma_psi * val, self.tokamak_psi, profiles
-                        )
-                        nres1 = np.linalg.norm(res1)
-                        if nres1 < res_vals[-1]:
-                            res_vals.append(nres1)
-                            successful = True
-                        else:
-                            val *= 1.1
-                            successful = False
-                    except:
-                        val *= 1.1
-                        successful = False
-                if len(res_vals) > 1:
-                    print("rescaling accepted by" + str(val))
-                    trial_plasma_psi *= val
-                    res0 = self.F_function(trial_plasma_psi, self.tokamak_psi, profiles)
+        # # try to rescale if necessary
+        # nres0 = np.linalg.norm(res0)
+        # if nres0 / np.linalg.norm(trial_plasma_psi) > 0.1:
+        #     # try scale up
+        #     res_vals = [nres0]
+        #     val = 1
+        #     successful = True
+        #     while successful:
+        #         try:
+        #             val *= 1.1
+        #             res1 = self.F_function(
+        #                 trial_plasma_psi * val, self.tokamak_psi, profiles
+        #             )
+        #             nres1 = np.linalg.norm(res1)
+        #             if nres1 < res_vals[-1]:
+        #                 res_vals.append(nres1)
+        #                 successful = True
+        #             else:
+        #                 val /= 1.1
+        #                 successful = False
+        #         except:
+        #             val /= 1.1
+        #             successful = False
+        #     # try scale down if scale up was not successful
+        #     if len(res_vals) > 1:
+        #         print("Rescaling up accepted by ", val)
+        #         trial_plasma_psi *= val
+        #         res0 = self.F_function(trial_plasma_psi, self.tokamak_psi, profiles)
+        #     else:
+        #         val = 1
+        #         successful = True
+        #         while successful:
+        #             try:
+        #                 val /= 1.1
+        #                 res1 = self.F_function(
+        #                     trial_plasma_psi * val, self.tokamak_psi, profiles
+        #                 )
+        #                 nres1 = np.linalg.norm(res1)
+        #                 if nres1 < res_vals[-1]:
+        #                     res_vals.append(nres1)
+        #                     successful = True
+        #                 else:
+        #                     val *= 1.1
+        #                     successful = False
+        #             except:
+        #                 val *= 1.1
+        #                 successful = False
+        #         if len(res_vals) > 1:
+        #             print("Rescaling down accepted by ", str(val))
+        #             trial_plasma_psi *= val
+        #             res0 = self.F_function(trial_plasma_psi, self.tokamak_psi, profiles)
 
         self.jtor_at_start = profiles.jtor.copy()
 
@@ -474,7 +474,12 @@ class NKGSsolver:
                     if nres1 > 1.5 * nres0:
                         vals = [-1, 0]
                         res_vals = [nres1, nres0]
-                        while res_vals[-1] < res_vals[-2] and successful:
+                        counter_picard = 0
+                        while (
+                            res_vals[-1] < res_vals[-2]
+                            and successful
+                            and counter_picard < 10
+                        ):
                             try:
                                 new_res = self.F_function(
                                     trial_plasma_psi + (vals[-1] + 1) * res0,
@@ -484,22 +489,23 @@ class NKGSsolver:
                                 vals.append(vals[-1] + 1)
                                 res_vals.append(np.linalg.norm(new_res))
                                 successful = True
+                                counter_picard += 1
                             except:
                                 successful = False
-
-                        # find best quadratic polyfit
-                        poly_coeffs = np.polyfit(vals, res_vals, deg=2)
-                        # find minimum accordingly
-                        update = (
-                            -res0
-                            * 0.5
-                            * max(abs(poly_coeffs[1] / poly_coeffs[0]), 0.1)
-                            * np.sign(poly_coeffs[1] / poly_coeffs[0])
-                        )
-                        print(
-                            "custom Picard accepted, with coeff",
-                            -0.5 * poly_coeffs[1] / poly_coeffs[0],
-                        )
+                        if counter_picard < 10:
+                            # find best quadratic polyfit
+                            poly_coeffs = np.polyfit(vals, res_vals, deg=2)
+                            coeff_picard = (
+                                0.5
+                                * max(abs(poly_coeffs[1] / poly_coeffs[0]), 0.1)
+                                * np.sign(poly_coeffs[1] / poly_coeffs[0])
+                            )
+                            update = -res0 * coeff_picard
+                            if verbose:
+                                print(
+                                    "custom Picard accepted, with coeff",
+                                    -0.5 * poly_coeffs[1] / poly_coeffs[0],
+                                )
 
             else:
                 # using NK

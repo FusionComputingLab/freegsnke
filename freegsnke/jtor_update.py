@@ -29,6 +29,13 @@ from . import switch_profile as swp
 
 class Jtor_universal:
 
+    def __init__(self, refine_jtor=False):
+        """Sets default unrefined Jtor."""
+        if refine_jtor:
+            self.Jtor = self.Jtor_refined
+        else:
+            self.Jtor = self.Jtor_unrefined
+
     def set_masks(self, eq):
         """Universal function to set all masks related to the limiter.
 
@@ -270,27 +277,22 @@ class ConstrainBetapIp(freegs4e.jtor.ConstrainBetapIp, Jtor_universal):
 
     """
 
-    def __init__(self, eq, *args, refine_jtor=False, nnx=None, nny=None, **kwargs):
+    def __init__(self, eq, *args, **kwargs):
         """Instantiates the object.
 
         Parameters
         ----------
         eq : FreeGSNKE Equilibrium object
             Specifies the domain properties
-        refine_jtor : bool
-            Flag to select whether to apply sug-grid refinement of plasma current distribution jtor
-        nnx : even integer
-            refinement factor in the R direction
-        nny : even integer
-            refinement factor in the Z direction
         """
-        super().__init__(*args, **kwargs)
+        freegs4e.jtor.ConstrainBetapIp.__init__(self, *args, **kwargs)
+        Jtor_universal.__init__(self)
+
         # profiles need Ip normalization
         self.Ip_logic = True
         self.profile_parameter = self.betap
 
         self.set_masks(eq=eq)
-        self.select_refinement(eq, refine_jtor, nnx, nny)
 
     def Lao_parameters(
         self, n_alpha, n_beta, alpha_logic=True, beta_logic=True, Ip_logic=True, nn=100
@@ -328,28 +330,22 @@ class ConstrainPaxisIp(freegs4e.jtor.ConstrainPaxisIp, Jtor_universal):
 
     """
 
-    def __init__(self, eq, *args, refine_jtor=False, nnx=None, nny=None, **kwargs):
+    def __init__(self, eq, *args, **kwargs):
         """Instantiates the object.
 
         Parameters
         ----------
         eq : FreeGSNKE Equilibrium object
             Specifies the domain properties
-        refine_jtor : bool
-            Flag to select whether to apply sug-grid refinement of plasma current distribution jtor
-        nnx : even integer
-            refinement factor in the R direction
-        nny : even integer
-            refinement factor in the Z direction
         """
-        super().__init__(*args, **kwargs)
+        freegs4e.jtor.ConstrainPaxisIp.__init__(self, *args, **kwargs)
+        Jtor_universal.__init__(self)
 
         # profiles need Ip normalization
         self.Ip_logic = True
         self.profile_parameter = self.paxis
 
         self.set_masks(eq=eq)
-        self.select_refinement(eq, refine_jtor, nnx, nny)
 
     def Lao_parameters(
         self, n_alpha, n_beta, alpha_logic=True, beta_logic=True, Ip_logic=True, nn=100
@@ -387,28 +383,22 @@ class Fiesta_Topeol(freegs4e.jtor.Fiesta_Topeol, Jtor_universal):
 
     """
 
-    def __init__(self, eq, *args, refine_jtor=False, nnx=None, nny=None, **kwargs):
+    def __init__(self, eq, *args, **kwargs):
         """Instantiates the object.
 
         Parameters
         ----------
         eq : FreeGSNKE Equilibrium object
             Specifies the domain properties
-        refine_jtor : bool
-            Flag to select whether to apply sug-grid refinement of plasma current distribution jtor
-        nnx : even integer
-            refinement factor in the R direction
-        nny : even integer
-            refinement factor in the Z direction
         """
-        super().__init__(*args, **kwargs)
+        freegs4e.jtor.Fiesta_Topeol.__init__(self, *args, **kwargs)
+        Jtor_universal.__init__(self)
 
         # profiles need Ip normalization
         self.Ip_logic = True
         self.profile_parameter = self.Beta0
 
         self.set_masks(eq=eq)
-        self.select_refinement(eq, refine_jtor, nnx, nny)
 
     def Lao_parameters(
         self, n_alpha, n_beta, alpha_logic=True, beta_logic=True, Ip_logic=True, nn=100
@@ -460,7 +450,7 @@ class Lao85(freegs4e.jtor.Lao85, Jtor_universal):
         nny : even integer
             refinement factor in the Z direction
         """
-        super().__init__(*args, **kwargs)
+        freegs4e.jtor.Lao85.__init__(self, *args, **kwargs)
         self.set_masks(eq=eq)
         self.select_refinement(eq, refine_jtor, nnx, nny)
 
@@ -510,7 +500,9 @@ class TensionSpline(freegs4e.jtor.TensionSpline, Jtor_universal):
             Specifies the domain properties
         """
 
-        super().__init__(*args, **kwargs)
+        freegs4e.jtor.TensionSpline.__init__(self, *args, **kwargs)
+        Jtor_universal.__init__(self)
+
         self.profile_parameter = [
             self.pp_knots,
             self.pp_values,

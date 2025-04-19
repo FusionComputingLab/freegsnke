@@ -31,7 +31,12 @@ from scipy import interpolate
 class Gradient_inverse:
 
     def __init__(
-        self, isoflux_set=None, null_points=None, psi_vals=None, gradient_weights=None
+        self,
+        isoflux_set=None,
+        null_points=None,
+        psi_vals=None,
+        gradient_weights=None,
+        rescale_coeff=0.2,
     ):
 
         self.isoflux_set = isoflux_set
@@ -53,6 +58,13 @@ class Gradient_inverse:
         if gradient_weights is None:
             gradient_weights = np.ones(3)
         self.gradient_weights = gradient_weights
+
+        self.rescale_coeff = rescale_coeff
+
+    def prepare_for_solve(self, eq):
+        self.build_control_coils(eq)
+        self.build_control_currents(eq)
+        self.build_greens(eq)
 
     def build_control_coils(self, eq):
 
@@ -216,7 +228,7 @@ class Gradient_inverse:
         self.build_plasma_vals(trial_plasma_psi=trial_plasma_psi)
 
         g, l = self.build_gradient()
-        dc = -l * g / np.linalg.norm(g) ** 2
+        dc = -self.rescale_coeff * l * g / np.linalg.norm(g) ** 2
         self.delta_current = self.build_full_current_vec(dc)
         return self.delta_current, l
 

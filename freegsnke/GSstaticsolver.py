@@ -65,7 +65,7 @@ class NKGSsolver:
         # eq is an Equilibrium instance, it has to have the same domain and grid as
         # the ones the solver will be called on
 
-        self.eq = eq
+        self.eqR = eq.R
         R = eq.R
         Z = eq.Z
         self.R = R
@@ -664,6 +664,172 @@ class NKGSsolver:
             norm_delta = 1
 
         return norm_delta
+
+    def get_rel_delta_psit(self, eq, profiles, delta_current, full_current):
+        if hasattr(profiles, "diverted_core_mask"):
+            core_mask = np.copy(profiles.diverted_core_mask)
+        else:
+            core_mask = np.ones_like(self.eqR)
+        rel_delta_psit = np.linalg.norm(
+            np.sum(
+                delta_current[:, np.newaxis, np.newaxis]
+                * eq._vgreen
+                * core_mask[np.newaxis],
+                axis=0,
+            )
+        )
+        rel_delta_psit /= np.linalg.norm(
+            np.sum(
+                full_current[:, np.newaxis, np.newaxis]
+                * eq._vgreen
+                * core_mask[np.newaxis],
+                axis=0,
+            )
+        )
+        return rel_delta_psit
+
+    def g_inverse_solve(
+        self,
+        eq,
+        profiles,
+        target_relative_tolerance,
+        constrain,
+        verbose=False,
+        max_solving_iterations=20,
+        max_iter_per_update=5,
+        Picard_handover=0.1,
+        step_size=2.5,
+        scaling_with_n=-1.0,
+        target_relative_unexplained_residual=0.3,
+        max_n_directions=16,
+        clip=10,
+        clip_quantiles=None,
+        max_rel_update_size=0.2,
+        forward_tolerance_increase=5,
+        max_rel_delta_psit=0.05,
+        force_up_down_symmetric=False,
+    ):
+        """Inverse solver using the NK implementation.
+
+        An inverse problem is specified by the 2 FreeGSNKE objects, eq and profiles,
+        plus a constrain freeGS4e object.
+        The first specifies the metal currents (throught eq.tokamak)
+        The second specifies the desired plasma properties
+        (i.e. plasma current and profile functions).
+        The constrain object collects the desired magnetic constraints.
+
+        The plasma_psi which solves the given GS problem is assigned to
+        the input eq, and can be found at eq.plasma_psi.
+        The coil currents with satisfy the magnetic constraints are
+        assigned to eq.tokamak
+
+        Parameters
+        ----------
+        eq : FreeGSNKE equilibrium object
+            Used to extract the assigned metal currents, which in turn are
+            used to calculate the according self.tokamak_psi
+        profiles : FreeGSNKE profile object
+            Specifies the target properties of the plasma.
+            These are used to calculate Jtor(psi)
+        target_relative_tolerance : float
+            NK iterations are interrupted when this criterion is
+            satisfied. Relative convergence for the residual F(plasma_psi)
+        constrain : freegs4e constrain object
+        verbose : bool
+            flag to allow progress printouts
+        max_solving_iterations : int
+            NK iterations are interrupted when this limit is surpassed
+        Picard_handover : float
+            Value of relative tolerance above which a Picard iteration
+            is performed instead of a NK call
+        step_size : float
+            l2 norm of proposed step, in units of the size of the residual R0
+        scaling_with_n : float
+            allows to further scale the proposed steps as a function of the
+            number of previous steps already attempted
+            (1 + self.n_it)**scaling_with_n
+        target_relative_explained_residual : float between 0 and 1
+            terminates internal iterations when the considered directions
+            can (linearly) explain such a fraction of the initial residual R0
+        max_n_directions : int
+            terminates iteration even though condition on
+            explained residual is not met
+        max_rel_update_size : float
+            maximum relative update, in norm, to plasma_psi. If larger than this,
+            the norm of the update is reduced
+        clip : float
+            maximum size of the update due to each explored direction, in units
+            of exploratory step used to calculate the finite difference derivative
+        forward_tolerance_increase : float
+            after coil currents are updated, the interleaved forward problems
+            are requested to converge to a tolerance that is tighter by a factor
+            forward_tolerance_increase with respect to the change in flux caused
+            by the current updates over the plasma core
+
+        """
+
+        log = []
+        self.constrain_loss = []
+
+        iterations = 0
+        rel_change_full = 1
+
+        # prepare for gradient calculation
+        constrain.prepare_for_solve(eq)
+
+        while (rel_change_full > target_relative_tolerance) * (
+            iterations < max_solving_iterations
+        ):
+            log.append("-----")
+
+            # act on the control currents
+            full_currents_vec = eq.tokamak.getCurrentsVec()
+            delta_current, loss = constrain.build_current_update(
+                full_currents_vec=full_currents_vec, trial_plasma_psi=eq.plasma_psi
+            )
+            rel_delta_psit = self.get_rel_delta_psit(
+                eq, profiles, delta_current, full_currents_vec
+            )
+            delta_current *= min(1, max_rel_delta_psit / rel_delta_psit)
+            eq.tokamak.set_all_coil_currents(full_currents_vec + delta_current)
+            self.constrain_loss.append(loss)
+            log.append("Magnetic constraint loss =", loss)
+
+            log.append("Newton-Krylov iteration: " + str(iterations))
+
+            self.forward_solve(
+                eq,
+                profiles,
+                target_relative_tolerance=rel_delta_psit / forward_tolerance_increase,
+                max_solving_iterations=max_iter_per_update,
+                Picard_handover=Picard_handover,
+                step_size=step_size,
+                scaling_with_n=scaling_with_n,
+                target_relative_unexplained_residual=target_relative_unexplained_residual,
+                max_n_directions=max_n_directions,
+                clip=clip,
+                clip_quantiles=clip_quantiles,
+                verbose=verbose,
+                max_rel_update_size=max_rel_update_size,
+                force_up_down_symmetric=force_up_down_symmetric,
+            )
+            rel_change_full = 1.0 * self.relative_change
+            iterations += 1
+            log.append("...relative error =  " + str(rel_change_full))
+
+            if verbose:
+                for x in log:
+                    print(x)
+
+            log = []
+
+        if iterations >= max_solving_iterations:
+            warnings.warn(
+                f"Inverse solve failed to converge to requested relative tolerance of "
+                + f"{target_relative_tolerance} with less than {max_solving_iterations} "
+                + f"iterations. Last relative psi change: {rel_change_full}. "
+                + f"Last update to the control currents caused a relative update of tokamak_psi in the core of: {rel_delta_psit}."
+            )
 
     def inverse_solve(
         self,

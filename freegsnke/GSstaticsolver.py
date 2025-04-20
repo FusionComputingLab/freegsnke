@@ -637,6 +637,7 @@ class NKGSsolver:
             )
         elif verbose:
             print("Static solve complete. Last relative residual:", rel_change)
+            print(" ")
 
     # def get_currents(self, eq):
     #     current_vec = np.zeros(self.len_control_coils)
@@ -768,7 +769,6 @@ class NKGSsolver:
 
         """
 
-        log = []
         self.constrain_loss = []
 
         iterations = 0
@@ -780,7 +780,6 @@ class NKGSsolver:
         while (rel_change_full > target_relative_tolerance) * (
             iterations < max_solving_iterations
         ):
-            log.append("-----")
 
             # act on the control currents
             full_currents_vec = eq.tokamak.getCurrentsVec()
@@ -790,17 +789,23 @@ class NKGSsolver:
             rel_delta_psit = self.get_rel_delta_psit(
                 eq, profiles, delta_current, full_currents_vec
             )
-            delta_current *= min(1, max_rel_delta_psit / rel_delta_psit)
+            adj_factor = min(1, max_rel_delta_psit / rel_delta_psit)
+            delta_current *= adj_factor
             eq.tokamak.set_all_coil_currents(full_currents_vec + delta_current)
             self.constrain_loss.append(loss)
-            log.append("Magnetic constraint loss =", loss)
-
-            log.append("Newton-Krylov iteration: " + str(iterations))
+            if verbose:
+                print(
+                    f"Control currents updated. Delta_current = {delta_current[constrain.control_mask]}"
+                )
+                print(f"Magnetic constraint loss = {loss}")
+                print(f"Handing off to forward_solve:")
 
             self.forward_solve(
                 eq,
                 profiles,
-                target_relative_tolerance=rel_delta_psit / forward_tolerance_increase,
+                target_relative_tolerance=rel_delta_psit
+                * adj_factor
+                / forward_tolerance_increase,
                 max_solving_iterations=max_iter_per_update,
                 Picard_handover=Picard_handover,
                 step_size=step_size,
@@ -815,13 +820,6 @@ class NKGSsolver:
             )
             rel_change_full = 1.0 * self.relative_change
             iterations += 1
-            log.append("...relative error =  " + str(rel_change_full))
-
-            if verbose:
-                for x in log:
-                    print(x)
-
-            log = []
 
         if iterations >= max_solving_iterations:
             warnings.warn(

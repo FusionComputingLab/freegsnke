@@ -32,6 +32,7 @@ class Gradient_inverse:
 
     def __init__(
         self,
+        eq,
         isoflux_set=None,
         null_points=None,
         psi_vals=None,
@@ -53,7 +54,11 @@ class Gradient_inverse:
         self.psi_vals = psi_vals
         if self.psi_vals is not None:
             self.psi_vals = np.array(self.psi_vals)
-            self.psi_vals = self.psi_vals.reshape((3, -1))
+            if np.all(self.psi_vals[0] == eq.R) and np.all(self.psi_vals[1] == eq.Z):
+                self.recalculate_psi_greens = False
+            else:
+                self.recalculate_psi_greens = True
+                self.psi_vals = self.psi_vals.reshape((3, -1))
 
         if gradient_weights is None:
             gradient_weights = np.ones(3)
@@ -63,6 +68,7 @@ class Gradient_inverse:
 
     def prepare_for_solve(self, eq):
         self.build_control_coils(eq)
+        self.build_full_current_vec(eq)
         self.build_control_currents(eq)
         self.build_greens(eq)
 
@@ -75,7 +81,8 @@ class Gradient_inverse:
             [coil.control for label, coil in eq.tokamak.coils]
         ).astype(bool)
         self.coil_order = eq.tokamak.coil_order
-        self.full_current_dummy = np.zeros(len(eq.tokamak.coils))
+        self.n_coils = len(eq.tokamak.coils)
+        self.full_current_dummy = np.zeros(self.n_coils)
         self.eqR = eq.R
         self.eqZ = eq.Z
 
@@ -84,6 +91,9 @@ class Gradient_inverse:
 
     def build_control_currents_Vec(self, full_currents_vec):
         self.control_currents = full_currents_vec[self.control_mask]
+
+    def build_full_current_vec(self, eq):
+        self.full_currents_vec = eq.tokamak.getCurrentsVec()
 
     def build_full_current_vec(self, control_currents):
         full_current_vec = np.zeros_like(self.full_current_dummy)
@@ -96,23 +106,24 @@ class Gradient_inverse:
         if self.isoflux_set is not None:
             self.dG_set = []
             for isoflux in self.isoflux_set:
-                G = eq.tokamak.createPsiGreensVec(
-                    R=isoflux[0], Z=isoflux[1], coils=self.control_coils
-                )
+                G = eq.tokamak.createPsiGreensVec(R=isoflux[0], Z=isoflux[1])
                 self.dG_set.append(G[:, :, np.newaxis] - G[:, np.newaxis, :])
 
         if self.null_points is not None:
             self.Gbr = eq.tokamak.createBrGreensVec(
-                R=self.null_points[0], Z=self.null_points[1], coils=self.control_coils
+                R=self.null_points[0], Z=self.null_points[1]
             )
             self.Gbz = eq.tokamak.createBzGreensVec(
-                R=self.null_points[0], Z=self.null_points[1], coils=self.control_coils
+                R=self.null_points[0], Z=self.null_points[1]
             )
 
         if self.psi_vals is not None:
-            self.G = eq.tokamak.createPsiGreensVec(
-                R=self.psi_vals[0], Z=self.psi_vals[1], coils=self.control_coils
-            )
+            if self.recalculate_psi_greens:
+                self.G = eq.tokamak.createPsiGreensVec(
+                    R=self.psi_vals[0], Z=self.psi_vals[1]
+                )
+            else:
+                self.G = np.copy(eq._vgreen.reshape((self.n_coils, -1)))
 
     def build_plasma_vals(self, trial_plasma_psi):
         psi_func = interpolate.RectBivariateSpline(
@@ -150,7 +161,7 @@ class Gradient_inverse:
 
         for i, isoflux in enumerate(self.isoflux_set):
             dGI = np.sum(
-                self.dG_set[i] * self.control_currents[:, np.newaxis, np.newaxis],
+                self.dG_set[i] * self.full_currents_vec[:, np.newaxis, np.newaxis],
                 axis=0,
             )
             dpsip = (
@@ -158,7 +169,7 @@ class Gradient_inverse:
                 - self.psi_plasma_vals_iso[i][np.newaxis, :]
             )
             Liso = np.triu(self.psi_plasma_vals_iso[i] + dGI, k=1)
-            dLiso = self.dG_set[i] * Liso[np.newaxis, :, :]
+            dLiso = Liso[np.newaxis, :, :] * self.dG_set[i][self.control_mask]
             gradient += np.sum(dLiso, axis=(1, 2)) / self.isoflux_set_n[i]
             loss += np.sum(Liso**2) / self.isoflux_set_n[i]
 
@@ -170,18 +181,18 @@ class Gradient_inverse:
 
         Lbr = (
             np.sum(
-                self.Gbr * self.control_currents[:, np.newaxis], axis=0, keepdims=True
+                self.Gbr * self.full_currents_vec[:, np.newaxis], axis=0, keepdims=True
             )
             + self.brp[np.newaxis]
         )
-        dLbr = np.sum(Lbr * self.Gbr, axis=1)
+        dLbr = np.sum(Lbr * self.Gbr[self.control_mask], axis=1)
         Lbz = (
             np.sum(
-                self.Gbz * self.control_currents[:, np.newaxis], axis=0, keepdims=True
+                self.Gbz * self.full_currents_vec[:, np.newaxis], axis=0, keepdims=True
             )
             + self.bzp[np.newaxis]
         )
-        dLbz = np.sum(Lbz * self.Gbz, axis=1)
+        dLbz = np.sum(Lbz * self.Gbz[self.control_mask], axis=1)
         gradient = (dLbr + dLbz) / len(self.null_points[0])
         loss = np.sum(Lbr**2 + Lbz**2) / len(self.null_points[0])
 
@@ -191,12 +202,14 @@ class Gradient_inverse:
         self,
     ):
         Lpsi = (
-            np.sum(self.G * self.control_currents[:, np.newaxis], axis=0, keepdims=True)
+            np.sum(
+                self.G * self.full_currents_vec[:, np.newaxis], axis=0, keepdims=True
+            )
             + self.psi_plasma_vals[np.newaxis]
         )
-        gradient = np.sum(Lpsi * self.G, axis=1)
-        gradient /= np.shape(self.psi_vals[0])
-        loss = np.sum(Lpsi**2) / np.shape(self.psi_vals[0])
+        gradient = np.sum(Lpsi * self.G[self.control_mask], axis=1)
+        gradient /= np.size(self.psi_vals[0])
+        loss = np.sum(Lpsi**2) / np.size(self.psi_vals[0])
 
         return gradient * self.gradient_weights[2], loss * self.gradient_weights[2]
 
@@ -224,7 +237,7 @@ class Gradient_inverse:
 
     def build_current_update(self, full_currents_vec, trial_plasma_psi):
         # prepare to build the gradient
-        self.build_control_currents_Vec(full_currents_vec=full_currents_vec)
+        self.full_currents_vec = np.copy(full_currents_vec)
         self.build_plasma_vals(trial_plasma_psi=trial_plasma_psi)
 
         g, l = self.build_gradient()

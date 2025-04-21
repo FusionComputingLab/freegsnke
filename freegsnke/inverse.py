@@ -29,6 +29,9 @@ from scipy import interpolate
 
 
 class Gradient_inverse:
+    """This class implements a gradient based optimiser for the coil currents,
+    used to perform (static) inverse GS solves.
+    """
 
     def __init__(
         self,
@@ -36,8 +39,29 @@ class Gradient_inverse:
         null_points=None,
         psi_vals=None,
         gradient_weights=None,
-        rescale_coeff=0.2,
+        rescale_coeff=0.1,
     ):
+        """Instantiates the object and sets all magnetic constraints to be used.
+
+        Parameters
+        ----------
+        isoflux_set : list or np.array, optional
+            list of isoflux objects, each with structure
+            [Rcoords, Zcoords]
+            with Rcoords and Zcoords being 1D lists of the coords of all points that are requested to have the same flux value
+        null_points : list or np.array, optional
+            structure [Rcoords, Zcoords], with Rcoords and Zcoords being 1D lists
+            Sets the coordinates of the desired null points, including both Xpoints and Opoints
+        psi_vals : list or np.array, optional
+            structure [Rcoords, Zcoords, psi_values]
+            with Rcoords, Zcoords and psi_values having the same shape
+            Sets the desired values of psi for a set of coordinates, possibly an entire map
+        gradient_weights : list or array, optional
+            Sets the relative importance of the 3 types of magnetic constraints, by default None
+        rescale_coeff : float, optional
+            Sets the relative size of the update to the current vector, in terms
+            of the Newton update, by default 0.1
+        """
 
         self.isoflux_set = isoflux_set
         if isoflux_set is not None:
@@ -62,12 +86,29 @@ class Gradient_inverse:
         self.rescale_coeff = rescale_coeff
 
     def prepare_for_solve(self, eq):
+        """To be called after object is instantiated.
+        Prepares necessary quantities for loss/gradient calculations.
+
+        Parameters
+        ----------
+        eq : freegsnke equilibrium object
+            Sources information on:
+            -   coils available for control
+            -   coil current values
+            -   green functions
+        """
         self.build_control_coils(eq)
         self.build_full_current_vec(eq)
         self.build_control_currents(eq)
         self.build_greens(eq)
 
     def build_control_coils(self, eq):
+        """Records what coils are available for control
+
+        Parameters
+        ----------
+        eq : freegsnke equilibrium object
+        """
 
         self.control_coils = [
             (label, coil) for label, coil in eq.tokamak.coils if coil.control
@@ -82,21 +123,56 @@ class Gradient_inverse:
         self.eqZ = eq.Z
 
     def build_control_currents(self, eq):
+        """Builds vector of coil current values, including only those coils
+        that are available for control. Values are extracted from the equilibrium itself.
+
+        Parameters
+        ----------
+        eq : freegsnke equilibrium object
+        """
         self.control_currents = eq.tokamak.getCurrentsVec(coils=self.control_coils)
 
     def build_control_currents_Vec(self, full_currents_vec):
+        """Builds vector of coil current values, including only those coils
+        that are available for control. Values are extracted from the full current vector.
+
+        Parameters
+        ----------
+        full_currents_vec : np.array
+            Vector of all coil current values. For example as returned by eq.tokamak.getCurrentsVec()
+        """
         self.control_currents = full_currents_vec[self.control_mask]
 
     def build_full_current_vec(self, eq):
+        """Builds full vector of coil current values.
+
+        Parameters
+        ----------
+        eq : freegsnke equilibrium object
+        """
         self.full_currents_vec = eq.tokamak.getCurrentsVec()
 
     def rebuild_full_current_vec(self, control_currents):
+        """Builds a full_current vector using the input values.
+        Only the coil currents of the coils available for control are filled in.
+
+        Parameters
+        ----------
+        control_currents : np.array
+            Vector of coil currents for those coils available for control.
+        """
         full_current_vec = np.zeros_like(self.full_current_dummy)
         for i, current in enumerate(control_currents):
             full_current_vec[self.coil_order[self.control_coils[i][0]]] = current
         return full_current_vec
 
     def build_greens(self, eq):
+        """Calculates and stores all of the needed green function values.
+
+        Parameters
+        ----------
+            eq : freegsnke equilibrium object
+        """
 
         if self.isoflux_set is not None:
             self.dG_set = []
@@ -121,6 +197,15 @@ class Gradient_inverse:
                 )
 
     def build_plasma_vals(self, trial_plasma_psi):
+        """Builds and stores all the values relative to the plasma,
+        based on the provided plasma_psi
+
+        Parameters
+        ----------
+        trial_plasma_psi : np.array
+            Flux due to the plasma. Same shape as eq.R
+        """
+
         psi_func = interpolate.RectBivariateSpline(
             self.eqR[:, 0], self.eqZ[0, :], trial_plasma_psi
         )
@@ -150,6 +235,7 @@ class Gradient_inverse:
     def build_isoflux_gradient(
         self,
     ):
+        """Builds the loss and gradient associated to the isoflux constraints."""
 
         gradient = np.zeros(len(self.control_currents))
         loss = 0
@@ -173,6 +259,7 @@ class Gradient_inverse:
     def build_null_points_gradient(
         self,
     ):
+        """Builds the loss and gradient associated to the null_points constraints."""
 
         Lbr = (
             np.sum(
@@ -196,6 +283,7 @@ class Gradient_inverse:
     def build_psi_vals_gradient(
         self,
     ):
+        """Builds the loss and gradient associated to the psi_vals constraints."""
         Lpsi = (
             np.sum(
                 self.G * self.full_currents_vec[:, np.newaxis], axis=0, keepdims=True
@@ -211,6 +299,7 @@ class Gradient_inverse:
     def build_gradient(
         self,
     ):
+        """Combines all contributions to both loss and gradient."""
 
         gradient = np.zeros_like(self.control_currents)
         loss = 0
@@ -231,6 +320,17 @@ class Gradient_inverse:
         return self.gradient, self.loss
 
     def build_current_update(self, full_currents_vec, trial_plasma_psi):
+        """Calculates the update to the coil currents available for control
+        using gradient descent.
+
+        Parameters
+        ----------
+        full_currents_vec : np.array
+            Vector of all coil current values. For example as returned by eq.tokamak.getCurrentsVec()
+        trial_plasma_psi : np.array
+            Flux due to the plasma. Same shape as eq.R
+
+        """
         # prepare to build the gradient
         self.full_currents_vec = np.copy(full_currents_vec)
         self.build_plasma_vals(trial_plasma_psi=trial_plasma_psi)

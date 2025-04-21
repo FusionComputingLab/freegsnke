@@ -163,7 +163,7 @@ class Gradient_inverse:
                 self.psi_plasma_vals_iso[i][:, np.newaxis]
                 - self.psi_plasma_vals_iso[i][np.newaxis, :]
             )
-            Liso = np.triu(self.psi_plasma_vals_iso[i] + dGI, k=1)
+            Liso = np.triu(dpsip + dGI, k=1)
             dLiso = Liso[np.newaxis, :, :] * self.dG_set[i][self.control_mask]
             gradient += np.sum(dLiso, axis=(1, 2)) / self.isoflux_set_n[i]
             loss += np.sum(Liso**2) / self.isoflux_set_n[i]

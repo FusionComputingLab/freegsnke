@@ -668,7 +668,10 @@ class NKGSsolver:
 
     def get_rel_delta_psit(self, eq, profiles, delta_current, full_current):
         if hasattr(profiles, "diverted_core_mask"):
-            core_mask = np.copy(profiles.diverted_core_mask)
+            if profiles.diverted_core_mask is not None:
+                core_mask = np.copy(profiles.diverted_core_mask)
+            else:
+                core_mask = np.ones_like(self.eqR)
         else:
             core_mask = np.ones_like(self.eqR)
         rel_delta_psit = np.linalg.norm(
@@ -789,14 +792,17 @@ class NKGSsolver:
             rel_delta_psit = self.get_rel_delta_psit(
                 eq, profiles, delta_current, full_currents_vec
             )
-            adj_factor = min(1, max_rel_delta_psit / rel_delta_psit)
+            adj_factor = min(
+                1, forward_tolerance_increase * rel_change_full / rel_delta_psit
+            )
             delta_current *= adj_factor
             eq.tokamak.set_all_coil_currents(full_currents_vec + delta_current)
             self.constrain_loss.append(loss)
             if verbose:
                 print(
-                    f"Control currents updated. Delta_current = {delta_current[constrain.control_mask]}"
+                    f"Control currents updated. Relative update of tokamak_psi in the core of: {rel_delta_psit*adj_factor}"
                 )
+                print(f"Delta_current = {delta_current[constrain.control_mask]}")
                 print(f"Magnetic constraint loss = {loss}")
                 print(f"Handing off to forward_solve:")
 
@@ -826,8 +832,14 @@ class NKGSsolver:
                 f"Inverse solve failed to converge to requested relative tolerance of "
                 + f"{target_relative_tolerance} with less than {max_solving_iterations} "
                 + f"iterations. Last relative psi change: {rel_change_full}. "
-                + f"Last update to the control currents caused a relative update of tokamak_psi in the core of: {rel_delta_psit}."
+                + f"Last update to the control currents caused a relative update of tokamak_psi in the core of: {rel_delta_psit*adj_factor}."
             )
+        elif verbose:
+            print(f"Static solve complete.")
+            print(
+                f"Last update to the control currents caused a relative update of tokamak_psi in the core of: {rel_delta_psit*adj_factor}."
+            )
+            print(f"Last relative GS residual: {rel_change_full}")
 
     def inverse_solve(
         self,

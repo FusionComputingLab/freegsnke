@@ -62,7 +62,7 @@ def calculate_voltage(
     - R : numpy 1D array
         The resistivity vector for the active coils.
     - inductance_ff : numpy 2D array
-        The feedfoward inductance matrix of the active coils.
+        The feedforward inductance matrix of the active coils.
     - inductance_fb : numpy 2D array
         The feedback inductance matrix of the active coils.
     - gains : numpy 2D array
@@ -133,7 +133,7 @@ def calculate_voltage(
 #     # Create necessary objects for plasma control that are supposed to be known
 #     # at runtime.
 #     Rp = 0.84  # Plasma resistivity
-#     inductances = {
+#     inductacnes_pl = {
 #         "plasma": 3.9,  # Plasma inductance
 #         "mutual": 2.7,  # Plasma-Solenoid inductance
 #     }
@@ -188,7 +188,7 @@ def calculate_voltage(
 
 #         # 1. Plasma control
 #         sol_dI = ip_controller.ip_control(
-#             time_stamp=timestamp, Rp=Rp, inductances=inductances, eq=eq
+#             time_stamp=timestamp, Rp=Rp, inductacnes_pl=inductacnes_pl, eq=eq
 #         )
 #         # print("sol dI", sol_dI, np.shape(sol_dI))
 
@@ -209,6 +209,7 @@ def calculate_voltage(
 #         # 5. System category
 #         check_currents(dI, est_I)
 
+
 #         # 6. PF category
 #         # FIXME As of now, inductance_matrix is used for both inductance_ff and
 #         # inductance_fb.
@@ -222,6 +223,72 @@ def calculate_voltage(
 #             measured_I=measured_I,
 #         )
 #         print(f"The requested output voltage is {V_out}")
+
+
+def pf_voltage_request(
+    ip_controller,
+    shape_controller,
+    eq,
+    profiles,
+    timestamp,
+    Rp,
+    inductacnes_pl,
+    Rvec,
+    inductance_matrix,
+    gain_matrix,
+    est_I,
+    measured_I,
+    coil_perturbation,
+):
+    print(f"time {timestamp} ")
+
+    # 1. Plasma control
+    print("\n Plasma Control")
+    sol_dI = ip_controller.ip_control(
+        time_stamp=timestamp, Rp=Rp, inductacnes_pl=inductacnes_pl, eq=eq
+    )
+    # print("sol dI", sol_dI, np.shape(sol_dI))
+    # 2. Shape control
+    print("\n Shape Control")
+    shp_dI = shape_controller.feedback_current_rate_timefunc(
+        time_stamp=timestamp,
+        eq=eq,
+        profiles=profiles,
+        gain_matrix=None,
+    )
+    # print("shp dI", shp_dI, np.shape(shp_dI))
+
+    # 3. Combine the currents coming from plasma and shape control
+    dI = sol_dI + shp_dI
+    # print("combined dI", dI, np.shape(dI))
+
+    # 4. Estimate the absolute value of the currents.
+    est_I += dI
+    # todo Add coil perturbation here ??
+    # print("est I", est_I, np.shape(est_I))
+
+    # 4.1. Coil perturbation
+    Ipert = coil_perturbation.desired_target_values(time_stamp=timestamp)
+    print("coil pert value ", Ipert, np.shape(Ipert))
+    ## add this coil currents to ....????
+
+    # 5. System category
+    check_currents(dI, est_I)
+
+    # 6. PF category
+    # FIXME As of now, inductance_matrix is used for both inductance_ff and
+    # inductance_fb.
+    print("\n Calculating Voltage Requests")
+    V_out = calculate_voltage(
+        R=Rvec,
+        inductance_ff=inductance_matrix,
+        inductance_fb=inductance_matrix,
+        gains=gain_matrix,
+        approved_dI=dI,
+        approved_I=est_I,
+        measured_I=measured_I,
+    )
+    print(f"The requested output voltage is {V_out}")
 
 
 def simulate_shot(
@@ -265,7 +332,7 @@ def simulate_shot(
     # Create necessary objects for plasma control that are supposed to be known
     # at runtime.
     Rp = config_kwargs["plasma_resistivity"]  # Plasma resistivity
-    inductances = {
+    inductances_pl = {
         "plasma": config_kwargs["plasma_inductance"],  # Plasma inductance
         "mutual": config_kwargs["plas_sol_inductance"],  # Plasma-Solenoid inductance
     }
@@ -323,51 +390,23 @@ def simulate_shot(
     # Execute the PCS pipeline. Here it is assumed that the control is
     # performed over the ticking of some clock (hence the np.arange()).
     for timestamp in time_slices:
-        print(f"time {timestamp} ")
-
-        # 1. Plasma control
-        print("\n Plasma Control")
-        sol_dI = ip_controller.ip_control(
-            time_stamp=timestamp, Rp=Rp, inductances=inductances, eq=eq
+        ##compute voltage request
+        pf_voltage_request(
+            ip_controller,
+            shape_controller,
+            eq,
+            profiles,
+            timestamp,
+            Rp,
+            inductances_pl,
+            Rvec,
+            inductance_matrix,
+            gain_matrix,
+            est_I,
+            measured_I,
+            coil_perturbation,
         )
-        # print("sol dI", sol_dI, np.shape(sol_dI))
-        # 2. Shape control
-        print("\n Shape Control")
-        shp_dI = shape_controller.feedback_current_rate_timefunc(
-            time_stamp=timestamp, eq=eq, profiles=profiles, gain_matrix=None
-        )
-        # print("shp dI", shp_dI, np.shape(shp_dI))
-
-        # 3. Combine the currents coming from plasma and shape control
-        dI = sol_dI + shp_dI
-        # print("combined dI", dI, np.shape(dI))
-
-        # 4. Estimate the absolute value of the currents.
-        est_I += dI
-        # print("est I", est_I, np.shape(est_I))
-
-        # 4.1. Coil perturbation
-        Ipert = coil_perturbation.desired_target_values(time_stamp=timestamp)
-        print("coil pert value ", Ipert, np.shape(Ipert))
-        ## add this coil currents to ....????
-
-        # 5. System category
-        check_currents(dI, est_I)
-
-        # 6. PF category
-        # FIXME As of now, inductance_matrix is used for both inductance_ff and
-        # inductance_fb.
-        print("\n Calculating Voltage Requests")
-        V_out = calculate_voltage(
-            R=Rvec,
-            inductance_ff=inductance_matrix,
-            inductance_fb=inductance_matrix,
-            gains=gain_matrix,
-            approved_dI=dI,
-            approved_I=est_I,
-            measured_I=measured_I,
-        )
-        print(f"The requested output voltage is {V_out}")
+        #### update equi
 
 
 if __name__ == "__main__":

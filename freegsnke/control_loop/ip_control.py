@@ -59,7 +59,7 @@ class ControlSolenoid:
         print(f"  The virtual circuit vector: {self.vc}")
 
     def calculate_solenoid_delta(
-        self, inductances, gain, blend, Ip_req, Ip_obs, Vloop_ff
+        self, inductacnes_pl, gain, blend, Ip_req, Ip_obs, Vloop_ff
     ):
         """
         Calculates the vector of current trajectories ΔI/Δt, as prescribed
@@ -73,8 +73,8 @@ class ControlSolenoid:
 
         Parameters
         ----------
-        - inductances : dict
-            A dictionary with all the required inductances.
+        - inductacnes_pl : dict
+            A dictionary with all the required inductacnes_pl.
         - gain : float
             A proportional term used in the Vloop_fb computation.
         - blend : float
@@ -98,7 +98,7 @@ class ControlSolenoid:
         print(f"    The delta plasma current: {delta_Ip}")
 
         # Compute the feedback loop voltage
-        M_p = inductances["plasma"]
+        M_p = inductacnes_pl["plasma"]
         Vloop_fb = gain * delta_Ip * M_p
         print(f"    The feedback loop voltage: {Vloop_fb}")
 
@@ -107,7 +107,7 @@ class ControlSolenoid:
         print(f"    The full loop voltage: {Vloop}")
 
         # Compute the rate of change of the solenoid current
-        M_sp = inductances["mutual"]
+        M_sp = inductacnes_pl["mutual"]
         dIsol = -Vloop * (1 / M_sp)
         print(f"    The trajectory for the solenoid current: {dIsol}")
 
@@ -116,7 +116,7 @@ class ControlSolenoid:
         dI = dIsol * self.vc
         return dI
 
-    def ip_control(self, time_stamp, Rp, inductances, eq=None):
+    def ip_control(self, time_stamp, Rp, inductacnes_pl, eq=None):
         """
         Execute all the steps in the pipeline for the control of the solenoid
         current, as prescribed by the PCS. This method is the API by design of
@@ -129,8 +129,8 @@ class ControlSolenoid:
             Timestamp for which this pipeline should provide a control voltage.
         - Rp : float
             The plasma resistivity.
-        - inductances : dict
-            A dictionary with all the required inductances.
+        - inductacnes_pl : dict
+            A dictionary with all the required inductacnes_pl.
 
         Returns
         -------
@@ -159,7 +159,7 @@ class ControlSolenoid:
         blend = self.scheduler.retrieve_parameter(time_stamp, "blend")
         print(f"  The blend value: {blend}")
         dI = self.calculate_solenoid_delta(
-            inductances=inductances,
+            inductacnes_pl=inductacnes_pl,
             Ip_obs=Ip_obs,
             Ip_req=Ip_req,
             Vloop_ff=Vloop_req,

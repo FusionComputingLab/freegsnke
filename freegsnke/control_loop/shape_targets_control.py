@@ -577,6 +577,7 @@ class ShapeController:
         eq,
         profiles,
         gain_matrix=None,
+        target_obs=None,
     ):
         """
         Compute current given a set of target value shifts and vc matrix, at a time provided.
@@ -633,7 +634,7 @@ class ShapeController:
             profiles,
             targets=controlled_targets,
             targets_req=desired_target_values,
-            targets_obs=None,
+            targets_obs=target_obs,
             virtual_circuit=virtual_circuit,
             gain_matrix=gain_matrix,
         )

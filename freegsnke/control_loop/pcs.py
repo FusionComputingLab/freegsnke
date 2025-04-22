@@ -239,7 +239,9 @@ def pf_voltage_request(
     est_I,
     measured_I,
     coil_perturbation,
+    targ_obs=None,
 ):
+    """ """
     print(f"time {timestamp} ")
 
     # 1. Plasma control
@@ -255,6 +257,7 @@ def pf_voltage_request(
         eq=eq,
         profiles=profiles,
         gain_matrix=None,
+        target_obs=targ_obs,
     )
     # print("shp dI", shp_dI, np.shape(shp_dI))
 
@@ -322,22 +325,34 @@ def simulate_shot(
     None
 
     """
-    # Initialise the solenoid controller
-    ip_controller = ControlSolenoid(
-        target_sched_path=control_kwargs["ip_schedule"],
-        target_waveform_path=control_kwargs["ip_waveform"],
-        contr_params_path=control_kwargs["ip_control_params"],
-    )
 
-    # Create necessary objects for plasma control that are supposed to be known
-    # at runtime.
+    # Load configuration parameters needed at runtime.
     Rp = config_kwargs["plasma_resistivity"]  # Plasma resistivity
     inductances_pl = {
         "plasma": config_kwargs["plasma_inductance"],  # Plasma inductance
         "mutual": config_kwargs["plas_sol_inductance"],  # Plasma-Solenoid inductance
     }
 
-    # Initialise the shape controller
+    Rvec = config_kwargs["R_vec"]  # Vector of resistivities
+    if "inductance_matrix" in config_kwargs.keys():
+        inductance_matrix = config_kwargs["inductance_matrix"]
+        print("Using user provided inductance matrix")
+    else:
+        inductance_matrix = (
+            None  # default inductance matrix (initialized below in shape controller)
+        )
+    gain_matrix = config_kwargs[
+        "coil_gains"
+    ]  # Gain matrix for coils(what are these gains??)
+    active_coils = list(eq_start.tokamak.coils_dict.keys())[
+        : eq_start.tokamak.n_active_coils
+    ]
+
+    # Load Schedulers
+    target_ff_scheduler = TargetScheduler(
+        target_schedule_path=control_kwargs["ff_target_schedule"],
+        target_waveform_path=control_kwargs["ff_target_waveform"],
+    )
     target_fb_scheduler = ShapeTargetScheduler(
         target_waveform_path=control_kwargs["fb_target_waveform"],
         target_schedule_path=control_kwargs["fb_target_schedule"],
@@ -345,9 +360,12 @@ def simulate_shot(
         vc_schedule_path=control_kwargs["vc_schedule"],
     )
 
-    target_ff_scheduler = TargetScheduler(
-        target_schedule_path=control_kwargs["ff_target_schedule"],
-        target_waveform_path=control_kwargs["ff_target_waveform"],
+    # Initialise controllers
+    # Initialise the solenoid controller
+    ip_controller = ControlSolenoid(
+        target_sched_path=control_kwargs["ip_schedule"],
+        target_waveform_path=control_kwargs["ip_waveform"],
+        contr_params_path=control_kwargs["ip_control_params"],
     )
 
     shape_controller = ShapeController(
@@ -357,25 +375,20 @@ def simulate_shot(
         feedback_target_scheduler=target_fb_scheduler,
         feedforward_scheduler=target_ff_scheduler,
         coils=None,
+        inductance_matrix=inductance_matrix,
     )
 
+    inductance_matrix = deepcopy(
+        shape_controller.inductance_full
+    )  ### needst tidying as code (inductance matrix recreated multiple times)
     # TODO I_Coil_Pert category ....
     coil_perturbation = TargetScheduler(
         target_schedule_path=control_kwargs["coil_pert_schedule"],
         target_waveform_path=control_kwargs["coil_pert_waveform"],
     )
 
-    # Create necessary objects for the FP category that are supposed to be
-    # known at runtime.
-    Rvec = config_kwargs["R_vec"]  # Vector of resistivities
-    inductance_matrix = deepcopy(shape_controller.inductance_full)
-    gain_matrix = config_kwargs[
-        "coil_gains"
-    ]  # Gain matrix for coils(what are these gains??)
-    active_coils = list(eq_start.tokamak.coils_dict.keys())[
-        : eq_start.tokamak.n_active_coils
-    ]
     active_currents = [eq_start.tokamak.getCurrents()[key] for key in active_coils]
+
     measured_I = deepcopy(active_currents)  # Vector of measured coil currents
 
     # Initialise the estimation of the coil currents from the actions applied
@@ -405,6 +418,7 @@ def simulate_shot(
             est_I,
             measured_I,
             coil_perturbation,
+            targ_obs=None,
         )
         #### update equi
 
@@ -490,7 +504,5 @@ if __name__ == "__main__":
         "Rp": 0.84,
         "R_vec": np.random.rand(12),
         "gain_matrix": np.diag(np.random.rand(12)),
+        "inductance_matrix": np.random.rand(12, 12),
     }
-
-    tiemslices = np.arange(0.15, 1, 0.1)
-    main(eq_start=eq_start, profiles_start=profiles_start, stepper=stepper)

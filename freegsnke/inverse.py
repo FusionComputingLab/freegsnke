@@ -23,8 +23,8 @@ along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 import warnings
 from copy import deepcopy
 
+import freegs4e
 import numpy as np
-from freegs4e import bilinear_interpolation as bilint
 from scipy import interpolate
 
 
@@ -39,7 +39,6 @@ class Gradient_inverse:
         null_points=None,
         psi_vals=None,
         gradient_weights=None,
-        rescale_coeff=0.1,
     ):
         """Instantiates the object and sets all magnetic constraints to be used.
 
@@ -60,7 +59,7 @@ class Gradient_inverse:
             Sets the relative importance of the 3 types of magnetic constraints, by default None
         rescale_coeff : float, optional
             Sets the relative size of the update to the current vector, in terms
-            of the Newton update, by default 0.1
+            of the Newton update, by default 0.2
         """
 
         self.isoflux_set = isoflux_set
@@ -76,14 +75,13 @@ class Gradient_inverse:
 
         self.psi_vals = psi_vals
         if self.psi_vals is not None:
+            self.full_grid = False
             self.psi_vals = np.array(self.psi_vals)
             self.psi_vals = self.psi_vals.reshape((3, -1))
 
         if gradient_weights is None:
             gradient_weights = np.ones(3)
         self.gradient_weights = gradient_weights
-
-        self.rescale_coeff = rescale_coeff
 
     def prepare_for_solve(self, eq):
         """To be called after object is instantiated.
@@ -99,7 +97,7 @@ class Gradient_inverse:
         """
         self.build_control_coils(eq)
         self.build_full_current_vec(eq)
-        self.build_control_currents(eq)
+        self.build_control_currents_Vec(self.full_currents_vec)
         self.build_greens(eq)
 
     def build_control_coils(self, eq):
@@ -189,7 +187,10 @@ class Gradient_inverse:
             )
 
         if self.psi_vals is not None:
-            if np.all(self.psi_vals[0] == eq.R) and np.all(self.psi_vals[1] == eq.Z):
+            if np.all(self.psi_vals[0] == eq.R.reshape(-1)) and np.all(
+                self.psi_vals[1] == eq.Z.reshape(-1)
+            ):
+                self.full_grid = True
                 self.G = np.copy(eq._vgreen).reshape((self.n_coils, -1))
             else:
                 self.G = eq.tokamak.createPsiGreensVec(
@@ -228,9 +229,12 @@ class Gradient_inverse:
                 )
 
         if self.psi_vals is not None:
-            self.psi_plasma_vals = psi_func(
-                self.psi_vals[0], self.psi_vals[1], grid=False
-            )
+            if self.full_grid:
+                self.psi_plasma_vals = trial_plasma_psi.reshape(-1)
+            else:
+                self.psi_plasma_vals = psi_func(
+                    self.psi_vals[0], self.psi_vals[1], grid=False
+                )
 
     def build_isoflux_gradient(
         self,
@@ -289,6 +293,7 @@ class Gradient_inverse:
                 self.G * self.full_currents_vec[:, np.newaxis], axis=0, keepdims=True
             )
             + self.psi_plasma_vals[np.newaxis]
+            - self.psi_vals[2][np.newaxis]
         )
         gradient = np.sum(Lpsi * self.G[self.control_mask], axis=1)
         gradient /= np.size(self.psi_vals[0])
@@ -319,7 +324,9 @@ class Gradient_inverse:
         self.loss = loss
         return self.gradient, self.loss
 
-    def build_current_update(self, full_currents_vec, trial_plasma_psi):
+    def build_current_update(
+        self, full_currents_vec, trial_plasma_psi, rescale_coeff, plasma_calc=True
+    ):
         """Calculates the update to the coil currents available for control
         using gradient descent.
 
@@ -333,9 +340,24 @@ class Gradient_inverse:
         """
         # prepare to build the gradient
         self.full_currents_vec = np.copy(full_currents_vec)
-        self.build_plasma_vals(trial_plasma_psi=trial_plasma_psi)
+        if plasma_calc:
+            self.build_plasma_vals(trial_plasma_psi=trial_plasma_psi)
 
         g, l = self.build_gradient()
-        dc = -self.rescale_coeff * l * g / np.linalg.norm(g) ** 2
+        dc = -l * g / np.linalg.norm(g) ** 2
+        dc *= rescale_coeff
+
         self.delta_current = self.rebuild_full_current_vec(dc)
         return self.delta_current, l
+
+    def plot(self, axis=None, show=True):
+        """
+        Plots constraints used for coil current control
+
+        axis     - Specify the axis on which to plot
+        show     - Call matplotlib.pyplot.show() before returning
+
+        """
+        from freegs4e.plotting import plotGIConstraints
+
+        return plotGIConstraints(self, axis=axis, show=show)

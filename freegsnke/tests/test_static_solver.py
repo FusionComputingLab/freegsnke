@@ -12,12 +12,6 @@ from freegs4e.plotting import plotConstraints
 from IPython.display import clear_output, display
 from matplotlib.widgets import Slider
 
-os.environ["ACTIVE_COILS_PATH"] = "./machine_configs/test/active_coils.pickle"
-os.environ["PASSIVE_COILS_PATH"] = "./machine_configs/test/passive_coils.pickle"
-os.environ["WALL_PATH"] = "./machine_configs/test/wall.pickle"
-os.environ["LIMITER_PATH"] = "./machine_configs/test/limiter.pickle"
-os.environ["PROBE_PATH"] = "./machine_configs/test/magnetic_probes.pickle"
-
 from freegsnke import build_machine
 
 
@@ -31,7 +25,14 @@ def create_machine():
     # or
     # MASTU_coils.MASTU_wpass()
     # from freegsnke import MASTU_coils
-    tokamak = build_machine.tokamak()
+
+    # build machine
+    tokamak = build_machine.tokamak(
+        active_coils_path=f"../machine_configs/MAST-U/MAST-U_like_active_coils.pickle",
+        passive_coils_path=f"../machine_configs/MAST-U/MAST-U_like_passive_coils.pickle",
+        limiter_path=f"../machine_configs/MAST-U/MAST-U_like_limiter.pickle",
+        wall_path=f"../machine_configs/MAST-U/MAST-U_like_wall.pickle",
+    )
 
     # Creates equilibrium object and initializes it with
     # a "good" solution

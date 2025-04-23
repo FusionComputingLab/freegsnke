@@ -12,10 +12,11 @@ def create_machine():
 
     # build machine
     tokamak = build_machine.tokamak(
-        active_coils_path=f"../machine_configs/MAST-U/MAST-U_like_active_coils.pickle",
-        passive_coils_path=f"../machine_configs/MAST-U/MAST-U_like_passive_coils.pickle",
-        limiter_path=f"../machine_configs/MAST-U/MAST-U_like_limiter.pickle",
-        wall_path=f"../machine_configs/MAST-U/MAST-U_like_wall.pickle",
+        active_coils_path=f"../../machine_configs/test/active_coils.pickle",
+        passive_coils_path=f"../../machine_configs/test/passive_coils.pickle",
+        limiter_path=f"../../machine_configs/test/limiter.pickle",
+        wall_path=f"../../machine_configs/test/wall.pickle",
+        magnetic_probe_path=f"../../machine_configs/test/magnetic_probes.pickle",
     )
 
     # Creates equilibrium object and initializes it with

@@ -1,5 +1,5 @@
 """
-Routines to build the FreeGSNKE Machine Object from the provided machine description.
+Functions that build tokamak objects in FreeGSNKE (from file or otherwise). 
 
 Copyright 2025 UKAEA, UKRI-STFC, and The Authors, as per the COPYRIGHT and README files.
 
@@ -24,134 +24,396 @@ import pickle
 
 import numpy as np
 from freegs4e.coil import Coil
-from freegs4e.machine import Circuit, Solenoid, Wall
+from freegs4e.machine import Circuit, Wall
 from freegs4e.multi_coil import MultiCoil
 
+from .machine_config import build_tokamak_R_and_M
 from .machine_update import Machine
 from .magnetic_probes import Probes
 from .passive_structure import PassiveStructure
 from .refine_passive import generate_refinement
 
-# these parameters set the refinement of extended passive structures
-# values are in number of individual filaments per m^2 (per area) and per m (per length)
-# please amend accordingly to the needs of your use case
-default_min_refine_per_area = 3e3
-default_min_refine_per_length = 200
 
-passive_coils_path = os.environ.get("PASSIVE_COILS_PATH", None)
-if passive_coils_path is None:
-    raise ValueError("PASSIVE_COILS_PATH environment variable not set.")
+def tokamak(
+    active_coils_data=None,
+    passive_coils_data=None,
+    limiter_data=None,
+    wall_data=None,
+    magnetic_probe_data=None,
+    active_coils_path=None,
+    passive_coils_path=None,
+    limiter_path=None,
+    wall_path=None,
+    magnetic_probe_path=None,
+    refine_mode="G",
+):
+    """
+    Load the standarised input data required to build the tokamak machine.
 
-active_coils_path = os.environ.get("ACTIVE_COILS_PATH", None)
-if active_coils_path is None:
-    raise ValueError("ACTIVE_COILS_PATH environment variable not set.")
+    These dictionaries/lists/arrays can either be provided directly or loaded from pickle files.
 
-wall_path = os.environ.get("WALL_PATH", None)
-if wall_path is None:
-    raise ValueError("WALL_PATH environment variable not set.")
-
-limiter_path = os.environ.get("LIMITER_PATH", None)
-if limiter_path is None:
-    raise ValueError("LIMITER_PATH environment variable not set.")
-
-with open(passive_coils_path, "rb") as f:
-    passive_coils = pickle.load(f)
-
-with open(active_coils_path, "rb") as f:
-    active_coils = pickle.load(f)
-
-with open(wall_path, "rb") as f:
-    wall = pickle.load(f)
-
-with open(limiter_path, "rb") as f:
-    limiter = pickle.load(f)
-
-if "Solenoid" not in active_coils:
-    print("No coil named Solenoid among the active coils.")
-
-
-def tokamak(refine_mode="G"):
-    """Builds the Machine object using the provided geometry info.
-    Using MultiCoil to represent coils with different locations for each strand.
-    Passive structures are handled by the dedicated object.
+    At minimum, the tokamak requires active coil data and a limiter (to contain the plasma). The passives,
+    the wall, and the magnetic probes are optional.
 
     Parameters
     ----------
+    active_coils_data : dict, optional
+        Dictionary containing the active coil data.
+    passive_coils_data : dict, optional
+        Dictionary containing the passive structure data.
+    limiter_data : dict, optional
+        Dictionary containing the limiter data.
+    wall_data : dict, optional
+        Dictionary containing the wall data.
+    magnetic_probe_data : dict, optional
+        Dictionary containing the magnetic probes data.
+    active_coils_path : str, optional
+        Path to the pickle file containing the active coil data.
+    passive_coils_path : str, optional
+        Path to the pickle file containing the passive structure data.
+    limiter_path : str, optional
+        Path to the pickle file containing the limiter data.
+    wall_path : str, optional
+        Path to the pickle file containing the wall data.
+    magnetic_probe_path : str, optional
+        Path to the pickle file containing the magnetic probe data.
     refine_mode : str, optional
-        refinement mode for extended passive structures (inputted as polygons), by default 'G' for 'grid'
-        Use 'LH' for alternative mode using a Latin Hypercube implementation.
+        Choose the refinement mode for extended passive structures (input as polygons), by default
+        'G' for 'grid' (use 'LH' for alternative mode using a Latin Hypercube implementation).
 
     Returns
     -------
-    FreeGSNKE tokamak machine object.
+    tokamak : class
+        Returns an object containing the tokamak machine decsription.
     """
-    coils = []
-    for coil_name in active_coils:
-        if coil_name == "Solenoid":
-            # Add the solenoid if any
-            multicoil = MultiCoil(
-                active_coils["Solenoid"]["R"], active_coils["Solenoid"]["Z"]
-            )
-            multicoil.dR = active_coils["Solenoid"]["dR"]
-            multicoil.dZ = active_coils["Solenoid"]["dZ"]
-            coils.append(
-                (
-                    "Solenoid",
-                    Circuit(
-                        [
-                            (
-                                "Solenoid",
-                                multicoil,
-                                float(active_coils["Solenoid"]["polarity"])
-                                * float(active_coils["Solenoid"]["multiplier"]),
-                            ),
-                        ]
-                    ),
-                ),
-            )
 
-        else:
-            # Add active coils
-            circuit_list = []
-            for ind in active_coils[coil_name]:
-                multicoil = MultiCoil(
-                    active_coils[coil_name][ind]["R"],
-                    active_coils[coil_name][ind]["Z"],
-                )
-                multicoil.dR = active_coils[coil_name][ind]["dR"]
-                multicoil.dZ = active_coils[coil_name][ind]["dZ"]
-                circuit_list.append(
+    # check data can be loaded correctly
+    active_coils, passive_coils, limiter, wall = load_data_dicts(
+        active_coils_data=active_coils_data,
+        passive_coils_data=passive_coils_data,
+        limiter_data=limiter_data,
+        wall_data=wall_data,
+        active_coils_path=active_coils_path,
+        passive_coils_path=passive_coils_path,
+        limiter_path=limiter_path,
+        wall_path=wall_path,
+    )
+
+    # build the actives into their circuits
+    coil_circuits = build_actives(active_coils=active_coils)
+    n_active_coils = len(coil_circuits)
+
+    # build a vectorised coil dictionary for use throughout freegsnke
+    coils_dict = build_active_coil_dict(active_coils=active_coils)
+
+    # coil circuit names
+    coil_names = list(coils_dict.keys())
+
+    # add the passive structures to the coil_circuits list
+    coil_circuits, coils_dict, coil_names = build_passives(
+        passive_coils=passive_coils,
+        coil_circuits=coil_circuits,
+        coils_dict=coils_dict,
+        coil_names=coil_names,
+    )
+    n_passive_coils = len(coil_circuits) - n_active_coils
+
+    # add the limiter
+    r_limiter = [entry["R"] for entry in limiter]
+    z_limiter = [entry["Z"] for entry in limiter]
+
+    # add the wall
+    r_wall = [entry["R"] for entry in wall]
+    z_wall = [entry["Z"] for entry in wall]
+
+    # build the tokamak
+    tokamak = Machine(
+        coil_circuits, wall=Wall(r_wall, z_wall), limiter=Wall(r_limiter, z_limiter)
+    )
+
+    # store some additional data
+    tokamak.coils_dict = coils_dict
+    tokamak.coils_list = coil_names
+    tokamak.n_active_coils = n_active_coils
+    tokamak.n_passive_coils = n_passive_coils
+    tokamak.n_coils = n_active_coils + n_passive_coils
+
+    # add probe object attribute to tokamak (not strictly required)
+    tokamak.probes = Probes(
+        coils_dict=coils_dict,
+        magnetic_probe_data=magnetic_probe_data,
+        magnetic_probe_path=magnetic_probe_path,
+    )
+
+    # build the R and M matrices in place (in tokamak)
+    build_tokamak_R_and_M(tokamak)
+
+    print("Tokamak built.")
+
+    return tokamak
+
+
+def load_data_dicts(
+    active_coils_data=None,
+    passive_coils_data=None,
+    limiter_data=None,
+    wall_data=None,
+    active_coils_path=None,
+    passive_coils_path=None,
+    limiter_path=None,
+    wall_path=None,
+):
+    """
+    Load the standarised input data required to build the tokamak machine.
+
+    These dictionaries/lists/arrays can either be provided directly or loaded from pickle files.
+
+    Parameters
+    ----------
+    active_coils_data : dict, optional
+        Dictionary containing the active coil data.
+    passive_coils_data : dict, optional
+        Dictionary containing the passive structure data.
+    limiter_data : dict, optional
+        Dictionary containing the limiter data.
+    wall_data : dict, optional
+        Dictionary containing the wall data.
+    active_coils_path : str, optional
+        Path to the pickle file containing the active coil data.
+    passive_coils_path : str, optional
+        Path to the pickle file containing the passive structure data.
+    limiter_path : str, optional
+        Path to the pickle file containing the limiter data.
+    wall_path : str, optional
+        Path to the pickle file containing the wall data.
+
+    Returns
+    -------
+    active_coils_data : dict
+        Dictionary containing active coil data.
+    passive_coils_data : dict
+        Dictionary containing passive structure data.
+    limiter_data : dict
+        Dictionary containing the limiter data.
+    wall_data : dict
+        Dictionary containing the wall data.
+    """
+
+    # actives required
+    if active_coils_data is not None and active_coils_path is not None:
+        raise ValueError(
+            "The user needs to provide only one of 'active_coils_data' or 'active_coils_path', not both."
+        )
+    elif active_coils_data is None and active_coils_path is None:
+        raise ValueError(
+            "The user needs to provide either 'active_coils_data' or 'active_coils_path'."
+        )
+    elif active_coils_path is not None:
+        with open(active_coils_path, "rb") as f:
+            active_coils_data = pickle.load(f)
+            print("Active coils --> built from pickle file.")
+    else:
+        print("Active coils --> built from user-provided data.")
+
+    # passives not strictly required
+    if passive_coils_data is not None and passive_coils_path is not None:
+        raise ValueError(
+            "The user needs to provide only one of 'passive_coils_data' or 'passive_coils_path', not both."
+        )
+    elif passive_coils_data is None and passive_coils_path is None:
+        passive_coils_data = []  # default to empty list
+        print("Passive structures --> none provided.")
+    elif passive_coils_path is not None:
+        with open(passive_coils_path, "rb") as f:
+            passive_coils_data = pickle.load(f)
+            print("Passive structures --> built from pickle file.")
+    else:
+        print("Passive structures --> built from user-provided data.")
+
+    # limiter required
+    if limiter_data is not None and limiter_path is not None:
+        raise ValueError(
+            "The user needs to provide only one of 'limiter_data' or 'limiter_path', not both."
+        )
+    elif limiter_data is None and limiter_path is None:
+        raise ValueError(
+            "The user needs to provide either 'limiter_data' or 'limiter_path'."
+        )
+    elif limiter_path is not None:
+        with open(limiter_path, "rb") as f:
+            limiter_data = pickle.load(f)
+            print("Limiter --> built from pickle file.")
+    else:
+        print("Limiter --> built from user-provided data.")
+
+    # wall not strictly required
+    if wall_data is not None and wall_path is not None:
+        raise ValueError(
+            "The user needs to provide only one of 'wall_data' or 'wall_path', not both."
+        )
+    elif wall_data is None and wall_path is None:
+        wall_data = limiter_data  # default to the limiter
+        print("Wall --> none provided, setting equal to limiter.")
+    elif wall_path is not None:
+        with open(wall_path, "rb") as f:
+            wall_data = pickle.load(f)
+            print("Wall --> built from pickle file.")
+    else:
+        print("Wall --> built from user-provided data.")
+
+    return active_coils_data, passive_coils_data, limiter_data, wall_data
+
+
+def build_actives(
+    active_coils,
+):
+    """
+    Build the coils (and any circuits) in FreeGSNKE using the MultiCoil and Circuit
+    functionality from FreeGS4E.
+
+    Parameters
+    ----------
+    active_coils : dict, optional
+        Dictionary containing the active coil data.
+
+    Returns
+    -------
+    coils : list
+        List of coils and circuits to be ingested by FreeGSNKE/FreeGS4E.
+    """
+
+    # store list of all coils built
+    coils = []
+
+    # loop over all coils in dictionary
+    for name in active_coils:
+
+        # single coil (e.g a solenoid)
+        if "R" in active_coils[name] or "Z" in active_coils[name]:
+            try:
+                # initialise Multicoil and set attributes
+                multicoil = MultiCoil(active_coils[name]["R"], active_coils[name]["Z"])
+                multicoil.dR = active_coils[name]["dR"]
+                multicoil.dZ = active_coils[name]["dZ"]
+                multicoil.resistivity = active_coils[name]["resistivity"]
+
+                # add to list in its own Circuit
+                coils.append(
                     (
-                        coil_name + ind,
-                        multicoil,
-                        float(active_coils[coil_name][ind]["polarity"])
-                        * float(active_coils[coil_name][ind]["multiplier"]),
+                        name,
+                        Circuit(
+                            [
+                                (
+                                    name,
+                                    multicoil,
+                                    float(active_coils[name]["polarity"])
+                                    * float(active_coils[name]["multiplier"]),
+                                ),
+                            ]
+                        ),
+                    ),
+                )
+            except:
+                print(
+                    f"Could not build the coil {active_coils[name]}, check its format."
+                )
+
+        # multiple coils linked in a circuit (e.g. an up-down pair of shaping coils)
+        else:
+            try:
+
+                # create a circuit of coils
+                circuit_list = []
+
+                # loop over each coil in circuit
+                for ind in active_coils[name]:
+
+                    # initialise Multicoil and set attributes
+                    multicoil = MultiCoil(
+                        active_coils[name][ind]["R"], active_coils[name][ind]["Z"]
+                    )
+                    multicoil.dR = active_coils[name][ind]["dR"]
+                    multicoil.dZ = active_coils[name][ind]["dZ"]
+                    multicoil.resistivity = active_coils[name][ind]["resistivity"]
+
+                    # add to coils in circuit
+                    circuit_list.append(
+                        (
+                            name + ind,
+                            multicoil,
+                            float(active_coils[name][ind]["polarity"])
+                            * float(active_coils[name][ind]["multiplier"]),
+                        )
+                    )
+
+                # add circuit to list
+                coils.append(
+                    (
+                        name,
+                        Circuit(circuit_list),
                     )
                 )
-            coils.append(
-                (
-                    coil_name,
-                    Circuit(circuit_list),
+
+            except:
+                print(
+                    f"Could not build the coil {active_coils[name]}, check its format."
                 )
-            )
 
-    coils_dict = build_active_coil_dict(active_coils=active_coils)
-    coils_list = list(coils_dict.keys())
+    return coils
 
-    # Add passive coils
+
+def build_passives(
+    passive_coils,
+    coil_circuits,
+    coils_dict,
+    coil_names,
+):
+    """
+    Build the passive structures in FreeGSNKE using the PassiveStructure function.
+
+    Parameters
+    ----------
+    passive_coils : dict
+        Dictionary containing data for passive coils.
+    coil_circuits : list
+        List of coil circuit objects.
+    coils_dict : dict
+        Dictionary of coil data.
+    coil_names : list
+        List of circuit\coil names and passive structures.
+
+
+    Returns
+    -------
+    coil_circuits : list
+        List of coil circuit objects.
+    coils_dict : dict
+        Dictionary of coil data.
+    coil_names : list
+        List of circuit\coil names and passive structures.
+    """
+
+    # parameters to set the refinement of extended passive structures
+    # values are in number of individual filaments per m^2 (per area) and per m (per length)
+    default_min_refine_per_area = 3e3
+    default_min_refine_per_length = 200
+
+    # loop over passive coils
     for i, coil in enumerate(passive_coils):
-        # include name if provided
+
+        # include name if provided, else use default
         try:
-            coil_name = coil["name"]
+            name = coil["name"]
         except:
-            coil_name = f"passive_{i}"
-        coils_list.append(coil_name)
+            name = f"passive_{i}"
 
+        # add entry to list
+        coil_names.append(name)
+
+        # if vertices provided, build them as polygons
         if np.size(coil["R"]) > 1:
-            # refine if vertices provided
 
-            # keep refinement filaments grouped
-            # i.e. use passive structure object
+            # how much do we refine the polygons?
             try:
                 min_refine_per_area = 1.0 * coil["min_refine_per_area"]
             except:
@@ -161,40 +423,43 @@ def tokamak(refine_mode="G"):
             except:
                 min_refine_per_length = 1.0 * default_min_refine_per_length
 
+            # build the passive structure Polygon
             ps = PassiveStructure(
                 R=coil["R"],
                 Z=coil["Z"],
                 min_refine_per_area=min_refine_per_area,
                 min_refine_per_length=min_refine_per_length,
             )
-            coils.append(((coil_name, ps)))
 
-            # add coil_dict entry
-            coils_dict[coil_name] = {}
-            coils_dict[coil_name]["active"] = False
-            coils_dict[coil_name]["vertices"] = np.array((coil["R"], coil["Z"]))
-            coils_dict[coil_name]["coords"] = np.array(
+            # add to circuits list
+            coil_circuits.append(((name, ps)))
+
+            # add coils_dict entry
+            coils_dict[name] = {}
+            coils_dict[name]["active"] = False
+            coils_dict[name]["vertices"] = np.array((coil["R"], coil["Z"]))
+            coils_dict[name]["coords"] = np.array(
                 [ps.filaments[:, 0], ps.filaments[:, 1]]
             )
-            coils_dict[coil_name]["area"] = ps.area
-            filament_size = (ps.area / len(ps.filaments)) ** 0.5
-            coils_dict[coil_name]["dR"] = filament_size
-            coils_dict[coil_name]["dZ"] = filament_size
-            coils_dict[coil_name]["polarity"] = np.array([1])
-            # here 'multiplier' is used to normalise the green functions,
-            # this is needed because currents are distributed over the passive structure
-            coils_dict[coil_name]["multiplier"] = np.array([1 / len(ps.filaments)])
-            # this is resistivity divided by area
-            coils_dict[coil_name]["resistivity_over_area"] = (
-                coil["resistivity"] / coils_dict[coil_name]["area"]
-            )
+            coils_dict[name]["area"] = ps.area
 
+            filament_size = (ps.area / len(ps.filaments)) ** 0.5
+            coils_dict[name]["dR"] = filament_size
+            coils_dict[name]["dZ"] = filament_size
+
+            coils_dict[name]["polarity"] = np.array([1])
+            coils_dict[name]["resistivity_over_area"] = (
+                coil["resistivity"] / coils_dict[name]["area"]
+            )
+            # multiplier is used to distribute current over the passive structure
+            coils_dict[name]["multiplier"] = np.array([1 / len(ps.filaments)])
+
+        # if vertices not provided, build passive structure as individual filament
         else:
-            # passive structure is not refined, just an individual filament
-            coils.append(
+            coil_circuits.append(
                 (
                     (
-                        coil_name,
+                        name,
                         Coil(
                             R=coil["R"],
                             Z=coil["Z"],
@@ -204,131 +469,115 @@ def tokamak(refine_mode="G"):
                     )
                 )
             )
-            # add coil_dict entry
-            coils_dict[coil_name] = {}
-            coils_dict[coil_name]["active"] = False
-            coils_dict[coil_name]["coords"] = np.array((coil["R"], coil["Z"]))[
-                :, np.newaxis
-            ]
-            coils_dict[coil_name]["dR"] = coil["dR"]
-            coils_dict[coil_name]["dZ"] = coil["dZ"]
-            coils_dict[coil_name]["polarity"] = np.array([1])
-            coils_dict[coil_name]["multiplier"] = np.array([1])
-            # this is resistivity divided by area
-            coils_dict[coil_name]["resistivity_over_area"] = coil["resistivity"] / (
+
+            # add coils_dict entry
+            coils_dict[name] = {}
+            coils_dict[name]["active"] = False
+            coils_dict[name]["coords"] = np.array((coil["R"], coil["Z"]))[:, np.newaxis]
+            coils_dict[name]["dR"] = coil["dR"]
+            coils_dict[name]["dZ"] = coil["dZ"]
+            coils_dict[name]["polarity"] = np.array([1])
+            coils_dict[name]["multiplier"] = np.array([1])
+            coils_dict[name]["resistivity_over_area"] = coil["resistivity"] / (
                 coil["dR"] * coil["dZ"]
             )
 
-    # Add walls
-    r_wall = [entry["R"] for entry in wall]
-    z_wall = [entry["Z"] for entry in wall]
-
-    # Add limiter
-    r_limiter = [entry["R"] for entry in limiter]
-    z_limiter = [entry["Z"] for entry in limiter]
-
-    tokamak_machine = Machine(
-        coils, wall=Wall(r_wall, z_wall), limiter=Wall(r_limiter, z_limiter)
-    )
-
-    tokamak_machine.coils_dict = coils_dict
-    tokamak_machine.coils_list = coils_list
-
-    # Number of active coils
-    tokamak_machine.n_active_coils = len(active_coils)
-    # Total number of coils
-    tokamak_machine.n_coils = len(list(coils_dict.keys()))
-
-    # Save coils_dict
-    machine_path = os.path.join(
-        os.path.split(active_coils_path)[0], "machine_data.pickle"
-    )
-    with open(machine_path, "wb") as f:
-        pickle.dump(coils_dict, f)
-
-    # add probe object attribute to tokamak
-    tokamak_machine.probes = Probes(coils_dict)
-
-    return tokamak_machine
+    return coil_circuits, coils_dict, coil_names
 
 
 def build_active_coil_dict(active_coils):
-    """Adds vectorised properties of all active coils to a dictionary for use throughout FreeGSNKE.
+    """
+    Create vectorised version of the active coil properties in a dictionary for use
+    throughout FreeGSNKE.
 
     Parameters
     ----------
-    active_coils : dictionary
-        input dictionary, user defined with properties of the active coils
+    active_coils : dict, optional
+        Dictionary containing the active coil data.
 
     Returns
     -------
-    dictionary
-        includes vectorised properties of all active coils
+    coils_dict : dict
+        Dictionary with vectorised properties of all active coils.
     """
 
+    # initialise
     coils_dict = {}
-    for i, coil_name in enumerate(active_coils):
-        if coil_name == "Solenoid":
-            coils_dict[coil_name] = {}
-            coils_dict[coil_name]["active"] = True
-            coils_dict[coil_name]["coords"] = np.array(
-                [active_coils[coil_name]["R"], active_coils[coil_name]["Z"]]
-            )
-            coils_dict[coil_name]["polarity"] = np.array(
-                [active_coils[coil_name]["polarity"]]
-                * len(active_coils[coil_name]["R"])
-            )
-            coils_dict[coil_name]["dR"] = active_coils[coil_name]["dR"]
-            coils_dict[coil_name]["dZ"] = active_coils[coil_name]["dZ"]
-            # this is resistivity divided by area
-            coils_dict[coil_name]["resistivity_over_area"] = active_coils[coil_name][
-                "resistivity"
-            ] / (active_coils[coil_name]["dR"] * active_coils[coil_name]["dZ"])
-            coils_dict[coil_name]["multiplier"] = np.array(
-                [active_coils[coil_name]["multiplier"]]
-                * len(active_coils[coil_name]["R"])
-            )
-            continue
 
-        coils_dict[coil_name] = {}
-        coils_dict[coil_name]["active"] = True
+    # loop over each entry
+    for i, name in enumerate(active_coils):
 
-        coords_R = []
-        for ind in active_coils[coil_name].keys():
-            coords_R.extend(active_coils[coil_name][ind]["R"])
+        # single coil (e.g a solenoid)
+        if "R" in active_coils[name] or "Z" in active_coils[name]:
+            try:
+                coils_dict[name] = {}
+                coils_dict[name]["active"] = True
+                coils_dict[name]["coords"] = np.array(
+                    [active_coils[name]["R"], active_coils[name]["Z"]]
+                )
+                coils_dict[name]["polarity"] = np.array(
+                    [active_coils[name]["polarity"]] * len(active_coils[name]["R"])
+                )
+                coils_dict[name]["dR"] = active_coils[name]["dR"]
+                coils_dict[name]["dZ"] = active_coils[name]["dZ"]
+                coils_dict[name]["resistivity_over_area"] = active_coils[name][
+                    "resistivity"
+                ] / (active_coils[name]["dR"] * active_coils[name]["dZ"])
+                coils_dict[name]["multiplier"] = np.array(
+                    [active_coils[name]["multiplier"]] * len(active_coils[name]["R"])
+                )
 
-        coords_Z = []
-        for ind in active_coils[coil_name].keys():
-            coords_Z.extend(active_coils[coil_name][ind]["Z"])
-        coils_dict[coil_name]["coords"] = np.array([coords_R, coords_Z])
+            except:
+                print(
+                    f"Could not build the coil {active_coils[name]}, check its format."
+                )
 
-        polarity = []
-        for ind in active_coils[coil_name].keys():
-            polarity.extend(
-                [active_coils[coil_name][ind]["polarity"]]
-                * len(active_coils[coil_name][ind]["R"])
-            )
-        coils_dict[coil_name]["polarity"] = np.array(polarity)
+        # multiple coils linked in a circuit (e.g. an up-down pair of shaping coils)
+        else:
+            try:
+                coils_dict[name] = {}
+                coils_dict[name]["active"] = True
 
-        multiplier = []
-        for ind in active_coils[coil_name].keys():
-            multiplier.extend(
-                [active_coils[coil_name][ind]["multiplier"]]
-                * len(active_coils[coil_name][ind]["R"])
-            )
-        coils_dict[coil_name]["multiplier"] = np.array(multiplier)
+                coords_R = []
+                for ind in active_coils[name].keys():
+                    coords_R.extend(active_coils[name][ind]["R"])
 
-        coils_dict[coil_name]["dR"] = active_coils[coil_name][
-            list(active_coils[coil_name].keys())[0]
-        ]["dR"]
-        coils_dict[coil_name]["dZ"] = active_coils[coil_name][
-            list(active_coils[coil_name].keys())[0]
-        ]["dZ"]
+                coords_Z = []
+                for ind in active_coils[name].keys():
+                    coords_Z.extend(active_coils[name][ind]["Z"])
+                coils_dict[name]["coords"] = np.array([coords_R, coords_Z])
 
-        # this is resistivity divided by area
-        coils_dict[coil_name]["resistivity_over_area"] = active_coils[coil_name][
-            list(active_coils[coil_name].keys())[0]
-        ]["resistivity"] / (coils_dict[coil_name]["dR"] * coils_dict[coil_name]["dZ"])
+                polarity = []
+                for ind in active_coils[name].keys():
+                    polarity.extend(
+                        [active_coils[name][ind]["polarity"]]
+                        * len(active_coils[name][ind]["R"])
+                    )
+                coils_dict[name]["polarity"] = np.array(polarity)
+
+                multiplier = []
+                for ind in active_coils[name].keys():
+                    multiplier.extend(
+                        [active_coils[name][ind]["multiplier"]]
+                        * len(active_coils[name][ind]["R"])
+                    )
+                coils_dict[name]["multiplier"] = np.array(multiplier)
+
+                coils_dict[name]["dR"] = active_coils[name][
+                    list(active_coils[name].keys())[0]
+                ]["dR"]
+                coils_dict[name]["dZ"] = active_coils[name][
+                    list(active_coils[name].keys())[0]
+                ]["dZ"]
+
+                coils_dict[name]["resistivity_over_area"] = active_coils[name][
+                    list(active_coils[name].keys())[0]
+                ]["resistivity"] / (coils_dict[name]["dR"] * coils_dict[name]["dZ"])
+
+            except:
+                print(
+                    f"Could not build the coil {active_coils[name]}, check its format."
+                )
 
     return coils_dict
 

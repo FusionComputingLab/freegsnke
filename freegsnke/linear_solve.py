@@ -22,10 +22,7 @@ along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 import numpy as np
 from scipy.linalg import solve_sylvester
 
-from . import machine_config
 from .implicit_euler import implicit_euler_solver
-
-# from .Myy_builder import Myy_handler
 
 
 class linear_solver:
@@ -37,6 +34,7 @@ class linear_solver:
 
     def __init__(
         self,
+        eq,
         Lambdam1,
         Pm1,
         Rm1,
@@ -55,6 +53,8 @@ class linear_solver:
 
         Parameters
         ----------
+        eq : class
+            FreeGSNKE equilibrium object.
         Lambdam1: np.array
             State matrix of the circuit equations for the metal in normal mode form:
             P is the identity on the active coils and diagonalises the isolated dynamics
@@ -82,7 +82,7 @@ class linear_solver:
         self.plasma_norm_factor = plasma_norm_factor
 
         if Lambdam1 is None:
-            self.Lambdam1 = Pm1 @ (Rm1 @ (machine_config.coil_self_ind @ (Pm1.T)))
+            self.Lambdam1 = Pm1 @ (Rm1 @ (eq.tokamak.coil_self_ind @ (Pm1.T)))
         else:
             self.Lambdam1 = Lambdam1
         self.n_independent_vars = np.shape(self.Lambdam1)[0]
@@ -104,7 +104,7 @@ class linear_solver:
         self.MyeP_T = Pm1 @ Mey
         # self.handleMyy = Myy_handler(limiter_handler)
 
-        self.n_active_coils = machine_config.n_active_coils
+        self.n_active_coils = eq.tokamak.n_active_coils
 
         self.solver = implicit_euler_solver(
             Mmatrix=np.eye(self.n_independent_vars + 1),

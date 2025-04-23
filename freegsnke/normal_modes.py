@@ -35,11 +35,9 @@ class mode_decomposition:
         coil_resist : np.array
             1d array of resistance values for all machine conducting elements,
             including both active coils and passive structures.
-            Normally calculated (or fetched) in machine_config.py
         coil_self_ind : np.array
             2d matrix of mutual inductances between all pairs of machine conducting elements,
             including both active coils and passive structures
-            Normally calculated (or fetched) in machine_config.py
         """
 
         # check number of coils is compatible with data provided

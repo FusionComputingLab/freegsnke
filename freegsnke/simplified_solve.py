@@ -23,7 +23,6 @@ along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 
 import numpy as np
 
-from . import machine_config
 from .implicit_euler import implicit_euler_solver
 
 
@@ -37,6 +36,7 @@ class simplified_solver_J1:
 
     def __init__(
         self,
+        eq,
         Lambdam1,
         Pm1,
         Rm1,
@@ -54,6 +54,8 @@ class simplified_solver_J1:
 
         Parameters
         ----------
+        eq : class
+            FreeGSNKE equilibrium Object
         Lambdam1: np.array
             State matrix of the circuit equations for the metal in normal mode form:
             P is the identity on the active coils and diagonalises the isolated dynamics
@@ -96,8 +98,8 @@ class simplified_solver_J1:
         self.MyeP_T = Pm1 @ Mey
         # self.handleMyy = Myy_handler(limiter_handler)
 
-        self.n_active_coils = machine_config.n_active_coils
-        self.n_coils = machine_config.n_coils
+        self.n_active_coils = eq.tokamak.n_active_coils
+        self.n_coils = eq.tokamak.n_coils
 
         self.plasma_resistance_1d = plasma_resistance_1d
 

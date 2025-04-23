@@ -23,7 +23,6 @@ along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 import numpy as np
 from freegs4e.gradshafranov import Greens, GreensBr, GreensBz
 
-from . import machine_config
 from .implicit_euler import implicit_euler_solver
 from .normal_modes import mode_decomposition
 
@@ -32,6 +31,7 @@ class metal_currents:
 
     def __init__(
         self,
+        eq,
         flag_vessel_eig,
         flag_plasma,
         plasma_pts=None,
@@ -49,6 +49,13 @@ class metal_currents:
         Parameters
         ----------
 
+        eq : FreeGSNKE equilibrium Object
+            Initial equilibrium. This is used to set the domain/grid properties
+            as well as the machine properties.
+            Furthermore, eq will be used to set up the linearization used by the linear evolutive solver.
+            It can be changed later by initializing a new set of initial conditions.
+            Note however that, to change either the machine or limiter properties
+            it will be necessary to instantiate a new nl_solver object.
         flag_vessel_eig : bool
             Flag re whether vessel eigenmodes are used or not.
         flag_plasma : bool
@@ -69,36 +76,39 @@ class metal_currents:
         coil_resist : np.array
             1d array of resistance values for all conducting elements in the machine,
             including both active coils and passive structures.
-            Defaults to None, meaning the values calculated in machine_config will be sourced and used.
+            Defaults to None, meaning the values calculated by default in tokamak will be sourced and used.
         coil_self_ind : np.array
             2d matrix of mutual inductances between all pairs of machine conducting elements,
             including both active coils and passive structures
-            Defaults to None, meaning the values calculated in machine_config will be sourced and used.
+            Defaults to None, meaning the values calculated by default in tokamak will be sourced and used.
         """
 
-        self.n_coils = len(machine_config.coil_self_ind)
-        self.n_active_coils = machine_config.n_active_coils
+        self.n_coils = eq.tokamak.n_coils
+        self.n_active_coils = eq.tokamak.n_active_coils
         self.verbose = verbose
 
-        # prepare resistance and inductance data
+        # prepare resistance data
         if coil_resist is not None:
             if len(coil_resist) != self.n_coils:
                 raise ValueError(
-                    "Resistance vector provided is not compatible with machine description"
+                    f"Resistance vector provided (size: {len(coil_resist)}) is not compatible with machine description (size: {self.n_coils})."
                 )
             self.coil_resist = coil_resist
         else:
-            self.coil_resist = machine_config.coil_resist
+            self.coil_resist = eq.tokamak.coil_resist
+
         self.Rm1 = 1.0 / self.coil_resist
         self.R = self.coil_resist
+
+        # prepare inductance data
         if coil_self_ind is not None:
             if np.size(coil_self_ind) != self.n_coils**2:
                 raise ValueError(
-                    "Mutual inductance matrix provided is not compatible with machine description"
+                    f"Mutual inductance matrix provided (size: {np.size(coil_self_ind)}) is not compatible with machine description (size: {self.n_coils**2})."
                 )
             self.coil_self_ind = coil_self_ind
         else:
-            self.coil_self_ind = machine_config.coil_self_ind
+            self.coil_self_ind = eq.tokamak.coil_self_ind
 
         self.flag_vessel_eig = flag_vessel_eig
         self.flag_plasma = flag_plasma
@@ -124,7 +134,7 @@ class metal_currents:
 
         if flag_plasma:
             self.plasma_pts = plasma_pts
-            self.Mey_matrix = self.Mey()
+            self.Mey_matrix = self.Mey(eq)
 
         # Dummy voltage vector
         self.empty_U = np.zeros(self.n_coils)
@@ -245,7 +255,7 @@ class metal_currents:
 
         if control * flag_plasma:
             self.plasma_pts = plasma_pts
-            self.Mey_matrix = self.Mey()
+            self.Mey_matrix = self.Mey(eq)
 
         control += flag_vessel_eig != self.flag_vessel_eig
         self.flag_vessel_eig = flag_vessel_eig
@@ -388,18 +398,25 @@ class metal_currents:
 
     def Mey(
         self,
+        eq,
     ):
-        """Calculates the matrix of mutual inductance values between plasma grid points
+        """
+        Calculates the matrix of mutual inductance values between plasma grid points
         included in the dynamics calculations and all vessel coils.
+
+        Parameters
+        -------
+        eq : class
+            FreeGSNKE equilibrium Object
 
         Returns
         -------
         Mey : np.ndarray
             Array of mutual inductances between plasma grid points and all vessel coils
         """
-        coils_dict = machine_config.coils_dict
-        mey = np.zeros((machine_config.n_coils, len(self.plasma_pts)))
-        for j, labelj in enumerate(machine_config.coils_order):
+        coils_dict = eq.tokamak.coils_dict
+        mey = np.zeros((eq.tokamak.n_coils, len(self.plasma_pts)))
+        for j, labelj in enumerate(eq.tokamak.coils_list):
             greenm = Greens(
                 self.plasma_pts[:, 0, np.newaxis],
                 self.plasma_pts[:, 1, np.newaxis],
@@ -411,30 +428,36 @@ class metal_currents:
             mey[j] = np.sum(greenm, axis=-1)
         return 2 * np.pi * mey
 
-    def Mey_f(self, green_f):
-        """Calculates values of the function green_f for the matrix of
-        plasma_pts x all vessel coils. For clarity, the function Mey is Mey_f(green_f = Greens)
+    # def Mey_f(
+    #     self,
+    #     eq,
+    #     green_f
+    #     ):
+    #     """Calculates values of the function green_f for the matrix of
+    #     plasma_pts x all vessel coils. For clarity, the function Mey is Mey_f(green_f = Greens)
 
-        Parameters
-        ----------
-        green_f : function
-            with same structure as Greens, i.e. Greens(R1,Z1, R2,Z2)
+    #     Parameters
+    #     -------
+    #     eq : class
+    #         FreeGSNKE equilibrium Object
+    #     green_f : function
+    #         with same structure as Greens, i.e. Greens(R1,Z1, R2,Z2)
 
-        Returns
-        -------
-        Mey : np.ndarray
-            Array of 'inductance values' between plasma grid points and all vessel coils
-        """
-        coils_dict = machine_config.coils_dict
-        mey = np.zeros((machine_config.n_coils, len(self.plasma_pts)))
-        for j, labelj in enumerate(machine_config.coils_order):
-            greenm = green_f(
-                coils_dict[labelj]["coords"][0][np.newaxis, :],
-                coils_dict[labelj]["coords"][1][np.newaxis, :],
-                self.plasma_pts[:, 0, np.newaxis],
-                self.plasma_pts[:, 1, np.newaxis],
-            )
-            greenm *= coils_dict[labelj]["polarity"][np.newaxis, :]
-            greenm *= coils_dict[labelj]["multiplier"][np.newaxis, :]
-            mey[j] = np.sum(greenm, axis=-1)
-        return 2 * np.pi * mey
+    #     Returns
+    #     -------
+    #     Mey : np.ndarray
+    #         Array of 'inductance values' between plasma grid points and all vessel coils
+    #     """
+    #     coils_dict = eq.tokamak.coils_dict
+    #     mey = np.zeros((eq.tokamak.n_coils, len(self.plasma_pts)))
+    #     for j, labelj in enumerate(eq.tokamak.coils_list):
+    #         greenm = green_f(
+    #             coils_dict[labelj]["coords"][0][np.newaxis, :],
+    #             coils_dict[labelj]["coords"][1][np.newaxis, :],
+    #             self.plasma_pts[:, 0, np.newaxis],
+    #             self.plasma_pts[:, 1, np.newaxis],
+    #         )
+    #         greenm *= coils_dict[labelj]["polarity"][np.newaxis, :]
+    #         greenm *= coils_dict[labelj]["multiplier"][np.newaxis, :]
+    #         mey[j] = np.sum(greenm, axis=-1)
+    #     return 2 * np.pi * mey

@@ -116,7 +116,7 @@ class ControlSolenoid:
         dI = dIsol * self.vc
         return dI
 
-    def ip_control(self, time_stamp, Rp, inductacnes_pl, eq=None):
+    def ip_control(self, time_stamp, Rp, inductacnes_pl, Ip_obs=None, eq=None):
         """
         Execute all the steps in the pipeline for the control of the solenoid
         current, as prescribed by the PCS. This method is the API by design of
@@ -131,6 +131,10 @@ class ControlSolenoid:
             The plasma resistivity.
         - inductacnes_pl : dict
             A dictionary with all the required inductacnes_pl.
+        - Ip_obs : float
+            The observed plasma current. Defaults to None, in which case the observed plasma current is taken from the equilibrium/control params dictionary.
+        - eq : equilibrium object
+            optional equilibrium object
 
         Returns
         -------
@@ -138,10 +142,13 @@ class ControlSolenoid:
            Trajectories for the active coil currents due to the control on the
            solenoid coil.
         """
+        if Ip_obs is None:
+            Ip_obs = self.scheduler.get_observed_current(time_stamp, "Ip_obs", eq)
+            print(f"  Ip from equilibrium: {Ip_obs}")
+        else:
+            print(f"User defined Ip_obs: {Ip_obs}")
 
-        Ip_obs = self.scheduler.get_observed_current(time_stamp, "Ip_obs", eq)
-        print(f"  The observed Ip: {Ip_obs}")
-
+        # print(f"  The observed Ip: {Ip_obs}")
         # Implement the plasma category. First, the relevant entities should be
         # retrieved from the scheduler
         controlled_targets = self.scheduler.desired_target_values(time_stamp)

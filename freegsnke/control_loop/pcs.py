@@ -38,7 +38,7 @@ def check_currents(dIvec, Ivec):
     Ivec[Ivec > float_info.max] = float_info.max
 
 
-def calculate_voltage(
+def calculate_voltage_pf(
     R,
     inductance_ff,
     inductance_fb,
@@ -106,126 +106,7 @@ def calculate_voltage(
     return Vout
 
 
-# def main(eq_start, profiles_start, stepper):
-#     """
-#     Script that simulates the branch of the PCS that controls the active coil
-#     currents.
-
-#     Inputs :
-#     --------
-#     eq_start : eq object
-#         Equilibrium at start of simulation
-#     profiles_start : profiles object
-#         Profiles at start of simulation
-#     stepper : Stepper object (nl_solver)
-
-#     """
-
-#     pickle_folder = "/Users/alasdair.ross/Documents/HARTREE/freegsnke/freegsnke/control_loop/control_test_files"
-
-#     # Initialise the solenoid controller
-#     ip_controller = ControlSolenoid(
-#         f"{pickle_folder}/ip_sequence.pkl",
-#         f"{pickle_folder}/ip_schedule.pkl",
-#         f"{pickle_folder}/ip_control_params.pkl",
-#     )
-
-#     # Create necessary objects for plasma control that are supposed to be known
-#     # at runtime.
-#     Rp = 0.84  # Plasma resistivity
-#     inductacnes_pl = {
-#         "plasma": 3.9,  # Plasma inductance
-#         "mutual": 2.7,  # Plasma-Solenoid inductance
-#     }
-
-#     # Initialise the shape controller
-#     target_fb_scheduler = ShapeTargetScheduler(
-#         target_waveform_path=f"{pickle_folder}/target_waveform.pkl",
-#         target_schedule_path=f"{pickle_folder}/target_schedule.pkl",
-#         vc_flag="file",
-#         vc_schedule_path=f"{pickle_folder}/test_vc_set.pkl",
-#     )
-
-#     target_ff_scheduler = TargetScheduler(
-#         target_schedule_path=f"{pickle_folder}/target_schedule.pkl",
-#         target_waveform_path=f"{pickle_folder}/target_waveform.pkl",
-#     )
-
-#     shape_controller = ShapeController(
-#         eq=eq_start,
-#         profiles=profiles_start,
-#         stepping=stepper,
-#         feedback_target_scheduler=target_fb_scheduler,
-#         feedforward_scheduler=target_ff_scheduler,
-#         coils=None,
-#     )
-
-#     # Create necessary objects for the FP category that are supposed to be
-#     # known at runtime.
-#     Rvec = np.random.rand(
-#         12,
-#     )  # Vector of resistivities
-#     inductance_matrix = deepcopy(shape_controller.inductance_full)
-#     gain_matrix = np.diag(
-#         np.random.rand(12)
-#     )  # Gain matrix for coils(what are these gains??)
-#     measured_I = np.random.rand(12) * 1e4  # Vector of measured coil currents
-
-#     # Initialise the estimation of the coil currents from the actions applied
-#     # by the PCS on the current trajectories. The PCS takes over when the
-#     # currents in the coils are I0.
-#     I0 = np.random.rand(12) * 1e4
-#     est_I = I0
-#     # print("I0", I0, np.shape(I0))
-
-#     eq = deepcopy(eq_start)
-#     profiles = deepcopy(profiles_start)
-
-#     # Execute the PCS pipeline. Here it is assumed that the control is
-#     # performed over the ticking of some clock (hence the np.arange()).
-#     for timestamp in np.arange(0.15, 1, 0.1):
-#         print(f"time {timestamp} ")
-
-#         # 1. Plasma control
-#         sol_dI = ip_controller.ip_control(
-#             time_stamp=timestamp, Rp=Rp, inductacnes_pl=inductacnes_pl, eq=eq
-#         )
-#         # print("sol dI", sol_dI, np.shape(sol_dI))
-
-#         # 2. Shape control
-#         shp_dI = shape_controller.feedback_current_rate_timefunc(
-#             time_stamp=timestamp, eq=eq, profiles=profiles, gain_matrix=None
-#         )
-#         # print("shp dI", shp_dI, np.shape(shp_dI))
-
-#         # 3. Combine the currents coming from plasma and shape control
-#         dI = sol_dI + shp_dI
-#         # print("combined dI", dI, np.shape(dI))
-
-#         # 4. Estimate the absolute value of the currents.
-#         est_I += dI
-#         # print("est I", est_I, np.shape(est_I))
-
-#         # 5. System category
-#         check_currents(dI, est_I)
-
-
-#         # 6. PF category
-#         # FIXME As of now, inductance_matrix is used for both inductance_ff and
-#         # inductance_fb.
-#         V_out = calculate_voltage(
-#             R=Rvec,
-#             inductance_ff=inductance_matrix,
-#             inductance_fb=inductance_matrix,
-#             gains=gain_matrix,
-#             approved_dI=dI,
-#             approved_I=est_I,
-#             measured_I=measured_I,
-#         )
-#         print(f"The requested output voltage is {V_out}")
-
-
-def pf_voltage_request(
+def voltage_request(
     ip_controller,
     shape_controller,
     eq,
@@ -240,14 +121,57 @@ def pf_voltage_request(
     measured_I,
     coil_perturbation,
     targ_obs=None,
+    Ip_obs=None,
 ):
-    """ """
-    print(f"time {timestamp} ")
+    """
+    Computes the voltages required for the plasma, shape and coil perturbation categories and combines in pf category.
+    Need to provide schedulers, controllers, values for control parameters
+
+    Parameters
+    ----------
+    ip_controller : ControlSolenoid
+        An object that controls the plasma current.
+    shape_controller : ShapeController
+        An object that controls the shape currents.
+    eq : equilibrium object
+        equilibrium object
+    profiles : profiles object
+        profiles object
+    timestamp : float
+        time stamp of the target to be retrieved
+    Rp : float
+        plasma resistivity
+    inductacnes_pl : dict
+        A dictionary with all the required plasma inductacnes.
+    Rvec : numpy 1D array
+        The resistivity vector for the active coils.
+    inductance_matrix : numpy 2D array
+        The inductance matrix for the active coils.
+    gain_matrix : numpy 2D array
+        A diagonal matrix with the gains for each coil.
+    est_I : numpy 1D array
+        The estimated coil currents.
+    measured_I : numpy 1D array
+        The measured coil currents.
+    coil_perturbation : TargetScheduler
+        An object that controls the coil perturbation.
+    targ_obs : numpy 1D array
+        The observed coil currents.   Defaults to None, in which case the observed targets are computed from the equilibrium.
+    Ip_obs : float
+        The observed plasma current. Defaults to None, in which case the observed plasma current is taken from the equilibrium.
+
+    Returns
+    -------
+    numpy 1D array
+        The calculated voltages for the all the active coils.
+    """
+
+    print(f"Computing Voltage request at time: {timestamp} ")
 
     # 1. Plasma control
     print("\n Plasma Control")
     sol_dI = ip_controller.ip_control(
-        time_stamp=timestamp, Rp=Rp, inductacnes_pl=inductacnes_pl, eq=eq
+        time_stamp=timestamp, Rp=Rp, inductacnes_pl=inductacnes_pl, Ip_obs=Ip_obs, eq=eq
     )
     # print("sol dI", sol_dI, np.shape(sol_dI))
     # 2. Shape control
@@ -260,6 +184,10 @@ def pf_voltage_request(
         target_obs=targ_obs,
     )
     # print("shp dI", shp_dI, np.shape(shp_dI))
+    # 2.1. Coil perturbation
+    Ipert = coil_perturbation.desired_target_values(time_stamp=timestamp)
+    print("coil pert value ", Ipert, np.shape(Ipert))
+    ## add this coil currents to ....????
 
     # 3. Combine the currents coming from plasma and shape control
     dI = sol_dI + shp_dI
@@ -270,11 +198,6 @@ def pf_voltage_request(
     # todo Add coil perturbation here ??
     # print("est I", est_I, np.shape(est_I))
 
-    # 4.1. Coil perturbation
-    Ipert = coil_perturbation.desired_target_values(time_stamp=timestamp)
-    print("coil pert value ", Ipert, np.shape(Ipert))
-    ## add this coil currents to ....????
-
     # 5. System category
     check_currents(dI, est_I)
 
@@ -282,7 +205,7 @@ def pf_voltage_request(
     # FIXME As of now, inductance_matrix is used for both inductance_ff and
     # inductance_fb.
     print("\n Calculating Voltage Requests")
-    V_out = calculate_voltage(
+    V_out = calculate_voltage_pf(
         R=Rvec,
         inductance_ff=inductance_matrix,
         inductance_fb=inductance_matrix,
@@ -292,6 +215,166 @@ def pf_voltage_request(
         measured_I=measured_I,
     )
     print(f"The requested output voltage is {V_out}")
+    return V_out
+
+
+def get_measured_shape_vals(measured_dict, names, pos):
+    """
+    Extracts the values of the shape targets from the measured values dictionary.
+    dict of form {"times" : [vals], "targ_1" : [vals], "targ_2" : [vals]}
+
+    Parameters
+    ----------
+    dict : dict
+        Dictionary containing the measured values.
+    names : list
+        List of target names.
+    pos : int
+        Position of the target in the list.
+
+    Returns
+    -------
+    list
+        List of target values.
+    """
+    return np.array([measured_dict[name][pos] for name in names])
+
+
+def validate_shot(
+    config_kwargs,
+    control_kwargs,
+    eq_start,
+    profiles_start,
+    stepper,
+    # ip_vals,
+    # shape_vals,
+    # timestamps,
+    measured_vals,
+):
+    """
+    Run validation of control with historic measurements, rather than equi simulation.
+
+    Provide the simulation inputs (schedules, control parameters), eqi, profiles, stepper (provides machine description)
+    provide also the measured values for the plasma current and shape currents, along with associated timestamps.
+
+    Parameters
+    ----------
+    config_kwargs : dict
+        dictionary of configuration parameters (values for resistances, inductances, etc.)
+    control_kwargs : dict
+        dictionary of configuration filespaths (schedules, waveforms, etc)
+    eq_start : eq object
+        equilibrium object
+    profiles_start : profiles object
+        profiles object
+    stepper : Stepper object (nl_solver)
+        Non Linear Solver object
+    ip_vals : numpy 1D array
+        measured plasma current values
+    shape_vals : numpy 1D array
+        measured shape current values
+    timestamps : numpy 1D array
+        timestamps for the measured values
+
+    Returns
+    -------
+    None
+    """
+
+    # Load schedulers and controllers
+    # Load configuration parameters needed at runtime.
+    Rp = config_kwargs["plasma_resistivity"]  # Plasma resistivity
+    inductances_pl = {
+        "plasma": config_kwargs["plasma_inductance"],  # Plasma inductance
+        "mutual": config_kwargs["plas_sol_inductance"],  # Plasma-Solenoid inductance
+    }
+
+    Rvec = config_kwargs["R_vec"]  # Vector of resistivities
+    if "inductance_matrix" in config_kwargs.keys():
+        inductance_matrix = config_kwargs["inductance_matrix"]
+        print("Using user provided inductance matrix")
+    else:
+        inductance_matrix = (
+            None  # default inductance matrix (initialized below in shape controller)
+        )
+    gain_matrix = config_kwargs[
+        "coil_gains"
+    ]  # Gain matrix for coils(what are these gains??)
+    active_coils = list(eq_start.tokamak.coils_dict.keys())[
+        : eq_start.tokamak.n_active_coils
+    ]
+
+    # Load Schedulers
+    target_ff_scheduler = TargetScheduler(
+        target_schedule_path=control_kwargs["ff_target_schedule"],
+        target_waveform_path=control_kwargs["ff_target_waveform"],
+    )
+    target_fb_scheduler = ShapeTargetScheduler(
+        target_waveform_path=control_kwargs["fb_target_waveform"],
+        target_schedule_path=control_kwargs["fb_target_schedule"],
+        vc_flag=control_kwargs["vc_flag"],
+        vc_schedule_path=control_kwargs["vc_schedule"],
+    )
+
+    # Initialise controllers
+    # Initialise the solenoid controller
+    ip_controller = ControlSolenoid(
+        target_sched_path=control_kwargs["ip_schedule"],
+        target_waveform_path=control_kwargs["ip_waveform"],
+        contr_params_path=control_kwargs["ip_control_params"],
+    )
+
+    shape_controller = ShapeController(
+        eq=eq_start,
+        profiles=profiles_start,
+        stepping=stepper,
+        feedback_target_scheduler=target_fb_scheduler,
+        feedforward_scheduler=target_ff_scheduler,
+        coils=None,
+        inductance_matrix=inductance_matrix,
+    )
+
+    inductance_matrix = deepcopy(
+        shape_controller.inductance_full
+    )  ### needst tidying as code (inductance matrix recreated multiple times)
+    # TODO I_Coil_Pert category ....
+    coil_perturbation = TargetScheduler(
+        target_schedule_path=control_kwargs["coil_pert_schedule"],
+        target_waveform_path=control_kwargs["coil_pert_waveform"],
+    )
+    currents_start = [eq_start.tokamak.getCurrents()[key] for key in active_coils]
+
+    for i, timestamp in enumerate(measured_vals["time_stamps"]):
+        # Ip_val = ip_vals[i]
+        # shape_vals = shape_vals[i]
+        print(
+            f" --------------- \n TIMESLICE COMPUTATION  {timestamp}, pos {i} \n ---------------"
+        )
+        controlled_targs = (
+            shape_controller.feedback_target_scheduler.retrieve_controlled_targets(
+                timestamp
+            )
+        )
+        Ip_val = get_measured_shape_vals(measured_vals, ["Ip_vals"], i)[0]
+        shape_vals = get_measured_shape_vals(measured_vals, controlled_targs, i)
+
+        voltage_request(
+            ip_controller,
+            shape_controller,
+            eq=eq_start,
+            profiles=profiles_start,
+            timestamp=timestamp,
+            Rp=Rp,
+            inductacnes_pl=inductances_pl,
+            Rvec=Rvec,
+            inductance_matrix=inductance_matrix,
+            est_I=currents_start,
+            measured_I=currents_start,  # ?is this what we want?
+            gain_matrix=gain_matrix,
+            coil_perturbation=coil_perturbation,
+            targ_obs=shape_vals,
+            Ip_obs=Ip_val,
+        )
 
 
 def simulate_shot(
@@ -404,7 +487,7 @@ def simulate_shot(
     # performed over the ticking of some clock (hence the np.arange()).
     for timestamp in time_slices:
         ##compute voltage request
-        pf_voltage_request(
+        V_req = voltage_request(
             ip_controller,
             shape_controller,
             eq,

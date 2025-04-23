@@ -805,12 +805,8 @@ def load_efit_times_and_status_splines(client, shot=45425):
 # ------------
 # ------------
 def load_static_solver_inputs(
-    client, 
-    active_coils_path,
-    passive_coils_path,
-    shot=45425, 
-    zero_passives=False
-    ):
+    client, active_coils_path, passive_coils_path, shot=45425, zero_passives=False
+):
     """
     Extract the key (magnetics-only) EFIT++ reconstruction data at each time slice so that
     we can use it in FreeGSNKE to carry out static forward GS solves.
@@ -820,9 +816,9 @@ def load_static_solver_inputs(
     client :
         The pyUDA client.
     active_coils_path : str
-        Path to active coils pickle. 
+        Path to active coils pickle.
     passive_coils_path : str
-        Path to passive coils pickle. 
+        Path to passive coils pickle.
     shot : int
         MAST-U shot number.
     zero_passives : bool
@@ -984,12 +980,8 @@ def load_static_solver_inputs(
 # ------------
 # ------------
 def load_static_solver_inputs_splines(
-    client, 
-    active_coils_path,
-    passive_coils_path,
-    shot=45425, 
-    zero_passives=False
-    ):
+    client, active_coils_path, passive_coils_path, shot=45425, zero_passives=False
+):
     """
     Extract the key (magnetics + motional stark effect) EFIT++ reconstruction data at each
     time slice so that we can use it in FreeGSNKE to carry out static forward GS solves.
@@ -999,9 +991,9 @@ def load_static_solver_inputs_splines(
     client :
         The pyUDA client.
     active_coils_path : str
-        Path to active coils pickle. 
+        Path to active coils pickle.
     passive_coils_path : str
-        Path to passive coils pickle. 
+        Path to passive coils pickle.
     shot : int
         MAST-U shot number.
     zero_passives : bool

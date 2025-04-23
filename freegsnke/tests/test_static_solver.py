@@ -34,7 +34,7 @@ def create_machine():
         wall_path=f"./machine_configs/test/wall.pickle",
         magnetic_probe_path=f"./machine_configs/test/magnetic_probes.pickle",
     )
-    
+
     # Creates equilibrium object and initializes it with
     # a "good" solution
     # plasma_psi = np.loadtxt('plasma_psi_example.txt')

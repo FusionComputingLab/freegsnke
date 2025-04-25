@@ -5,6 +5,7 @@ the active coils of the MAST-U tokamak reactor.
 """
 
 import numpy as np
+import pickle
 from sys import float_info
 from copy import deepcopy
 
@@ -13,6 +14,7 @@ from .ip_control import ControlSolenoid
 from .target_scheduler import TargetScheduler
 from .vc_scheduler import ShapeTargetScheduler
 from .shape_targets_control import ShapeController
+from .vertical_control import vertical_controller
 
 
 def check_currents(dIvec, Ivec):
@@ -43,17 +45,18 @@ def calculate_voltage_pf(
     inductance_ff,
     inductance_fb,
     gains,
-    approved_dI,
+    approved_dI_dt,
     approved_I,
     measured_I,
-    pert_I=None,
+    Ipert=None,
+    dIpert_dt=None,
 ):
     """
     Calculate the output voltage to apply on the coils, as prescribed in
     the PF category of the PCS. The equations followed are:
 
     V_fb = gains * (approved_I - measured_I) * M_fb
-    V_ff = approved_dI * M_ff
+    V_ff = approved_dI_dt* M_ff
     V_res = measured_I * R
     V = V_fb + V_ff + V_res
 
@@ -67,7 +70,7 @@ def calculate_voltage_pf(
         The feedback inductance matrix of the active coils.
     - gains : numpy 2D array
         A diagonal matrix with the gains for each coil.
-    - approved_dI : numpy 1D array
+    - approved_dI_dt: numpy 1D array
         Approved change of rate of the coil currents by the system category of
         the PCS.
     - approved_I : numpy 1D array
@@ -86,6 +89,7 @@ def calculate_voltage_pf(
     # print("gains shape,", np.shape(gains), gains)
     # print("approved I shape,", np.shape(approved_I), approved_I)
     # print("measured I shape,", np.shape(measured_I), measured_I)
+    approved_I += Ipert
     Corrected_I = gains @ (approved_I - measured_I)
     # print("corrected I", np.shape(Corrected_I), Corrected_I)
     # print("inductance_fb", np.shape(inductance_fb), inductance_fb)
@@ -93,7 +97,8 @@ def calculate_voltage_pf(
     print(f"    The feedback voltage: {V_fb}")
 
     # Compute the feedforward voltage
-    V_ff = inductance_ff @ approved_dI
+    approved_dI_dt += dIpert_dt
+    V_ff = inductance_ff @ approved_dI_dt
     print(f"    The feedforward voltage: {V_ff}")
 
     # Compute the resistive voltage
@@ -170,36 +175,39 @@ def voltage_request(
 
     # 1. Plasma control
     print("\n Plasma Control")
-    sol_dI = ip_controller.ip_control(
+    sol_dI_dt = ip_controller.ip_control(
         time_stamp=timestamp, Rp=Rp, inductacnes_pl=inductacnes_pl, Ip_obs=Ip_obs, eq=eq
     )
     # print("sol dI", sol_dI, np.shape(sol_dI))
     # 2. Shape control
     print("\n Shape Control")
-    shp_dI = shape_controller.feedback_current_rate_timefunc(
+    shp_dI_dt = shape_controller.feedback_current_rate_timefunc(
         time_stamp=timestamp,
         eq=eq,
         profiles=profiles,
         gain_matrix=None,
         target_obs=targ_obs,
     )
-    # print("shp dI", shp_dI, np.shape(shp_dI))
+    # print("shp dI", shp_dI_dt, np.shape(shp_dI_dt))
     # 2.1. Coil perturbation
     Ipert = coil_perturbation.desired_target_values(time_stamp=timestamp)
+    dIpert_dt = coil_perturbation.feed_forward_gradient(
+        time_stamp=timestamp, targets=None
+    )
     print("coil pert value ", Ipert, np.shape(Ipert))
     ## add this coil currents to ....????
 
     # 3. Combine the currents coming from plasma and shape control
-    dI = sol_dI + shp_dI
+    dI_dt = sol_dI_dt + shp_dI_dt
     # print("combined dI", dI, np.shape(dI))
 
     # 4. Estimate the absolute value of the currents.
-    est_I += dI
+    est_I += dI_dt
     # todo Add coil perturbation here ??
     # print("est I", est_I, np.shape(est_I))
 
     # 5. System category
-    check_currents(dI, est_I)
+    check_currents(dI_dt, est_I)
 
     # 6. PF category
     # FIXME As of now, inductance_matrix is used for both inductance_ff and
@@ -210,9 +218,11 @@ def voltage_request(
         inductance_ff=inductance_matrix,
         inductance_fb=inductance_matrix,
         gains=gain_matrix,
-        approved_dI=dI,
+        approved_dI_dt=dI_dt,
         approved_I=est_I,
         measured_I=measured_I,
+        Ipert=Ipert,
+        dIpert_dt=dIpert_dt,
     )
     print(f"The requested output voltage is {V_out}")
     return V_out
@@ -245,7 +255,7 @@ def validate_shot(
     control_kwargs,
     eq_start,
     profiles_start,
-    stepper,
+    stepping,
     # ip_vals,
     # shape_vals,
     # timestamps,
@@ -254,7 +264,7 @@ def validate_shot(
     """
     Run validation of control with historic measurements, rather than equi simulation.
 
-    Provide the simulation inputs (schedules, control parameters), eqi, profiles, stepper (provides machine description)
+    Provide the simulation inputs (schedules, control parameters), eqi, profiles, stepping (provides machine description)
     provide also the measured values for the plasma current and shape currents, along with associated timestamps.
 
     Parameters
@@ -267,7 +277,7 @@ def validate_shot(
         equilibrium object
     profiles_start : profiles object
         profiles object
-    stepper : Stepper object (nl_solver)
+    stepping : stepping object (nl_solver)
         Non Linear Solver object
     ip_vals : numpy 1D array
         measured plasma current values
@@ -327,7 +337,7 @@ def validate_shot(
     shape_controller = ShapeController(
         eq=eq_start,
         profiles=profiles_start,
-        stepping=stepper,
+        stepping=stepping,
         feedback_target_scheduler=target_fb_scheduler,
         feedforward_scheduler=target_ff_scheduler,
         coils=None,
@@ -380,8 +390,9 @@ def validate_shot(
 def simulate_shot(
     eq_start,
     profiles_start,
-    stepper,
-    time_slices,
+    stepping,
+    t_start,
+    n_iter,
     config_kwargs,
     control_kwargs,
 ):
@@ -394,10 +405,12 @@ def simulate_shot(
         equilibrium object
     profiles : profiles object
         profiles object
-    stepper : Stepper object (nl_solver)
+    stepping : stepping object (nl_solver)
         Non Linear Solver object
-    time_slices : list
-        list of time slices to simulate
+    t_start : float
+        starting time for simulation
+    n_iter : int
+        number of iterations to simulate
     config_kwargs : dict
         dictionary of configuration parameters (values for resistances, inductances, etc.)
     control_kwargs : dict
@@ -454,7 +467,7 @@ def simulate_shot(
     shape_controller = ShapeController(
         eq=eq_start,
         profiles=profiles_start,
-        stepping=stepper,
+        stepping=stepping,
         feedback_target_scheduler=target_fb_scheduler,
         feedforward_scheduler=target_ff_scheduler,
         coils=None,
@@ -464,7 +477,6 @@ def simulate_shot(
     inductance_matrix = deepcopy(
         shape_controller.inductance_full
     )  ### needst tidying as code (inductance matrix recreated multiple times)
-    # TODO I_Coil_Pert category ....
     coil_perturbation = TargetScheduler(
         target_schedule_path=control_kwargs["coil_pert_schedule"],
         target_waveform_path=control_kwargs["coil_pert_waveform"],
@@ -483,89 +495,96 @@ def simulate_shot(
     eq = deepcopy(eq_start)
     profiles = deepcopy(profiles_start)
 
-    # Execute the PCS pipeline. Here it is assumed that the control is
-    # performed over the ticking of some clock (hence the np.arange()).
-    for timestamp in time_slices:
+    # instatiate NL solver stuff....
+    t = t_start
+    dt = stepping.dt_step
+    t_stop = t_start + n_iter * dt
+    history_jz = [
+        np.mean(stepping.profiles1.jtor / stepping.profiles1.Ip * eq.Z)
+    ]  # for vertical controller
+
+    # initialise storage list for data collection (for plotting later )
+    history_times = [t]
+    history_eqs = [deepcopy(stepping.eq1)]
+    history_full_currents = [stepping.currents_vec[:-1]]
+    history_Ip = [stepping.profiles1.Ip]
+    history_voltages = []
+    history_plasma_resistivity = [stepping.plasma_resistivity]
+
+    # for timestamp in time_slices:  # do around 1000hz
+    # do as while loop
+    while t < t_stop:
+        print(f"------\n Simulation at t={t} \n --------")
+        t += dt
         ##compute voltage request
-        V_req = voltage_request(
+        v_requested = voltage_request(
             ip_controller,
             shape_controller,
-            eq,
-            profiles,
-            timestamp,
-            Rp,
-            inductances_pl,
-            Rvec,
-            inductance_matrix,
-            gain_matrix,
-            est_I,
-            measured_I,
-            coil_perturbation,
-            targ_obs=None,
+            eq=eq_start,
+            profiles=profiles_start,
+            timestamp=t,
+            Rp=Rp,
+            inductacnes_pl=inductances_pl,
+            Rvec=Rvec,
+            inductance_matrix=inductance_matrix,
+            est_I=est_I,
+            measured_I=measured_I,
+            gain_matrix=gain_matrix,
+            coil_perturbation=coil_perturbation,
         )
         #### update equi
+
+        v_requested[-1] = vertical_controller(
+            dt=stepping.dt_step,
+            target=0.0,
+            history=history_jz,
+            k_prop=-20000,
+            k_int=0,
+            k_deriv=-50,
+            prop_exponent=1.0,
+            prop_error=1e-3,
+            deriv_threshold=50,
+            int_factor=0.98,
+            Ip=stepping.profiles1.Ip,
+            Ip_ref=750e3,
+            derivative_lag=1,
+        )
+
+        # copy from example 6c.
+
+        # update equilibrium
+        # carry out the time step
+        print("updating equilibrium with nolinear solve")
+        stepping.nlstepper(active_voltage_vec=v_requested, linear_only=True, verbose=0)
+
+        #   # store inputs/outputs
+        history_times.append(t)
+        history_Ip.append(stepping.profiles1.Ip)
+        history_full_currents.append(stepping.currents_vec[:-1])
+        history_voltages.append(v_requested)
+        history_plasma_resistivity.append(stepping.plasma_resistivity)
+        history_jz.append(
+            np.mean(stepping.profiles1.jtor / stepping.profiles1.Ip * eq.Z)
+        )
+
+        # save the history to file
+        history_dict = {
+            "times": history_times,
+            "equilibrium": history_eqs,
+            "full_currents": history_full_currents,
+            "Ip": history_Ip,
+            "voltages": history_voltages,
+            "plasma_resistivity": history_plasma_resistivity,
+            "jz": history_jz,
+        }
+        # with open("history.pkl", "wb") as fp:
+        #     pickle.dump(history_dict, fp)
+        return history_dict
 
 
 if __name__ == "__main__":
 
-    # create equi, profiels and stepper
-    # use base example in freeegsnke
-    from freegs4e.gradshafranov import mu0  # permeability
-    from freegsnke import GSstaticsolver, build_machine, equilibrium_update, jtor_update
-    from freegsnke import virtual_circuits as vc
-    from freegsnke.jtor_update import Lao85
-    from freegsnke.nonlinear_solve import nl_solver
-
-    from copy import deepcopy
-
-    def create_equilibrium(plasma_psi=None) -> tuple:
-
-        tokamak = build_machine.tokamak()
-
-        eq = equilibrium_update.Equilibrium(
-            tokamak=tokamak,  # provide tokamak object
-            Rmin=0.1,
-            Rmax=2.0,  # radial range
-            Zmin=-2.2,
-            Zmax=2.2,  # vertical range
-            nx=129,  # number of grid points in the radial direction (needs to be of the form (2**n + 1) with n being an integer)
-            ny=129,  # number of grid points in the vertical direction (needs to be of the form (2**n + 1) with n being an integer)
-            # psi=plasma_psi
-        )
-
-        alpha = np.array([1, 0, -1])
-        beta = (1 - 0.3) / 0.3 * alpha * mu0
-
-        profiles = Lao85(
-            eq=eq,
-            limiter=tokamak.limiter,
-            Ip=6e5,
-            fvac=0.5,
-            alpha=alpha,
-            beta=beta,
-            alpha_logic=False,
-            beta_logic=False,
-            Ip_logic=True,
-        )
-
-        # Define solver
-        GSStaticSolver = GSstaticsolver.NKGSsolver(eq)
-
-        return eq, profiles, GSStaticSolver
-
-    # base equi and profiles and solver - contains machine informatoin and greens functions
-    eq_base, profiles_base, solver = create_equilibrium()
-    GSStaticSolver = GSstaticsolver.NKGSsolver(eq_base)
-
-    eq_start = deepcopy(eq_base)
-    profiles_start = deepcopy(profiles_base)
-
-    stepper = nl_solver(
-        profiles=profiles_start,
-        eq=eq_start,
-        mode_removal=False,
-        linearize=False,
-    )
+    pass
 
     test_control_kwargs = {
         "ip_schedule": "../freegsnke/control_loop/control_test_files/ip_schedule.pkl",

@@ -66,26 +66,18 @@ class Gradient_inverse:
         if isoflux_set is not None:
             try:
                 type(self.isoflux_set[0][0][0])
-                self.isoflux_set = []
-                for isoflux in isoflux_set:
-                    self.isoflux_set.append(np.array(isoflux))
             except:
                 self.isoflux_set = np.array(self.isoflux_set)[np.newaxis]
             self.isoflux_set_n = [len(isoflux[0]) for isoflux in self.isoflux_set]
-            # self.isoflux_set_n = [n * (n - 1) / 2 for n in self.isoflux_set_n]
+            self.isoflux_set_n = [n * (n - 1) / 2 for n in self.isoflux_set_n]
 
         self.null_points = null_points
-        if self.null_points is not None:
-            self.null_points = np.array(self.null_points)
 
         self.psi_vals = psi_vals
         if self.psi_vals is not None:
             self.full_grid = False
             self.psi_vals = np.array(self.psi_vals)
             self.psi_vals = self.psi_vals.reshape((3, -1))
-            # subtract unimportant vertical shift
-            self.psi_vals[2] -= np.mean(self.psi_vals[2])
-            self.norm_psi_vals = np.linalg.norm(self.psi_vals[2])
 
         if gradient_weights is None:
             gradient_weights = np.ones(3)
@@ -104,6 +96,8 @@ class Gradient_inverse:
             -   green functions
         """
         self.build_control_coils(eq)
+        self.build_full_current_vec(eq)
+        self.build_control_currents_Vec(self.full_currents_vec)
         self.build_greens(eq)
 
     def build_control_coils(self, eq):
@@ -158,7 +152,7 @@ class Gradient_inverse:
         """
         self.full_currents_vec = eq.tokamak.getCurrentsVec()
 
-    def rebuild_full_current_vec(self, control_currents, filling=0):
+    def rebuild_full_current_vec(self, control_currents):
         """Builds a full_current vector using the input values.
         Only the coil currents of the coils available for control are filled in.
 
@@ -167,7 +161,7 @@ class Gradient_inverse:
         control_currents : np.array
             Vector of coil currents for those coils available for control.
         """
-        full_current_vec = filling * np.ones_like(self.full_current_dummy)
+        full_current_vec = np.zeros_like(self.full_current_dummy)
         for i, current in enumerate(control_currents):
             full_current_vec[self.coil_order[self.control_coils[i][0]]] = current
         return full_current_vec
@@ -182,15 +176,9 @@ class Gradient_inverse:
 
         if self.isoflux_set is not None:
             self.dG_set = []
-            self.mask_set = []
-            for i, isoflux in enumerate(self.isoflux_set):
+            for isoflux in self.isoflux_set:
                 G = eq.tokamak.createPsiGreensVec(R=isoflux[0], Z=isoflux[1])
-                mask = np.triu(
-                    np.ones((self.isoflux_set_n[i], self.isoflux_set_n[i])), k=1
-                ).astype(bool)
-                self.mask_set.append(mask)
-                dG = G[:, :, np.newaxis] - G[:, np.newaxis, :]
-                self.dG_set.append(dG[:, mask])
+                self.dG_set.append(G[:, :, np.newaxis] - G[:, np.newaxis, :])
 
         if self.null_points is not None:
             self.Gbr = eq.tokamak.createBrGreensVec(
@@ -236,17 +224,10 @@ class Gradient_inverse:
             )
 
         if self.isoflux_set is not None:
-            self.d_psi_plasma_vals_iso = []
-            self.d_psi_plasma_vals_iso_plus = []
-            for i, isoflux in enumerate(self.isoflux_set):
-                plasma_vals = psi_func(isoflux[0], isoflux[1], grid=False)
-                d_plasma_vals = plasma_vals[:, np.newaxis] - plasma_vals[np.newaxis, :]
-                self.d_psi_plasma_vals_iso.append(d_plasma_vals[self.mask_set[i]])
-                d_plasma_vals_plus = (
-                    plasma_vals[:, np.newaxis] + plasma_vals[np.newaxis, :]
-                )
-                self.d_psi_plasma_vals_iso_plus.append(
-                    d_plasma_vals_plus[self.mask_set[i]]
+            self.psi_plasma_vals_iso = []
+            for isoflux in self.isoflux_set:
+                self.psi_plasma_vals_iso.append(
+                    psi_func(isoflux[0], isoflux[1], grid=False)
                 )
 
         if self.psi_vals is not None:
@@ -257,95 +238,16 @@ class Gradient_inverse:
                     self.psi_vals[0], self.psi_vals[1], grid=False
                 )
 
-    def build_isoflux_lsq(self, full_currents_vec):
+    def build_isoflux_lsq(
+        self,
+    ):
 
-        loss = []
+        loss = 0
         A = []
         b = []
         for i, isoflux in enumerate(self.isoflux_set):
-            A.append(self.dG_set[i][self.control_mask].T)
-            b_val = np.sum(self.dG_set[i] * full_currents_vec[:, np.newaxis], axis=0)
-            b_val += self.d_psi_plasma_vals_iso[i]
-            b.append(-b_val)
 
-            loss.append(np.linalg.norm(b_val))
-        return A, b, loss
-
-    def build_null_points_lsq(self, full_currents_vec):
-
-        # radial field
-        A_r = self.Gbr[self.control_mask].T
-        b_r = np.sum(self.Gbr * full_currents_vec[:, np.newaxis], axis=0)
-        b_r += self.brp
-        loss = [np.linalg.norm(b_r)]
-
-        # vertical field
-        A_z = self.Gbz[self.control_mask].T
-        b_z = np.sum(self.Gbz * full_currents_vec[:, np.newaxis], axis=0)
-        b_z += self.bzp
-        loss.append(np.linalg.norm(b_z))
-
-        A = np.concatenate((A_r, A_z), axis=0)
-        b = -np.concatenate((b_r, b_z), axis=0)
-        return A, b, loss
-
-    def build_psi_vals_lsq(self, full_currents_vec):
-
-        A = self.G[self.control_mask].T
-        b = np.sum(self.G * full_currents_vec[:, np.newaxis], axis=0)
-        b += self.psi_plasma_vals
-        # subtract mean value
-        b -= np.mean(b)
-        b -= self.psi_vals[2]
-        b *= -1
-        normalised_loss = np.linalg.norm(b) / self.norm_psi_vals
-
-        return A, b, [normalised_loss]
-
-    def build_lsq(self, full_currents_vec):
-
-        loss = 0
-        A = np.empty(shape=(0, self.n_control_coils))
-        b = np.empty(shape=0)
-        loss = []
-        if self.isoflux_set is not None:
-            A_i, b_i, l = self.build_isoflux_lsq(full_currents_vec)
-            A = np.concatenate(A_i, axis=0)
-            b = np.concatenate(b_i, axis=0)
-            loss = loss + l
-        if self.null_points is not None:
-            A_np, b_np, l = self.build_null_points_lsq(full_currents_vec)
-            A = np.concatenate((A, A_np), axis=0)
-            b = np.concatenate((b, b_np), axis=0)
-            loss = loss + l
-        if self.psi_vals is not None:
-            A_pv, b_pv, l = self.build_psi_vals_lsq(full_currents_vec)
-            A = np.concatenate((A, A_pv), axis=0)
-            b = np.concatenate((b, b_pv), axis=0)
-            loss = loss + l
-        self.A = np.copy(A)
-        self.b = np.copy(b)
-        self.loss = np.array(loss)
-        # return A, b, loss
-
-    def optimize_currents(
-        self, full_currents_vec, trial_plasma_psi, l2_reg, plasma_calc=True
-    ):
-        # prepare the plasma-related values
-        if plasma_calc:
-            self.build_plasma_vals(trial_plasma_psi=trial_plasma_psi)
-
-        # build the matrices that define the optimization
-        self.build_lsq(full_currents_vec)
-
-        if type(l2_reg) == float:
-            reg_matrix = l2_reg * np.eye(self.n_control_coils)
-        else:
-            reg_matrix = np.diag(l2_reg)
-        mat = np.linalg.inv(np.matmul(self.A.T, self.A) + reg_matrix)
-        delta_current = np.dot(mat, np.dot(self.A.T, self.b))
-
-        return delta_current, self.loss
+            self.dG_set[i]
 
     def build_isoflux_gradient(
         self,

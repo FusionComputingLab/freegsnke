@@ -88,8 +88,8 @@ class ControlSolenoid:
 
         Returns
         -------
-        - dIsol : float
-            dIsol stands for ΔIsol/Δt.
+        - dIsoldt : float
+            dIsoldt stands for ΔIsol/Δt.
 
         """
 
@@ -108,13 +108,13 @@ class ControlSolenoid:
 
         # Compute the rate of change of the solenoid current
         M_sp = inductacnes_pl["mutual"]
-        dIsol = -Vloop * (1 / M_sp)
-        print(f"    The trajectory for the solenoid current: {dIsol}")
+        dIsoldt = -Vloop * (1 / M_sp)
+        print(f"    The trajectory for the solenoid current: {dIsoldt}")
 
-        # Apply dIsol to virtual circuit vector to get the current trajectories
+        # Apply dIsoldt to virtual circuit vector to get the current trajectories
         # of the active coils
-        dI = dIsol * self.vc
-        return dI
+        dI_dt = dIsoldt * self.vc
+        return dI_dt
 
     def ip_control(self, time_stamp, Rp, inductacnes_pl, Ip_obs=None, eq=None):
         """
@@ -155,8 +155,8 @@ class ControlSolenoid:
         if not controlled_targets:
             print(f"  The plasma current is not controlled at t: {time_stamp}")
             # return None
-            dI = np.zeros_like(self.vc)  # return array of zeros if not controlled
-            return dI
+            dI_dt = np.zeros_like(self.vc)  # return array of zeros if not controlled
+            return dI_dt
         Ip_req = controlled_targets[0]
         print(f"  The requested Ip: {Ip_req}")
         Vloop_req = self.scheduler.retrieve_parameter(time_stamp, "Vloop")
@@ -165,7 +165,7 @@ class ControlSolenoid:
         print(f"  The plasma gain: {gain_p}")
         blend = self.scheduler.retrieve_parameter(time_stamp, "blend")
         print(f"  The blend value: {blend}")
-        dI = self.calculate_solenoid_delta(
+        dI_dt = self.calculate_solenoid_delta(
             inductacnes_pl=inductacnes_pl,
             Ip_obs=Ip_obs,
             Ip_req=Ip_req,
@@ -174,7 +174,7 @@ class ControlSolenoid:
             blend=blend,
         )
 
-        return dI
+        return dI_dt
 
 
 class SolenoidScheduler(TargetScheduler):

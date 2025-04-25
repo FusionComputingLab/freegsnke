@@ -114,7 +114,7 @@ class ShapeController:
         print("control coils", self.control_coils)
 
         # get inductance matrix (full with all active coils)
-        # ??Machine config and inductance matrix will come from stepper function later??
+        # ??Machine config and inductance matrix will come from stepping function later??
         if inductance_matrix is None:
             self.inductance_full = machine_config.coil_self_ind[
                 : len(self.active_coils), : len(self.active_coils)

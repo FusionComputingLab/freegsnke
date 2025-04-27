@@ -685,37 +685,60 @@ class NKGSsolver:
         rel_delta_psit /= np.linalg.norm(self.tokamak_psi)
         return rel_delta_psit
 
-    def inverse_Newton(
+    def get_rel_delta_psi(self, psi, previous_psi, profiles):
+        if hasattr(profiles, "diverted_core_mask"):
+            if profiles.diverted_core_mask is not None:
+                core_mask = np.copy(profiles.diverted_core_mask)
+            else:
+                core_mask = np.ones_like(self.eqR)
+        else:
+            core_mask = np.ones_like(self.eqR)
+        core_mask = core_mask.reshape(-1)
+        rel_delta_psit = np.linalg.norm((psi - previous_psi) * core_mask)
+        rel_delta_psit /= np.linalg.norm((psi + previous_psi) * core_mask)
+        return rel_delta_psit
+
+    def optimize_currents(
         self,
         eq,
         profiles,
         constrain,
-        step_size,
         target_relative_tolerance,
+        relative_psit_size=1e-3,
         l2_reg=1e-12,
     ):
 
         self.dbdI = np.zeros((np.size(constrain.b), constrain.n_control_coils))
-        self.eq2 = deepcopy(eq)
         self.dummy_current = np.zeros(constrain.n_control_coils)
 
         full_current_vec = np.copy(eq.tokamak.current_vec)
 
-        delta_currents, loss = constrain.optimize_currents(
+        self.forward_solve(
+            eq=eq,
+            profiles=profiles,
+            target_relative_tolerance=target_relative_tolerance,
+        )
+        delta_current, loss = constrain.optimize_currents(
             full_currents_vec=full_current_vec,
             trial_plasma_psi=eq.plasma_psi,
             l2_reg=1e-12,
         )
         b0 = np.copy(constrain.b)
+        rel_delta_psit = self.get_rel_delta_psit(
+            delta_current, profiles, eq._vgreen[constrain.control_mask]
+        )
+        adj_factor = min(1, relative_psit_size / rel_delta_psit)
+        print(delta_current, rel_delta_psit, adj_factor)
+        delta_current *= adj_factor
+        # delta_current_ = np.where(delta_current > 0.1, delta_current, 0.1*np.ones_like(delta_current))
 
-        delta_currents *= step_size
-        delta_currents = np.where(delta_currents > 0.1, delta_currents, 0.1)
-        print(delta_currents)
+        print(delta_current)
 
         for i in range(constrain.n_control_coils):
             currents = np.copy(self.dummy_current)
-            currents[i] = 1.0 * delta_currents[i]
+            currents[i] = 1.0 * delta_current[i]
             currents = full_current_vec + constrain.rebuild_full_current_vec(currents)
+            self.eq2 = deepcopy(eq)
             self.eq2.tokamak.set_all_coil_currents(currents)
             self.forward_solve(
                 eq=self.eq2,
@@ -727,7 +750,7 @@ class NKGSsolver:
                 trial_plasma_psi=self.eq2.plasma_psi,
                 l2_reg=1e-12,
             )
-            self.dbdI[:, i] = (constrain.b - b0) / delta_currents[i]
+            self.dbdI[:, i] = (constrain.b - b0) / delta_current[i]
 
         if type(l2_reg) == float:
             reg_matrix = l2_reg * np.eye(constrain.n_control_coils)
@@ -735,8 +758,9 @@ class NKGSsolver:
             reg_matrix = np.diag(l2_reg)
         mat = np.linalg.inv(np.matmul(self.dbdI.T, self.dbdI) + reg_matrix)
         Newton_delta_current = np.dot(mat, np.dot(self.dbdI.T, -b0))
+        loss = np.linalg.norm(b0 + np.dot(self.dbdI, Newton_delta_current))
 
-        return Newton_delta_current
+        return Newton_delta_current, loss
 
     def b_inverse_solve(
         self,
@@ -744,8 +768,10 @@ class NKGSsolver:
         profiles,
         target_relative_tolerance,
         constrain,
+        target_relative_psi_update=1e-3,
         l2_reg=1e-9,
-        target_relative_psi_update=1e-4,
+        full_jacobian_handover=5e-5,
+        l2_reg_fj=1e-8,
         verbose=False,
         max_solving_iterations=100,
         max_iter_per_update=5,
@@ -881,27 +907,39 @@ class NKGSsolver:
 
             # act on the control currents
             full_currents_vec = eq.tokamak.getCurrentsVec()
-            delta_current, loss = constrain.optimize_currents(
-                full_currents_vec=full_currents_vec,
-                trial_plasma_psi=eq.plasma_psi,
-                l2_reg=l2_reg,
-            )
+
+            this_max_rel_psit = min(max_rel_psit, np.mean(self.rel_psi_updates[-6:]))
+
+            if rel_change_full > full_jacobian_handover:
+                # use Greens as Jacobian: i.e. psi_plasma is assumed fixed
+                delta_current, loss = constrain.optimize_currents(
+                    full_currents_vec=full_currents_vec,
+                    trial_plasma_psi=eq.plasma_psi,
+                    l2_reg=l2_reg,
+                )
+            else:
+                # use complete Jacobian: psi_plasma changes with the coil currents
+                delta_current, loss = self.optimize_currents(
+                    eq=eq,
+                    profiles=profiles,
+                    constrain=constrain,
+                    target_relative_tolerance=target_relative_tolerance,
+                    relative_psit_size=this_max_rel_psit,
+                    l2_reg=l2_reg_fj,
+                )
+
             rel_delta_psit = self.get_rel_delta_psit(
                 delta_current, profiles, eq._vgreen[constrain.control_mask]
             )
             adj_factor = damping_factor**iterations * min(
-                1,
-                min(max_rel_psit, np.mean(self.rel_psi_updates[-6:])) / rel_delta_psit,
+                1, this_max_rel_psit / rel_delta_psit
             )
             delta_current *= adj_factor
             full_currents_vec += constrain.rebuild_full_current_vec(delta_current)
 
-            loss_increase = np.sum(loss > self.constrain_loss[-1])
-            if loss_increase:
-                forward_tolerance_increase *= (
-                    forward_tolerance_increase_factor**loss_increase
-                )
-                print(f"forward_tolerance_increase {forward_tolerance_increase}")
+            if loss > self.constrain_loss[-1]:
+                forward_tolerance_increase *= forward_tolerance_increase_factor
+                # print(f"forward_tolerance_increase {forward_tolerance_increase}")
 
             self.constrain_loss.append(loss)
             if verbose:
@@ -921,6 +959,9 @@ class NKGSsolver:
                 min(previous_rel_delta_psit / forward_tolerance_increase, 1e-2),
                 target_relative_tolerance,
             )
+            if self.rel_psi_updates[-1] < target_relative_psi_update:
+                tolerance = target_relative_tolerance
+                max_n_directions *= 2
 
             if verbose:
                 print(f"Handing off to forward_solve. Requested tolerance: {tolerance}")
@@ -949,32 +990,13 @@ class NKGSsolver:
             iterations += 1
 
             new_psi = self.tokamak_psi + eq.plasma_psi.reshape(-1)
-            rel_psi_update = np.linalg.norm(previous_psi - new_psi) / np.linalg.norm(
-                previous_psi + new_psi
-            )
+            rel_psi_update = self.get_rel_delta_psi(new_psi, previous_psi, profiles)
             self.rel_psi_updates.append(rel_psi_update)
             previous_psi = np.copy(new_psi)
             if verbose:
                 print(
                     f"Iteration {iterations} complete. Last relative change in psi {rel_psi_update}"
                 )
-
-        # self.forward_solve(
-        #         eq,
-        #         profiles,
-        #         target_relative_tolerance=target_relative_tolerance,
-        #         max_solving_iterations=max_iter_per_update,
-        #         Picard_handover=Picard_handover,
-        #         step_size=step_size,
-        #         scaling_with_n=scaling_with_n,
-        #         target_relative_unexplained_residual=target_relative_unexplained_residual,
-        #         max_n_directions=max_n_directions,
-        #         clip=clip,
-        #         clip_quantiles=clip_quantiles,
-        #         verbose=False,
-        #         max_rel_update_size=max_rel_update_size,
-        #         force_up_down_symmetric=force_up_down_symmetric,
-        #     )
 
         if iterations == 0:
             print("No solving iterations executed!")

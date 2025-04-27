@@ -345,121 +345,121 @@ class Gradient_inverse:
         mat = np.linalg.inv(np.matmul(self.A.T, self.A) + reg_matrix)
         delta_current = np.dot(mat, np.dot(self.A.T, self.b))
 
-        return delta_current, self.loss
+        return delta_current, np.linalg.norm(self.loss)
 
-    def build_isoflux_gradient(
-        self,
-    ):
-        """Builds the loss and gradient associated to the isoflux constraints."""
+    # def build_isoflux_gradient(
+    #     self,
+    # ):
+    #     """Builds the loss and gradient associated to the isoflux constraints."""
 
-        gradient = np.zeros(len(self.control_currents))
-        loss = 0
+    #     gradient = np.zeros(len(self.control_currents))
+    #     loss = 0
 
-        for i, isoflux in enumerate(self.isoflux_set):
-            dGI = np.sum(
-                self.dG_set[i] * self.full_currents_vec[:, np.newaxis, np.newaxis],
-                axis=0,
-            )
-            dpsip = (
-                self.psi_plasma_vals_iso[i][:, np.newaxis]
-                - self.psi_plasma_vals_iso[i][np.newaxis, :]
-            )
-            Liso = np.triu(dpsip + dGI, k=1)
-            dLiso = Liso[np.newaxis, :, :] * self.dG_set[i][self.control_mask]
-            gradient += np.sum(dLiso, axis=(1, 2)) / self.isoflux_set_n[i]
-            loss += np.sum(Liso**2) / self.isoflux_set_n[i]
+    #     for i, isoflux in enumerate(self.isoflux_set):
+    #         dGI = np.sum(
+    #             self.dG_set[i] * self.full_currents_vec[:, np.newaxis, np.newaxis],
+    #             axis=0,
+    #         )
+    #         dpsip = (
+    #             self.psi_plasma_vals_iso[i][:, np.newaxis]
+    #             - self.psi_plasma_vals_iso[i][np.newaxis, :]
+    #         )
+    #         Liso = np.triu(dpsip + dGI, k=1)
+    #         dLiso = Liso[np.newaxis, :, :] * self.dG_set[i][self.control_mask]
+    #         gradient += np.sum(dLiso, axis=(1, 2)) / self.isoflux_set_n[i]
+    #         loss += np.sum(Liso**2) / self.isoflux_set_n[i]
 
-        return gradient * self.gradient_weights[0], loss * self.gradient_weights[0]
+    #     return gradient * self.gradient_weights[0], loss * self.gradient_weights[0]
 
-    def build_null_points_gradient(
-        self,
-    ):
-        """Builds the loss and gradient associated to the null_points constraints."""
+    # def build_null_points_gradient(
+    #     self,
+    # ):
+    #     """Builds the loss and gradient associated to the null_points constraints."""
 
-        Lbr = (
-            np.sum(
-                self.Gbr * self.full_currents_vec[:, np.newaxis], axis=0, keepdims=True
-            )
-            + self.brp[np.newaxis]
-        )
-        dLbr = np.sum(Lbr * self.Gbr[self.control_mask], axis=1)
-        Lbz = (
-            np.sum(
-                self.Gbz * self.full_currents_vec[:, np.newaxis], axis=0, keepdims=True
-            )
-            + self.bzp[np.newaxis]
-        )
-        dLbz = np.sum(Lbz * self.Gbz[self.control_mask], axis=1)
-        gradient = (dLbr + dLbz) / len(self.null_points[0])
-        loss = np.sum(Lbr**2 + Lbz**2) / len(self.null_points[0])
+    #     Lbr = (
+    #         np.sum(
+    #             self.Gbr * self.full_currents_vec[:, np.newaxis], axis=0, keepdims=True
+    #         )
+    #         + self.brp[np.newaxis]
+    #     )
+    #     dLbr = np.sum(Lbr * self.Gbr[self.control_mask], axis=1)
+    #     Lbz = (
+    #         np.sum(
+    #             self.Gbz * self.full_currents_vec[:, np.newaxis], axis=0, keepdims=True
+    #         )
+    #         + self.bzp[np.newaxis]
+    #     )
+    #     dLbz = np.sum(Lbz * self.Gbz[self.control_mask], axis=1)
+    #     gradient = (dLbr + dLbz) / len(self.null_points[0])
+    #     loss = np.sum(Lbr**2 + Lbz**2) / len(self.null_points[0])
 
-        return gradient * self.gradient_weights[1], loss * self.gradient_weights[1]
+    #     return gradient * self.gradient_weights[1], loss * self.gradient_weights[1]
 
-    def build_psi_vals_gradient(
-        self,
-    ):
-        """Builds the loss and gradient associated to the psi_vals constraints."""
-        Lpsi = (
-            np.sum(
-                self.G * self.full_currents_vec[:, np.newaxis], axis=0, keepdims=True
-            )
-            + self.psi_plasma_vals[np.newaxis]
-            - self.psi_vals[2][np.newaxis]
-        )
-        gradient = np.sum(Lpsi * self.G[self.control_mask], axis=1)
-        gradient /= np.size(self.psi_vals[0])
-        loss = np.sum(Lpsi**2) / np.size(self.psi_vals[0])
+    # def build_psi_vals_gradient(
+    #     self,
+    # ):
+    #     """Builds the loss and gradient associated to the psi_vals constraints."""
+    #     Lpsi = (
+    #         np.sum(
+    #             self.G * self.full_currents_vec[:, np.newaxis], axis=0, keepdims=True
+    #         )
+    #         + self.psi_plasma_vals[np.newaxis]
+    #         - self.psi_vals[2][np.newaxis]
+    #     )
+    #     gradient = np.sum(Lpsi * self.G[self.control_mask], axis=1)
+    #     gradient /= np.size(self.psi_vals[0])
+    #     loss = np.sum(Lpsi**2) / np.size(self.psi_vals[0])
 
-        return gradient * self.gradient_weights[2], loss * self.gradient_weights[2]
+    #     return gradient * self.gradient_weights[2], loss * self.gradient_weights[2]
 
-    def build_gradient(
-        self,
-    ):
-        """Combines all contributions to both loss and gradient."""
+    # def build_gradient(
+    #     self,
+    # ):
+    #     """Combines all contributions to both loss and gradient."""
 
-        gradient = np.zeros_like(self.control_currents)
-        loss = 0
-        if self.isoflux_set is not None:
-            grad, l = self.build_isoflux_gradient()
-            gradient += grad
-            loss += l
-        if self.null_points is not None:
-            grad, l = self.build_null_points_gradient()
-            gradient += grad
-            loss += l
-        if self.psi_vals is not None:
-            grad, l = self.build_psi_vals_gradient()
-            gradient += grad
-            loss += l
-        self.gradient = np.copy(gradient)
-        self.loss = loss
-        return self.gradient, self.loss
+    #     gradient = np.zeros_like(self.control_currents)
+    #     loss = 0
+    #     if self.isoflux_set is not None:
+    #         grad, l = self.build_isoflux_gradient()
+    #         gradient += grad
+    #         loss += l
+    #     if self.null_points is not None:
+    #         grad, l = self.build_null_points_gradient()
+    #         gradient += grad
+    #         loss += l
+    #     if self.psi_vals is not None:
+    #         grad, l = self.build_psi_vals_gradient()
+    #         gradient += grad
+    #         loss += l
+    #     self.gradient = np.copy(gradient)
+    #     self.loss = loss
+    #     return self.gradient, self.loss
 
-    def build_current_gradient_update(
-        self, full_currents_vec, trial_plasma_psi, rescale_coeff, plasma_calc=True
-    ):
-        """Calculates the update to the coil currents available for control
-        using gradient descent.
+    # def build_current_gradient_update(
+    #     self, full_currents_vec, trial_plasma_psi, rescale_coeff, plasma_calc=True
+    # ):
+    #     """Calculates the update to the coil currents available for control
+    #     using gradient descent.
 
-        Parameters
-        ----------
-        full_currents_vec : np.array
-            Vector of all coil current values. For example as returned by eq.tokamak.getCurrentsVec()
-        trial_plasma_psi : np.array
-            Flux due to the plasma. Same shape as eq.R
+    #     Parameters
+    #     ----------
+    #     full_currents_vec : np.array
+    #         Vector of all coil current values. For example as returned by eq.tokamak.getCurrentsVec()
+    #     trial_plasma_psi : np.array
+    #         Flux due to the plasma. Same shape as eq.R
 
-        """
-        # prepare to build the gradient
-        self.full_currents_vec = np.copy(full_currents_vec)
-        if plasma_calc:
-            self.build_plasma_vals(trial_plasma_psi=trial_plasma_psi)
+    #     """
+    #     # prepare to build the gradient
+    #     self.full_currents_vec = np.copy(full_currents_vec)
+    #     if plasma_calc:
+    #         self.build_plasma_vals(trial_plasma_psi=trial_plasma_psi)
 
-        g, l = self.build_gradient()
-        dc = -l * g / np.linalg.norm(g) ** 2
-        dc *= rescale_coeff
+    #     g, l = self.build_gradient()
+    #     dc = -l * g / np.linalg.norm(g) ** 2
+    #     dc *= rescale_coeff
 
-        self.delta_current = self.rebuild_full_current_vec(dc)
-        return self.delta_current, l
+    #     self.delta_current = self.rebuild_full_current_vec(dc)
+    #     return self.delta_current, l
 
     def plot(self, axis=None, show=True):
         """

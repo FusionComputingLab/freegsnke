@@ -470,7 +470,6 @@ class ShapeController:
         feedback_voltages : array
             feedback voltages
         """
-
         # set default gain matrix if not provided
         if gain_matrix is None:
             gain_matrix = np.identity(len(targets_req))
@@ -512,6 +511,7 @@ class ShapeController:
         if targets == virtual_circuit.targets:
             # targets match - do nothing and use VC provided
             pass
+
         elif set(targets).issubset(set(virtual_circuit.targets)):
             # targets are a subset of the VC targets - recompute VC from sensitivity
             print(
@@ -618,6 +618,10 @@ class ShapeController:
             time_stamp
         )
         print("controlled targets are ", controlled_targets)
+        if controlled_targets == []:
+            print("no controlled targets at time ", time_stamp)
+            return np.zeros(len(self.active_coils))
+
         if self.feedback_target_scheduler.vc_flag == "file":
             gain_matrix = self.feedback_target_scheduler.vc_scheduler.retrieve_gains(
                 targets=controlled_targets, time_stamp=time_stamp

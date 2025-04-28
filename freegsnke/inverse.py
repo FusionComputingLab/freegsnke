@@ -415,6 +415,6 @@ class Inverse_optimizer:
         show     - Call matplotlib.pyplot.show() before returning
 
         """
-        from freegs4e.plotting import plotGIConstraints
+        from freegs4e.plotting import plotIOConstraints
 
-        return plotGIConstraints(self, axis=axis, show=show)
+        return plotIOConstraints(self, axis=axis, show=show)

@@ -1746,7 +1746,7 @@ class nl_solver:
         curr_eps=1e-5,
         max_no_NK_psi=5.0,
         clip=5,
-        clip_quantiles=None,
+        # clip_quantiles=None,
         verbose=0,
         linear_only=False,
     ):
@@ -1947,7 +1947,7 @@ class nl_solver:
                         target_relative_unexplained_residual=target_relative_unexplained_residual,
                         max_n_directions=max_n_directions,
                         clip=clip,
-                        clip_quantiles=clip_quantiles,
+                        # clip_quantiles=clip_quantiles,
                     )
 
                     # update trial_plasma_psi according to NK solution
@@ -1975,7 +1975,7 @@ class nl_solver:
                     target_relative_unexplained_residual=target_relative_unexplained_residual,
                     max_n_directions=max_n_directions,
                     clip=clip,
-                    clip_quantiles=clip_quantiles,
+                    # clip_quantiles=clip_quantiles,
                 )
                 # update trial_currents according to NK solution
                 self.trial_currents += self.currents_nk_solver.dx

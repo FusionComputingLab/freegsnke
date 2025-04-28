@@ -28,7 +28,7 @@ import numpy as np
 from scipy import interpolate
 
 
-class Gradient_inverse:
+class Inverse_optimizer:
     """This class implements a gradient based optimiser for the coil currents,
     used to perform (static) inverse GS solves.
     """
@@ -38,7 +38,7 @@ class Gradient_inverse:
         isoflux_set=None,
         null_points=None,
         psi_vals=None,
-        gradient_weights=None,
+        curr_vals=None,
     ):
         """Instantiates the object and sets all magnetic constraints to be used.
 
@@ -55,11 +55,6 @@ class Gradient_inverse:
             structure [Rcoords, Zcoords, psi_values]
             with Rcoords, Zcoords and psi_values having the same shape
             Sets the desired values of psi for a set of coordinates, possibly an entire map
-        gradient_weights : list or array, optional
-            Sets the relative importance of the 3 types of magnetic constraints, by default None
-        rescale_coeff : float, optional
-            Sets the relative size of the update to the current vector, in terms
-            of the Newton update, by default 0.2
         """
 
         self.isoflux_set = isoflux_set
@@ -87,9 +82,13 @@ class Gradient_inverse:
             self.psi_vals[2] -= np.mean(self.psi_vals[2])
             self.norm_psi_vals = np.linalg.norm(self.psi_vals[2])
 
-        if gradient_weights is None:
-            gradient_weights = np.ones(3)
-        self.gradient_weights = gradient_weights
+        self.curr_vals = curr_vals
+        self.curr_loss = 0
+        if self.curr_vals is not None:
+            self.curr_vals = [
+                np.array(self.curr_vals[0]).astype(int),
+                np.array(self.curr_vals[1]).astype(float),
+            ]
 
     def prepare_for_solve(self, eq):
         """To be called after object is instantiated.
@@ -258,6 +257,14 @@ class Gradient_inverse:
                 )
 
     def build_isoflux_lsq(self, full_currents_vec):
+        """Builds for the ordinary least sq problem associated to the isoflux constraints
+
+        Parameters
+        ----------
+        full_currents_vec : np.array
+            Full vector of all coil current values. For example as returned by eq.tokamak.getCurrentsVec()
+
+        """
 
         loss = []
         A = []
@@ -272,6 +279,14 @@ class Gradient_inverse:
         return A, b, loss
 
     def build_null_points_lsq(self, full_currents_vec):
+        """Builds for the ordinary least sq problem associated to the null points
+
+        Parameters
+        ----------
+        full_currents_vec : np.array
+            Full vector of all coil current values. For example as returned by eq.tokamak.getCurrentsVec()
+
+        """
 
         # radial field
         A_r = self.Gbr[self.control_mask].T
@@ -290,6 +305,14 @@ class Gradient_inverse:
         return A, b, loss
 
     def build_psi_vals_lsq(self, full_currents_vec):
+        """Builds for the ordinary least sq problem associated to the psi values
+
+        Parameters
+        ----------
+        full_currents_vec : np.array
+            Full vector of all coil current values. For example as returned by eq.tokamak.getCurrentsVec()
+
+        """
 
         A = self.G[self.control_mask].T
         b = np.sum(self.G * full_currents_vec[:, np.newaxis], axis=0)
@@ -302,7 +325,30 @@ class Gradient_inverse:
 
         return A, b, [normalised_loss]
 
+    def build_curr_vals_lsq(self, full_currents_vec):
+        """Builds for the ordinary least sq problem associated to the psi values
+
+        Parameters
+        ----------
+        full_currents_vec : np.array
+            Full vector of all coil current values. For example as returned by eq.tokamak.getCurrentsVec()
+
+        """
+        A = np.zeros((len(self.curr_vals[0]), self.n_control_coils))
+        A[np.arange(len(self.curr_vals[0])), self.curr_vals[0]] = 1
+        b = self.curr_vals[1] - full_currents_vec[self.control_mask][self.curr_vals[0]]
+        self.curr_loss = np.linalg.norm(b)
+        return A, b, self.curr_loss
+
     def build_lsq(self, full_currents_vec):
+        """Fetches all terms for the least sq problem, combining all types of magnetic constraints
+
+        Parameters
+        ----------
+        full_currents_vec : np.array
+            Full vector of all coil current values. For example as returned by eq.tokamak.getCurrentsVec()
+
+        """
 
         loss = 0
         A = np.empty(shape=(0, self.n_control_coils))
@@ -323,17 +369,31 @@ class Gradient_inverse:
             A = np.concatenate((A, A_pv), axis=0)
             b = np.concatenate((b, b_pv), axis=0)
             loss = loss + l
+        if self.curr_vals is not None:
+            A_cv, b_cv, l = self.build_curr_vals_lsq(full_currents_vec)
+            A = np.concatenate((A, A_cv), axis=0)
+            b = np.concatenate((b, b_cv), axis=0)
+            loss = loss + l
         self.A = np.copy(A)
         self.b = np.copy(b)
         self.loss = np.array(loss)
         # return A, b, loss
 
-    def optimize_currents(
-        self, full_currents_vec, trial_plasma_psi, l2_reg, plasma_calc=True
-    ):
+    def optimize_currents(self, full_currents_vec, trial_plasma_psi, l2_reg):
+        """Solves the least square problem. Tikhonov regularization is applied.
+
+        Parameters
+        ----------
+        full_currents_vec : np.array
+            Full vector of all coil current values. For example as returned by eq.tokamak.getCurrentsVec()
+        trial_plasma_psi : np.array
+            Flux due to the plasma. Same shape as eq.R
+        l2_reg : either float or 1d np.array with len=self.n_control_coils
+            The regularization factor
+
+        """
         # prepare the plasma-related values
-        if plasma_calc:
-            self.build_plasma_vals(trial_plasma_psi=trial_plasma_psi)
+        self.build_plasma_vals(trial_plasma_psi=trial_plasma_psi)
 
         # build the matrices that define the optimization
         self.build_lsq(full_currents_vec)
@@ -346,120 +406,6 @@ class Gradient_inverse:
         delta_current = np.dot(mat, np.dot(self.A.T, self.b))
 
         return delta_current, np.linalg.norm(self.loss)
-
-    # def build_isoflux_gradient(
-    #     self,
-    # ):
-    #     """Builds the loss and gradient associated to the isoflux constraints."""
-
-    #     gradient = np.zeros(len(self.control_currents))
-    #     loss = 0
-
-    #     for i, isoflux in enumerate(self.isoflux_set):
-    #         dGI = np.sum(
-    #             self.dG_set[i] * self.full_currents_vec[:, np.newaxis, np.newaxis],
-    #             axis=0,
-    #         )
-    #         dpsip = (
-    #             self.psi_plasma_vals_iso[i][:, np.newaxis]
-    #             - self.psi_plasma_vals_iso[i][np.newaxis, :]
-    #         )
-    #         Liso = np.triu(dpsip + dGI, k=1)
-    #         dLiso = Liso[np.newaxis, :, :] * self.dG_set[i][self.control_mask]
-    #         gradient += np.sum(dLiso, axis=(1, 2)) / self.isoflux_set_n[i]
-    #         loss += np.sum(Liso**2) / self.isoflux_set_n[i]
-
-    #     return gradient * self.gradient_weights[0], loss * self.gradient_weights[0]
-
-    # def build_null_points_gradient(
-    #     self,
-    # ):
-    #     """Builds the loss and gradient associated to the null_points constraints."""
-
-    #     Lbr = (
-    #         np.sum(
-    #             self.Gbr * self.full_currents_vec[:, np.newaxis], axis=0, keepdims=True
-    #         )
-    #         + self.brp[np.newaxis]
-    #     )
-    #     dLbr = np.sum(Lbr * self.Gbr[self.control_mask], axis=1)
-    #     Lbz = (
-    #         np.sum(
-    #             self.Gbz * self.full_currents_vec[:, np.newaxis], axis=0, keepdims=True
-    #         )
-    #         + self.bzp[np.newaxis]
-    #     )
-    #     dLbz = np.sum(Lbz * self.Gbz[self.control_mask], axis=1)
-    #     gradient = (dLbr + dLbz) / len(self.null_points[0])
-    #     loss = np.sum(Lbr**2 + Lbz**2) / len(self.null_points[0])
-
-    #     return gradient * self.gradient_weights[1], loss * self.gradient_weights[1]
-
-    # def build_psi_vals_gradient(
-    #     self,
-    # ):
-    #     """Builds the loss and gradient associated to the psi_vals constraints."""
-    #     Lpsi = (
-    #         np.sum(
-    #             self.G * self.full_currents_vec[:, np.newaxis], axis=0, keepdims=True
-    #         )
-    #         + self.psi_plasma_vals[np.newaxis]
-    #         - self.psi_vals[2][np.newaxis]
-    #     )
-    #     gradient = np.sum(Lpsi * self.G[self.control_mask], axis=1)
-    #     gradient /= np.size(self.psi_vals[0])
-    #     loss = np.sum(Lpsi**2) / np.size(self.psi_vals[0])
-
-    #     return gradient * self.gradient_weights[2], loss * self.gradient_weights[2]
-
-    # def build_gradient(
-    #     self,
-    # ):
-    #     """Combines all contributions to both loss and gradient."""
-
-    #     gradient = np.zeros_like(self.control_currents)
-    #     loss = 0
-    #     if self.isoflux_set is not None:
-    #         grad, l = self.build_isoflux_gradient()
-    #         gradient += grad
-    #         loss += l
-    #     if self.null_points is not None:
-    #         grad, l = self.build_null_points_gradient()
-    #         gradient += grad
-    #         loss += l
-    #     if self.psi_vals is not None:
-    #         grad, l = self.build_psi_vals_gradient()
-    #         gradient += grad
-    #         loss += l
-    #     self.gradient = np.copy(gradient)
-    #     self.loss = loss
-    #     return self.gradient, self.loss
-
-    # def build_current_gradient_update(
-    #     self, full_currents_vec, trial_plasma_psi, rescale_coeff, plasma_calc=True
-    # ):
-    #     """Calculates the update to the coil currents available for control
-    #     using gradient descent.
-
-    #     Parameters
-    #     ----------
-    #     full_currents_vec : np.array
-    #         Vector of all coil current values. For example as returned by eq.tokamak.getCurrentsVec()
-    #     trial_plasma_psi : np.array
-    #         Flux due to the plasma. Same shape as eq.R
-
-    #     """
-    #     # prepare to build the gradient
-    #     self.full_currents_vec = np.copy(full_currents_vec)
-    #     if plasma_calc:
-    #         self.build_plasma_vals(trial_plasma_psi=trial_plasma_psi)
-
-    #     g, l = self.build_gradient()
-    #     dc = -l * g / np.linalg.norm(g) ** 2
-    #     dc *= rescale_coeff
-
-    #     self.delta_current = self.rebuild_full_current_vec(dc)
-    #     return self.delta_current, l
 
     def plot(self, axis=None, show=True):
         """

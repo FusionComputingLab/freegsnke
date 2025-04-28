@@ -51,6 +51,7 @@ class ShapeController:
         feedforward_scheduler: TargetScheduler = None,
         coils=None,
         inductance_matrix=None,
+        coil_resist=None,
     ):
         """
         Initialize the control voltages class
@@ -119,8 +120,19 @@ class ShapeController:
             self.inductance_full = machine_config.coil_self_ind[
                 : len(self.active_coils), : len(self.active_coils)
             ]
+            print("Using default inductance matrix from machine config")
+            print("inductance matrix", self.inductance_full)
         else:
             self.inductance_full = inductance_matrix
+
+        if coil_resist is None:
+            self.coil_resist = machine_config.coil_resist[: len(self.active_coils)]
+            print(
+                "No coil resistances provided, using default coil resistances from machine config"
+            )
+            print("coil resistances", self.coil_resist)
+        else:
+            self.coil_resist = coil_resist
         # initialise a VC handling object
         self.VCH = vc.VirtualCircuitHandling()
         self.VCH.define_solver(self.stepping.NK, target_relative_tolerance=1e-7)
@@ -524,6 +536,8 @@ class ShapeController:
         gained_target_deltas = self.calculate_gained_target_deltas(
             eq, targets, gain_matrix, targets_req, targets_obs
         )
+
+        # blended_target_deltas = self.blended_ff_fb_targs(time_stamp, eq)
 
         # do matrix multiplication VC @ G @ delta
         delta_currents = virtual_circuit.VCs_matrix @ gained_target_deltas

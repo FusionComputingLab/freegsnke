@@ -33,7 +33,7 @@ class VirtualCircuitScheduler:
         None
         """
 
-        self.vc_times_calc = []  # times at which vcs are calculated
+        # self.vc_times_calc = []  # times at which vcs are calculated
         self.vc_times_stop = []  # times at which vcs are to be stopped using
         self.vc_index = []  #
         self.vc_schedule = []  # list of virtual circuit ojbects
@@ -52,7 +52,7 @@ class VirtualCircuitScheduler:
             self.vc_time_stop_dict = {
                 time: ind for ind, time in enumerate(self.vc_times_stop)
             }
-            n_vc = len(self.vc_times_calc)
+            n_vc = len(self.vc_times_stop)
             print(f"{n_vc} VC's loaded")
         else:
             print("No file target_waveform_path provided. Add VC's manually if desired")
@@ -76,7 +76,7 @@ class VirtualCircuitScheduler:
 
                 for key, item in vcs_pkl.items():
                     index = item["index"]
-                    time_calc = item["time_calc"]
+                    # time_calc = item["time_calc"]
                     time_stop = item["time_stop"]
                     vc_matrix = item["vc_matrix"]
                     shape_matrix = item["shape_matrix"]
@@ -107,7 +107,7 @@ class VirtualCircuitScheduler:
                     )
 
                     self.vc_schedule.append(vc_object)
-                    self.vc_times_calc.append(time_calc)
+                    # self.vc_times_calc.append(time_calc)
                     self.vc_times_stop.append(time_stop)
                     self.input_currents.append(input_currents)
                     self.input_profile_pars.append(input_profile_pars)
@@ -117,7 +117,7 @@ class VirtualCircuitScheduler:
                     self.gains.append(gains_dict)
         # convert times to numpy array
         self.vc_times_stop = np.array(self.vc_times_stop)
-        self.vc_times_calc = np.array(self.vc_times_calc)
+        # self.vc_times_calc = np.array(self.vc_times_calc)
 
     # ???? Do we need this???? Maybe delete this method.
     def add_vc_to_sequence(self, virtual_circuit, time_start, time_stop):

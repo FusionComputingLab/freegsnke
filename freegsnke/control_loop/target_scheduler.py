@@ -194,7 +194,7 @@ class TargetScheduler:
             position = np.searchsorted(
                 self.target_waveform_dict[target]["times"][1:], time_stamp, side="right"
             )
-            print(f"position index {position}")
+            # print(f"position index {position}")
             if time_stamp > self.target_waveform_dict[target]["times"][-1]:
                 print(
                     "time_stamp is greater than the last waveform time stamp "
@@ -203,7 +203,7 @@ class TargetScheduler:
                 gradient = 0
             else:
                 gradient = slope[position]
-                print(f"slope at {time_stamp}: {slope[position]}")
+                # print(f"slope at {time_stamp}: {slope[position]}")
 
             grad_arr[i] = gradient
 

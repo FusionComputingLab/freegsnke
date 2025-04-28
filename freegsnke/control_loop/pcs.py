@@ -119,12 +119,12 @@ def voltage_request(
     timestamp,
     Rp,
     inductacnes_pl,
-    Rvec,
     inductance_matrix,
     gain_matrix,
     est_I,
     measured_I,
     coil_perturbation,
+    Rvec=None,
     targ_obs=None,
     Ip_obs=None,
 ):
@@ -299,7 +299,6 @@ def validate_shot(
         "mutual": config_kwargs["plas_sol_inductance"],  # Plasma-Solenoid inductance
     }
 
-    Rvec = config_kwargs["R_vec"]  # Vector of resistivities
     if "inductance_matrix" in config_kwargs.keys():
         inductance_matrix = config_kwargs["inductance_matrix"]
         print("Using user provided inductance matrix")
@@ -342,6 +341,7 @@ def validate_shot(
         feedforward_scheduler=target_ff_scheduler,
         coils=None,
         inductance_matrix=inductance_matrix,
+        coil_resist=None,
     )
 
     inductance_matrix = deepcopy(
@@ -353,6 +353,10 @@ def validate_shot(
         target_waveform_path=control_kwargs["coil_pert_waveform"],
     )
     currents_start = [eq_start.tokamak.getCurrents()[key] for key in active_coils]
+    if "Rvec" in config_kwargs.keys():
+        Rvec = config_kwargs["Rvec"]
+    else:
+        Rvec = shape_controller.coil_resist  # Vector of resistivities
 
     for i, timestamp in enumerate(measured_vals["time_stamps"]):
         # Ip_val = ip_vals[i]
@@ -429,7 +433,6 @@ def simulate_shot(
         "mutual": config_kwargs["plas_sol_inductance"],  # Plasma-Solenoid inductance
     }
 
-    Rvec = config_kwargs["R_vec"]  # Vector of resistivities
     if "inductance_matrix" in config_kwargs.keys():
         inductance_matrix = config_kwargs["inductance_matrix"]
         print("Using user provided inductance matrix")
@@ -483,6 +486,11 @@ def simulate_shot(
     )
 
     active_currents = [eq_start.tokamak.getCurrents()[key] for key in active_coils]
+
+    if "Rvec" in config_kwargs.keys():
+        Rvec = config_kwargs["Rvec"]
+    else:
+        Rvec = shape_controller.coil_resist  # Vector of resistivities
 
     measured_I = deepcopy(active_currents)  # Vector of measured coil currents
 
@@ -566,6 +574,12 @@ def simulate_shot(
         history_jz.append(
             np.mean(stepping.profiles1.jtor / stepping.profiles1.Ip * eq.Z)
         )
+        # lists to arrays
+        history_Ip = np.array(history_Ip)
+        history_full_currents = np.array(history_full_currents)
+        history_voltages = np.array(history_voltages)
+        history_plasma_resistivity = np.array(history_plasma_resistivity)
+        history_times = np.array(history_times)
 
         # save the history to file
         history_dict = {

@@ -54,6 +54,7 @@ class nl_solver:
         plasma_norm_factor=1e3,
         blend_hatJ=0,
         max_mode_frequency=10**2.0,
+        fix_n_vessel_modes=False,
         threshold_dIy_dI=0.2,
         min_dIy_dI=0.1,
         mode_removal=True,
@@ -120,12 +121,21 @@ class nl_solver:
             max_internal_timestep = automatic_timestep[1]*full_timestep
         mode_removal : bool, optional, by default True
             It True, vessel normal modes are dropped after dIydI is calculated
-            Criterion is based on norm of d(Iy)/dI of the mode.
+            Modes that couple with the plasma less than min_dIy_dI than the strongest mode, are dropped.
+            This criterion is applied based on the actual dIydI, calculated on GS solutions.
         linearize : bool, optional, by default True
             Whether to set up the linearization of the evolutive problem
-        min_dIy_dI : float, optional, by default 1
-            Threshold value to include/drop vessel normal modes.
-            Modes with norm(d(Iy)/dI)<min_dIy_dI are dropped.
+        fix_n_vessel_modes : False or int
+            If False, modes are selected based on max_mode_frequency, threshold_dIy_dI and min_dIy_dI.
+            If a positive integer, the number of vessel modes is fixed accordingly. max_mode_frequency, threshold_dIy_dI and min_dIy_dI are not used.
+        threshold_dIy_dI : float
+            Threshold value to drop vessel modes.
+            Modes that couple with the plasma more than min_dIy_dI than the strongest mode, are included.
+            This criterion is applied based on dIydI_noGS.
+        min_dIy_dI : float
+            Threshold value to drop vessel modes.
+            Modes that couple with the plasma less than min_dIy_dI than the strongest mode, are dropped.
+            This criterion is applied based on dIydI_noGS.
         custom_coil_resist : np.array
             1d array of resistance values for all machine conducting elements,
             including both active coils and passive structures
@@ -222,6 +232,7 @@ class nl_solver:
         # build full vector of vessel mode currents
         self.build_current_vec(eq, profiles)
 
+        # prepare initial current shifts for the linearization using a
         # vanilla metric for the coupling between modes and plasma
         mode_coupling_metric = np.linalg.norm(
             self.vessel_modes_greens * profiles.jtor,
@@ -236,7 +247,9 @@ class nl_solver:
         self.approved_target_dIy = target_dIy * np.ones_like(self.starting_dI)
 
         if verbose:
-            print("Preparing finite difference delta_currents for the linearization:")
+            print(
+                "Preparing first selection of modes. Calculations for the full list of modes are about to follow:"
+            )
         # prepare ndIydI_no_GS for mode selection
         self.build_dIydI_noGS(
             force_core_mask_linearization,
@@ -245,42 +258,57 @@ class nl_solver:
             verbose,
         )
 
-        # if force_core_mask_linearization:
-        #     # check that the delta_currents just calculated still respect the condition force_core_mask_linearization
-        #     self.build_dIydI_noGS(target_dIy,
-        #                       force_core_mask_linearization,
-        #                       self.final_dI_record,
-        #                       profiles.diverted_core_mask,
-        #                       )
-        # self.starting_dI = 1.0*self.final_dI_record
-
         # select modes according to the provided thresholds:
         # include all modes that couple more than the threshold_dIy_dI
         # with respect to the strongest coupling vessel mode
         strongest_coupling_vessel_mode = max(self.ndIydI_no_GS[self.n_active_coils :])
-        mode_coupling_mask_include = np.concatenate(
-            (
-                [True] * self.n_active_coils,
-                self.ndIydI_no_GS[self.n_active_coils :]
-                > threshold_dIy_dI * strongest_coupling_vessel_mode,
+        if fix_n_vessel_modes is not False:
+            # select modes based on ndIydI_no_GS up to fix_n_modes exactly
+            print(f"The number of vessel modes has been fixed to {fix_n_vessel_modes}")
+            ordered_ndIydI_no_GS = np.sort(self.ndIydI_no_GS[self.n_active_coils :])
+            threshold_value = ordered_ndIydI_no_GS[-fix_n_vessel_modes]
+            mode_coupling_mask_include = np.concatenate(
+                (
+                    [True] * self.n_active_coils,
+                    self.ndIydI_no_GS[self.n_active_coils :] > threshold_value,
+                )
             )
-        )
-        # exclude all modes that couple less than min_dIy_dI
-        mode_coupling_mask_exclude = np.concatenate(
-            (
-                [True] * self.n_active_coils,
-                self.ndIydI_no_GS[self.n_active_coils :]
-                > min_dIy_dI * strongest_coupling_vessel_mode,
+            mode_coupling_mask_exclude = np.concatenate(
+                (
+                    [True] * self.n_active_coils,
+                    self.ndIydI_no_GS[self.n_active_coils :] > threshold_value,
+                )
             )
-        )
+            # the number of modes is being fixed:
+            mode_removal = False
+
+        else:
+            # select modes based on ndIydI_no_GS using values of threshold_dIy_dI and min_dIy_dI
+            mode_coupling_mask_include = np.concatenate(
+                (
+                    [True] * self.n_active_coils,
+                    self.ndIydI_no_GS[self.n_active_coils :]
+                    > threshold_dIy_dI * strongest_coupling_vessel_mode,
+                )
+            )
+            # exclude all modes that couple less than min_dIy_dI
+            mode_coupling_mask_exclude = np.concatenate(
+                (
+                    [True] * self.n_active_coils,
+                    self.ndIydI_no_GS[self.n_active_coils :]
+                    > min_dIy_dI * strongest_coupling_vessel_mode,
+                )
+            )
+
+        # enact the mode selection
         mode_coupling_masks = (
             mode_coupling_mask_include,
             mode_coupling_mask_exclude,
         )
-        # enact the mode selection
         self.evol_metal_curr.initialize_for_eig(
             selected_modes_mask=None,
             mode_coupling_masks=mode_coupling_masks,
+            verbose=np.logical_not(fix_n_vessel_modes),
         )
         # this is the number of independent normal mode currents being used
         self.n_metal_modes = self.evol_metal_curr.n_independent_vars
@@ -300,14 +328,6 @@ class nl_solver:
         self.approved_target_dIy = np.concatenate(
             (self.approved_target_dIy, [target_dIy])
         )
-
-        # self.evol_plasma_curr = plasma_current(
-        #     plasma_pts=self.limiter_handler.plasma_pts,
-        #     Rm1=np.diag(self.evol_metal_curr.Rm1),
-        #     P=self.evol_metal_curr.P,
-        #     plasma_resistance_1d=self.plasma_resistance_1d,
-        #     Mye=self.evol_metal_curr.Mey_matrix.T,
-        # )
 
         # This solves the system of circuit eqs based on an assumption
         # for the direction of the plasma current distribution at time t+dt
@@ -380,7 +400,7 @@ class nl_solver:
         else:
             if len(automatic_timestep) != 2:
                 raise ValueError(
-                    "The automatic_timestep input has not been set to False, but an appropriate input has not been provided. Please revise."
+                    "The input for 'automatic_timestep' should be of the form (float, float). Please revise."
                 )
             automatic_timestep_flag = True
         if automatic_timestep_flag + mode_removal + linearize:
@@ -391,12 +411,11 @@ class nl_solver:
                 profiles,
                 target_relative_tolerance_linearization=target_relative_tolerance_linearization,
                 dIydI=dIydI,
-                target_dIy=target_dIy,
                 verbose=verbose,
                 force_core_mask_linearization=force_core_mask_linearization,
             )
 
-        # remove passive normal modes that do not affect the plasma
+        # remove passive normal modes that have norm(dIydI) < min_dIy_dI*strongest mode
         if mode_removal:
             # selected based on full calculation of the coupling
             ndIydI = np.linalg.norm(self.dIydI, axis=0)
@@ -409,30 +428,17 @@ class nl_solver:
                 + [False] * (self.n_metal_modes - self.n_active_coils)
                 + [True]
             )
-            self.selected_modes_mask = (
+            self.retained_modes_mask = (
                 selected_modes_mask + np.array(actives_and_plasma_mask)
             ).astype(bool)
-            # self.selected_modes_mask = np.concatenate(
-            #     (
-            #         np.ones(self.n_active_coils),
-            #         self.selected_modes_mask[self.n_active_coils : -1],
-            #         np.ones(1),
-            #     )
-            # ).astype(bool)
-            # apply mask to dIydI, dRZdI and final_dI_record
-            self.dIydI = self.dIydI[:, self.selected_modes_mask]
-            self.dIydI_ICs = np.copy(self.dIydI)
-            self.dRZdI = self.dRZdI[:, self.selected_modes_mask]
-            self.final_dI_record = self.final_dI_record[self.selected_modes_mask]
 
-            # # rebuild mask of selected modes with respect to list of all modes, to be used by evolve_metal_currents
-            # self.selected_modes_mask = np.concatenate(
-            #     (
-            #         self.selected_modes_mask[:-1],
-            #         np.zeros(self.n_coils - self.n_metal_modes),
-            #     )
-            # ).astype(bool)
-            self.remove_modes(self.selected_modes_mask[:-1])
+            # apply mask to dIydI, dRZdI and final_dI_record
+            self.dIydI = self.dIydI[:, self.retained_modes_mask]
+            self.dIydI_ICs = np.copy(self.dIydI)
+            self.dRZdI = self.dRZdI[:, self.retained_modes_mask]
+            self.final_dI_record = self.final_dI_record[self.retained_modes_mask]
+
+            self.remove_modes(self.retained_modes_mask[:-1])
 
         # check if input equilibrium and associated linearization have an instability, and its timescale
         if automatic_timestep_flag + mode_removal + linearize:
@@ -506,9 +512,9 @@ class nl_solver:
             exact same core region
         """
 
+        self.dIydI_noGS = np.zeros((len(self.Iy), self.n_coils))
         self.ndIydI_no_GS = np.zeros(self.n_coils)
         self.rel_ndIy = np.zeros(self.n_coils)
-        self.dIydI_noGS = np.zeros((len(self.Iy), self.n_coils))
 
         for j in range(self.n_coils):
             dIydInoGS, rel_ndIy = self.prepare_build_dIydI_j(
@@ -1230,7 +1236,6 @@ class nl_solver:
         profiles,
         target_relative_tolerance_linearization=1e-7,
         dIydI=None,
-        target_dIy=1e-3,
         force_core_mask_linearization=False,
         verbose=False,
     ):
@@ -1252,9 +1257,6 @@ class nl_solver:
             This is the jacobian of the plasma current distribution with respect to all
             independent metal currents (both active and vessel modes) and to the total plasma current
             If not provided, this is calculated based on the properties of the provided equilibrium.
-        target_dIy : float
-            Target value used to define the size of the finite difference step used
-            when calculating the Jacobian dIydI
         verbose : bool
             Whether to allow progress printouts
         """

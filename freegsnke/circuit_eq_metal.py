@@ -128,7 +128,7 @@ class metal_currents:
         # Dummy voltage vector
         self.empty_U = np.zeros(self.n_coils)
 
-    def make_selected_mode_mask(self, mode_coupling_masks):
+    def make_selected_mode_mask(self, mode_coupling_masks, verbose):
         """Creates a mask for the vessel normal modes to include in the circuit
         equations, based on the maximum frequency of the selected modes.
         """
@@ -141,7 +141,7 @@ class metal_currents:
         self.selected_modes_mask = np.concatenate(
             (np.ones(self.n_active_coils).astype(bool), selected_modes_mask)
         )
-        if self.verbose:
+        if verbose:
             print(
                 "In addition to the",
                 self.n_active_coils,
@@ -158,9 +158,9 @@ class metal_currents:
                 self.selected_modes_mask + mode_coupling_masks[0]
             ).astype(bool)
             freq_and_thresh_number = np.sum(self.selected_modes_mask)
-            if self.verbose:
+            if verbose:
                 print(
-                    freq_and_thresh_number - freq_only_number - self.n_active_coils,
+                    freq_and_thresh_number - (freq_only_number + self.n_active_coils),
                     "modes couple with the plasma more than 'threshold_dIy_dI', despite having fast timescales.",
                 )
             # exclude modes that do not couple enough
@@ -168,7 +168,7 @@ class metal_currents:
                 self.selected_modes_mask * mode_coupling_masks[1]
             ).astype(bool)
             final_number = np.sum(self.selected_modes_mask)
-            if self.verbose:
+            if verbose:
                 print(
                     freq_and_thresh_number - final_number,
                     "modes couple with the plasma less than requested by 'min_dIy_dI', despite having slow timescales.",
@@ -176,7 +176,9 @@ class metal_currents:
 
         self.n_independent_vars = np.sum(self.selected_modes_mask)
 
-    def initialize_for_eig(self, selected_modes_mask=None, mode_coupling_masks=None):
+    def initialize_for_eig(
+        self, selected_modes_mask=None, mode_coupling_masks=None, verbose=True
+    ):
         """Initializes the metal_currents object for the case where vessel
         eigenmodes are used.
 
@@ -185,8 +187,8 @@ class metal_currents:
         mode_coupling_metric_masks : (np.ndarray of booles, np.ndarray of booles)
         """
         if selected_modes_mask is None:
-            # this is the case when self.selected_modes_mask is built and used
-            self.make_selected_mode_mask(mode_coupling_masks)
+            # this is the case when mode_coupling_masks are used to build self.selected_modes_mask
+            self.make_selected_mode_mask(mode_coupling_masks, verbose)
             # Pmatrix is the full matrix that changes the basis in the current space
             # from the normal modes Id (for diagonal) to the metal currents I:
             # I = Pmatrix Id

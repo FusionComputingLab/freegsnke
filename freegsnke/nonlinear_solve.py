@@ -1137,11 +1137,7 @@ class nl_solver:
         self.dt_step = full_timestep
         self.max_internal_timestep = max_internal_timestep
 
-        self.evol_metal_curr.reset_mode(
-            flag_vessel_eig=1,
-            flag_plasma=1,
-            plasma_pts=self.limiter_handler.plasma_pts,
-            max_mode_frequency=self.max_mode_frequency,
+        self.evol_metal_curr.reset_timesteps(
             max_internal_timestep=max_internal_timestep,
             full_timestep=full_timestep,
         )

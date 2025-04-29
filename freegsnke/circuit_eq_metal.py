@@ -253,6 +253,22 @@ class metal_currents:
         else:
             self.forcing_term = self.forcing_term_no_eig_no_plasma
 
+    def reset_timesteps(self, max_internal_timestep, full_timestep):
+        """Resets the timesteps
+
+        Parameters
+        ----------
+        max_internal_timestep : float
+            Maximum value of the 'internal' timestep for implicit euler solver.
+            The 'internal' timestep is the one actually used by the solver.
+        full_timestep : float
+            Timestep by which the equations are advanced. If full_timestep>max_internal_timestep
+            multiple 'internal' steps are executed.
+        """
+        self.solver.set_timesteps(
+            full_timestep=full_timestep, max_internal_timestep=max_internal_timestep
+        )
+
     def reset_mode(
         self,
         flag_vessel_eig,

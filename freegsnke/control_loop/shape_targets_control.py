@@ -52,6 +52,7 @@ class ShapeController:
         coils=None,
         inductance_matrix=None,
         coil_resist=None,
+        blend_dict=None,
     ):
         """
         Initialize the control voltages class
@@ -92,9 +93,12 @@ class ShapeController:
 
         self.active_coils_reduced = deepcopy(self.active_coils)
         print(self.active_coils)
-        self.active_coils_reduced.remove("Solenoid")
-        self.active_coils_reduced.remove("px")
-        self.active_coils_reduced.remove("p6")
+        try:
+            self.active_coils_reduced.remove("Solenoid")
+            self.active_coils_reduced.remove("px")
+            self.active_coils_reduced.remove("p6")
+        except:
+            print(f"reduced coil list is {self.active_coils_reduced}")
         print(self.active_coils_reduced)
         # .remove("px").remove("p6")
 
@@ -160,6 +164,54 @@ class ShapeController:
             self.feedforward_scheduler = deepcopy(self.feedback_target_scheduler)
         else:
             self.feedforward_scheduler = feedforward_scheduler
+
+        # create blend dict from schedule OR load from file
+        all_targs = sorted(
+            set(self.feedback_target_scheduler.target_waveform_dict.keys())
+        )
+        print("all targets", all_targs)
+        if blend_dict is None:
+            print("No blend dict provided. Creating from schedule")
+            blend_dict = {targ: {} for targ in all_targs}
+            for time in self.feedback_target_scheduler.target_schedule_dict.keys():
+                for targ in all_targs:
+                    if (
+                        targ
+                        in self.feedback_target_scheduler.target_schedule_dict[time]
+                    ):
+                        blend_dict[targ][time] = 1
+                    else:
+                        blend_dict[targ][time] = 0
+
+            self.blend_dict = blend_dict
+            print("blends dictionary ", blend_dict)
+
+        else:
+            self.blend_dict = blend_dict
+
+    def get_blends(self, targets, time_stamp):
+        """
+        Retrieves the blends for the target at time_stamp
+
+        Parameters
+        ----------
+        time_stamp : float
+            time stamp of the target to be retrieved
+
+        Returns
+        -------
+        blends : dict
+            dictionary of blends for the target at time_stamp
+        """
+        blends = []
+        for targ in targets:
+            closest_pos = max(
+                (key for key in self.blend_dict[targ].keys() if key <= time_stamp),
+                default=None,
+            )
+            blends.append(self.blend_dict[targ][closest_pos])
+        print(f"blends for {targets} at time {time_stamp}: {blends}")
+        return blends
 
     def get_inductance_reduced(self, coils=None):
         """

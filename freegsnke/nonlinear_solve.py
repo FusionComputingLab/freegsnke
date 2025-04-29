@@ -160,6 +160,7 @@ class nl_solver:
         # store number of coils and their names/order
         self.n_active_coils = eq.tokamak.n_active_coils
         self.n_coils = eq.tokamak.n_coils
+        self.n_passive_coils = eq.tokamak.n_coils - eq.tokamak.n_active_coils
         self.coils_order = list(eq.tokamak.coils_dict.keys())
         self.currents_vec = np.zeros(self.n_coils + 1)
 
@@ -172,6 +173,7 @@ class nl_solver:
         # instantiating static GS solver on eq's domain
         self.NK = NKGSsolver(eq)
         # check input eq and profiles are a GS solution
+        print("Checking that the provided input pair (eq, profiles) are a GS solution...")
         self.NK.forward_solve(
             eq,
             profiles,
@@ -250,6 +252,8 @@ class nl_solver:
             print(
                 "Preparing first selection of modes. Calculations for the full list of modes are about to follow:"
             )
+
+        print("Preparing first selection of modes. Calculations for the full list of modes will follow.")
         # prepare ndIydI_no_GS for mode selection
         self.build_dIydI_noGS(
             force_core_mask_linearization,
@@ -262,21 +266,25 @@ class nl_solver:
         # include all modes that couple more than the threshold_dIy_dI
         # with respect to the strongest coupling vessel mode
         strongest_coupling_vessel_mode = max(self.ndIydI_no_GS[self.n_active_coils :])
-        if fix_n_vessel_modes is not False:
+        if type(fix_n_vessel_modes) is int:
             # select modes based on ndIydI_no_GS up to fix_n_modes exactly
-            print(f"The number of vessel modes has been fixed to {fix_n_vessel_modes}")
+            print(f"The number of vessel modes has been fixed to {fix_n_vessel_modes}.")
             ordered_ndIydI_no_GS = np.sort(self.ndIydI_no_GS[self.n_active_coils :])
-            threshold_value = ordered_ndIydI_no_GS[-fix_n_vessel_modes]
+            if fix_n_vessel_modes > 0:
+                threshold_value = ordered_ndIydI_no_GS[-fix_n_vessel_modes]
+            else:
+                threshold_value = ordered_ndIydI_no_GS[-1]*1.1 # scale up so no modes are selected
+
             mode_coupling_mask_include = np.concatenate(
                 (
                     [True] * self.n_active_coils,
-                    self.ndIydI_no_GS[self.n_active_coils :] > threshold_value,
+                    self.ndIydI_no_GS[self.n_active_coils :] >= threshold_value,
                 )
             )
             mode_coupling_mask_exclude = np.concatenate(
                 (
                     [True] * self.n_active_coils,
-                    self.ndIydI_no_GS[self.n_active_coils :] > threshold_value,
+                    self.ndIydI_no_GS[self.n_active_coils :] >= threshold_value,
                 )
             )
             # the number of modes is being fixed:
@@ -288,7 +296,7 @@ class nl_solver:
                 (
                     [True] * self.n_active_coils,
                     self.ndIydI_no_GS[self.n_active_coils :]
-                    > threshold_dIy_dI * strongest_coupling_vessel_mode,
+                    >= threshold_dIy_dI * strongest_coupling_vessel_mode,
                 )
             )
             # exclude all modes that couple less than min_dIy_dI
@@ -296,7 +304,7 @@ class nl_solver:
                 (
                     [True] * self.n_active_coils,
                     self.ndIydI_no_GS[self.n_active_coils :]
-                    > min_dIy_dI * strongest_coupling_vessel_mode,
+                    >= min_dIy_dI * strongest_coupling_vessel_mode,
                 )
             )
 
@@ -308,7 +316,8 @@ class nl_solver:
         self.evol_metal_curr.initialize_for_eig(
             selected_modes_mask=None,
             mode_coupling_masks=mode_coupling_masks,
-            verbose=np.logical_not(fix_n_vessel_modes),
+            # verbose=np.logical_not(fix_n_vessel_modes),
+            verbose=(type(fix_n_vessel_modes) is not int),
         )
         # this is the number of independent normal mode currents being used
         self.n_metal_modes = self.evol_metal_curr.n_independent_vars

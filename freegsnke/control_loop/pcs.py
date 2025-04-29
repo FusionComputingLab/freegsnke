@@ -418,7 +418,7 @@ def simulate_shot(
     config_kwargs : dict
         dictionary of configuration parameters (values for resistances, inductances, etc.)
     control_kwargs : dict
-        dictionary of configuration filespaths (schedules, waveforms, etc)
+        dictionary of configuration filepaths (schedules, waveforms, etc)
 
     Returns
     -------
@@ -563,9 +563,16 @@ def simulate_shot(
         # update equilibrium
         # carry out the time step
         print("updating equilibrium with nolinear solve")
-        stepping.nlstepper(active_voltage_vec=v_requested, linear_only=True, verbose=0)
-
-        #   # store inputs/outputs
+        stepping.nlstepper(
+            active_voltage_vec=v_requested,
+            linear_only=True,  # linearise only
+            # linear_only=False,  # linearise only
+            verbose=False,
+            # custom_coil_resist=coil_resist,   #options for restistances/inductances used in solve
+            # custom_self_ind=coil_ind)
+        )
+        print("equi updated")
+        # #   # store inputs/outputs
         history_times.append(t)
         history_Ip.append(stepping.profiles1.Ip)
         history_full_currents.append(stepping.currents_vec[:-1])
@@ -574,26 +581,26 @@ def simulate_shot(
         history_jz.append(
             np.mean(stepping.profiles1.jtor / stepping.profiles1.Ip * eq.Z)
         )
-        # lists to arrays
-        history_Ip = np.array(history_Ip)
-        history_full_currents = np.array(history_full_currents)
-        history_voltages = np.array(history_voltages)
-        history_plasma_resistivity = np.array(history_plasma_resistivity)
-        history_times = np.array(history_times)
+    # lists to arrays
+    history_Ip = np.array(history_Ip)
+    history_full_currents = np.array(history_full_currents)
+    history_voltages = np.array(history_voltages)
+    history_plasma_resistivity = np.array(history_plasma_resistivity)
+    history_times = np.array(history_times)
 
-        # save the history to file
-        history_dict = {
-            "times": history_times,
-            "equilibrium": history_eqs,
-            "full_currents": history_full_currents,
-            "Ip": history_Ip,
-            "voltages": history_voltages,
-            "plasma_resistivity": history_plasma_resistivity,
-            "jz": history_jz,
-        }
-        # with open("history.pkl", "wb") as fp:
-        #     pickle.dump(history_dict, fp)
-        return history_dict
+    # save the history to file
+    history_dict = {
+        "times": history_times,
+        "equilibrium": history_eqs,
+        "full_currents": history_full_currents,
+        "Ip": history_Ip,
+        "voltages": history_voltages,
+        "plasma_resistivity": history_plasma_resistivity,
+        "jz": history_jz,
+    }
+    # with open("history.pkl", "wb") as fp:
+    #     pickle.dump(history_dict, fp)
+    return history_dict
 
 
 if __name__ == "__main__":

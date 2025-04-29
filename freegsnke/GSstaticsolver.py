@@ -910,10 +910,8 @@ class NKGSsolver:
             print(
                 "The initial coil currents and initial plasma_psi are significantly mismatched!"
             )
-            print(
-                "Please ensure that sufficient isoflux constraints are provided (for example 3 non-aligned points on the LCFS)"
-            )
-
+            print("Please ensure that sufficient isoflux constraints are provided (for example, try providing at least three non-aligned points on the LCFS).")
+            
             rel_delta_psit = self.get_rel_delta_psit(
                 delta_current, profiles, eq._vgreen[constrain.control_mask]
             )
@@ -922,6 +920,7 @@ class NKGSsolver:
                     f"Initial setup of the currents triggered. Relative update of tokamak_psi in the core of: {rel_delta_psit}"
                 )
                 print(f"Current updates: {delta_current}")
+            print("---")
             eq.tokamak.set_all_coil_currents(
                 full_currents_vec + constrain.rebuild_full_current_vec(delta_current)
             )
@@ -943,7 +942,7 @@ class NKGSsolver:
                 * (rel_change_full < full_jacobian_handover[0])
                 * (previous_rel_delta_psit < full_jacobian_handover[1])
             ):
-                print("Using full Jacobian")
+                print("Using full Jacobian to optimsise.")
                 # use complete Jacobian: psi_plasma changes with the coil currents
                 delta_current, loss = self.optimize_currents(
                     eq=eq,
@@ -954,7 +953,7 @@ class NKGSsolver:
                     l2_reg=l2_reg_fj,
                 )
             else:
-                print("Using Greens' Jacobian")
+                print("Using Greens' Jacobian to optimise.")
                 # use Greens as Jacobian: i.e. psi_plasma is assumed fixed
                 delta_current, loss = constrain.optimize_currents(
                     full_currents_vec=full_currents_vec,
@@ -1031,6 +1030,7 @@ class NKGSsolver:
             # previous_psi = np.copy(new_psi)
             if verbose:
                 print(f"Iteration {iterations} complete.")
+                print("---")
 
         if iterations == 0:
             print("No solving iterations executed!")

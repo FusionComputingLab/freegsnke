@@ -60,15 +60,16 @@ class TargetScheduler:
                     )
                 # check 2 : check if targets in each interval lie within time
                 # ranges of target waveform
-                time_start = self.target_waveform_dict[targ]["times"][0]
-                time_end = self.target_waveform_dict[targ]["times"][-1]
-                if time_start > time or time_end < time:
-                    print(f"time range for {targ}: ({time_start}, {time_end})")
-                    print(f"target schedule time: {time}")
-                    raise ValueError(
-                        f"Range of defined values for Target {targ} not "
-                        "compatible with schedule"
-                    )
+                if len(self.target_waveform_dict[targ]["times"]) > 1:
+                    time_start = self.target_waveform_dict[targ]["times"][0]
+                    time_end = self.target_waveform_dict[targ]["times"][-1]
+                    if time_start > time or time_end < time:
+                        print(f"time range for {targ}: ({time_start}, {time_end})")
+                        print(f"target schedule time: {time}")
+                        raise ValueError(
+                            f"Range of defined values for Target {targ} not "
+                            "compatible with schedule"
+                        )
 
     def load_pickle_dict(self, path):
         """

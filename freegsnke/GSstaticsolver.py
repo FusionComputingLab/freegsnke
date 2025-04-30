@@ -934,6 +934,9 @@ class NKGSsolver:
             + (previous_rel_delta_psit > target_relative_psit_update)
         ) * (iterations < max_solving_iterations):
 
+            print("---")
+            print(f"Iteration {iterations} starting...")
+
             # act on the control currents
             full_currents_vec = eq.tokamak.getCurrentsVec()
 
@@ -1034,7 +1037,6 @@ class NKGSsolver:
             # previous_psi = np.copy(new_psi)
             if verbose:
                 print(f"Iteration {iterations} complete.")
-                print("---")
 
         if iterations == 0:
             print("No solving iterations executed!")

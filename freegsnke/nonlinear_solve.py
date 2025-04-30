@@ -173,7 +173,9 @@ class nl_solver:
         # instantiating static GS solver on eq's domain
         self.NK = NKGSsolver(eq)
         # check input eq and profiles are a GS solution
-        print("Checking that the provided input pair (eq, profiles) are a GS solution...")
+        print(
+            "Checking that the provided input pair (eq, profiles) are a GS solution..."
+        )
         self.NK.forward_solve(
             eq,
             profiles,
@@ -253,7 +255,9 @@ class nl_solver:
                 "Preparing first selection of modes. Calculations for the full list of modes are about to follow:"
             )
 
-        print("Preparing first selection of modes. Calculations for the full list of modes will follow.")
+        print(
+            "Preparing first selection of modes. Calculations for the full list of modes will follow."
+        )
         # prepare ndIydI_no_GS for mode selection
         self.build_dIydI_noGS(
             force_core_mask_linearization,
@@ -273,7 +277,9 @@ class nl_solver:
             if fix_n_vessel_modes > 0:
                 threshold_value = ordered_ndIydI_no_GS[-fix_n_vessel_modes]
             else:
-                threshold_value = ordered_ndIydI_no_GS[-1]*1.1 # scale up so no modes are selected
+                threshold_value = (
+                    ordered_ndIydI_no_GS[-1] * 1.1
+                )  # scale up so no modes are selected
 
             mode_coupling_mask_include = np.concatenate(
                 (

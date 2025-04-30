@@ -910,8 +910,10 @@ class NKGSsolver:
             print(
                 "The initial coil currents and initial plasma_psi are significantly mismatched!"
             )
-            print("Please ensure that sufficient isoflux constraints are provided (for example, try providing at least three non-aligned points on the LCFS).")
-            
+            print(
+                "Please ensure that sufficient isoflux constraints are provided (for example, try providing at least three non-aligned points on the LCFS)."
+            )
+
             rel_delta_psit = self.get_rel_delta_psit(
                 delta_current, profiles, eq._vgreen[constrain.control_mask]
             )
@@ -942,7 +944,8 @@ class NKGSsolver:
                 * (rel_change_full < full_jacobian_handover[0])
                 * (previous_rel_delta_psit < full_jacobian_handover[1])
             ):
-                print("Using full Jacobian to optimsise.")
+                if verbose:
+                    print("Using full Jacobian to optimsise.")
                 # use complete Jacobian: psi_plasma changes with the coil currents
                 delta_current, loss = self.optimize_currents(
                     eq=eq,
@@ -953,7 +956,8 @@ class NKGSsolver:
                     l2_reg=l2_reg_fj,
                 )
             else:
-                print("Using Greens' Jacobian to optimise.")
+                if verbose:
+                    print("Using Greens' Jacobian to optimise.")
                 # use Greens as Jacobian: i.e. psi_plasma is assumed fixed
                 delta_current, loss = constrain.optimize_currents(
                     full_currents_vec=full_currents_vec,

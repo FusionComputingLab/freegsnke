@@ -54,7 +54,7 @@ class nl_solver:
         plasma_norm_factor=1e3,
         blend_hatJ=0,
         max_mode_frequency=10**2.0,
-        fix_n_vessel_modes=False,
+        fix_n_vessel_modes=-1,
         threshold_dIy_dI=0.2,
         min_dIy_dI=0.1,
         mode_removal=True,
@@ -125,9 +125,9 @@ class nl_solver:
             This criterion is applied based on the actual dIydI, calculated on GS solutions.
         linearize : bool, optional, by default True
             Whether to set up the linearization of the evolutive problem
-        fix_n_vessel_modes : False or int
-            If False, modes are selected based on max_mode_frequency, threshold_dIy_dI and min_dIy_dI.
-            If a positive integer, the number of vessel modes is fixed accordingly. max_mode_frequency, threshold_dIy_dI and min_dIy_dI are not used.
+        fix_n_vessel_modes : int
+            If -1, modes are selected based on max_mode_frequency, threshold_dIy_dI and min_dIy_dI.
+            If a non-negative integer, the number of vessel modes is fixed accordingly. max_mode_frequency, threshold_dIy_dI and min_dIy_dI are not used.
         threshold_dIy_dI : float
             Threshold value to drop vessel modes.
             Modes that couple with the plasma more than min_dIy_dI than the strongest mode, are included.
@@ -270,7 +270,7 @@ class nl_solver:
         # include all modes that couple more than the threshold_dIy_dI
         # with respect to the strongest coupling vessel mode
         strongest_coupling_vessel_mode = max(self.ndIydI_no_GS[self.n_active_coils :])
-        if type(fix_n_vessel_modes) is int:
+        if fix_n_vessel_modes  >= 0: #type(fix_n_vessel_modes) is int:
             # select modes based on ndIydI_no_GS up to fix_n_modes exactly
             print(f"The number of vessel modes has been fixed to {fix_n_vessel_modes}.")
             ordered_ndIydI_no_GS = np.sort(self.ndIydI_no_GS[self.n_active_coils :])
@@ -322,8 +322,7 @@ class nl_solver:
         self.evol_metal_curr.initialize_for_eig(
             selected_modes_mask=None,
             mode_coupling_masks=mode_coupling_masks,
-            # verbose=np.logical_not(fix_n_vessel_modes),
-            verbose=(type(fix_n_vessel_modes) is not int),
+            verbose=(fix_n_vessel_modes < 0), #(type(fix_n_vessel_modes) is not int)
         )
         # this is the number of independent normal mode currents being used
         self.n_metal_modes = self.evol_metal_curr.n_independent_vars

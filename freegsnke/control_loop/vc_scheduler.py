@@ -75,7 +75,7 @@ class VirtualCircuitScheduler:
                 vcs_pkl = pickle.load(fp)
 
                 for key, item in vcs_pkl.items():
-                    index = item["index"]
+                    # index = item["index"]
                     # time_calc = item["time_calc"]
                     time_stop = item["time_stop"]
                     vc_matrix = item["vc_matrix"]
@@ -94,7 +94,7 @@ class VirtualCircuitScheduler:
                     gains_dict = dict(zip(targets, gains_arr))
 
                     vc_object = VirtualCircuit(
-                        name=f"vc_{index}_time_upto_{time_stop:.4f}",
+                        name=f"vc_upto_{time_stop:.4f}",
                         eq=None,
                         profiles=None,
                         shape_matrix=shape_matrix,

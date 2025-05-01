@@ -12,7 +12,7 @@ from copy import deepcopy
 import freegsnke
 from .ip_control import ControlSolenoid
 from .target_scheduler import TargetScheduler
-from .vc_scheduler import ShapeTargetScheduler
+from .shape_scheduling import ShapeTargetScheduler
 from .shape_targets_control import ShapeController
 from .vertical_control import vertical_controller
 

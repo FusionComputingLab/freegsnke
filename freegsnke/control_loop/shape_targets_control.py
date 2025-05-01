@@ -14,7 +14,7 @@ from ..nonlinear_solve import nl_solver
 from ..virtual_circuits import VirtualCircuit
 
 
-from .vc_scheduler import ShapeTargetScheduler
+from .shape_scheduling import ShapeTargetScheduler
 from .target_scheduler import TargetScheduler
 
 

@@ -314,6 +314,7 @@ def validate_shot(
     active_coils = list(eq_start.tokamak.coils_dict.keys())[
         : eq_start.tokamak.n_active_coils
     ]
+    print("pf coil gains", gain_matrix)
 
     # Load Schedulers
     target_ff_scheduler = TargetScheduler(
@@ -511,7 +512,7 @@ def simulate_shot(
     t_stop = t_start + n_iter * dt
     print(f"------\n Simulation at t={t_start} \n --------")
     print(f"Simulation will run for {n_iter} iterations")
-    plot_eqi(eq_start, show=True)
+    # plot_eqi(eq_start, show=True)
 
     history_jz = [
         np.mean(stepping.profiles1.jtor / stepping.profiles1.Ip * eq.Z)
@@ -524,12 +525,8 @@ def simulate_shot(
     history_Ip = [stepping.profiles1.Ip]
     history_voltages = []
     history_plasma_resistivity = [stepping.plasma_resistivity]
-    # separatrix = stepping.eq1.separatrix(ntheta=100)
-    # history_width = [np.amax(separatrix[:, 0]) - np.amin(separatrix[:, 0])]
     history_o_points = [stepping.eq1.opt[0]]
-    # history_elongation = [
-    #     (np.amax(separatrix[:, 1]) - np.amin(separatrix[:, 1])) / history_width[0]
-    # ]
+
     xpts = stepping.eq1.xpt[0:2, 0:2]
     x_point_ind = np.argmin(xpts[:, 1])
     Zx = xpts[x_point_ind, 1]
@@ -547,8 +544,8 @@ def simulate_shot(
         v_requested = voltage_request(
             ip_controller,
             shape_controller,
-            eq=eq_start,
-            profiles=profiles_start,
+            eq=stepping.eq1,
+            profiles=stepping.profiles1,
             timestamp=t,
             Rp=Rp,
             inductacnes_pl=inductances_pl,
@@ -608,13 +605,10 @@ def simulate_shot(
         history_jz.append(
             np.mean(stepping.profiles1.jtor / stepping.profiles1.Ip * eq.Z)
         )
-        # separatrix = stepping.eq1.separatrix(ntheta=100)
-        # history_width.append(np.amax(separatrix[:, 0]) - np.amin(separatrix[:, 0]))
+
         history_o_points = np.append(history_o_points, [stepping.eq1.opt[0]], axis=0)
-        # history_elongation.append(
-        #     (np.amax(separatrix[:, 1]) - np.amin(separatrix[:, 1])) / history_width[-1]
-        # )
-    # lists to arrays
+
+    # lists to numpy arrays
     history_Ip = np.array(history_Ip)
     history_full_currents = np.array(history_full_currents)
     history_voltages = np.array(history_voltages)
@@ -632,16 +626,22 @@ def simulate_shot(
         "voltages": history_voltages,
         "plasma_resistivity": history_plasma_resistivity,
         "jz": history_jz,
-        # "width": history_width,
         "o_points": history_o_points,
-        # "elongation": history_elongation,
         "xpoints": history_xpoints,
-        "Rin": history_Rin,
-        "Rout": history_Rout,
+        "R_in": history_Rin,
+        "R_out": history_Rout,
     }
     # with open("history.pkl", "wb") as fp:
     #     pickle.dump(history_dict, fp)
-    return history_dict
+
+    input_waveform_dict = {
+        "R_in": target_fb_scheduler.target_waveform_dict["R_in"],
+        "R_out": target_fb_scheduler.target_waveform_dict["R_out"],
+        "Rx_lower": target_fb_scheduler.target_waveform_dict["Rx_lower"],
+        "Rs_lower_outer": target_fb_scheduler.target_waveform_dict["Rs_lower_outer"],
+        "Ip": ip_controller.scheduler.target_waveform_dict["Ip"],
+    }
+    return history_dict, input_waveform_dict
 
 
 if __name__ == "__main__":

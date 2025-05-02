@@ -16,6 +16,8 @@ from .shape_scheduling import ShapeTargetScheduler
 from .shape_targets_control import ShapeController
 from .vertical_control import vertical_controller
 
+from freegs4e.plotting import plotEquilibrium as plot_eqi
+
 
 def check_currents(dIvec, Ivec):
     """
@@ -507,6 +509,10 @@ def simulate_shot(
     t = t_start
     dt = stepping.dt_step
     t_stop = t_start + n_iter * dt
+    print(f"------\n Simulation at t={t_start} \n --------")
+    print(f"Simulation will run for {n_iter} iterations")
+    plot_eqi(eq_start, show=True)
+
     history_jz = [
         np.mean(stepping.profiles1.jtor / stepping.profiles1.Ip * eq.Z)
     ]  # for vertical controller
@@ -518,9 +524,22 @@ def simulate_shot(
     history_Ip = [stepping.profiles1.Ip]
     history_voltages = []
     history_plasma_resistivity = [stepping.plasma_resistivity]
-
+    # separatrix = stepping.eq1.separatrix(ntheta=100)
+    # history_width = [np.amax(separatrix[:, 0]) - np.amin(separatrix[:, 0])]
+    history_o_points = [stepping.eq1.opt[0]]
+    # history_elongation = [
+    #     (np.amax(separatrix[:, 1]) - np.amin(separatrix[:, 1])) / history_width[0]
+    # ]
+    xpts = stepping.eq1.xpt[0:2, 0:2]
+    x_point_ind = np.argmin(xpts[:, 1])
+    Zx = xpts[x_point_ind, 1]
+    Rx = xpts[x_point_ind, 0]
+    history_xpoints = [[Rx, Zx]]
+    history_Rin = [stepping.eq1.innerOuterSeparatrix()[0]]
+    history_Rout = [stepping.eq1.innerOuterSeparatrix()[1]]
     # for timestamp in time_slices:  # do around 1000hz
     # do as while loop
+
     while t < t_stop:
         print(f"------\n Simulation at t={t} \n --------")
         t += dt
@@ -573,6 +592,14 @@ def simulate_shot(
         )
         print("equi updated")
         # #   # store inputs/outputs
+        xpts = stepping.eq1.xpt[0:2, 0:2]
+        x_point_ind = np.argmin(xpts[:, 1])
+        Zx = xpts[x_point_ind, 1]
+        Rx = xpts[x_point_ind, 0]
+        history_xpoints.append([Rx, Zx])
+        history_Rin.append(stepping.eq1.innerOuterSeparatrix()[0])
+        history_Rout.append(stepping.eq1.innerOuterSeparatrix()[1])
+
         history_times.append(t)
         history_Ip.append(stepping.profiles1.Ip)
         history_full_currents.append(stepping.currents_vec[:-1])
@@ -581,12 +608,20 @@ def simulate_shot(
         history_jz.append(
             np.mean(stepping.profiles1.jtor / stepping.profiles1.Ip * eq.Z)
         )
+        # separatrix = stepping.eq1.separatrix(ntheta=100)
+        # history_width.append(np.amax(separatrix[:, 0]) - np.amin(separatrix[:, 0]))
+        history_o_points = np.append(history_o_points, [stepping.eq1.opt[0]], axis=0)
+        # history_elongation.append(
+        #     (np.amax(separatrix[:, 1]) - np.amin(separatrix[:, 1])) / history_width[-1]
+        # )
     # lists to arrays
     history_Ip = np.array(history_Ip)
     history_full_currents = np.array(history_full_currents)
     history_voltages = np.array(history_voltages)
     history_plasma_resistivity = np.array(history_plasma_resistivity)
     history_times = np.array(history_times)
+    history_o_points = np.array(history_o_points)
+    history_xpoints = np.array(history_xpoints)
 
     # save the history to file
     history_dict = {
@@ -597,6 +632,12 @@ def simulate_shot(
         "voltages": history_voltages,
         "plasma_resistivity": history_plasma_resistivity,
         "jz": history_jz,
+        # "width": history_width,
+        "o_points": history_o_points,
+        # "elongation": history_elongation,
+        "xpoints": history_xpoints,
+        "Rin": history_Rin,
+        "Rout": history_Rout,
     }
     # with open("history.pkl", "wb") as fp:
     #     pickle.dump(history_dict, fp)

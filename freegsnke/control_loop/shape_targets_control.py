@@ -334,7 +334,7 @@ class ShapeController:
             # get the targets from the equilibrium
             print("Observed targets not provided, calculating from equilibrium")
             _, targets_obs = self.VCH.calculate_targets(eq, targets)
-            print(targets_obs)
+            print("observed targets", targets_obs)
 
             # check dimensions of target values
         assert len(targets_req) == len(
@@ -348,6 +348,9 @@ class ShapeController:
         # shifts required
         target_deltas = targets_req - targets_obs
         gained_target_deltas = gain_matrix @ target_deltas
+        print("requested targets", targets_req)
+        print("required target deltas", target_deltas)
+        print("gained target deltas", gained_target_deltas)
         return gained_target_deltas
 
     def blended_ff_fb_targs(self, time_stamp, eq):

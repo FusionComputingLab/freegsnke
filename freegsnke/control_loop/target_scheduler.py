@@ -33,8 +33,8 @@ class TargetScheduler:
         self.target_schedule_dict = self.load_pickle_dict(target_schedule_path)
         schedule_times = sorted(list(self.target_schedule_dict.keys()))
 
-        print("target schedule times", schedule_times)
-        print("target schedule dict", self.target_schedule_dict)
+        print("schedule times", schedule_times)
+        print("schedule dictionary", self.target_schedule_dict)
 
         # load target waveform
         # target waveform  dict ~ {target_name : {"times":[time list],

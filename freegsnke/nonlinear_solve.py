@@ -270,7 +270,7 @@ class nl_solver:
         # include all modes that couple more than the threshold_dIy_dI
         # with respect to the strongest coupling vessel mode
         strongest_coupling_vessel_mode = max(self.ndIydI_no_GS[self.n_active_coils :])
-        if fix_n_vessel_modes  >= 0: #type(fix_n_vessel_modes) is int:
+        if fix_n_vessel_modes >= 0:  # type(fix_n_vessel_modes) is int:
             # select modes based on ndIydI_no_GS up to fix_n_modes exactly
             print(f"The number of vessel modes has been fixed to {fix_n_vessel_modes}.")
             ordered_ndIydI_no_GS = np.sort(self.ndIydI_no_GS[self.n_active_coils :])
@@ -322,7 +322,7 @@ class nl_solver:
         self.evol_metal_curr.initialize_for_eig(
             selected_modes_mask=None,
             mode_coupling_masks=mode_coupling_masks,
-            verbose=(fix_n_vessel_modes < 0), #(type(fix_n_vessel_modes) is not int)
+            verbose=(fix_n_vessel_modes < 0),  # (type(fix_n_vessel_modes) is not int)
         )
         # this is the number of independent normal mode currents being used
         self.n_metal_modes = self.evol_metal_curr.n_independent_vars

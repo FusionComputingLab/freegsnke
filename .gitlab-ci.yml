@@ -56,6 +56,7 @@ Core tests:
     - pip install -r requirements_docs.txt
     - bash build_documentation.sh
     # TESTS
+    - cd $CI_PROJECT_DIR
     - python -m pytest -v
   artifacts:
     paths:

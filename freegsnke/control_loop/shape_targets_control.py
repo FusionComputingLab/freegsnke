@@ -38,8 +38,8 @@ class ShapeController:
     Methods :
     get_inductance_reduced : retrieve inductance matrix from machine config, and select rows/columns
     calc_vc_from_eq : retrieve from file or compute a virtual circuit object from freegsnke or NN emulator.
-    calculate_feedback_current_rate_vc_proportional : compute feedback voltages from a virtual circuit object and a set of target shifts.
-    feedback_current_rate_timefunc : compute feedback voltages from a time provided by retrieving targets at given time from the target waveformr and computing with calculate_feedback_current_rate_vc_proportional.
+    calculate_blended_feedback_current_rate_vc_proportional : compute feedback voltages from a virtual circuit object and a set of target shifts.
+    feedback_current_rate_timefunc : compute feedback voltages from a time provided by retrieving targets at given time from the target waveformr and computing with calculate_blended_feedback_current_rate_vc_proportional.
     """
 
     def __init__(
@@ -48,11 +48,10 @@ class ShapeController:
         profiles,
         stepping: nl_solver,
         feedback_target_scheduler: ShapeTargetScheduler,
-        feedforward_scheduler: TargetScheduler = None,
+        feedforward_target_scheduler: TargetScheduler = None,
         coils=None,
         inductance_matrix=None,
         coil_resist=None,
-        blend_dict=None,
     ):
         """
         Initialize the control voltages class
@@ -148,7 +147,7 @@ class ShapeController:
             "Emulator" or "emu" or "emulator"
         ):
 
-            # pre run the emulators so future calls to calculate_feedback_current_rate_vc_proportional are quicker
+            # pre run the emulators so future calls to calculate_blended_feedback_current_rate_vc_proportional are quicker
             start_targs = self.feedback_target_scheduler.target_schedule_dict[
                 list(self.feedback_target_scheduler.target_schedule_dict.keys())[0]
             ]
@@ -159,35 +158,17 @@ class ShapeController:
                 coils=self.control_coils,
             )
 
-        if feedforward_scheduler is None:
+        if feedforward_target_scheduler is None:
             print("No feedforward scheduler provided. will copy the feedback scheduler")
-            self.feedforward_scheduler = deepcopy(self.feedback_target_scheduler)
+            self.feedforward_target_scheduler = deepcopy(self.feedback_target_scheduler)
         else:
-            self.feedforward_scheduler = feedforward_scheduler
+            self.feedforward_target_scheduler = feedforward_target_scheduler
 
         # create blend dict from schedule OR load from file
         all_targs = sorted(
             set(self.feedback_target_scheduler.target_waveform_dict.keys())
         )
         print("all targets", all_targs)
-        if blend_dict is None:
-            print("No blend dict provided. Creating from schedule")
-            blend_dict = {targ: {} for targ in all_targs}
-            for time in self.feedback_target_scheduler.target_schedule_dict.keys():
-                for targ in all_targs:
-                    if (
-                        targ
-                        in self.feedback_target_scheduler.target_schedule_dict[time]
-                    ):
-                        blend_dict[targ][time] = 1
-                    else:
-                        blend_dict[targ][time] = 0
-
-            self.blend_dict = blend_dict
-            print("blends dictionary ", blend_dict)
-
-        else:
-            self.blend_dict = blend_dict
 
     def get_blends(self, targets, time_stamp):
         """
@@ -203,15 +184,16 @@ class ShapeController:
         blends : dict
             dictionary of blends for the target at time_stamp
         """
-        blends = []
-        for targ in targets:
-            closest_pos = max(
-                (key for key in self.blend_dict[targ].keys() if key <= time_stamp),
-                default=None,
+        blend_arr = []
+        for target in targets:
+            interpolation = np.interp(
+                time_stamp,
+                self.feedback_target_scheduler.shape_blends[target]["times"],
+                self.feedback_target_scheduler.shape_blends[target]["vals"],
             )
-            blends.append(self.blend_dict[targ][closest_pos])
-        print(f"blends for {targets} at time {time_stamp}: {blends}")
-        return blends
+            blend_arr.append(interpolation)
+        print(f"blends for {targets} at time {time_stamp}: {blend_arr}")
+        return np.array(blend_arr)
 
     def get_inductance_reduced(self, coils=None):
         """
@@ -353,6 +335,7 @@ class ShapeController:
         print("gained target deltas", gained_target_deltas)
         return gained_target_deltas
 
+    # THIS IS REDUNDANT NOW I THINK
     def blended_ff_fb_targs(self, time_stamp, eq):
         """
         Combine feedback and feed forward targets.
@@ -371,7 +354,7 @@ class ShapeController:
             time_stamp
         )
         feed_forward_targets = list(
-            self.feedforward_scheduler.target_waveform_dict.keys()
+            self.feedforward_target_scheduler.target_waveform_dict.keys()
         )  # these hard coded, or hard coded in init? or just get all targets from scheduler?
         all_targs = sorted(set(controlled_targets + feed_forward_targets))
         # ?? control targs should be subset of feedforward targets?
@@ -380,7 +363,7 @@ class ShapeController:
             targ: 1 if targ in controlled_targets else 0 for targ in all_targs
         }  # blends for controlled targets 1
 
-        ff_gradients = self.feedforward_scheduler.feed_forward_gradient(
+        ff_gradients = self.feedforward_target_scheduler.feed_forward_gradient(
             time_stamp=time_stamp, targets=all_targs
         )
         ff_grad_dict = dict(zip(all_targs, ff_gradients))
@@ -476,11 +459,13 @@ class ShapeController:
 
         return virtualcircuit
 
-    def calculate_feedback_current_rate_vc_proportional(
+    def calculate_blended_feedback_current_rate_vc_proportional(
         self,
         eq,
         profiles,
         targets_req,
+        targets_blends,
+        ff_deltas,
         targets_obs=None,
         targets=None,
         coils=None,
@@ -592,10 +577,12 @@ class ShapeController:
             eq, targets, gain_matrix, targets_req, targets_obs
         )
 
-        # blended_target_deltas = self.blended_ff_fb_targs(time_stamp, eq)
-
+        blended_target_deltas = (
+            targets_blends * gained_target_deltas + (1 - targets_blends) * ff_deltas
+        )
         # do matrix multiplication VC @ G @ delta
-        delta_currents = virtual_circuit.VCs_matrix @ gained_target_deltas
+        # delta_currents = virtual_circuit.VCs_matrix @ gained_target_deltas
+        delta_currents = virtual_circuit.VCs_matrix @ blended_target_deltas
         print("shape current deltas", delta_currents)
 
         # option 1 reorder currents, fill in zeros and multiply by inductance matrix
@@ -603,8 +590,8 @@ class ShapeController:
         for i, coil in enumerate(virtual_circuit.coils):
             # voltages_v1[i] = np.dot(inductance_matrix[self.coil_order_dictionary[coil],:], delta_currents[:])
             reshaped_currents[self.coil_order_dictionary[coil]] = delta_currents[i]
-        # print("reshaped currents")
-        # print(reshaped_currents)
+        print("reshaped currents")
+        print(reshaped_currents)
 
         return reshaped_currents
         # voltages_v1 = np.dot(self.inductance_full, reshaped_currents)
@@ -701,12 +688,19 @@ class ShapeController:
             time_stamp
         )
 
+        blends_arr = self.get_blends(controlled_targets, time_stamp)
+        ff_deltas = self.feedforward_target_scheduler.feed_forward_gradient(
+            time_stamp, targets=controlled_targets
+        )
+
         # compute the proportional voltages
-        current_rate = self.calculate_feedback_current_rate_vc_proportional(
+        current_rate = self.calculate_blended_feedback_current_rate_vc_proportional(
             eq,
             profiles,
             targets=controlled_targets,
             targets_req=desired_target_values,
+            targets_blends=blends_arr,
+            ff_deltas=ff_deltas,
             targets_obs=target_obs,
             virtual_circuit=virtual_circuit,
             gain_matrix=gain_matrix,

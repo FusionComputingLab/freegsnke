@@ -238,6 +238,7 @@ class ShapeTargetScheduler(TargetScheduler):
         self,
         target_waveform_path,
         target_schedule_path,
+        target_blends_path,
         vc_flag="file",
         vc_schedule_path=None,
         model_path=None,
@@ -250,9 +251,11 @@ class ShapeTargetScheduler(TargetScheduler):
         Parameters
         ----------
         target_waveform_path : str
-            path to the file containing target sequence
+            path to the file containing target waveform
         target_schedule_path : str
             path to the file containing target schedule
+        target_blends : str
+            path to file containing target blend waveform
         vc_flag : str   (optional)
             flag to indicate whether to load virtual circuit from file or NN
             emulator (default = "file")
@@ -268,6 +271,7 @@ class ShapeTargetScheduler(TargetScheduler):
 
         super().__init__(target_waveform_path, target_schedule_path)
 
+        self.shape_blends = self.load_pickle_dict(target_blends_path)
         self.vc_flag = vc_flag
 
         # check if vc_flag is file and load VC's from file.

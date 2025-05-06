@@ -341,7 +341,7 @@ def validate_shot(
         profiles=profiles_start,
         stepping=stepping,
         feedback_target_scheduler=target_fb_scheduler,
-        feedforward_scheduler=target_ff_scheduler,
+        feedforward_target_scheduler=target_ff_scheduler,
         coils=None,
         inductance_matrix=inductance_matrix,
         coil_resist=None,
@@ -460,6 +460,7 @@ def simulate_shot(
         target_schedule_path=control_kwargs["fb_target_schedule"],
         vc_flag=control_kwargs["vc_flag"],
         vc_schedule_path=control_kwargs["vc_schedule"],
+        target_blends_path=control_kwargs["target_blends"],
     )
 
     # Initialise controllers
@@ -475,7 +476,7 @@ def simulate_shot(
         profiles=profiles_start,
         stepping=stepping,
         feedback_target_scheduler=target_fb_scheduler,
-        feedforward_scheduler=target_ff_scheduler,
+        feedforward_target_scheduler=target_ff_scheduler,
         coils=None,
         inductance_matrix=inductance_matrix,
     )

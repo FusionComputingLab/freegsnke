@@ -341,61 +341,61 @@ class ShapeController:
         return gained_target_deltas
 
     # THIS IS REDUNDANT NOW I THINK
-    def blended_ff_fb_targs(self, time_stamp, eq):
-        """
-        Combine feedback and feed forward targets.
+    # def blended_ff_fb_targs(self, time_stamp, eq):
+    #     """
+    #     Combine feedback and feed forward targets.
 
-        Parameters
-        ----------
-        time_stamp : float
-            time stamp of the target to be retrieved
-        Returns
-        -------
-        combined_targs : list[str]
-            list of target names
-        """
-        # get set of targets being controlled at this time
-        controlled_targets = self.feedback_target_scheduler.retrieve_controlled_targets(
-            time_stamp
-        )
-        feed_forward_targets = list(
-            self.feedforward_target_scheduler.target_waveform_dict.keys()
-        )  # these hard coded, or hard coded in init? or just get all targets from scheduler?
-        all_targs = sorted(set(controlled_targets + feed_forward_targets))
-        # ?? control targs should be subset of feedforward targets?
-        # dictionary of blend vals basaed on if target in controlled or not. ()
-        blend_vals = {
-            targ: 1 if targ in controlled_targets else 0 for targ in all_targs
-        }  # blends for controlled targets 1
+    #     Parameters
+    #     ----------
+    #     time_stamp : float
+    #         time stamp of the target to be retrieved
+    #     Returns
+    #     -------
+    #     combined_targs : list[str]
+    #         list of target names
+    #     """
+    #     # get set of targets being controlled at this time
+    #     controlled_targets = self.feedback_target_scheduler.retrieve_controlled_targets(
+    #         time_stamp
+    #     )
+    #     feed_forward_targets = list(
+    #         self.feedforward_target_scheduler.target_waveform_dict.keys()
+    #     )  # these hard coded, or hard coded in init? or just get all targets from scheduler?
+    #     all_targs = sorted(set(controlled_targets + feed_forward_targets))
+    #     # ?? control targs should be subset of feedforward targets?
+    #     # dictionary of blend vals basaed on if target in controlled or not. ()
+    #     blend_vals = {
+    #         targ: 1 if targ in controlled_targets else 0 for targ in all_targs
+    #     }  # blends for controlled targets 1
 
-        ff_gradients = self.feedforward_target_scheduler.feed_forward_gradient(
-            time_stamp=time_stamp, targets=all_targs
-        )
-        ff_grad_dict = dict(zip(all_targs, ff_gradients))
+    #     ff_gradients = self.feedforward_target_scheduler.feed_forward_gradient(
+    #         time_stamp=time_stamp, targets=all_targs
+    #     )
+    #     ff_grad_dict = dict(zip(all_targs, ff_gradients))
 
-        # compute gained control targets
-        shape_gain_matrix = self.feedback_target_scheduler.vc_scheduler.retrieve_gains(
-            controlled_targets, time_stamp
-        )
-        targets_req = self.feedback_target_scheduler.desired_target_values(time_stamp)
-        gained_control_targs = self.calculate_gained_target_deltas(
-            eq,
-            targets=controlled_targets,
-            shape_gain_matrix=shape_gain_matrix,
-            targets_req=targets_req,
-            targets_obs=None,
-        )
-        gained_targs_dict = dict(zip(controlled_targets, gained_control_targs))
+    #     # compute gained control targets
+    #     shape_gain_matrix = self.feedback_target_scheduler.vc_scheduler.retrieve_gains(
+    #         controlled_targets, time_stamp
+    #     )
+    #     targets_req = self.feedback_target_scheduler.desired_target_values(time_stamp)
+    #     gained_control_targs = self.calculate_gained_target_deltas(
+    #         eq,
+    #         targets=controlled_targets,
+    #         shape_gain_matrix=shape_gain_matrix,
+    #         targets_req=targets_req,
+    #         targets_obs=None,
+    #     )
+    #     gained_targs_dict = dict(zip(controlled_targets, gained_control_targs))
 
-        blended_dict = {}
-        for targ in all_targs:
-            blended_dict[targ] = (
-                ff_grad_dict[targ] + blend_vals[targ] * gained_targs_dict[targ]
-            )
+    #     blended_dict = {}
+    #     for targ in all_targs:
+    #         blended_dict[targ] = (
+    #             ff_grad_dict[targ] + blend_vals[targ] * gained_targs_dict[targ]
+    #         )
 
-        # convert to array, ordered according to all_targs ?? maybe this need changing/fixing order?
-        blended_array = np.array([blended_dict[targ] for targ in all_targs])
-        return blended_array
+    #     # convert to array, ordered according to all_targs ?? maybe this need changing/fixing order?
+    #     blended_array = np.array([blended_dict[targ] for targ in all_targs])
+    #     return blended_array
 
     @staticmethod
     def recompute_vc_from_sensitivity(virtual_circuit, targets):
@@ -515,11 +515,6 @@ class ShapeController:
         feedback_voltages : array
             feedback voltages
         """
-        # set default gain matrix if not provided
-        if shape_gain_matrix is None:
-            shape_gain_matrix = np.identity(len(targets_req))
-            print("Gain matrix not provided, using identity matrix")
-            print(shape_gain_matrix)
 
         # # check coils and targets and update attributes accordingly
         # if targets is not None:
@@ -637,7 +632,6 @@ class ShapeController:
         time_stamp,
         eq,
         profiles,
-        shape_gain_matrix=None,
         target_obs=None,
     ):
         """
@@ -653,8 +647,8 @@ class ShapeController:
         profiles : object
             profiles object
 
-        shape_gain_matrix : array
-            diagonal square matrix of target gains. Defaults to identity matrix
+        # shape_gain_matrix : array
+        #     diagonal square matrix of target gains. Defaults to identity matrix
 
         Returns
         -------
@@ -669,23 +663,27 @@ class ShapeController:
             print("no controlled targets at time ", time_stamp)
             return np.zeros(len(self.active_coils))
 
-        if self.feedback_target_scheduler.vc_flag == "file":
-            shape_gain_matrix = (
-                self.feedback_target_scheduler.vc_scheduler.retrieve_gains(
-                    targets=controlled_targets, time_stamp=time_stamp
-                )
-            )
-            print("shape target gains", shape_gain_matrix)
-        elif (
-            self.feedback_target_scheduler.vc_flag == "emulator" or "emu" or "Emulator"
-        ):
-            # set default gains for emulators - this may want to be updated in future
-            print("using emulators - gains default to identity matrix ")
-            shape_gain_matrix = np.identity(len(controlled_targets))
-            # or gain matrix is the one provided???
-        else:
-            shape_gain_matrix = np.identity(len(controlled_targets))
+        # if shape_gain_matrix is None:
+        #     if self.feedback_target_scheduler.vc_flag == "file":
+        #         shape_gain_matrix = (
+        #             self.feedback_target_scheduler.vc_scheduler.retrieve_gains(
+        #                 targets=controlled_targets, time_stamp=time_stamp
+        #             )
+        #         )
+        #     elif (
+        #         self.feedback_target_scheduler.vc_flag == "emulator"
+        #         or "emu"
+        #         or "Emulator"
+        #     ):
+        #         # set default gains for emulators - this may want to be updated in future
+        #         print("using emulators - gains default to identity matrix ")
+        #         shape_gain_matrix = np.identity(len(controlled_targets))
+        #         # or gain matrix is the one provided???
 
+        shape_gain_matrix = self.feedback_target_scheduler.get_shape_gains(
+            targets=controlled_targets, time_stamp=time_stamp
+        )
+        print("shape target gains", shape_gain_matrix)
         # get the virtual circuit object
         virtual_circuit = self.feedback_target_scheduler.get_vc(
             eq=eq, profiles=profiles, time_stamp=time_stamp, coils=self.control_coils

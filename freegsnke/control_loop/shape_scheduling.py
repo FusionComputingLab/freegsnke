@@ -355,6 +355,7 @@ class ShapeTargetScheduler(TargetScheduler):
             tau = tau / 1000  # convert ms to seconds
             gains.append(1 / tau)
 
+        gains_arr = np.array(gains)
         # alternative dict format is {time : {target : tau, target_2 : tau_2, ...}}
         # more likely this if single set of gains for all time.
         # time_pos = max( time for time in self.shape_gains.keys() if time <= time_stamp)
@@ -367,7 +368,7 @@ class ShapeTargetScheduler(TargetScheduler):
         #     for target in targets:
         #         gains.append(self.shape_gains[time_pos][target])
 
-        return np.array(gains)
+        return np.diag(gains_arr)
 
     def get_shape_blends(self, targets, time_stamp):
         """

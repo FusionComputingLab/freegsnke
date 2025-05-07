@@ -128,6 +128,7 @@ def voltage_request(
     est_I,
     measured_I,
     coil_perturbation,
+    # shape_gain_matrix,
     Rvec=None,
     targ_obs=None,
     Ip_obs=None,
@@ -189,7 +190,7 @@ def voltage_request(
         time_stamp=timestamp,
         eq=eq,
         profiles=profiles,
-        shape_gain_matrix=None,
+        # shape_gain_matrix=shape_gain_matrix,
         target_obs=targ_obs,
     )
     # print("shp dI", shp_dI_dt, np.shape(shp_dI_dt))
@@ -254,6 +255,32 @@ def get_measured_shape_vals(measured_dict, names, pos):
     return np.array([measured_dict[name][pos] for name in names])
 
 
+def gains_dict_to_matrix(gains_dict, coil_order):
+    """Converts a dictionary of gains to a matrix.
+
+    Parameters
+    ----------
+    gains_dict : dict
+        Dictionary of gains for each coil.
+    coil_order : list
+        List of coil names in the order they appear in the dictionary.
+
+    Returns
+    -------
+    numpy 2D array
+        Matrix of gains.
+    """
+
+    gains_arr = np.zeros(len(coil_order))
+    for i, coil in enumerate(coil_order):
+        tau = gains_dict[coil] / 1000  # convert ms to seconds
+        gains_arr[i] = 1 / tau
+
+    gains_matrix = np.diag(gains_arr)
+    print("coil gains", gains_arr)
+    return gains_matrix
+
+
 def validate_shot(
     config_kwargs,
     control_kwargs,
@@ -310,12 +337,15 @@ def validate_shot(
         inductance_matrix = (
             None  # default inductance matrix (initialized below in shape controller)
         )
-    coil_gain_matrix = config_kwargs[
-        "coil_gains"
-    ]  # Gain matrix for coils(what are these gains??)
+    # coil_gain_matrix = config_kwargs[
+    #     "coil_gains"
+    # ]  # Gain matrix for coils(what are these gains??)
     active_coils = list(eq_start.tokamak.coils_dict.keys())[
         : eq_start.tokamak.n_active_coils
     ]
+    coil_gains_dict = config_kwargs["coil_gains_dict"]
+    coil_gain_matrix = gains_dict_to_matrix(coil_gains_dict, active_coils)
+
     print("pf coil gains", coil_gain_matrix)
 
     # Load Schedulers
@@ -392,6 +422,7 @@ def validate_shot(
             est_I=currents_start,
             measured_I=currents_start,  # ?is this what we want?
             coil_gain_matrix=coil_gain_matrix,
+            # shape_gain_matrix=shape_gain_matrix,
             coil_perturbation=coil_perturbation,
             targ_obs=shape_vals,
             Ip_obs=Ip_val,

@@ -223,10 +223,8 @@ class TargetScheduler:
 
         Returns
         -------
-        - interpolation : float
-            The interpolated value of target at time_stamp.
-        - query : str
-            Control parameter requested.
+        requested_parameter : float
+
         """
 
         if param not in param_dict.keys():

@@ -8,6 +8,8 @@ import numpy as np
 import pickle
 from sys import float_info
 from copy import deepcopy
+from pprint import pprint
+from matplotlib import pyplot as plt
 
 import freegsnke
 from .ip_control import ControlSolenoid
@@ -658,6 +660,109 @@ def simulate_shot(
         "Ip": ip_controller.scheduler.target_waveform_dict["Ip"],
     }
     return history_dict, input_waveform_dict
+
+
+def plot_evolution(sim_hist, input_waveforms):
+    """Plots the evolution of tracked values and compares between linear and non-linear evolution.
+
+    Parameters
+    ----------
+    sim_hist : dict
+        Dictionary containing the simulation history.
+
+    Returns
+    -------
+    None
+    """
+
+    sim_hist["Ip"] = sim_hist["Ip"]
+
+    # add end points for plotting flat continuation of input waveforms
+    end_time = sim_hist["times"][-1]
+    input_wave_aux = deepcopy(input_waveforms)
+    # input_wave_aux["R_in"]["times"] = np.append(
+    #     input_wave_aux["R_in"]["times"], end_time
+    # )
+    # input_wave_aux["R_in"]["vals"] = np.append(
+    #     input_wave_aux["R_in"]["vals"], input_waveforms["R_in"]["vals"][-1]
+    # )
+    # input_wave_aux["R_out"]["times"] = np.append(
+    #     input_wave_aux["R_out"]["times"], end_time
+    # )
+    # input_wave_aux["R_out"]["vals"] = np.append(
+    #     input_wave_aux["R_out"]["vals"], input_waveforms["R_out"]["vals"][-1]
+    # )
+    # input_wave_aux["Rx_lower"]["times"] = np.append(
+    #     input_wave_aux["Rx_lower"]["times"], end_time
+    # )
+    # input_wave_aux["Rx_lower"]["vals"] = np.append(
+    #     input_wave_aux["Rx_lower"]["vals"], input_waveforms["Rx_lower"]["vals"][-1]
+    # )
+    # input_wave_aux["Ip"]["times"] = np.append(input_wave_aux["Ip"]["times"], end_time)
+    # input_wave_aux["Ip"]["vals"] = np.append(
+    #     input_wave_aux["Ip"]["vals"], input_waveforms["Ip"]["vals"][-1]
+    # )
+
+    pprint(input_wave_aux)
+
+    # create figure and axes - 2x3 grid.
+    fig, axs = plt.subplots(2, 3, figsize=(10, 5), dpi=80, constrained_layout=True)
+    axs_flat = axs.flat
+
+    axs_flat[0].plot(
+        sim_hist["times"], sim_hist["o_points"][:, 0], "k+", label="linear"
+    )
+    axs_flat[0].set_xlabel("Time")
+    axs_flat[0].set_ylabel("O-point $R$")
+    axs_flat[0].legend()
+
+    axs_flat[1].plot(sim_hist["times"], sim_hist["xpoints"][:, 1], "k+")
+    axs_flat[1].set_xlabel("Time")
+    axs_flat[1].set_ylabel("Zx")
+
+    axs_flat[2].plot(sim_hist["times"], sim_hist["Ip"], "k+", linestyle="--")
+    axs_flat[2].plot(
+        input_wave_aux["Ip"]["times"],
+        input_wave_aux["Ip"]["vals"],
+        "rx",
+        linestyle="--",
+    )
+    axs_flat[2].set_xlabel("Time")
+    axs_flat[2].set_ylabel("Plasma current Ip")
+
+    axs_flat[3].plot(sim_hist["times"], sim_hist["xpoints"][:, 0], "k+", linestyle="--")
+    axs_flat[3].plot(
+        input_wave_aux["Rx_lower"]["times"],
+        input_wave_aux["Rx_lower"]["vals"],
+        "rx",
+        linestyle="--",
+    )
+    axs_flat[3].set_xlabel("Time")
+    axs_flat[3].set_ylabel("Rx")
+
+    axs_flat[4].plot(sim_hist["times"], sim_hist["R_in"], "k+", linestyle="--")
+    axs_flat[4].plot(
+        input_wave_aux["R_in"]["times"],
+        input_wave_aux["R_in"]["vals"],
+        "rx",
+        linestyle="--",
+    )
+    axs_flat[4].set_xlabel("Time")
+    axs_flat[4].set_ylabel("Rin")
+
+    axs_flat[5].plot(sim_hist["times"], sim_hist["R_out"], "k+", linestyle="--")
+    axs_flat[5].plot(
+        input_wave_aux["R_out"]["times"],
+        input_wave_aux["R_out"]["vals"],
+        "rx",
+        linestyle="--",
+    )
+    axs_flat[5].set_xlabel("Time")
+    axs_flat[5].set_ylabel("Rout")
+
+    # set xlims
+    for i in range(6):
+        axs_flat[i].set_xlim(0, sim_hist["times"][-1])
 
 
 if __name__ == "__main__":

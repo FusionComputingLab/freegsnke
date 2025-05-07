@@ -429,6 +429,7 @@ def build_passives(
                 Z=coil["Z"],
                 min_refine_per_area=min_refine_per_area,
                 min_refine_per_length=min_refine_per_length,
+                refine_mode=refine_mode,
             )
 
             # add to circuits list

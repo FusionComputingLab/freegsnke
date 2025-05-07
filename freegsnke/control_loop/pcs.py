@@ -189,7 +189,7 @@ def voltage_request(
         time_stamp=timestamp,
         eq=eq,
         profiles=profiles,
-        coil_gain_matrix=None,
+        shape_gain_matrix=None,
         target_obs=targ_obs,
     )
     # print("shp dI", shp_dI_dt, np.shape(shp_dI_dt))
@@ -221,7 +221,7 @@ def voltage_request(
         R=Rvec,
         inductance_ff=inductance_matrix,
         inductance_fb=inductance_matrix,
-        gains=coil_gain_matrix,
+        coil_gains=coil_gain_matrix,
         approved_dI_dt=dI_dt,
         approved_I=est_I,
         measured_I=measured_I,

@@ -285,7 +285,7 @@ class ShapeController:
         self,
         eq,
         targets,
-        gain_matrix,
+        shape_gain_matrix,
         targets_req,
         targets_obs=None,
     ):
@@ -302,7 +302,7 @@ class ShapeController:
         targets : list
             list of target names
 
-        gain_matrix : np.array() (2d array))
+        shape_gain_matrix : np.array() (2d array))
             diagonal square matrix of target gains.
         targets_req : array
             array of required/desired target values for each shape target
@@ -329,12 +329,12 @@ class ShapeController:
         ), "The target required and observed vectors are not the same length"
 
         assert (
-            gain_matrix.shape[0] == gain_matrix.shape[1] == len(targets_req)
+            shape_gain_matrix.shape[0] == shape_gain_matrix.shape[1] == len(targets_req)
         ), "The gain matrix is not the square or same size as the target vector"
 
         # shifts required
         target_deltas = targets_req - targets_obs
-        gained_target_deltas = gain_matrix @ target_deltas
+        gained_target_deltas = shape_gain_matrix @ target_deltas
         print("requested targets", targets_req)
         print("required target deltas", target_deltas)
         print("gained target deltas", gained_target_deltas)
@@ -374,14 +374,14 @@ class ShapeController:
         ff_grad_dict = dict(zip(all_targs, ff_gradients))
 
         # compute gained control targets
-        gain_matrix = self.feedback_target_scheduler.vc_scheduler.retrieve_gains(
+        shape_gain_matrix = self.feedback_target_scheduler.vc_scheduler.retrieve_gains(
             controlled_targets, time_stamp
         )
         targets_req = self.feedback_target_scheduler.desired_target_values(time_stamp)
         gained_control_targs = self.calculate_gained_target_deltas(
             eq,
             targets=controlled_targets,
-            gain_matrix=gain_matrix,
+            shape_gain_matrix=shape_gain_matrix,
             targets_req=targets_req,
             targets_obs=None,
         )
@@ -475,7 +475,7 @@ class ShapeController:
         targets=None,
         coils=None,
         virtual_circuit: VirtualCircuit = None,
-        gain_matrix=None,
+        shape_gain_matrix=None,
     ):
         """
         Compute current given a set of target value shifts and vc matrix, at a given time.
@@ -507,7 +507,7 @@ class ShapeController:
             virtual circuit object. Defaults to None, in which case the virtual circuit is computed from the equilibrium.
             with default currents of the Tokamak minus p6, and solenoid (these are determined differently)
 
-        gain_matrix : array
+        shape_gain_matrix : array
             diagonal square matrix of target gains. Defaults to identity matrix
 
         Returns
@@ -516,10 +516,10 @@ class ShapeController:
             feedback voltages
         """
         # set default gain matrix if not provided
-        if gain_matrix is None:
-            gain_matrix = np.identity(len(targets_req))
+        if shape_gain_matrix is None:
+            shape_gain_matrix = np.identity(len(targets_req))
             print("Gain matrix not provided, using identity matrix")
-            print(gain_matrix)
+            print(shape_gain_matrix)
 
         # # check coils and targets and update attributes accordingly
         # if targets is not None:
@@ -579,7 +579,7 @@ class ShapeController:
 
         # compute the shape target deltas
         gained_target_deltas = self.calculate_gained_target_deltas(
-            eq, targets, gain_matrix, targets_req, targets_obs
+            eq, targets, shape_gain_matrix, targets_req, targets_obs
         )
 
         blended_target_deltas = (
@@ -637,7 +637,7 @@ class ShapeController:
         time_stamp,
         eq,
         profiles,
-        gain_matrix=None,
+        shape_gain_matrix=None,
         target_obs=None,
     ):
         """
@@ -653,7 +653,7 @@ class ShapeController:
         profiles : object
             profiles object
 
-        gain_matrix : array
+        shape_gain_matrix : array
             diagonal square matrix of target gains. Defaults to identity matrix
 
         Returns
@@ -670,19 +670,21 @@ class ShapeController:
             return np.zeros(len(self.active_coils))
 
         if self.feedback_target_scheduler.vc_flag == "file":
-            gain_matrix = self.feedback_target_scheduler.vc_scheduler.retrieve_gains(
-                targets=controlled_targets, time_stamp=time_stamp
+            shape_gain_matrix = (
+                self.feedback_target_scheduler.vc_scheduler.retrieve_gains(
+                    targets=controlled_targets, time_stamp=time_stamp
+                )
             )
-            print("shape target gains", gain_matrix)
+            print("shape target gains", shape_gain_matrix)
         elif (
             self.feedback_target_scheduler.vc_flag == "emulator" or "emu" or "Emulator"
         ):
             # set default gains for emulators - this may want to be updated in future
             print("using emulators - gains default to identity matrix ")
-            gain_matrix = np.identity(len(controlled_targets))
+            shape_gain_matrix = np.identity(len(controlled_targets))
             # or gain matrix is the one provided???
         else:
-            gain_matrix = np.identity(len(controlled_targets))
+            shape_gain_matrix = np.identity(len(controlled_targets))
 
         # get the virtual circuit object
         virtual_circuit = self.feedback_target_scheduler.get_vc(
@@ -712,7 +714,7 @@ class ShapeController:
             ff_deltas=ff_deltas,
             targets_obs=target_obs,
             virtual_circuit=virtual_circuit,
-            gain_matrix=gain_matrix,
+            shape_gain_matrix=shape_gain_matrix,
         )
 
         return current_rate

@@ -48,7 +48,7 @@ def calculate_voltage_pf(
     R,
     inductance_ff,
     inductance_fb,
-    gains,
+    coil_gains,
     approved_dI_dt,
     approved_I,
     measured_I,
@@ -59,7 +59,7 @@ def calculate_voltage_pf(
     Calculate the output voltage to apply on the coils, as prescribed in
     the PF category of the PCS. The equations followed are:
 
-    V_fb = gains * (approved_I - measured_I) * M_fb
+    V_fb = coil_gains * (approved_I - measured_I) * M_fb
     V_ff = approved_dI_dt* M_ff
     V_res = measured_I * R
     V = V_fb + V_ff + V_res
@@ -72,8 +72,8 @@ def calculate_voltage_pf(
         The feedforward inductance matrix of the active coils.
     - inductance_fb : numpy 2D array
         The feedback inductance matrix of the active coils.
-    - gains : numpy 2D array
-        A diagonal matrix with the gains for each coil.
+    - coil_gains : numpy 2D array
+        A diagonal matrix with the coil_gains for each coil.
     - approved_dI_dt: numpy 1D array
         Approved change of rate of the coil currents by the system category of
         the PCS.
@@ -90,11 +90,11 @@ def calculate_voltage_pf(
     """
 
     # # Compute the feedback voltage
-    # print("gains shape,", np.shape(gains), gains)
+    # print("coil_gains shape,", np.shape(coil_gains), coil_gains)
     # print("approved I shape,", np.shape(approved_I), approved_I)
     # print("measured I shape,", np.shape(measured_I), measured_I)
     approved_I += Ipert
-    Corrected_I = gains @ (approved_I - measured_I)
+    Corrected_I = coil_gains @ (approved_I - measured_I)
     # print("corrected I", np.shape(Corrected_I), Corrected_I)
     # print("inductance_fb", np.shape(inductance_fb), inductance_fb)
     V_fb = inductance_fb @ Corrected_I
@@ -124,7 +124,7 @@ def voltage_request(
     Rp,
     inductacnes_pl,
     inductance_matrix,
-    gain_matrix,
+    coil_gain_matrix,
     est_I,
     measured_I,
     coil_perturbation,
@@ -156,7 +156,7 @@ def voltage_request(
         The resistivity vector for the active coils.
     inductance_matrix : numpy 2D array
         The inductance matrix for the active coils.
-    gain_matrix : numpy 2D array
+    coil_gain_matrix : numpy 2D array
         A diagonal matrix with the gains for each coil.
     est_I : numpy 1D array
         The estimated coil currents.
@@ -189,7 +189,7 @@ def voltage_request(
         time_stamp=timestamp,
         eq=eq,
         profiles=profiles,
-        gain_matrix=None,
+        coil_gain_matrix=None,
         target_obs=targ_obs,
     )
     # print("shp dI", shp_dI_dt, np.shape(shp_dI_dt))
@@ -221,7 +221,7 @@ def voltage_request(
         R=Rvec,
         inductance_ff=inductance_matrix,
         inductance_fb=inductance_matrix,
-        gains=gain_matrix,
+        gains=coil_gain_matrix,
         approved_dI_dt=dI_dt,
         approved_I=est_I,
         measured_I=measured_I,
@@ -310,13 +310,13 @@ def validate_shot(
         inductance_matrix = (
             None  # default inductance matrix (initialized below in shape controller)
         )
-    gain_matrix = config_kwargs[
+    coil_gain_matrix = config_kwargs[
         "coil_gains"
     ]  # Gain matrix for coils(what are these gains??)
     active_coils = list(eq_start.tokamak.coils_dict.keys())[
         : eq_start.tokamak.n_active_coils
     ]
-    print("pf coil gains", gain_matrix)
+    print("pf coil gains", coil_gain_matrix)
 
     # Load Schedulers
     target_ff_scheduler = TargetScheduler(
@@ -391,7 +391,7 @@ def validate_shot(
             inductance_matrix=inductance_matrix,
             est_I=currents_start,
             measured_I=currents_start,  # ?is this what we want?
-            gain_matrix=gain_matrix,
+            coil_gain_matrix=coil_gain_matrix,
             coil_perturbation=coil_perturbation,
             targ_obs=shape_vals,
             Ip_obs=Ip_val,
@@ -448,7 +448,7 @@ def simulate_shot(
         inductance_matrix = (
             None  # default inductance matrix (initialized below in shape controller)
         )
-    gain_matrix = config_kwargs[
+    coil_gain_matrix = config_kwargs[
         "coil_gains"
     ]  # Gain matrix for coils(what are these gains??)
     active_coils = list(eq_start.tokamak.coils_dict.keys())[
@@ -562,7 +562,7 @@ def simulate_shot(
             inductance_matrix=inductance_matrix,
             est_I=est_I,
             measured_I=measured_I,
-            gain_matrix=gain_matrix,
+            coil_gain_matrix=coil_gain_matrix,
             coil_perturbation=coil_perturbation,
         )
         #### update equi
@@ -578,6 +578,7 @@ def simulate_shot(
             prop_error=1e-3,
             deriv_threshold=50,
             int_factor=0.98,
+            # Ip=62000,
             Ip=stepping.profiles1.Ip,
             Ip_ref=750e3,
             derivative_lag=1,
@@ -662,7 +663,7 @@ def simulate_shot(
     return history_dict, input_waveform_dict
 
 
-def plot_evolution(sim_hist, input_waveforms):
+def plot_evolution(sim_hist, input_waveforms=None):
     """Plots the evolution of tracked values and compares between linear and non-linear evolution.
 
     Parameters
@@ -721,48 +722,55 @@ def plot_evolution(sim_hist, input_waveforms):
     axs_flat[1].set_ylabel("Zx")
 
     axs_flat[2].plot(sim_hist["times"], sim_hist["Ip"], "k+", linestyle="--")
-    axs_flat[2].plot(
-        input_wave_aux["Ip"]["times"],
-        input_wave_aux["Ip"]["vals"],
-        "rx",
-        linestyle="--",
-    )
+
     axs_flat[2].set_xlabel("Time")
     axs_flat[2].set_ylabel("Plasma current Ip")
 
     axs_flat[3].plot(sim_hist["times"], sim_hist["xpoints"][:, 0], "k+", linestyle="--")
-    axs_flat[3].plot(
-        input_wave_aux["Rx_lower"]["times"],
-        input_wave_aux["Rx_lower"]["vals"],
-        "rx",
-        linestyle="--",
-    )
+
     axs_flat[3].set_xlabel("Time")
     axs_flat[3].set_ylabel("Rx")
 
     axs_flat[4].plot(sim_hist["times"], sim_hist["R_in"], "k+", linestyle="--")
-    axs_flat[4].plot(
-        input_wave_aux["R_in"]["times"],
-        input_wave_aux["R_in"]["vals"],
-        "rx",
-        linestyle="--",
-    )
+
     axs_flat[4].set_xlabel("Time")
     axs_flat[4].set_ylabel("Rin")
 
     axs_flat[5].plot(sim_hist["times"], sim_hist["R_out"], "k+", linestyle="--")
-    axs_flat[5].plot(
-        input_wave_aux["R_out"]["times"],
-        input_wave_aux["R_out"]["vals"],
-        "rx",
-        linestyle="--",
-    )
+
     axs_flat[5].set_xlabel("Time")
     axs_flat[5].set_ylabel("Rout")
 
     # set xlims
     for i in range(6):
         axs_flat[i].set_xlim(0, sim_hist["times"][-1])
+
+    # plot input waveforms
+    if input_waveforms is not None:
+        axs_flat[2].plot(
+            input_wave_aux["Ip"]["times"],
+            input_wave_aux["Ip"]["vals"],
+            "rx",
+            linestyle="--",
+        )
+        axs_flat[3].plot(
+            input_wave_aux["Rx_lower"]["times"],
+            input_wave_aux["Rx_lower"]["vals"],
+            "rx",
+            linestyle="--",
+        )
+        axs_flat[4].plot(
+            input_wave_aux["R_in"]["times"],
+            input_wave_aux["R_in"]["vals"],
+            "rx",
+            linestyle="--",
+        )
+        axs_flat[5].plot(
+            input_wave_aux["R_out"]["times"],
+            input_wave_aux["R_out"]["vals"],
+            "rx",
+            linestyle="--",
+        )
 
 
 if __name__ == "__main__":
@@ -788,6 +796,6 @@ if __name__ == "__main__":
         "plas_sol_inductance": 2.7,
         "Rp": 0.84,
         "R_vec": np.random.rand(12),
-        "gain_matrix": np.diag(np.random.rand(12)),
+        "coil_gain_matrix": np.diag(np.random.rand(12)),
         "inductance_matrix": np.random.rand(12, 12),
     }

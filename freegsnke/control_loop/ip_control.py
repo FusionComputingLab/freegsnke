@@ -158,12 +158,19 @@ class ControlSolenoid:
             dI_dt = np.zeros_like(self.vc)  # return array of zeros if not controlled
             return dI_dt
         Ip_req = controlled_targets[0]
+        control_params = self.scheduler.control_params
         print(f"  The requested Ip: {Ip_req}")
-        Vloop_req = self.scheduler.retrieve_parameter(time_stamp, "Vloop")
+        Vloop_req = self.scheduler.retrieve_control_param(
+            param_dict=control_params, time_stamp=time_stamp, param="Vloop"
+        )
         print(f"  The requested Vloop: {Vloop_req}")
-        gain_p = self.scheduler.retrieve_parameter(time_stamp, "Kp")
+        gain_p = self.scheduler.retrieve_control_param(
+            param_dict=control_params, time_stamp=time_stamp, param="Kp"
+        )
         print(f"  The plasma gain: {gain_p}")
-        blend = self.scheduler.retrieve_parameter(time_stamp, "blend")
+        blend = self.scheduler.retrieve_control_param(
+            param_dict=control_params, time_stamp=time_stamp, param="blend"
+        )
         print(f"  The blend value: {blend}")
         dI_dt = self.calculate_solenoid_delta(
             inductacnes_pl=inductacnes_pl,

@@ -239,6 +239,7 @@ class ShapeTargetScheduler(TargetScheduler):
         target_waveform_path,
         target_schedule_path,
         target_blends_path,
+        target_gains_path,
         vc_flag="file",
         vc_schedule_path=None,
         model_path=None,
@@ -254,8 +255,10 @@ class ShapeTargetScheduler(TargetScheduler):
             path to the file containing target waveform
         target_schedule_path : str
             path to the file containing target schedule
-        target_blends : str
+        target_blends_path : str
             path to file containing target blend waveform
+        target_gains_path : str
+            path to file containing target gains
         vc_flag : str   (optional)
             flag to indicate whether to load virtual circuit from file or NN
             emulator (default = "file")
@@ -272,6 +275,10 @@ class ShapeTargetScheduler(TargetScheduler):
         super().__init__(target_waveform_path, target_schedule_path)
 
         self.shape_blends = self.load_pickle_dict(target_blends_path)
+        if target_gains_path is not None:
+            self.shape_gains = self.load_pickle_dict(target_gains_path)
+        else:
+            self.shape_gains = None
         self.vc_flag = vc_flag
 
         # check if vc_flag is file and load VC's from file.
@@ -321,6 +328,74 @@ class ShapeTargetScheduler(TargetScheduler):
             assert model_path is not None, "Please provide a model path"
             print("initialising an emulator scheduler")
             self.vc_scheduler = VCG(model_path, model_names=None, n_models=None)
+
+    def get_shape_gains(self, targets, time_stamp):
+        """
+        Retrieves the shape gains for the target at time_stamp, given the target schedule.
+        Gains provided as time_periods - assume units of milliseconds (ms)
+        Parameters
+        ----------
+        targets : list[str]
+            list of targets to get gains for
+        time_stamp : float (4 decimal places)
+            time stamp of the target to be retrieved
+        Returns
+        -------
+        shape_gains : np.array
+            shape gains
+        """
+        # get set of targets being controlled at this time
+        # assume dict format is {target : {'times': [times], 'values': [values]}}
+        gains = []
+        for target in targets:
+            # get tau
+            tau = self.retrieve_control_param(
+                param_dict=self.shape_gains, param=target, time_stamp=time_stamp
+            )
+            tau = tau / 1000  # convert ms to seconds
+            gains.append(1 / tau)
+
+        # alternative dict format is {time : {target : tau, target_2 : tau_2, ...}}
+        # more likely this if single set of gains for all time.
+        # time_pos = max( time for time in self.shape_gains.keys() if time <= time_stamp)
+        # if time_pos is None:
+        #     print(
+        #     "time requested is before first control parameter time, "
+        #     "returning None from retrieve_parameter()"
+        #     )
+        # else:
+        #     for target in targets:
+        #         gains.append(self.shape_gains[time_pos][target])
+
+        return np.array(gains)
+
+    def get_shape_blends(self, targets, time_stamp):
+        """
+        Retrieves the blends for the target at time_stamp
+
+        Parameters
+        ----------
+        targets : list[str]
+        time_stamp : float
+            time stamp of the target to be retrieved
+
+        Returns
+        -------
+        blends : dict
+            dictionary of blends for the target at time_stamp
+        """
+        blend_arr = []
+        print("blend dict ", self.shape_blends.keys())
+        for target in targets:
+            blend_arr.append(
+                self.retrieve_control_param(
+                    param_dict=self.shape_blends,
+                    param=target,
+                    time_stamp=time_stamp,
+                )
+            )
+        print("blends", blend_arr)
+        return np.array(blend_arr)
 
     def get_vc(self, eq, profiles, time_stamp, coils):
         """

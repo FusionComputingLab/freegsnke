@@ -170,30 +170,35 @@ class ShapeController:
         )
         print("all targets", all_targs)
 
-    def get_blends(self, targets, time_stamp):
-        """
-        Retrieves the blends for the target at time_stamp
+        print("Shape controller initialised")
+        print(self.feedback_target_scheduler.__dict__)
 
-        Parameters
-        ----------
-        time_stamp : float
-            time stamp of the target to be retrieved
+    ### OLD blends function
+    # defget_shape_blends(self, targets, time_stamp):
+    #     """
+    #     Retrieves the blends for the target at time_stamp
 
-        Returns
-        -------
-        blends : dict
-            dictionary of blends for the target at time_stamp
-        """
-        blend_arr = []
-        for target in targets:
-            interpolation = np.interp(
-                time_stamp,
-                self.feedback_target_scheduler.shape_blends[target]["times"],
-                self.feedback_target_scheduler.shape_blends[target]["vals"],
-            )
-            blend_arr.append(interpolation)
-        print(f"blends for {targets} at time {time_stamp}: {blend_arr}")
-        return np.array(blend_arr)
+    #     Parameters
+    #     ----------
+    #     time_stamp : float
+    #         time stamp of the target to be retrieved
+
+    #     Returns
+    #     -------
+    #     blends : dict
+    #         dictionary of blends for the target at time_stamp
+    #     """
+    #     blend_arr = []
+    #     # replace this...
+    #     for target in targets:
+    #         interpolation = np.interp(
+    #             time_stamp,
+    #             self.feedback_target_scheduler.shape_blends[target]["times"],
+    #             self.feedback_target_scheduler.shape_blends[target]["vals"],
+    #         )
+    #         blend_arr.append(interpolation)
+    #     print(f"blends for {targets} at time {time_stamp}: {blend_arr}")
+    #     return np.array(blend_arr)
 
     def get_inductance_reduced(self, coils=None):
         """
@@ -688,10 +693,14 @@ class ShapeController:
             time_stamp
         )
 
-        blends_arr = self.get_blends(controlled_targets, time_stamp)
+        fb_blends_arr = self.feedback_target_scheduler.get_shape_blends(
+            controlled_targets, time_stamp
+        )
+        print("fb blends", fb_blends_arr)
         ff_deltas = self.feedforward_target_scheduler.feed_forward_gradient(
             time_stamp, targets=controlled_targets
         )
+        print("ff deltas", ff_deltas)
 
         # compute the proportional voltages
         current_rate = self.calculate_blended_feedback_current_rate_vc_proportional(
@@ -699,7 +708,7 @@ class ShapeController:
             profiles,
             targets=controlled_targets,
             targets_req=desired_target_values,
-            targets_blends=blends_arr,
+            targets_blends=fb_blends_arr,
             ff_deltas=ff_deltas,
             targets_obs=target_obs,
             virtual_circuit=virtual_circuit,

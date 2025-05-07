@@ -326,6 +326,8 @@ def validate_shot(
         target_schedule_path=control_kwargs["fb_target_schedule"],
         vc_flag=control_kwargs["vc_flag"],
         vc_schedule_path=control_kwargs["vc_schedule"],
+        target_blends_path=control_kwargs["target_blends"],
+        target_gains_path=control_kwargs["target_gains"],
     )
 
     # Initialise controllers
@@ -402,6 +404,7 @@ def simulate_shot(
     n_iter,
     config_kwargs,
     control_kwargs,
+    linear=True,
 ):
     """Simulate a single shot
     Starting from an equilibrium and a profile, simulate the plasma and shape control voltages for a set of time slices.
@@ -461,6 +464,7 @@ def simulate_shot(
         vc_flag=control_kwargs["vc_flag"],
         vc_schedule_path=control_kwargs["vc_schedule"],
         target_blends_path=control_kwargs["target_blends"],
+        target_gains_path=control_kwargs["target_gains"],
     )
 
     # Initialise controllers
@@ -537,9 +541,11 @@ def simulate_shot(
     history_Rout = [stepping.eq1.innerOuterSeparatrix()[1]]
     # for timestamp in time_slices:  # do around 1000hz
     # do as while loop
-
+    counter = 1
     while t < t_stop:
         print(f"------\n Simulation at t={t} \n --------")
+        print(f"iteration number: {counter}")
+        counter += 1
         t += dt
         ##compute voltage request
         v_requested = voltage_request(
@@ -579,15 +585,24 @@ def simulate_shot(
 
         # update equilibrium
         # carry out the time step
-        print("updating equilibrium with nolinear solve")
-        stepping.nlstepper(
-            active_voltage_vec=v_requested,
-            linear_only=True,  # linearise only
-            # linear_only=False,  # linearise only
-            verbose=False,
-            # custom_coil_resist=coil_resist,   #options for restistances/inductances used in solve
-            # custom_self_ind=coil_ind)
-        )
+        if linear == True:
+            print("updating equilibrium  : LINEAR")
+            stepping.nlstepper(
+                active_voltage_vec=v_requested,
+                linear_only=True,  # linearise solve only
+                verbose=False,
+                # custom_coil_resist=coil_resist,   #options for restistances/inductances used in solve
+                # custom_self_ind=coil_ind)
+            )
+        elif linear == False:
+            print("updating equilibrium : NON-LINEAR")
+            stepping.nlstepper(
+                active_voltage_vec=v_requested,
+                linear_only=False,  # linearise only
+                verbose=False,
+                # custom_coil_resist=coil_resist,   #options for restistances/inductances used in solve
+                # custom_self_ind=coil_ind)
+            )
         print("equi updated")
         # #   # store inputs/outputs
         xpts = stepping.eq1.xpt[0:2, 0:2]

@@ -209,3 +209,47 @@ class TargetScheduler:
             grad_arr[i] = gradient
 
         return grad_arr
+
+    def retrieve_control_param(self, param_dict, param, time_stamp):
+        """
+        Retrieves the value of the queried control parameter at time_stamp.
+
+        Arguments
+        ---------
+        - time_stamp : float (4 decimal places)
+            Time stamp of the target to be retrieved.
+        - param : str
+            Control parameter requested.
+
+        Returns
+        -------
+        - interpolation : float
+            The interpolated value of target at time_stamp.
+        - query : str
+            Control parameter requested.
+        """
+
+        if param not in param_dict.keys():
+            print(
+                f"{param} is not present in param_dict, returning None "
+                "from retrieve_control_parameter()"
+            )
+            requested_parameter = None
+        else:
+            # find time position
+            t_val = max(
+                time for time in param_dict[param]["times"] if time <= time_stamp
+            )
+            # get index corresponding to the time position
+            pos = param_dict[param]["times"].index(t_val)
+            print(f"pos {pos}")
+            if pos is None:
+                print(
+                    "time requested is before first control parameter time, "
+                    "returning None from retrieve_control_parameter()"
+                )
+                requested_parameter = None
+            else:
+                requested_parameter = param_dict[param]["vals"][pos]
+
+        return requested_parameter

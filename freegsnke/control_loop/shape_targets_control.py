@@ -75,9 +75,9 @@ class ShapeController:
         self.eq = eq
         self.profiles = profiles
 
-        self.stepping = stepping
+        # self.stepping = stepping
         self.n_active_coils = (
-            self.stepping.n_active_coils
+            stepping.n_active_coils
         )  # could also be eq.tokamak.n_active_coils
         print("number active coils", self.n_active_coils)
         # initialise targets with defaults or lists given
@@ -138,7 +138,7 @@ class ShapeController:
             self.coil_resist = coil_resist
         # initialise a VC handling object
         self.VCH = vc.VirtualCircuitHandling()
-        self.VCH.define_solver(self.stepping.NK, target_relative_tolerance=1e-7)
+        self.VCH.define_solver(stepping.NK, target_relative_tolerance=1e-7)
 
         # initialise a target scheduler object
         self.feedback_target_scheduler = feedback_target_scheduler

@@ -491,14 +491,27 @@ def simulate_shot(
         target_schedule_path=control_kwargs["ff_target_schedule"],
         target_waveform_path=control_kwargs["ff_target_waveform"],
     )
-    target_fb_scheduler = ShapeTargetScheduler(
-        target_waveform_path=control_kwargs["fb_target_waveform"],
-        target_schedule_path=control_kwargs["fb_target_schedule"],
-        vc_flag=control_kwargs["vc_flag"],
-        vc_schedule_path=control_kwargs["vc_schedule"],
-        target_blends_path=control_kwargs["target_blends"],
-        target_gains_path=control_kwargs["target_gains"],
-    )
+
+    if control_kwargs["vc_flag"] == "file":
+        target_fb_scheduler = ShapeTargetScheduler(
+            target_waveform_path=control_kwargs["fb_target_waveform"],
+            target_schedule_path=control_kwargs["fb_target_schedule"],
+            vc_flag=control_kwargs["vc_flag"],
+            vc_schedule_path=control_kwargs["vc_schedule"],
+            target_blends_path=control_kwargs["target_blends"],
+            target_gains_path=control_kwargs["target_gains"],
+        )
+    else:
+        target_fb_scheduler = ShapeTargetScheduler(
+            target_waveform_path=control_kwargs["fb_target_waveform"],
+            target_schedule_path=control_kwargs["fb_target_schedule"],
+            vc_flag=control_kwargs["vc_flag"],
+            vc_schedule_path=None,
+            model_path=control_kwargs["model_path"],
+            n_models=control_kwargs["n_models"],
+            target_blends_path=control_kwargs["target_blends"],
+            target_gains_path=control_kwargs["target_gains"],
+        )
 
     # Initialise controllers
     # Initialise the solenoid controller

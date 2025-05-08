@@ -1,6 +1,5 @@
 """
-Applies the Newton Krylov solver Object to the static GS problem.
-Implements both forward and inverse GS solvers.
+Implements the optimiser for the inverse Grad-Shafranov problem.
 
 Copyright 2025 UKAEA, UKRI-STFC, and The Authors, as per the COPYRIGHT and README files.
 
@@ -20,7 +19,6 @@ You should have received a copy of the GNU Lesser General Public License
 along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.  
 """
 
-import warnings
 from copy import deepcopy
 
 import freegs4e
@@ -105,6 +103,10 @@ class Inverse_optimizer:
         self.build_control_coils(eq)
         self.build_greens(eq)
 
+    def source_domain_properties(self, eq):
+        self.eqR = eq.R
+        self.eqZ = eq.Z
+
     def build_control_coils(self, eq):
         """Records what coils are available for control
 
@@ -124,8 +126,7 @@ class Inverse_optimizer:
         self.coil_order = eq.tokamak.coil_order
         self.n_coils = len(eq.tokamak.coils)
         self.full_current_dummy = np.zeros(self.n_coils)
-        self.eqR = eq.R
-        self.eqZ = eq.Z
+        self.source_domain_properties(eq)
 
     def build_control_currents(self, eq):
         """Builds vector of coil current values, including only those coils
@@ -236,17 +237,10 @@ class Inverse_optimizer:
 
         if self.isoflux_set is not None:
             self.d_psi_plasma_vals_iso = []
-            self.d_psi_plasma_vals_iso_plus = []
             for i, isoflux in enumerate(self.isoflux_set):
                 plasma_vals = psi_func(isoflux[0], isoflux[1], grid=False)
                 d_plasma_vals = plasma_vals[:, np.newaxis] - plasma_vals[np.newaxis, :]
                 self.d_psi_plasma_vals_iso.append(d_plasma_vals[self.mask_set[i]])
-                d_plasma_vals_plus = (
-                    plasma_vals[:, np.newaxis] + plasma_vals[np.newaxis, :]
-                )
-                self.d_psi_plasma_vals_iso_plus.append(
-                    d_plasma_vals_plus[self.mask_set[i]]
-                )
 
         if self.psi_vals is not None:
             if self.full_grid:
@@ -418,3 +412,74 @@ class Inverse_optimizer:
         from freegs4e.plotting import plotIOConstraints
 
         return plotIOConstraints(self, axis=axis, show=show)
+
+    def prepare_plasma_psi(self, trial_plasma_psi):
+        self.min_psi = np.amin(trial_plasma_psi)
+        self.psi0 = np.amax(trial_plasma_psi)
+        self.min_psi -= 0.001 * (self.psi0 - self.min_psi)
+        self.psi0 -= self.min_psi
+
+    def prepare_plasma_vals_for_plasma(self, trial_plasma_psi):
+
+        self.prepare_plasma_psi(trial_plasma_psi=trial_plasma_psi)
+
+        psi_func = interpolate.RectBivariateSpline(
+            self.eqR[:, 0], self.eqZ[0, :], trial_plasma_psi
+        )
+
+        if self.isoflux_set is not None:
+            self.d_psi_plasma_vals_iso = []
+            self.d_psi_for_plasma_iso = []
+            for i, isoflux in enumerate(self.isoflux_set):
+                plasma_vals = psi_func(isoflux[0], isoflux[1], grid=False)
+                d_plasma_vals = plasma_vals[:, np.newaxis] - plasma_vals[np.newaxis, :]
+                self.d_psi_plasma_vals_iso.append(d_plasma_vals[self.mask_set[i]])
+                hat_plasma_vals = (plasma_vals - self.min_psi) / self.psi0
+                hat_plasma_vals *= np.log(hat_plasma_vals)
+                d_hat_plasma_vals = (
+                    hat_plasma_vals[:, np.newaxis] - hat_plasma_vals[np.newaxis, :]
+                )
+                self.d_psi_for_plasma_iso.append(
+                    self.psi0 * d_hat_plasma_vals[self.mask_set[i]]
+                )
+
+    def prepare_for_plasma_optimization(self, eq):
+        self.source_domain_properties(eq)
+        self.build_greens(eq=eq)
+
+    def build_plasma_isoflux_lsq(self, full_currents_vec, trial_plasma_psi):
+
+        self.prepare_plasma_vals_for_plasma(trial_plasma_psi)
+
+        loss = []
+        A = []
+        b = []
+        for i, isoflux in enumerate(self.isoflux_set):
+            b_val = np.sum(self.dG_set[i] * full_currents_vec[:, np.newaxis], axis=0)
+            b_val += self.d_psi_plasma_vals_iso[i]
+            b.append(-b_val)
+            loss.append(np.linalg.norm(b_val))
+            # build the jacobian
+            Amat = np.zeros((len(b_val), 2))
+            # gradient with respect to the normalization of psi
+            Amat[:, 0] = self.d_psi_plasma_vals_iso[i]
+            # gradient with respect to the exponent of psi
+            Amat[:, 1] = self.d_psi_for_plasma_iso[i]
+            A.append(Amat)
+
+        self.A_plasma = np.concatenate(A, axis=0)
+        self.b_plasma = np.concatenate(b, axis=0)
+        self.loss_plasma = np.linalg.norm(loss)
+
+    def optimize_plasma_psi(self, full_currents_vec, trial_plasma_psi, l2_reg):
+        self.build_plasma_isoflux_lsq(full_currents_vec, trial_plasma_psi)
+
+        if type(l2_reg) == float:
+            reg_matrix = l2_reg * np.eye(2)
+        else:
+            reg_matrix = np.diag(l2_reg)
+
+        mat = np.linalg.inv(np.matmul(self.A_plasma.T, self.A_plasma) + reg_matrix)
+        delta_current = np.dot(mat, np.dot(self.A_plasma.T, self.b_plasma))
+
+        return delta_current, self.loss_plasma

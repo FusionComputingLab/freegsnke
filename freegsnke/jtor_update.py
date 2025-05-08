@@ -141,24 +141,30 @@ class Jtor_universal:
             Same size as psi.
         """
 
-        opt, xpt, diverted_core_mask, psi_bndry = Jtor_part1(
+        opt, xpt, diverted_core_mask, diverted_psi_bndry = Jtor_part1(
             R, Z, psi, psi_bndry, mask_outside_limiter
         )
 
         if diverted_core_mask is None:
             # print('no xpt')
             psi_bndry, limiter_core_mask, flag_limiter = (
-                psi_bndry,
+                diverted_psi_bndry,
                 None,
                 False,
             )
+            # psi_bndry = np.amin(psi[self.limiter_mask_out])
+            # diverted_core_mask = np.copy(self.mask_inside_limiter)
+
         else:
             psi_bndry, limiter_core_mask, flag_limiter = core_mask_limiter(
                 psi,
-                psi_bndry,
+                diverted_psi_bndry,
                 diverted_core_mask,
                 limiter_mask_out,
             )
+            if np.sum(limiter_core_mask * self.mask_inside_limiter) == 0:
+                limiter_core_mask = diverted_core_mask * self.mask_inside_limiter
+                psi_bndry = 1.0 * diverted_psi_bndry
 
         jtor = Jtor_part2(R, Z, psi, opt[0][2], psi_bndry, limiter_core_mask)
         return (

@@ -268,7 +268,7 @@ class NKGSsolver:
         profiles,
         target_relative_tolerance,
         max_solving_iterations=100,
-        Picard_handover=0.15,
+        Picard_handover=0.11,
         step_size=2.5,
         scaling_with_n=-1.0,
         target_relative_unexplained_residual=0.2,
@@ -346,7 +346,7 @@ class NKGSsolver:
         n_up = 0.0 + 4 * eq.solved
         # this tries to cure cases where plasma_psi is not large enough in modulus
         # causing no core mask to exist
-        while (control_trial_psi is False) and (n_up < 5):
+        while (control_trial_psi is False) and (n_up < 10):
             try:
                 res0 = self.F_function(trial_plasma_psi, self.tokamak_psi, profiles)
                 control_trial_psi = True
@@ -398,7 +398,7 @@ class NKGSsolver:
                 log.append("Picard iteration: " + str(iterations))
                 # using Picard instead of NK
 
-                if picard_flag < 3:
+                if picard_flag < min(max_solving_iterations - 1, 3):
                     # make picard update to the flux up-down symmetric
                     # this combats the instability of picard iterations
                     res0_2d = res0.reshape(self.nx, self.ny)
@@ -407,55 +407,59 @@ class NKGSsolver:
                 else:
                     # update = -1.0 * res0
                     picard_flag = 1
+
+                # # test Picard update
+                # nres0 = np.linalg.norm(res0)
+                # successful = False
+                # while successful == False:
+                #     try:
+                #         res1 = self.F_function(
+                #             trial_plasma_psi - res0, self.tokamak_psi, profiles
+                #         )
+                #         nres1 = np.linalg.norm(res1)
+                #         successful = True
+                #     except:
+                #         res0 *= .8
+
                 # standard Picard update
                 update = -1.0 * res0
 
-                # test Picard update
-                nres0 = np.linalg.norm(res0)
-                try:
-                    res1 = self.F_function(
-                        trial_plasma_psi - res0, self.tokamak_psi, profiles
-                    )
-                    nres1 = np.linalg.norm(res1)
-                    successful = True
-                except:
-                    successful = False
-                if successful:
-                    if nres1 > 1.5 * nres0:
-                        vals = [-1, 0]
-                        res_vals = [nres1, nres0]
-                        counter_picard = 0
-                        while (
-                            res_vals[-1] < res_vals[-2]
-                            and successful
-                            and counter_picard < 10
-                        ):
-                            try:
-                                new_res = self.F_function(
-                                    trial_plasma_psi + (vals[-1] + 1) * res0,
-                                    self.tokamak_psi,
-                                    profiles,
-                                )
-                                vals.append(vals[-1] + 1)
-                                res_vals.append(np.linalg.norm(new_res))
-                                successful = True
-                                counter_picard += 1
-                            except:
-                                successful = False
-                        if counter_picard < 10:
-                            # find best quadratic polyfit
-                            poly_coeffs = np.polyfit(vals, res_vals, deg=2)
-                            coeff_picard = (
-                                0.5
-                                * max(abs(poly_coeffs[1] / poly_coeffs[0]), 0.1)
-                                * np.sign(poly_coeffs[1] / poly_coeffs[0])
-                            )
-                            update = -res0 * coeff_picard
-                            if verbose:
-                                print(
-                                    "custom Picard accepted, with coeff",
-                                    -0.5 * poly_coeffs[1] / poly_coeffs[0],
-                                )
+                # if successful:
+                #     if nres1 > 1.5 * nres0:
+                #         vals = [-1, 0]
+                #         res_vals = [nres1, nres0]
+                #         counter_picard = 0
+                #         while (
+                #             res_vals[-1] < res_vals[-2]
+                #             and successful
+                #             and counter_picard < 10
+                #         ):
+                #             try:
+                #                 new_res = self.F_function(
+                #                     trial_plasma_psi + (vals[-1] + 1) * res0,
+                #                     self.tokamak_psi,
+                #                     profiles,
+                #                 )
+                #                 vals.append(vals[-1] + 1)
+                #                 res_vals.append(np.linalg.norm(new_res))
+                #                 successful = True
+                #                 counter_picard += 1
+                #             except:
+                #                 successful = False
+                #         if counter_picard < 10:
+                #             # find best quadratic polyfit
+                #             poly_coeffs = np.polyfit(vals, res_vals, deg=2)
+                #             coeff_picard = (
+                #                 0.5
+                #                 * max(abs(poly_coeffs[1] / poly_coeffs[0]), 0.3)
+                #                 * np.sign(poly_coeffs[1] / poly_coeffs[0])
+                #             )
+                #             update = -res0 * coeff_picard
+                #             if verbose:
+                #                 print(
+                #                     "custom Picard accepted, with coeff",
+                #                     coeff_picard,
+                #                 )
 
             else:
                 # using NK
@@ -476,18 +480,21 @@ class NKGSsolver:
                     # clip_quantiles=clip_quantiles,
                 )
                 update = 1.0 * self.nksolver.dx
-                if force_up_down_symmetric:
-                    update = update.reshape(self.shape)
-                    update = 0.5 * (update + update[:, ::-1]).reshape(-1)
+            if force_up_down_symmetric:
+                log.append("Forcing up-dpwn symmetry")
+                update = update.reshape(self.shape)
+                update = 0.5 * (update + update[:, ::-1]).reshape(-1)
 
             del_update = np.amax(update) - np.amin(update)
             if del_update / del_psi > max_rel_update_size:
                 # Reduce the size of the update as found too large
                 update *= np.abs(max_rel_update_size * del_psi / del_update)
+                log.append("Update too large, resized.")
 
             new_residual_flag = True
             while new_residual_flag:
                 try:
+                    # check update does not cause the disappearance of the Opoint
                     n_trial_plasma_psi = trial_plasma_psi + update
                     new_res0 = self.F_function(
                         n_trial_plasma_psi, self.tokamak_psi, profiles
@@ -503,11 +510,12 @@ class NKGSsolver:
 
                 except:
                     log.append(
-                        "Trigger update reduction due to failure to find an X-point, trying *0.75."
+                        "Update resizing triggered due to failure to find a critical points."
                     )
                     update *= 0.75
 
-            if new_norm_rel_change < self.norm_rel_change[-1]:
+            if new_norm_rel_change < 1.2 * self.norm_rel_change[-1]:
+                # accept update
                 trial_plasma_psi = n_trial_plasma_psi.copy()
                 try:
                     residual_collinearity = np.sum(res0 * new_res0) / (
@@ -544,8 +552,9 @@ class NKGSsolver:
                 norm_rel_change = 1.0 * new_norm_rel_change
                 del_psi = 1.0 * new_del_psi
             else:
+                reduce_by = self.relative_change / new_rel_change
                 log.append("Increase in residual, update reduction triggered.")
-                reduce_by = self.relative_change / rel_change
+                # log.append(reduce_by)
                 new_residual_flag = True
                 while new_residual_flag:
                     try:
@@ -555,6 +564,7 @@ class NKGSsolver:
                         )
                         new_residual_flag = False
                     except:
+                        log.append("reduction!")
                         reduce_by *= 0.75
 
                 starting_direction = np.copy(res0)
@@ -647,7 +657,7 @@ class NKGSsolver:
                 axis=0,
             )
         )
-        rel_delta_psit /= np.linalg.norm(self.tokamak_psi)
+        rel_delta_psit /= np.linalg.norm(self.tokamak_psi) + 1e-6
         return rel_delta_psit
 
     def get_rel_delta_psi(self, new_psi, previous_psi, profiles):
@@ -726,11 +736,11 @@ class NKGSsolver:
             delta_current, profiles, eq._vgreen[constrain.control_mask]
         )
         adj_factor = min(1, relative_psit_size / rel_delta_psit)
-        print(delta_current, rel_delta_psit, adj_factor)
+        # print(delta_current, rel_delta_psit, adj_factor)
         delta_current *= adj_factor
         # delta_current_ = np.where(delta_current > 0.1, delta_current, 0.1*np.ones_like(delta_current))
 
-        print(delta_current)
+        # print(delta_current)
 
         for i in range(constrain.n_control_coils):
             currents = np.copy(self.dummy_current)
@@ -769,7 +779,7 @@ class NKGSsolver:
         target_relative_psit_update=1e-3,
         max_solving_iterations=100,
         max_iter_per_update=5,
-        Picard_handover=0.1,
+        Picard_handover=0.15,
         step_size=2.5,
         scaling_with_n=-1.0,
         target_relative_unexplained_residual=0.3,
@@ -777,12 +787,13 @@ class NKGSsolver:
         clip=10,
         # clip_quantiles=None,
         max_rel_update_size=0.15,
+        threshold_val=0.18,
         l2_reg=1e-9,
         forward_tolerance_increase=100,
-        forward_tolerance_increase_factor=1.5,
+        # forward_tolerance_increase_factor=1.5,
         max_rel_psit=0.02,
-        damping_factor=0.98,
-        use_full_Jacobian=False,
+        damping_factor=0.995,
+        use_full_Jacobian=True,
         full_jacobian_handover=[1e-5, 7e-3],
         l2_reg_fj=1e-8,
         force_up_down_symmetric=False,
@@ -872,75 +883,68 @@ class NKGSsolver:
             flag to allow progress printouts
         """
 
-        self.rel_psi_updates = [0.05]
-
         iterations = 0
-        rel_change_full = 1
         damping = 1
-        # previous_rel_delta_psit = 1
+        self.rel_psit_updates = [max_rel_psit]
+        previous_rel_delta_psit = 1
+        self.constrain_loss = []
+        check_core_mask = False
 
-        # ensure vectorised currents are in place in tokamak object
-        full_currents_vec = eq.tokamak.getCurrentsVec()
+        # If not calling the solver from self.solve
+        # then you need to ensure that the vectorised currents are in place in tokamak object!
+        # Make sure any currents that are not controlled are assigned using eq.tokamak.set_coil_current()
+        # Otherwise the following tokamak_psi will not be the correct one!
+        full_currents_vec = np.copy(eq.tokamak.current_vec)
         self.tokamak_psi = eq.tokamak.getPsitokamak(vgreen=eq._vgreen)
 
-        # prepare for gradient calculation
+        # prepare all green functions needed by the current optimizations
         constrain.prepare_for_solve(eq)
 
-        delta_current, loss = constrain.optimize_currents(
-            full_currents_vec=full_currents_vec,
-            trial_plasma_psi=eq.plasma_psi,
-            # this is not using the user_defined l2_reg
-            l2_reg=1e-13,
-        )
-        previous_rel_delta_psit = self.get_rel_delta_psit(
-            delta_current, profiles, eq._vgreen[constrain.control_mask]
-        )
-        self.constrain_loss = [loss]
-
-        # check that initial currents and initial plasma_psi are matched to make a LCFS:
+        check_equilibrium = False
         try:
-            profiles.Jtor(eq.R, eq.Z, eq.psi())
-            if np.size(profiles.xpt) == 0:
-                # if constrain.null_points is not None:
-                # trigger the except if no Xpoints
-                [1] + 1
+            GS_residual = self.F_function(
+                tokamak_psi=self.tokamak_psi.reshape(-1),
+                plasma_psi=eq.plasma_psi.reshape(-1),
+                profiles=profiles,
+            )
+            rel_change_full, del_psi = self.relative_del_residual(
+                GS_residual, eq.plasma_psi
+            )
+            if rel_change_full < threshold_val:
+                check_equilibrium = True
+            if profiles.diverted_core_mask is not None:
+                check_core_mask = True
         except:
-            # set sensible currents to start
-
-            print(
-                "The initial coil currents and initial plasma_psi are significantly mismatched!"
-            )
-            print(
-                "Please ensure that sufficient isoflux constraints are provided (for example, try providing at least three non-aligned points on the LCFS)."
-            )
-
-            rel_delta_psit = self.get_rel_delta_psit(
-                delta_current, profiles, eq._vgreen[constrain.control_mask]
-            )
-            if verbose:
-                print(
-                    f"Initial setup of the currents triggered. Relative update of tokamak_psi in the core of: {rel_delta_psit}"
-                )
-                print(f"Current updates: {delta_current}")
-            print("---")
-            eq.tokamak.set_all_coil_currents(
-                full_currents_vec + constrain.rebuild_full_current_vec(delta_current)
-            )
-
-        # previous_psi = eq.psi().reshape(-1)
+            pass
 
         while (
             (rel_change_full > target_relative_tolerance)
             + (previous_rel_delta_psit > target_relative_psit_update)
         ) * (iterations < max_solving_iterations):
 
-            print("---")
-            print(f"Iteration {iterations} starting...")
-
-            # act on the control currents
-            full_currents_vec = eq.tokamak.getCurrentsVec()
-
-            this_max_rel_psit = min(max_rel_psit, np.mean(self.rel_psi_updates[-6:]))
+            if check_equilibrium:
+                # this_max_rel_psit = min(max_rel_psit, np.mean(self.rel_psit_updates[-6:]))
+                this_max_rel_psit = np.mean(self.rel_psit_updates[-6:])
+                this_max_rel_update_size = 1.0 * max_rel_update_size
+                if type(l2_reg) == float:
+                    this_l2_reg = 1.0 * l2_reg
+                else:
+                    this_l2_reg = np.array(l2_reg)
+                if (previous_rel_delta_psit < target_relative_psit_update) * (
+                    rel_change_full < 50 * target_relative_tolerance
+                ):
+                    # use more iterations if 'close to solution'
+                    this_max_iter_per_update = 50
+                else:
+                    this_max_iter_per_update = 1.0 * max_iter_per_update
+            else:
+                this_max_rel_psit = False
+                this_max_rel_update_size = max(max_rel_update_size, 0.3)
+                this_max_iter_per_update = 1
+                if type(l2_reg) == float:
+                    this_l2_reg = 1e-4 * l2_reg
+                else:
+                    this_l2_reg = 1e-4 * np.array(l2_reg)
 
             if (
                 use_full_Jacobian
@@ -948,7 +952,7 @@ class NKGSsolver:
                 * (previous_rel_delta_psit < full_jacobian_handover[1])
             ):
                 if verbose:
-                    print("Using full Jacobian to optimsise.")
+                    print("Using complete Jacobian to optimsise the currents.")
                 # use complete Jacobian: psi_plasma changes with the coil currents
                 delta_current, loss = self.optimize_currents(
                     eq=eq,
@@ -960,81 +964,282 @@ class NKGSsolver:
                 )
             else:
                 if verbose:
-                    print("Using Greens' Jacobian to optimise.")
+                    print(
+                        "Using the simplified Greens' Jacobian to optimise the currents."
+                    )
                 # use Greens as Jacobian: i.e. psi_plasma is assumed fixed
                 delta_current, loss = constrain.optimize_currents(
                     full_currents_vec=full_currents_vec,
                     trial_plasma_psi=eq.plasma_psi,
-                    l2_reg=l2_reg,
+                    l2_reg=this_l2_reg,
                 )
+            self.constrain_loss.append(loss)
 
             rel_delta_psit = self.get_rel_delta_psit(
                 delta_current, profiles, eq._vgreen[constrain.control_mask]
             )
-            if constrain.curr_loss < 1:
-                damping *= damping_factor
-            adj_factor = damping * min(1, this_max_rel_psit / rel_delta_psit)
-
+            print("requested rel_delta_psit", rel_delta_psit)
+            if this_max_rel_psit:
+                # resize update to the control currents so to limit the relative change of the tokamak flux to this_max_rel_psit
+                if constrain.curr_loss < 1:
+                    damping *= damping_factor
+                adj_factor = damping * min(1, this_max_rel_psit / rel_delta_psit)
+                # apply the resizing
+            else:
+                adj_factor = 1.0
             delta_current *= adj_factor
             previous_rel_delta_psit = rel_delta_psit * adj_factor
+
+            if check_core_mask:
+                # make sure that the update of the control currents does not cause a loss of the Opoint or of the Xpoints
+                delta_tokamak_psi = np.sum(
+                    delta_current[:, np.newaxis, np.newaxis]
+                    * eq._vgreen[constrain.control_mask],
+                    axis=0,
+                ).reshape(-1)
+
+                resize = True
+                while resize:
+                    try:
+                        GS_residual = self.F_function(
+                            tokamak_psi=self.tokamak_psi.reshape(-1)
+                            + delta_tokamak_psi,
+                            plasma_psi=eq.plasma_psi.reshape(-1),
+                            profiles=profiles,
+                        )
+                        if len(profiles.xpt):
+                            # The update is approved:
+                            resize = False
+                    except:
+                        pass
+
+                    if resize:
+                        print("Resizing of the control current update triggered!")
+                        delta_current *= 0.75
+                        delta_tokamak_psi *= 0.75
+                        previous_rel_delta_psit *= 0.75
+
+            self.rel_psit_updates.append(previous_rel_delta_psit)
+
+            # apply the update to the control currents
             full_currents_vec += constrain.rebuild_full_current_vec(delta_current)
-
-            if loss > self.constrain_loss[-1]:
-                forward_tolerance_increase *= forward_tolerance_increase_factor
-            self.constrain_loss.append(loss)
-
+            eq.tokamak.set_all_coil_currents(full_currents_vec)
             if verbose:
                 print(
                     f"Control currents updated. Relative update of tokamak_psi in the core of: {previous_rel_delta_psit}"
                 )
-                print(f"Current updates: {delta_current}")
+                # print(f"Current updates: {delta_current}")
                 print(f"Magnetic constraint losses = {loss}")
-            eq.tokamak.set_all_coil_currents(full_currents_vec)
 
-            tolerance = max(
-                min(previous_rel_delta_psit / forward_tolerance_increase, 1e-2),
-                target_relative_tolerance,
-            )
-            if (previous_rel_delta_psit < target_relative_psit_update) * (
-                rel_change_full < 50 * target_relative_tolerance
-            ):
+            # if loss > self.constrain_loss[-1]:
+            #     forward_tolerance_increase *= forward_tolerance_increase_factor
+
+            # set tolerance for the upcoming forward solve
+            if previous_rel_delta_psit < target_relative_psit_update:
                 tolerance = 1.0 * target_relative_tolerance
-                this_max_n_directions = 50
+                this_max_rel_update_size = 50
             else:
-                this_max_n_directions = 1.0 * max_n_directions
+                tolerance = max(
+                    min(previous_rel_delta_psit / forward_tolerance_increase, 1e-3),
+                    target_relative_tolerance,
+                )
 
+            # forward solve to update the plasma_psi based on the new currents
             if verbose:
                 print(f"Handing off to forward_solve. Requested tolerance: {tolerance}")
 
-            # act on plasma_psi
+            # self.eqpp = np.copy(eq.plasma_psi)
+
             self.forward_solve(
                 eq,
                 profiles,
                 target_relative_tolerance=tolerance,
-                max_solving_iterations=np.where(
-                    rel_change_full < Picard_handover, max_iter_per_update, 1
-                ),
+                max_solving_iterations=this_max_iter_per_update,
                 Picard_handover=Picard_handover,
                 step_size=step_size,
                 scaling_with_n=scaling_with_n,
                 target_relative_unexplained_residual=target_relative_unexplained_residual,
-                max_n_directions=this_max_n_directions,
+                max_n_directions=max_n_directions,
                 clip=clip,
                 # clip_quantiles=clip_quantiles,
-                verbose=False,
-                max_rel_update_size=np.where(
-                    rel_change_full < Picard_handover, max_rel_update_size, 0.1
-                ),
+                verbose=True,
+                max_rel_update_size=this_max_rel_update_size,
                 force_up_down_symmetric=force_up_down_symmetric,
             )
             rel_change_full = 1.0 * self.relative_change
 
             iterations += 1
 
-            # new_psi = self.tokamak_psi + eq.plasma_psi.reshape(-1)
-            # rel_psi_update = self.get_rel_delta_psi(new_psi, previous_psi, profiles)
-            # self.rel_psi_updates.append(rel_psi_update)
-            # previous_psi = np.copy(new_psi)
+            if rel_change_full < threshold_val:
+                check_equilibrium = True
+            else:
+                check_equilibrium = False
+
+            # self.rel_psit_updates = []
+
+            # iterations = 0
+            # rel_change_full = 1
+            # damping = 1
+            # # previous_rel_delta_psit = 1
+
+            # # If not calling the solver from self.solve
+            # # then you need to ensure that the vectorised currents are in place in tokamak object!
+            # # Otherwise the following tomakak_psi will not be the correct one!
+            # self.tokamak_psi = eq.tokamak.getPsitokamak(vgreen=eq._vgreen)
+
+            # # prepare for gradient calculation
+            # constrain.prepare_for_solve(eq)
+
+            # delta_current, loss = constrain.optimize_currents(
+            #     full_currents_vec=full_currents_vec,
+            #     trial_plasma_psi=eq.plasma_psi,
+            #     # this is not using the user_defined l2_reg
+            #     l2_reg=1e-13,
+            # )
+            # previous_rel_delta_psit = self.get_rel_delta_psit(
+            #     delta_current, profiles, eq._vgreen[constrain.control_mask]
+            # )
+            # self.rel_psit_updates.append(previous_rel_delta_psit)
+            # self.constrain_loss = [loss]
+
+            # # check that initial currents and initial plasma_psi are matched to make a LCFS:
+            # try:
+            #     profiles.Jtor(eq.R, eq.Z, eq.psi())
+            #     if np.size(profiles.xpt) == 0:
+            #         # if constrain.null_points is not None:
+            #         # trigger the except if no Xpoints
+            #         [1] + 1
+            # except:
+            #     # set sensible currents to start
+
+            #     print(
+            #         "The initial coil currents and initial plasma_psi are significantly mismatched!"
+            #     )
+            #     print(
+            #         "Please ensure that sufficient isoflux constraints are provided (for example, try providing at least three non-aligned points on the LCFS)."
+            #     )
+
+            #     rel_delta_psit = self.get_rel_delta_psit(
+            #         delta_current, profiles, eq._vgreen[constrain.control_mask]
+            #     )
+            #     if verbose:
+            #         print(
+            #             f"Initial setup of the currents triggered. Relative update of tokamak_psi in the core of: {rel_delta_psit}"
+            #         )
+            #         print(f"Current updates: {delta_current}")
+            #     print("---")
+            #     eq.tokamak.set_all_coil_currents(
+            #         full_currents_vec + constrain.rebuild_full_current_vec(delta_current)
+            #     )
+
+            # # previous_psi = eq.psi().reshape(-1)
+
+            # while (
+            #     (rel_change_full > target_relative_tolerance)
+            #     + (previous_rel_delta_psit > target_relative_psit_update)
+            # ) * (iterations < max_solving_iterations):
+
+            #     print("---")
+            #     print(f"Iteration {iterations} starting...")
+
+            #     # act on the control currents
+            #     full_currents_vec = eq.tokamak.getCurrentsVec()
+
+            #     this_max_rel_psit = min(max_rel_psit, np.mean(self.rel_psi_updates[-6:]))
+
+            #     if (
+            #         use_full_Jacobian
+            #         * (rel_change_full < full_jacobian_handover[0])
+            #         * (previous_rel_delta_psit < full_jacobian_handover[1])
+            #     ):
+            #         if verbose:
+            #             print("Using full Jacobian to optimsise.")
+            #         # use complete Jacobian: psi_plasma changes with the coil currents
+            #         delta_current, loss = self.optimize_currents(
+            #             eq=eq,
+            #             profiles=profiles,
+            #             constrain=constrain,
+            #             target_relative_tolerance=target_relative_tolerance,
+            #             relative_psit_size=this_max_rel_psit,
+            #             l2_reg=l2_reg_fj,
+            #         )
+            #     else:
+            #         if verbose:
+            #             print("Using Greens' Jacobian to optimise.")
+            #         # use Greens as Jacobian: i.e. psi_plasma is assumed fixed
+            #         delta_current, loss = constrain.optimize_currents(
+            #             full_currents_vec=full_currents_vec,
+            #             trial_plasma_psi=eq.plasma_psi,
+            #             l2_reg=l2_reg,
+            #         )
+
+            #     rel_delta_psit = self.get_rel_delta_psit(
+            #         delta_current, profiles, eq._vgreen[constrain.control_mask]
+            #     )
+            #     if constrain.curr_loss < 1:
+            #         damping *= damping_factor
+            #     adj_factor = damping * min(1, this_max_rel_psit / rel_delta_psit)
+
+            #     delta_current *= adj_factor
+            #     previous_rel_delta_psit = rel_delta_psit * adj_factor
+            #     full_currents_vec += constrain.rebuild_full_current_vec(delta_current)
+
+            #     if loss > self.constrain_loss[-1]:
+            #         forward_tolerance_increase *= forward_tolerance_increase_factor
+            #     self.constrain_loss.append(loss)
+
+            #     if verbose:
+            #         print(
+            #             f"Control currents updated. Relative update of tokamak_psi in the core of: {previous_rel_delta_psit}"
+            #         )
+            #         print(f"Current updates: {delta_current}")
+            #         print(f"Magnetic constraint losses = {loss}")
+            #     eq.tokamak.set_all_coil_currents(full_currents_vec)
+
+            #     tolerance = max(
+            #         min(previous_rel_delta_psit / forward_tolerance_increase, 1e-2),
+            #         target_relative_tolerance,
+            #     )
+            #     if (previous_rel_delta_psit < target_relative_psit_update) * (
+            #         rel_change_full < 50 * target_relative_tolerance
+            #     ):
+            #         tolerance = 1.0 * target_relative_tolerance
+            #         this_max_n_directions = 50
+            #     else:
+            #         this_max_n_directions = 1.0 * max_n_directions
+
+            #     if verbose:
+            #         print(f"Handing off to forward_solve. Requested tolerance: {tolerance}")
+
+            #     # act on plasma_psi
+            #     self.forward_solve(
+            #         eq,
+            #         profiles,
+            #         target_relative_tolerance=tolerance,
+            #         max_solving_iterations=np.where(
+            #             rel_change_full < Picard_handover, max_iter_per_update, 1
+            #         ),
+            #         Picard_handover=Picard_handover,
+            #         step_size=step_size,
+            #         scaling_with_n=scaling_with_n,
+            #         target_relative_unexplained_residual=target_relative_unexplained_residual,
+            #         max_n_directions=this_max_n_directions,
+            #         clip=clip,
+            #         # clip_quantiles=clip_quantiles,
+            #         verbose=False,
+            #         max_rel_update_size=np.where(
+            #             rel_change_full < Picard_handover, max_rel_update_size, 0.1
+            #         ),
+            #         force_up_down_symmetric=force_up_down_symmetric,
+            #     )
+            #     rel_change_full = 1.0 * self.relative_change
+
+            #     iterations += 1
+
+            #     # new_psi = self.tokamak_psi + eq.plasma_psi.reshape(-1)
+            #     # rel_psi_update = self.get_rel_delta_psi(new_psi, previous_psi, profiles)
+            #     # self.rel_psi_updates.append(rel_psi_update)
+            #     # previous_psi = np.copy(new_psi)
             if verbose:
                 print(f"Iteration {iterations} complete.")
 
@@ -1063,7 +1268,7 @@ class NKGSsolver:
         target_relative_psit_update=1e-3,
         max_solving_iterations=100,
         max_iter_per_update=5,
-        Picard_handover=0.07,
+        Picard_handover=0.1,
         step_size=2.5,
         scaling_with_n=-1.0,
         target_relative_unexplained_residual=0.3,
@@ -1073,9 +1278,10 @@ class NKGSsolver:
         max_rel_update_size=0.15,
         l2_reg=1e-9,
         forward_tolerance_increase=100,
-        forward_tolerance_increase_factor=1.5,
-        max_rel_psit=0.02,
+        # forward_tolerance_increase_factor=1.5,
+        max_rel_psit=0.01,
         damping_factor=0.98,
+        use_full_Jacobian=True,
         full_jacobian_handover=[1e-5, 7e-3],
         l2_reg_fj=1e-8,
         force_up_down_symmetric=False,
@@ -1196,10 +1402,11 @@ class NKGSsolver:
                 max_rel_update_size=max_rel_update_size,
                 l2_reg=l2_reg,
                 forward_tolerance_increase=forward_tolerance_increase,
-                forward_tolerance_increase_factor=forward_tolerance_increase_factor,
+                # forward_tolerance_increase_factor=forward_tolerance_increase_factor,
                 max_rel_psit=max_rel_psit,
                 damping_factor=damping_factor,
                 full_jacobian_handover=full_jacobian_handover,
+                use_full_Jacobian=use_full_Jacobian,
                 l2_reg_fj=l2_reg_fj,
                 force_up_down_symmetric=force_up_down_symmetric,
                 verbose=verbose,

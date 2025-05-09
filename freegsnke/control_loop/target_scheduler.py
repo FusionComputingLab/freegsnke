@@ -11,18 +11,18 @@ class TargetScheduler:
 
     def __init__(
         self,
-        target_waveform_path,
-        target_schedule_path,
+        waveform_dict,
+        schedule_dict,
     ):
         """
         Initialise the class
 
         Parameters
         ----------
-        target_waveform_path : str
-            path to the file containing target waveform.
-        target_schedule_path : str
-            path to the file containing target schedule.
+        waveform_dict : dict
+            dictionary containing target waveform.
+        schedule_dict : dict
+            dictionary containing target schedule.
 
         Returns
         -------
@@ -30,7 +30,7 @@ class TargetScheduler:
 
         """
         # load schedule and create a list of times for it
-        self.target_schedule_dict = self.load_pickle_dict(target_schedule_path)
+        self.target_schedule_dict = schedule_dict
         schedule_times = sorted(list(self.target_schedule_dict.keys()))
 
         print("schedule times", schedule_times)
@@ -40,7 +40,7 @@ class TargetScheduler:
         # target waveform  dict ~ {target_name : {"times":[time list],
         #                                         "vals": [vals list] , }
 
-        self.target_waveform_dict = self.load_pickle_dict(target_waveform_path)
+        self.target_waveform_dict = waveform_dict
         for key, item in self.target_waveform_dict.items():
             if len(item["times"]) != len(item["vals"]):
                 raise ValueError("times and vals arrays must be same length")
@@ -78,7 +78,7 @@ class TargetScheduler:
         Parameters
         ----------
         - path : str
-            Path to the file containing target schedule.
+            dictionary containing target schedule.
 
         Returns
         -------

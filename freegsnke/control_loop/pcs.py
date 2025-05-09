@@ -350,24 +350,24 @@ def validate_shot(
 
     # Load Schedulers
     target_ff_scheduler = TargetScheduler(
-        target_schedule_path=control_kwargs["ff_target_schedule"],
-        target_waveform_path=control_kwargs["ff_target_waveform"],
+        schedule_dict=control_kwargs["ff_target_schedule"],
+        waveform_dict=control_kwargs["ff_target_waveform"],
     )
     target_fb_scheduler = ShapeTargetScheduler(
-        target_waveform_path=control_kwargs["fb_target_waveform"],
-        target_schedule_path=control_kwargs["fb_target_schedule"],
+        waveform_dict=control_kwargs["fb_target_waveform"],
+        schedule_dict=control_kwargs["fb_target_schedule"],
         vc_flag=control_kwargs["vc_flag"],
-        vc_schedule_path=control_kwargs["vc_schedule"],
-        target_blends_path=control_kwargs["target_blends"],
-        target_gains_path=control_kwargs["target_gains"],
+        vc_schedule_dict=control_kwargs["vc_schedule"],
+        shape_blends_dict=control_kwargs["target_blends"],
+        shape_gains_dict=control_kwargs["target_gains"],
     )
 
     # Initialise controllers
     # Initialise the solenoid controller
     ip_controller = ControlSolenoid(
-        target_sched_path=control_kwargs["ip_schedule"],
-        target_waveform_path=control_kwargs["ip_waveform"],
-        contr_params_path=control_kwargs["ip_control_params"],
+        schedule_dict=control_kwargs["ip_schedule"],
+        waveform_dict=control_kwargs["ip_waveform"],
+        contr_params_dict=control_kwargs["ip_control_params"],
     )
 
     shape_controller = ShapeController(
@@ -386,8 +386,8 @@ def validate_shot(
     )  ### needst tidying as code (inductance matrix recreated multiple times)
     # TODO I_Coil_Pert category ....
     coil_perturbation = TargetScheduler(
-        target_schedule_path=control_kwargs["coil_pert_schedule"],
-        target_waveform_path=control_kwargs["coil_pert_waveform"],
+        schedule_dict=control_kwargs["coil_pert_schedule"],
+        waveform_dict=control_kwargs["coil_pert_waveform"],
     )
     currents_start = [eq_start.tokamak.getCurrents()[key] for key in active_coils]
     if "Rvec" in config_kwargs.keys():
@@ -488,37 +488,37 @@ def simulate_shot(
 
     # Load Schedulers
     target_ff_scheduler = TargetScheduler(
-        target_schedule_path=control_kwargs["ff_target_schedule"],
-        target_waveform_path=control_kwargs["ff_target_waveform"],
+        schedule_dict=control_kwargs["ff_target_schedule"],
+        waveform_dict=control_kwargs["ff_target_waveform"],
     )
 
     if control_kwargs["vc_flag"] == "file":
         target_fb_scheduler = ShapeTargetScheduler(
-            target_waveform_path=control_kwargs["fb_target_waveform"],
-            target_schedule_path=control_kwargs["fb_target_schedule"],
+            waveform_dict=control_kwargs["fb_target_waveform"],
+            schedule_dict=control_kwargs["fb_target_schedule"],
             vc_flag=control_kwargs["vc_flag"],
-            vc_schedule_path=control_kwargs["vc_schedule"],
-            target_blends_path=control_kwargs["target_blends"],
-            target_gains_path=control_kwargs["target_gains"],
+            vc_schedule_dict=control_kwargs["vc_schedule"],
+            shape_blends_dict=control_kwargs["target_blends"],
+            shape_gains_dict=control_kwargs["target_gains"],
         )
     else:
         target_fb_scheduler = ShapeTargetScheduler(
-            target_waveform_path=control_kwargs["fb_target_waveform"],
-            target_schedule_path=control_kwargs["fb_target_schedule"],
+            waveform_dict=control_kwargs["fb_target_waveform"],
+            schedule_dict=control_kwargs["fb_target_schedule"],
             vc_flag=control_kwargs["vc_flag"],
-            vc_schedule_path=None,
+            vc_schedule_dict=None,
             model_path=control_kwargs["model_path"],
             n_models=control_kwargs["n_models"],
-            target_blends_path=control_kwargs["target_blends"],
-            target_gains_path=control_kwargs["target_gains"],
+            shape_blends_dict=control_kwargs["target_blends"],
+            shape_gains_dict=control_kwargs["target_gains"],
         )
 
     # Initialise controllers
     # Initialise the solenoid controller
     ip_controller = ControlSolenoid(
-        target_sched_path=control_kwargs["ip_schedule"],
-        target_waveform_path=control_kwargs["ip_waveform"],
-        contr_params_path=control_kwargs["ip_control_params"],
+        schedule_dict=control_kwargs["ip_schedule"],
+        waveform_dict=control_kwargs["ip_waveform"],
+        contr_params_dict=control_kwargs["ip_control_params"],
     )
 
     shape_controller = ShapeController(
@@ -535,8 +535,8 @@ def simulate_shot(
         shape_controller.inductance_full
     )  ### needst tidying as code (inductance matrix recreated multiple times)
     coil_perturbation = TargetScheduler(
-        target_schedule_path=control_kwargs["coil_pert_schedule"],
-        target_waveform_path=control_kwargs["coil_pert_waveform"],
+        schedule_dict=control_kwargs["coil_pert_schedule"],
+        waveform_dict=control_kwargs["coil_pert_waveform"],
     )
 
     active_currents = [eq_start.tokamak.getCurrents()[key] for key in active_coils]

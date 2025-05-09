@@ -14,12 +14,12 @@ class ControlSolenoid:
 
     Parameters
     ----------
-    - target_waveform_path : str
-        path to the file containing target waveform.
-    - target_schedule_path : str
-        path to the file containing target schedule.
-    - contr_params_path : str
-        path to the file containing control parameters sequence.
+    - waveform_dict : dict
+        dictionary containing target waveform.
+    - schedule_dict : dict
+        dictionary containing target schedule.
+    - contr_params_dict : str
+        dictionary containing control parameters sequence.
     - solenoid_name : str
         A string to denote the solenoid current ("Solenoid", "P1", etc).
         Defaults to "Solenoid" if not given.
@@ -36,9 +36,9 @@ class ControlSolenoid:
 
     def __init__(
         self,
-        target_waveform_path,
-        target_sched_path,
-        contr_params_path,
+        waveform_dict,
+        schedule_dict,
+        contr_params_dict,
         solenoid_name=None,
     ):
         """
@@ -52,7 +52,7 @@ class ControlSolenoid:
 
         # Load the scheduler
         self.scheduler = SolenoidScheduler(
-            target_waveform_path, target_sched_path, contr_params_path, solenoid_name
+            waveform_dict, schedule_dict, contr_params_dict, solenoid_name
         )
 
         self.vc = self.scheduler.retrieve_vc()
@@ -207,9 +207,9 @@ class SolenoidScheduler(TargetScheduler):
 
     def __init__(
         self,
-        target_waveform_path,
-        target_schedule_path,
-        control_params_path,
+        waveform_dict,
+        schedule_dict,
+        control_params_dict,
         solenoid_name,
     ):
         """
@@ -217,12 +217,12 @@ class SolenoidScheduler(TargetScheduler):
 
         Arguments
         ---------
-        - target_waveform_path : str
-            path to the file containing target waveform.
-        - target_schedule_path : str
-            path to the file containing target schedule.
-        - control_params_path : str
-            path to the file containing the control parameters sequence.
+        - waveform_dict : dict
+            dictionary containing target waveform.
+        - schedule_dict : dict
+            dictionary containing target schedule.
+        - control_params_dict : dict
+            dictionary containing the control parameters sequence.
         - solenoid_name : str
             A string to denote the solenoid current ("Solenoid", "P1", etc).
             Defaults to "Solenoid" if not given.
@@ -234,7 +234,7 @@ class SolenoidScheduler(TargetScheduler):
         """
 
         # Execute the parent __init__()
-        super().__init__(target_waveform_path, target_schedule_path)
+        super().__init__(waveform_dict, schedule_dict)
 
         if solenoid_name is None:
             print(
@@ -246,7 +246,7 @@ class SolenoidScheduler(TargetScheduler):
             self.solenoid_name = solenoid_name
 
         # Load the control parameters into a dictionary
-        self.control_params = self.load_pickle_dict(control_params_path)
+        self.control_params = control_params_dict
 
     def retrieve_vc(self):
         """

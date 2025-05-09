@@ -18,14 +18,14 @@ class VirtualCircuitScheduler:
 
     """
 
-    def __init__(self, vc_schedule_path=None):
+    def __init__(self, vc_schedule_dict=None):
         """
         Initialise the class
 
         Parameters
         ----------
-        vc_schedule_path : str
-            vc_schedule_path to the file containing VC's. Include file
+        vc_schedule_dict : str
+            vc_schedule_dict to the file containing VC's. Include file
             extension either hdf5 or pkl.
 
         Returns
@@ -43,10 +43,10 @@ class VirtualCircuitScheduler:
         self.input_currents = []  # list of input current dictionaries
         self.input_profile_pars = []  # list of input profile parameter dicts
 
-        if vc_schedule_path is not None:
+        if vc_schedule_dict is not None:
             print("loading vcs from file")
             # populate the vc_schedule
-            self.load_vcs_fromfile(vc_schedule_path)
+            self.load_vcs_from_dict(vc_schedule_dict)
             # create dictionary of vc times and corresponding index
             # (using stop times)
             self.vc_time_stop_dict = {
@@ -55,66 +55,66 @@ class VirtualCircuitScheduler:
             n_vc = len(self.vc_times_stop)
             print(f"{n_vc} VC's loaded")
         else:
-            print("No file target_waveform_path provided. Add VC's manually if desired")
+            print("No file waveform_dict provided. Add VC's manually if desired")
 
-    def load_vcs_fromfile(self, path):
+    def load_vcs_from_dict(self, vcs_dict):
         """
         Load the virtual circuit matrix, shape matrix, coils and targets from a
-        file, and save a list of VC objects.
+        dictionary, and save a list of VC objects and assocated data as class attributes.
 
         Returns
         -------
         None :
             Modifies the attributes of the class.
         """
-        # file extension - hdf5 or csv or ???
-        file_ext = (path).split(".")[-1]
-        if file_ext == ("pkl" or "pickle"):
-            # load vcs from pickle file
-            with open(path, "rb") as fp:
-                vcs_pkl = pickle.load(fp)
+        # # file extension - hdf5 or csv or ???
+        # file_ext = (path).split(".")[-1]
+        # if file_ext == ("pkl" or "pickle"):
+        #     # load vcs from pickle file
+        #     with open(path, "rb") as fp:
+        #         vcs_dict = pickle.load(fp)
 
-                for key, item in vcs_pkl.items():
-                    # index = item["index"]
-                    # time_calc = item["time_calc"]
-                    time_stop = item["time_stop"]
-                    vc_matrix = item["vc_matrix"]
-                    shape_matrix = item["shape_matrix"]
-                    targets = item["targets"]
-                    coils = item["coils"]
-                    targets_val = item["targets_val"]
-                    input_currents = item["input_currents"]
-                    input_profile_pars = item["input_profile_pars"]
-                    try:
-                        gains_arr = item["target_gains"]
-                    except:
-                        print("no gains provided - default to 1")
-                        gains_arr = np.ones(np.shape(targets))
+        for key, item in vcs_dict.items():
+            # index = item["index"]
+            # time_calc = item["time_calc"]
+            time_stop = item["time_stop"]
+            vc_matrix = item["vc_matrix"]
+            shape_matrix = item["shape_matrix"]
+            targets = item["targets"]
+            coils = item["coils"]
+            targets_val = item["targets_val"]
+            input_currents = item["input_currents"]
+            input_profile_pars = item["input_profile_pars"]
+            try:
+                gains_arr = item["target_gains"]
+            except:
+                print("no gains provided - default to 1")
+                gains_arr = np.ones(np.shape(targets))
 
-                    gains_dict = dict(zip(targets, gains_arr))
+            gains_dict = dict(zip(targets, gains_arr))
 
-                    vc_object = VirtualCircuit(
-                        name=f"vc_upto_{time_stop:.4f}",
-                        eq=None,
-                        profiles=None,
-                        shape_matrix=shape_matrix,
-                        VCs_matrix=vc_matrix,
-                        targets=targets,
-                        coils=coils,
-                        targets_val=targets_val,
-                        targets_options=None,
-                        non_standard_targets=None,
-                    )
+            vc_object = VirtualCircuit(
+                name=f"vc_upto_{time_stop:.4f}",
+                eq=None,
+                profiles=None,
+                shape_matrix=shape_matrix,
+                VCs_matrix=vc_matrix,
+                targets=targets,
+                coils=coils,
+                targets_val=targets_val,
+                targets_options=None,
+                non_standard_targets=None,
+            )
 
-                    self.vc_schedule.append(vc_object)
-                    # self.vc_times_calc.append(time_calc)
-                    self.vc_times_stop.append(time_stop)
-                    self.input_currents.append(input_currents)
-                    self.input_profile_pars.append(input_profile_pars)
-                    assert len(gains_arr) == len(
-                        targets
-                    ), "gains provided don't match with number of targets"
-                    self.gains.append(gains_dict)
+            self.vc_schedule.append(vc_object)
+            # self.vc_times_calc.append(time_calc)
+            self.vc_times_stop.append(time_stop)
+            self.input_currents.append(input_currents)
+            self.input_profile_pars.append(input_profile_pars)
+            assert len(gains_arr) == len(
+                targets
+            ), "gains provided don't match with number of targets"
+            self.gains.append(gains_dict)
         # convert times to numpy array
         self.vc_times_stop = np.array(self.vc_times_stop)
         # self.vc_times_calc = np.array(self.vc_times_calc)
@@ -236,12 +236,12 @@ class ShapeTargetScheduler(TargetScheduler):
 
     def __init__(
         self,
-        target_waveform_path,
-        target_schedule_path,
-        target_blends_path,
-        target_gains_path,
+        waveform_dict,
+        schedule_dict,
+        shape_blends_dict,
+        shape_gains_dict,
         vc_flag="file",
-        vc_schedule_path=None,
+        vc_schedule_dict=None,
         model_path=None,
         model_names=None,
         n_models=None,
@@ -251,20 +251,20 @@ class ShapeTargetScheduler(TargetScheduler):
 
         Parameters
         ----------
-        target_waveform_path : str
-            path to the file containing target waveform
-        target_schedule_path : str
-            path to the file containing target schedule
-        target_blends_path : str
+        waveform_dict : dict
+            dictionary containing target waveform
+        schedule_dict : dict
+            dictionary containing target schedule
+        shape_blends_dict : dict
             path to file containing target blend waveform
-        target_gains_path : str
+        shape_gains_dict : dict
             path to file containing target gains
         vc_flag : str   (optional)
             flag to indicate whether to load virtual circuit from file or NN
             emulator (default = "file")
             options = ["file", "Emulator"]
-        vc_schedule_path : str (optional)
-            path to the file containing virtual circuit sequence, if
+        vc_schedule_dict : str (optional)
+            dictionary containing virtual circuit sequence, if
             vc_flag = "file"
 
         Returns
@@ -272,11 +272,11 @@ class ShapeTargetScheduler(TargetScheduler):
         None
         """
 
-        super().__init__(target_waveform_path, target_schedule_path)
+        super().__init__(waveform_dict, schedule_dict)
 
-        self.shape_blends = self.load_pickle_dict(target_blends_path)
-        if target_gains_path is not None:
-            self.shape_gains = self.load_pickle_dict(target_gains_path)
+        self.shape_blends = shape_blends_dict
+        if shape_gains_dict is not None:
+            self.shape_gains = shape_gains_dict
         else:
             self.shape_gains = None
         self.vc_flag = vc_flag
@@ -284,8 +284,8 @@ class ShapeTargetScheduler(TargetScheduler):
         # check if vc_flag is file and load VC's from file.
         if vc_flag == "file":
             # initilase a vc sequence object
-            assert vc_schedule_path is not None, "Please provide a vc sequence path"
-            self.vc_scheduler = VirtualCircuitScheduler(vc_schedule_path)
+            assert vc_schedule_dict is not None, "Please provide a vc sequence path"
+            self.vc_scheduler = VirtualCircuitScheduler(vc_schedule_dict)
 
             # add check to see if targets in VC's match targets in target
             # schedule

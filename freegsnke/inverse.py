@@ -53,6 +53,8 @@ class Inverse_optimizer:
             structure [Rcoords, Zcoords, psi_values]
             with Rcoords, Zcoords and psi_values having the same shape
             Sets the desired values of psi for a set of coordinates, possibly an entire map
+        curr_vals : list, optional
+            structure [[coil indexes in the array of coils available for control], [coil current values]] 
         """
 
         self.isoflux_set = isoflux_set

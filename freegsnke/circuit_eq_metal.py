@@ -143,9 +143,13 @@ class metal_currents:
         )
         if verbose:
             print(f"   Active coils")
-            print(f"      total selected = {self.n_active_coils} (out of {self.n_active_coils})")
+            print(
+                f"      total selected = {self.n_active_coils} (out of {self.n_active_coils})"
+            )
             print(f"   Passive structures")
-            print(f"      {freq_only_number} selected with characteristic timescales larger than 'max_mode_frequency'")
+            print(
+                f"      {freq_only_number} selected with characteristic timescales larger than 'max_mode_frequency'"
+            )
 
         if mode_coupling_masks is not None:
             # reintroduce modes that couple strongly
@@ -154,7 +158,9 @@ class metal_currents:
             ).astype(bool)
             freq_and_thresh_number = np.sum(self.selected_modes_mask)
             if verbose:
-                print(f"      {freq_and_thresh_number - (freq_only_number + self.n_active_coils)} selected that couple with the plasma more than 'threshold_dIy_dI', despite having fast timescales")
+                print(
+                    f"      {freq_and_thresh_number - (freq_only_number + self.n_active_coils)} selected that couple with the plasma more than 'threshold_dIy_dI', despite having fast timescales"
+                )
 
             # exclude modes that do not couple enough
             self.selected_modes_mask = (
@@ -162,10 +168,18 @@ class metal_currents:
             ).astype(bool)
             final_number = np.sum(self.selected_modes_mask)
             if verbose:
-                print(f"      {freq_and_thresh_number - final_number} selected that couple with the plasma less than 'min_dIy_dI', despite having slow timescales")
-                print(f"      total selected = {final_number - self.n_active_coils} (out of {self.n_coils - self.n_active_coils})")
-                print(f"   Total number of modes = {final_number} ({self.n_active_coils} active coils + {final_number - self.n_active_coils} passive structures)")
-                print(f"      (Note: some additional modes may be removed after Jacobian calculation)")
+                print(
+                    f"      {freq_and_thresh_number - final_number} selected that couple with the plasma less than 'min_dIy_dI', despite having slow timescales"
+                )
+                print(
+                    f"      total selected = {final_number - self.n_active_coils} (out of {self.n_coils - self.n_active_coils})"
+                )
+                print(
+                    f"   Total number of modes = {final_number} ({self.n_active_coils} active coils + {final_number - self.n_active_coils} passive structures)"
+                )
+                print(
+                    f"      (Note: some additional modes may be removed after Jacobian calculation)"
+                )
 
         self.n_independent_vars = np.sum(self.selected_modes_mask)
 
@@ -198,10 +212,14 @@ class metal_currents:
             # this is the case used by nonlinear_solver.remove_modes
             self.selected_modes_mask_partial = selected_modes_mask
             print(f"Further mode reduction:")
-            print(f"      {len(selected_modes_mask) - np.sum(selected_modes_mask)} previously included modes couple with the plasma less than 'min_dIy_dI' (following Jacobian calculation)")
+            print(
+                f"      {len(selected_modes_mask) - np.sum(selected_modes_mask)} previously included modes couple with the plasma less than 'min_dIy_dI' (following Jacobian calculation)"
+            )
 
             self.n_independent_vars = np.sum(self.selected_modes_mask_partial)
-            print(f"   Final number of modes = {self.n_independent_vars} ({self.n_active_coils} active coils + {self.n_independent_vars - self.n_active_coils} passive structures)")
+            print(
+                f"   Final number of modes = {self.n_independent_vars} ({self.n_active_coils} active coils + {self.n_independent_vars - self.n_active_coils} passive structures)"
+            )
 
             self.P = self.P[:, self.selected_modes_mask_partial]
 

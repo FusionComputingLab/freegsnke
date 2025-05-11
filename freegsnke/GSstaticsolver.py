@@ -592,10 +592,13 @@ class NKGSsolver:
         self.port_critical(eq=eq, profiles=profiles)
 
         if rel_change > target_relative_tolerance:
-            print(f"Forward static solve DID NOT CONVERGE. Tolerance {rel_change:.2e} (vs. requested {target_relative_tolerance}) reached in {iterations}/{max_solving_iterations} iterations."
+            print(
+                f"Forward static solve DID NOT CONVERGE. Tolerance {rel_change:.2e} (vs. requested {target_relative_tolerance}) reached in {iterations}/{max_solving_iterations} iterations."
             )
         else:
-            print(f"Forward static solve SUCCESS. Tolerance {rel_change:.2e} (vs. requested {target_relative_tolerance}) reached in {iterations}/{max_solving_iterations} iterations.")
+            print(
+                f"Forward static solve SUCCESS. Tolerance {rel_change:.2e} (vs. requested {target_relative_tolerance}) reached in {iterations}/{max_solving_iterations} iterations."
+            )
 
     def get_rel_delta_psit(self, delta_current, profiles, vgreen):
         """Calculates the relative change to the tokamak_psi in the core region

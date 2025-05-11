@@ -341,6 +341,8 @@ class NKGSsolver:
         self.tokamak_psi = eq.tokamak.getPsitokamak(vgreen=eq._vgreen).reshape(-1)
 
         log = []
+        log.append("-----")
+        log.append("Forward static solve starting...")
 
         control_trial_psi = False
         n_up = 0.0 + 4 * eq.solved
@@ -380,7 +382,7 @@ class NKGSsolver:
 
         starting_direction = np.copy(res0)
 
-        log.append("Initial relative error =  " + str(rel_change))
+        log.append(f"Initial relative error = {rel_change:.2e}")
         if verbose:
             for x in log:
                 print(x)
@@ -481,7 +483,7 @@ class NKGSsolver:
                 )
                 update = 1.0 * self.nksolver.dx
             if force_up_down_symmetric:
-                log.append("Forcing up-dpwn symmetry")
+                log.append("Forcing up-dpwn symmetry of the plasma.")
                 update = update.reshape(self.shape)
                 update = 0.5 * (update + update[:, ::-1]).reshape(-1)
 
@@ -574,7 +576,7 @@ class NKGSsolver:
 
             self.relative_change = 1.0 * rel_change
             self.norm_rel_change.append(norm_rel_change)
-            log.append("...relative error =  " + str(rel_change))
+            log.append(f"...relative error =  {rel_change:.2e}")
 
             if verbose:
                 for x in log:
@@ -590,42 +592,10 @@ class NKGSsolver:
         self.port_critical(eq=eq, profiles=profiles)
 
         if rel_change > target_relative_tolerance:
-            warnings.warn(
-                f"Forward solve failed to converge to requested relative tolerance of "
-                + f"{target_relative_tolerance} with less than {max_solving_iterations} "
-                + f"iterations. Last relative psi change: {rel_change}."
+            print(f"Forward static solve DID NOT CONVERGE. Tolerance {rel_change:.2e} (vs. requested {target_relative_tolerance}) reached in {iterations}/{max_solving_iterations} iterations."
             )
         else:
-            print("Forward static solve complete. Last relative residual:", rel_change)
-            print(" ")
-
-    # def get_currents(self, eq):
-    #     current_vec = np.zeros(self.len_control_coils)
-    #     for i, coil in enumerate(self.control_coils):
-    #         current_vec[i] = eq.tokamak[coil].current
-    #     return current_vec
-
-    # def assign_currents(self, eq, current_vec):
-    #     for i, coil in enumerate(self.control_coils):
-    #         eq.tokamak[coil].current = current_vec[i]
-
-    # def update_currents(self, constrain, eq, profiles):
-
-    #     aux_tokamak_psi = eq.tokamak.getPsitokamak(vgreen=eq._vgreen)
-    #     constrain(eq)
-    #     eq.tokamak.getCurrentsVec()
-    #     self.tokamak_psi = eq.tokamak.getPsitokamak(vgreen=eq._vgreen)
-
-    #     if hasattr(profiles, "limiter_core_mask"):
-    #         norm_delta = np.linalg.norm(
-    #             (self.tokamak_psi - aux_tokamak_psi)[profiles.limiter_core_mask]
-    #         ) / np.linalg.norm(
-    #             (self.tokamak_psi + aux_tokamak_psi)[profiles.limiter_core_mask]
-    #         )
-    #     else:
-    #         norm_delta = 1
-
-    #     return norm_delta
+            print(f"Forward static solve SUCCESS. Tolerance {rel_change:.2e} (vs. requested {target_relative_tolerance}) reached in {iterations}/{max_solving_iterations} iterations.")
 
     def get_rel_delta_psit(self, delta_current, profiles, vgreen):
         """Calculates the relative change to the tokamak_psi in the core region

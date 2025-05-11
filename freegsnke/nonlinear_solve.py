@@ -168,20 +168,19 @@ class nl_solver:
         self.limiter_handler = eq.limiter_handler
         self.plasma_domain_size = np.sum(self.limiter_handler.mask_inside_limiter)
 
-        if verbose:
-            print("Checking that the provided pair (eq, profiles) are a GS solution...")
+        # check input eq and profiles are a GS solution
+        print("-----")
+        print("Checking that the provided 'eq' and 'profiles' are a GS solution...")
+        
         # instantiating static GS solver on eq's domain
         self.NK = NKGSsolver(eq)
-        # check input eq and profiles are a GS solution
-        print(
-            "Checking that the provided input pair (eq, profiles) are a GS solution..."
-        )
         self.NK.forward_solve(
             eq,
             profiles,
             target_relative_tolerance=target_relative_tolerance_linearization,
-            verbose=verbose,
+            verbose=False,
         )
+        print("-----")
 
         # set internal copy of the equilibrium and profile
         self.eq1 = deepcopy(eq)
@@ -206,15 +205,15 @@ class nl_solver:
         if max_mode_frequency is None:
             self.max_mode_frequency = 1 / (5 * full_timestep)
             print(
-                "Value of max_mode_frequency has not been provided. Set to",
+                "Value of 'max_mode_frequency' has not been provided. Set to",
                 self.max_mode_frequency,
-                "based on value of full_timestep as provided.",
+                "based on value of 'full_timestep' as provided.",
             )
         else:
             self.max_mode_frequency = max_mode_frequency
 
-        if verbose:
-            print("Instantiating necessary objects...")
+
+        print("Instantiating nonlinear solver objects...")
 
         # handles the metal circuit eq, mode properties, and performs the vessel mode decomposition
         self.evol_metal_curr = metal_currents(
@@ -249,15 +248,10 @@ class nl_solver:
         self.starting_dI = target_dIy / mode_coupling_metric
         self.final_dI_record = np.zeros_like(self.starting_dI)
         self.approved_target_dIy = target_dIy * np.ones_like(self.starting_dI)
+        print("done.")
+        print("-----")
 
-        if verbose:
-            print(
-                "Preparing first selection of modes. Calculations for the full list of modes are about to follow:"
-            )
-
-        print(
-            "Preparing first selection of modes. Calculations for the full list of modes will follow."
-        )
+        print("Identifying mode selection criteria...")
         # prepare ndIydI_no_GS for mode selection
         self.build_dIydI_noGS(
             force_core_mask_linearization,
@@ -272,7 +266,8 @@ class nl_solver:
         strongest_coupling_vessel_mode = max(self.ndIydI_no_GS[self.n_active_coils :])
         if fix_n_vessel_modes >= 0:  # type(fix_n_vessel_modes) is int:
             # select modes based on ndIydI_no_GS up to fix_n_modes exactly
-            print(f"The number of vessel modes has been fixed to {fix_n_vessel_modes}.")
+            print(f"      'fix_n_vessel_modes' option selected --> passive structure modes that couple most to the strongest passive structure mode are being selected.")
+
             ordered_ndIydI_no_GS = np.sort(self.ndIydI_no_GS[self.n_active_coils :])
             if fix_n_vessel_modes > 0:
                 threshold_value = ordered_ndIydI_no_GS[-fix_n_vessel_modes]
@@ -297,6 +292,7 @@ class nl_solver:
             mode_removal = False
 
         else:
+            print(f"      'threshold_dIy_dI', 'min_dIy_dI', and 'max_mode_frequency' option selected --> passive structure modes are selected according to these thresholds.")
             # select modes based on ndIydI_no_GS using values of threshold_dIy_dI and min_dIy_dI
             mode_coupling_mask_include = np.concatenate(
                 (
@@ -319,11 +315,23 @@ class nl_solver:
             mode_coupling_mask_include,
             mode_coupling_mask_exclude,
         )
+        print("-----")
+
+        print(f"Initial mode selection:")
         self.evol_metal_curr.initialize_for_eig(
             selected_modes_mask=None,
             mode_coupling_masks=mode_coupling_masks,
             verbose=(fix_n_vessel_modes < 0),  # (type(fix_n_vessel_modes) is not int)
         )
+        if fix_n_vessel_modes >= 0:
+            print(f"   Active coils")
+            print(f"      total selected = {self.n_active_coils} (out of {self.n_active_coils})")
+            print(f"   Passive structures")
+            print(f"      {fix_n_vessel_modes} selected using 'fix_n_vessel_modes'")
+            print(f"   Total number of modes = {self.evol_metal_curr.n_independent_vars} ({self.n_active_coils} active coils + {fix_n_vessel_modes} passive structures)")
+            print(f"      (Note: some additional modes may be removed after Jacobian calculation)")
+        print("-----")
+
         # this is the number of independent normal mode currents being used
         self.n_metal_modes = self.evol_metal_curr.n_independent_vars
         self.arange_currents = np.arange(self.n_metal_modes + 1)
@@ -417,8 +425,8 @@ class nl_solver:
                     "The input for 'automatic_timestep' should be of the form (float, float). Please revise."
                 )
             automatic_timestep_flag = True
+    
         if automatic_timestep_flag + mode_removal + linearize:
-
             # builds the linearization and sets everything up for the stepper
             self.initialize_from_ICs(
                 eq,
@@ -428,6 +436,7 @@ class nl_solver:
                 verbose=verbose,
                 force_core_mask_linearization=force_core_mask_linearization,
             )
+            print("-----")
 
         # remove passive normal modes that have norm(dIydI) < min_dIy_dI*strongest mode
         if mode_removal:
@@ -454,37 +463,33 @@ class nl_solver:
 
             self.remove_modes(self.retained_modes_mask[:-1])
 
+            print(f"   Re-sizing the Jacobian matrix to account for removed modes.")
+            print("-----")
+
         # check if input equilibrium and associated linearization have an instability, and its timescale
         if automatic_timestep_flag + mode_removal + linearize:
+
             self.linearised_sol.calculate_linear_growth_rate()
             if len(self.linearised_sol.growth_rates):
-
+                print("Linear growth calculations:")
                 # find stabiltiy margins and unstable modes
                 self.linearised_sol.calculate_stability_margin()
                 self.unstable_mode_deformations()
+                print(f"      Growth rate = {self.linearised_sol.growth_rates} [1/s]")
+                print(f"      Instability timescale = {self.linearised_sol.instability_timescale} [s]")
+                print(f"      Stability margin = {self.linearised_sol.stability_margin}")
 
-                print(
-                    "The linear growth rate of this equilibrium corresponds to a characteristic timescale of",
-                    self.linearised_sol.instability_timescale,
-                    "s.",
-                )
             else:
-                print(
-                    "No unstable modes found.",
-                    "Either plasma is stable or, more likely, it is Alfven unstable (i.e. not enough stabilization from the vessel and coils).",
-                )
-                print(
-                    "Try adding more passive modes by increasing the input values of max_mode_frequency and/or by reducing min_dIy_dI.",
-                )
+                print(f"      No unstable modes found: either plasma stable, or more likely, it is Alfven unstable (i.e. needs more stabilisation from coils and passives).")
+                print(f"      Try adding more coils or passive modes (by increasing 'max_mode_frequency' and/or reducing 'min_dIy_dI'.")
+        print("-----")
 
         # if automatic_timestep, reset the timestep accordingly,
         # note that this requires having found an instability
+        print("Evolutive solver timestep:")
         if automatic_timestep_flag is False:
-            print(
-                "The solver's timestep has been set to",
-                self.dt_step,
-                "as explicitly requested. Please compare this with the linear growth rate and reset if necessary.",
-            )
+            print(f"      Solver timestep 'dt_step' has been set to {self.dt_step} as requested.")
+            print(f"      Ensure it is smaller than the growth rate else you may find numerical instability in any subsequent evoltuive simulations!")
         else:
             if len(self.linearised_sol.growth_rates):
                 dt_step = abs(
@@ -494,15 +499,11 @@ class nl_solver:
                     full_timestep=dt_step,
                     max_internal_timestep=dt_step / automatic_timestep[1],
                 )
-                print(
-                    "The solver's timestep has been reset at",
-                    self.dt_step,
-                    "using the calculated linear growth rate and the provided values for the input automatic_timestep.",
-                )
+                print(f"      Solver timestep 'dt_step' has been reset to {self.dt_step} using the growth rate and scaling factors in 'automatic_timestep'.")
             else:
-                print(
-                    "No unstable modes found. It is impossible to automatically set timestep!, please do so manually."
-                )
+                print(f"      Given no unstable modes found, it is impossible to automatically set the timestep! Please do so manually.")
+
+        print("-----")
 
         # text for verbose mode
         self.text_nk_cycle = "This is NK cycle no {nkcycle}."
@@ -912,12 +913,10 @@ class nl_solver:
         # build/update dIydI
         if dIydI is None:
             if self.dIydI_ICs is None:
-                print(
-                    "Linearising with respect to the extensive currents - this may take a minute or two.",
-                    "Calculations for all the",
-                    self.n_metal_modes,
-                    "modes retained so far are about to follow:",
-                )
+                print(f"Building the {self.plasma_domain_size} x {self.n_metal_modes + 1} Jacobian (dIy/dI)",
+                "of plasma current density (inside the LCFS)",
+                "with respect to all metal currents and the total plasma current.")
+
                 self.dIydI = np.zeros((self.plasma_domain_size, self.n_metal_modes + 1))
                 self.ddIyddI = np.zeros(self.n_metal_modes + 1)
                 self.final_dI_record = np.zeros(self.n_metal_modes + 1)
@@ -1295,11 +1294,11 @@ class nl_solver:
 
         # ensure internal equilibrium is a GS solution
         self.assign_currents(self.currents_vec, profiles=self.profiles1, eq=self.eq1)
-        self.NK.forward_solve(
-            self.eq1,
-            self.profiles1,
-            target_relative_tolerance=target_relative_tolerance_linearization,
-        )
+        # self.NK.forward_solve(
+        #     self.eq1,
+        #     self.profiles1,
+        #     target_relative_tolerance=target_relative_tolerance_linearization,
+        # )
 
         # self.eq2 and self.profiles2 are used as auxiliary objects when solving for the dynamics
         # they should not be used to extract properties of the evolving equilibrium

@@ -142,15 +142,10 @@ class metal_currents:
             (np.ones(self.n_active_coils).astype(bool), selected_modes_mask)
         )
         if verbose:
-            print(
-                "In addition to the",
-                self.n_active_coils,
-                "active coils, there are",
-                freq_only_number,
-                "vessel modes with characteristic timescales slower than 'max_mode_frequency', out of",
-                self.n_coils - self.n_active_coils,
-                ".",
-            )
+            print(f"   Active coils")
+            print(f"      total selected = {self.n_active_coils} (out of {self.n_active_coils})")
+            print(f"   Passive structures")
+            print(f"      {freq_only_number} selected with characteristic timescales larger than 'max_mode_frequency'")
 
         if mode_coupling_masks is not None:
             # reintroduce modes that couple strongly
@@ -159,20 +154,18 @@ class metal_currents:
             ).astype(bool)
             freq_and_thresh_number = np.sum(self.selected_modes_mask)
             if verbose:
-                print(
-                    freq_and_thresh_number - (freq_only_number + self.n_active_coils),
-                    "modes couple with the plasma more than 'threshold_dIy_dI', despite having fast timescales.",
-                )
+                print(f"      {freq_and_thresh_number - (freq_only_number + self.n_active_coils)} selected that couple with the plasma more than 'threshold_dIy_dI', despite having fast timescales")
+
             # exclude modes that do not couple enough
             self.selected_modes_mask = (
                 self.selected_modes_mask * mode_coupling_masks[1]
             ).astype(bool)
             final_number = np.sum(self.selected_modes_mask)
             if verbose:
-                print(
-                    freq_and_thresh_number - final_number,
-                    "modes couple with the plasma less than requested by 'min_dIy_dI', despite having slow timescales.",
-                )
+                print(f"      {freq_and_thresh_number - final_number} selected that couple with the plasma less than 'min_dIy_dI', despite having slow timescales")
+                print(f"      total selected = {final_number - self.n_active_coils} (out of {self.n_coils - self.n_active_coils})")
+                print(f"   Total number of modes = {final_number} ({self.n_active_coils} active coils + {final_number - self.n_active_coils} passive structures)")
+                print(f"      (Note: some additional modes may be removed after Jacobian calculation)")
 
         self.n_independent_vars = np.sum(self.selected_modes_mask)
 
@@ -204,16 +197,12 @@ class metal_currents:
         else:
             # this is the case used by nonlinear_solver.remove_modes
             self.selected_modes_mask_partial = selected_modes_mask
-            print(
-                len(selected_modes_mask) - np.sum(selected_modes_mask),
-                "previously included modes couple less than requested by 'min_dIy_dI'.",
-            )
+            print(f"Further mode reduction:")
+            print(f"      {len(selected_modes_mask) - np.sum(selected_modes_mask)} previously included modes couple with the plasma less than 'min_dIy_dI' (following Jacobian calculation)")
+
             self.n_independent_vars = np.sum(self.selected_modes_mask_partial)
-            print(
-                "A total of ",
-                self.n_independent_vars,
-                "modes are being used, including the active coils.",
-            )
+            print(f"   Final number of modes = {self.n_independent_vars} ({self.n_active_coils} active coils + {self.n_independent_vars - self.n_active_coils} passive structures)")
+
             self.P = self.P[:, self.selected_modes_mask_partial]
 
         self.Pm1 = (self.P).T

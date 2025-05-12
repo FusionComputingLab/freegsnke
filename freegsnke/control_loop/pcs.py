@@ -10,6 +10,8 @@ from sys import float_info
 from copy import deepcopy
 from pprint import pprint
 from matplotlib import pyplot as plt
+from matplotlib.ticker import FormatStrFormatter
+import time
 
 import freegsnke
 from .ip_control import ControlSolenoid
@@ -270,11 +272,17 @@ def gains_dict_to_matrix(gains_dict, coil_order):
     numpy 2D array
         Matrix of gains.
     """
-
+    print("Getting pf coil gains")
+    print("requested order", coil_order)
+    print("available coils", gains_dict.keys())
     gains_arr = np.zeros(len(coil_order))
     for i, coil in enumerate(coil_order):
-        tau = gains_dict[coil] / 1000  # convert ms to seconds
-        gains_arr[i] = 1 / tau
+        if coil in gains_dict.keys():
+            tau = gains_dict[coil] / 1000  # convert ms to seconds
+            gains_arr[i] = 1 / tau
+        else:
+            print(f"No gains provided for coil {coil} - setting to zero")
+            gains_arr[i] = 0
 
     gains_matrix = np.diag(gains_arr)
     print("coil gains", gains_arr)
@@ -429,6 +437,94 @@ def validate_shot(
         )
 
 
+def build_schedulers(eq, profiles, stepping, control_kwargs):
+    """
+    create necessasry control schedulers from control_kwargs.
+    """
+
+    # Load Schedulers
+    target_ff_scheduler = TargetScheduler(
+        schedule_dict=control_kwargs["ff_target_schedule"],
+        waveform_dict=control_kwargs["ff_target_waveform"],
+    )
+
+    if control_kwargs["vc_flag"] == "file":
+        target_fb_scheduler = ShapeTargetScheduler(
+            waveform_dict=control_kwargs["fb_target_waveform"],
+            schedule_dict=control_kwargs["fb_target_schedule"],
+            vc_flag=control_kwargs["vc_flag"],
+            vc_schedule_dict=control_kwargs["vc_schedule"],
+            shape_blends_dict=control_kwargs["target_blends"],
+            shape_gains_dict=control_kwargs["target_gains"],
+        )
+    else:
+        target_fb_scheduler = ShapeTargetScheduler(
+            waveform_dict=control_kwargs["fb_target_waveform"],
+            schedule_dict=control_kwargs["fb_target_schedule"],
+            vc_flag=control_kwargs["vc_flag"],
+            vc_schedule_dict=None,
+            model_path=control_kwargs["model_path"],
+            n_models=control_kwargs["n_models"],
+            shape_blends_dict=control_kwargs["target_blends"],
+            shape_gains_dict=control_kwargs["target_gains"],
+        )
+
+    # Initialise controllers
+    # Initialise the solenoid controller
+    ip_controller = ControlSolenoid(
+        schedule_dict=control_kwargs["ip_schedule"],
+        waveform_dict=control_kwargs["ip_waveform"],
+        contr_params_dict=control_kwargs["ip_control_params"],
+    )
+
+    shape_controller = ShapeController(
+        eq=eq,
+        profiles=profiles,
+        stepping=stepping,
+        feedback_target_scheduler=target_fb_scheduler,
+        feedforward_target_scheduler=target_ff_scheduler,
+        coils=None,
+        inductance_matrix=inductance_matrix,
+    )
+
+
+def load_control_parameters(config_kwargs):
+    """
+    Load machine specific parameters - inductances, coil gains, etc.
+
+    Parameters
+    ----------
+    config_kwargs : dict
+        dictionary of configuration parameters (values for resistances, inductances, etc.)
+
+    Returns
+    -------
+    inductances_pl : dict
+        dictionary of inductances for plasma and solenoid
+    coil_gain_matrix : np.array
+        diagonal matrix of coil gains
+    Rp : float
+        plasma resistivity
+    """
+    # Load configuration parameters needed at runtime.
+    Rp = config_kwargs["plasma_resistivity"]  # Plasma resistivity
+    inductances_pl = {
+        "plasma": config_kwargs["plasma_inductance"],  # Plasma inductance
+        "mutual": config_kwargs["plas_sol_inductance"],  # Plasma-Solenoid inductance
+    }
+
+    if "inductance_matrix" in config_kwargs.keys():
+        inductance_matrix = config_kwargs["inductance_matrix"]
+        print("Using user provided inductance matrix")
+    else:
+        inductance_matrix = (
+            None  # default inductance matrix (initialized below in shape controller)
+        )
+    coil_gain_matrix = config_kwargs[
+        "coil_gains"
+    ]  # Gain matrix for coils(what are these gains??)
+
+
 def simulate_shot(
     eq_start,
     profiles_start,
@@ -464,28 +560,6 @@ def simulate_shot(
     None
 
     """
-
-    # Load configuration parameters needed at runtime.
-    Rp = config_kwargs["plasma_resistivity"]  # Plasma resistivity
-    inductances_pl = {
-        "plasma": config_kwargs["plasma_inductance"],  # Plasma inductance
-        "mutual": config_kwargs["plas_sol_inductance"],  # Plasma-Solenoid inductance
-    }
-
-    if "inductance_matrix" in config_kwargs.keys():
-        inductance_matrix = config_kwargs["inductance_matrix"]
-        print("Using user provided inductance matrix")
-    else:
-        inductance_matrix = (
-            None  # default inductance matrix (initialized below in shape controller)
-        )
-    coil_gain_matrix = config_kwargs[
-        "coil_gains"
-    ]  # Gain matrix for coils(what are these gains??)
-    active_coils = list(eq_start.tokamak.coils_dict.keys())[
-        : eq_start.tokamak.n_active_coils
-    ]
-
     # Load Schedulers
     target_ff_scheduler = TargetScheduler(
         schedule_dict=control_kwargs["ff_target_schedule"],
@@ -528,7 +602,43 @@ def simulate_shot(
         feedback_target_scheduler=target_fb_scheduler,
         feedforward_target_scheduler=target_ff_scheduler,
         coils=None,
-        inductance_matrix=inductance_matrix,
+        inductance_matrix=None,
+    )
+    active_coils = list(eq_start.tokamak.coils_dict.keys())[
+        : eq_start.tokamak.n_active_coils
+    ]
+
+    # print(
+    #     "shape waveform dict",
+    #     shape_controller.feedback_target_scheduler.target_waveform_dict,
+    # )
+    # Load configuration parameters needed at runtime.
+    Rp = config_kwargs["plasma_resistivity"]  # Plasma resistivity
+    inductances_pl = {
+        "plasma": config_kwargs["plasma_inductance"],  # Plasma inductance
+        "mutual": config_kwargs["plas_sol_inductance"],  # Plasma-Solenoid inductance
+    }
+
+    if "inductance_matrix" in config_kwargs.keys():
+        inductance_matrix = config_kwargs["inductance_matrix"]
+        print("Using user provided inductance matrix")
+    elif "pf_coil_inductance" in config_kwargs.keys():
+        # order matrix appropriately
+        print("loading coil inductance matrix from dictionary")
+        matrix = config_kwargs["pf_coil_inductance"]["data"]
+        ind_order = {
+            el: i
+            for i, el in enumerate(config_kwargs["pf_coil_inductance"]["coil_order"])
+        }
+        new_order = np.array([ind_order[el] for el in active_coils])
+        inductance_matrix = matrix[new_order, :][:, new_order]
+    else:
+        inductance_matrix = (
+            None  # default inductance matrix (initialized below in shape controller)
+        )
+
+    coil_gain_matrix = gains_dict_to_matrix(
+        config_kwargs["coil_gains_dict"], active_coils
     )
 
     inductance_matrix = deepcopy(
@@ -543,6 +653,11 @@ def simulate_shot(
 
     if "Rvec" in config_kwargs.keys():
         Rvec = config_kwargs["Rvec"]
+    elif "pf_coil_resistances" in config_kwargs.keys():
+        print("loading coil resistances from dictionary")
+        res_dict = config_kwargs["pf_coil_resist"]
+        res_order = [el for el in res_dict["coil_order"]]
+        Rvec = np.array([res_dict["data"][res_order[el]] for el in active_coils])
     else:
         Rvec = shape_controller.coil_resist  # Vector of resistivities
 
@@ -707,87 +822,79 @@ def simulate_shot(
     return history_dict, input_waveform_dict
 
 
-def plot_evolution(sim_hist, input_waveforms=None):
+def plot_evolution(
+    sim_hist=None, input_waveforms=None, title: str = None, save_name=None
+):
     """Plots the evolution of tracked values and compares between linear and non-linear evolution.
 
     Parameters
     ----------
     sim_hist : dict
-        Dictionary containing the simulation history.
+        Dictionary containing the simulation history .
 
     Returns
     -------
     None
     """
 
-    sim_hist["Ip"] = sim_hist["Ip"]
-
     # add end points for plotting flat continuation of input waveforms
-    end_time = sim_hist["times"][-1]
     input_wave_aux = deepcopy(input_waveforms)
-    # input_wave_aux["R_in"]["times"] = np.append(
-    #     input_wave_aux["R_in"]["times"], end_time
-    # )
-    # input_wave_aux["R_in"]["vals"] = np.append(
-    #     input_wave_aux["R_in"]["vals"], input_waveforms["R_in"]["vals"][-1]
-    # )
-    # input_wave_aux["R_out"]["times"] = np.append(
-    #     input_wave_aux["R_out"]["times"], end_time
-    # )
-    # input_wave_aux["R_out"]["vals"] = np.append(
-    #     input_wave_aux["R_out"]["vals"], input_waveforms["R_out"]["vals"][-1]
-    # )
-    # input_wave_aux["Rx_lower"]["times"] = np.append(
-    #     input_wave_aux["Rx_lower"]["times"], end_time
-    # )
-    # input_wave_aux["Rx_lower"]["vals"] = np.append(
-    #     input_wave_aux["Rx_lower"]["vals"], input_waveforms["Rx_lower"]["vals"][-1]
-    # )
-    # input_wave_aux["Ip"]["times"] = np.append(input_wave_aux["Ip"]["times"], end_time)
-    # input_wave_aux["Ip"]["vals"] = np.append(
-    #     input_wave_aux["Ip"]["vals"], input_waveforms["Ip"]["vals"][-1]
-    # )
-
-    pprint(input_wave_aux)
 
     # create figure and axes - 2x3 grid.
-    fig, axs = plt.subplots(2, 3, figsize=(10, 5), dpi=80, constrained_layout=True)
+    fig, axs = plt.subplots(2, 3, figsize=(20, 10), dpi=80, constrained_layout=True)
+    if title is None:
+        fig.suptitle("Simulation History")
+    else:
+        fig.suptitle(title)
+
     axs_flat = axs.flat
+    if sim_hist is not None:
+        axs_flat[0].plot(
+            sim_hist["times"], sim_hist["o_points"][:, 0], "k+", label="linear"
+        )
+        axs_flat[0].set_xlabel("Time")
+        axs_flat[0].set_ylabel("O-point $R$")
+        axs_flat[0].legend()
 
-    axs_flat[0].plot(
-        sim_hist["times"], sim_hist["o_points"][:, 0], "k+", label="linear"
-    )
-    axs_flat[0].set_xlabel("Time")
-    axs_flat[0].set_ylabel("O-point $R$")
-    axs_flat[0].legend()
+        axs_flat[1].plot(sim_hist["times"], sim_hist["xpoints"][:, 1], "k+")
+        axs_flat[1].set_xlabel("Time")
+        axs_flat[1].set_ylabel("Zx")
 
-    axs_flat[1].plot(sim_hist["times"], sim_hist["xpoints"][:, 1], "k+")
-    axs_flat[1].set_xlabel("Time")
-    axs_flat[1].set_ylabel("Zx")
+        axs_flat[2].plot(sim_hist["times"], sim_hist["Ip"], "k+", linestyle="--")
+        axs_flat[2].set_ylim(
+            top=1.02 * max(sim_hist["Ip"]), bottom=0.98  # * min(sim_hist["Ip"])
+        )
+        axs_flat[2].set_xlabel("Time")
+        axs_flat[2].set_ylabel("Plasma current Ip")
 
-    axs_flat[2].plot(sim_hist["times"], sim_hist["Ip"], "k+", linestyle="--")
+        axs_flat[3].plot(
+            sim_hist["times"], sim_hist["xpoints"][:, 0], "k+", linestyle="--"
+        )
+        axs_flat[3].set_ylim(
+            top=1.02 * max(sim_hist["xpoints"][:, 0]),
+            bottom=0.98 * min(sim_hist["xpoints"][:, 0]),
+        )
+        axs_flat[3].yaxis.set_major_formatter(FormatStrFormatter("%.3f"))
 
-    axs_flat[2].set_xlabel("Time")
-    axs_flat[2].set_ylabel("Plasma current Ip")
+        axs_flat[3].set_xlabel("Time")
+        axs_flat[3].set_ylabel("Rx")
 
-    axs_flat[3].plot(sim_hist["times"], sim_hist["xpoints"][:, 0], "k+", linestyle="--")
+        axs_flat[4].plot(sim_hist["times"], sim_hist["R_in"], "k+", linestyle="--")
+        axs_flat[4].set_ylim(
+            top=1.02 * max(sim_hist["R_in"]), bottom=0.98 * min(sim_hist["R_in"])
+        )
+        axs_flat[4].yaxis.set_major_formatter(FormatStrFormatter("%.3f"))
 
-    axs_flat[3].set_xlabel("Time")
-    axs_flat[3].set_ylabel("Rx")
+        axs_flat[4].set_xlabel("Time")
+        axs_flat[4].set_ylabel("Rin")
 
-    axs_flat[4].plot(sim_hist["times"], sim_hist["R_in"], "k+", linestyle="--")
-
-    axs_flat[4].set_xlabel("Time")
-    axs_flat[4].set_ylabel("Rin")
-
-    axs_flat[5].plot(sim_hist["times"], sim_hist["R_out"], "k+", linestyle="--")
-
-    axs_flat[5].set_xlabel("Time")
-    axs_flat[5].set_ylabel("Rout")
-
-    # set xlims
-    for i in range(6):
-        axs_flat[i].set_xlim(0, sim_hist["times"][-1])
+        axs_flat[5].plot(sim_hist["times"], sim_hist["R_out"], "k+", linestyle="--")
+        axs_flat[5].set_ylim(
+            top=1.02 * max(sim_hist["R_out"]), bottom=0.98 * min(sim_hist["R_out"])
+        )
+        axs_flat[5].yaxis.set_major_formatter(FormatStrFormatter("%.3f"))
+        axs_flat[5].set_xlabel("Time")
+        axs_flat[5].set_ylabel("Rout")
 
     # plot input waveforms
     if input_waveforms is not None:
@@ -815,6 +922,30 @@ def plot_evolution(sim_hist, input_waveforms=None):
             "rx",
             linestyle="--",
         )
+
+    # set xlims
+    for i in range(6):
+        if sim_hist is not None and input_wave_aux is not None:
+            tstart = min(sim_hist["times"][0], input_wave_aux["R_in"]["times"][0])
+            tend = min(sim_hist["times"][-1], input_wave_aux["R_out"]["times"][-1])
+        elif sim_hist is not None and input_wave_aux is None:
+            tstart = sim_hist["times"][0]
+            tend = sim_hist["times"][-1]
+        elif sim_hist is None and input_wave_aux is not None:
+            tstart = input_wave_aux["R_in"]["times"][0]
+            tend = input_wave_aux["R_out"]["times"][-1]
+
+        axs_flat[i].set_xlim(tstart, tend)
+
+    # for i in range(6):
+    #     axs_flat[i].set_xlim(sim_hist["times"][0], sim_hist["times"][-1])
+
+    # save_time = round(time.time(), 3)
+    # if save_name is None:
+    #     save_name = "simulation_"
+    if save_name is not None:
+        # save the figure
+        plt.savefig(f"./{save_name}.png")
 
 
 if __name__ == "__main__":

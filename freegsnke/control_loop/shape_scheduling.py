@@ -310,12 +310,15 @@ class ShapeTargetScheduler(TargetScheduler):
             # initilase an Emulator scheduler
             assert model_path is not None, "Please provide a model path"
             print("initialising an emulator scheduler")
-            self.vc_scheduler = VCG(model_path, model_names=None, n_models=None)
+            self.vc_scheduler = VCG(
+                model_path, model_names=model_names, n_models=n_models
+            )
 
     def get_shape_gains(self, targets, time_stamp):
         """
         Retrieves the shape gains for the target at time_stamp, given the target schedule.
-        Gains provided as time_periods - assume units of milliseconds (ms)
+        # Gains provided as time_periods - assume units of milliseconds (ms)
+        Gains provided as numbers
         Parameters
         ----------
         targets : list[str]
@@ -332,12 +335,15 @@ class ShapeTargetScheduler(TargetScheduler):
         gains = []
         for target in targets:
             # get tau
-            tau = self.retrieve_control_param(
+            # tau = self.retrieve_control_param(
+            #     param_dict=self.shape_gains, param=target, time_stamp=time_stamp
+            # )
+            # tau = tau / 1000  # convert ms to seconds
+            # gains.append(1 / tau)
+            gain = self.retrieve_control_param(
                 param_dict=self.shape_gains, param=target, time_stamp=time_stamp
             )
-            tau = tau / 1000  # convert ms to seconds
-            gains.append(1 / tau)
-
+            gains.append(gain)
         gains_arr = np.array(gains)
         # alternative dict format is {time : {target : tau, target_2 : tau_2, ...}}
         # more likely this if single set of gains for all time.

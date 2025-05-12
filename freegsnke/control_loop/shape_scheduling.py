@@ -332,6 +332,7 @@ class ShapeTargetScheduler(TargetScheduler):
         """
         # get set of targets being controlled at this time
         # assume dict format is {target : {'times': [times], 'values': [values]}}
+        print("--- loading shape gains")
         gains = []
         for target in targets:
             # get tau
@@ -343,7 +344,13 @@ class ShapeTargetScheduler(TargetScheduler):
             gain = self.retrieve_control_param(
                 param_dict=self.shape_gains, param=target, time_stamp=time_stamp
             )
-            gains.append(gain)
+            if gain is not None:
+                gains.append(gain)
+            else:
+                # TODO does it want to be zero or check against the blends as well (zero if blend is zero)
+                print(f"Warning : No gains provided for target {target} - set to zero")
+                gains.append(0)
+
         gains_arr = np.array(gains)
         # alternative dict format is {time : {target : tau, target_2 : tau_2, ...}}
         # more likely this if single set of gains for all time.
@@ -356,7 +363,7 @@ class ShapeTargetScheduler(TargetScheduler):
         # else:
         #     for target in targets:
         #         gains.append(self.shape_gains[time_pos][target])
-
+        print("shape gains ---- ", gains_arr)
         return np.diag(gains_arr)
 
     def get_shape_blends(self, targets, time_stamp):

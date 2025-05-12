@@ -226,7 +226,7 @@ class TargetScheduler:
         requested_parameter : float
 
         """
-
+        print("retrieving control parameter", param)
         if param not in param_dict.keys():
             print(
                 f"{param} is not present in param_dict, returning None "
@@ -235,11 +235,15 @@ class TargetScheduler:
             requested_parameter = None
         else:
             # find time position
-            t_val = max(
-                time for time in param_dict[param]["times"] if time <= time_stamp
-            )
+            arr = param_dict[param]["times"]
+            t_val = max(time for time in arr if time <= time_stamp)
+            print("param tval", t_val)
             # get index corresponding to the time position
-            pos = param_dict[param]["times"].index(t_val)
+            if isinstance(arr, list):
+                pos = param_dict[param]["times"].index(t_val)
+            elif isinstance(arr, np.ndarray):
+                pos = np.where(arr == t_val)[0][0]
+
             print(f"pos {pos}")
             if pos is None:
                 print(

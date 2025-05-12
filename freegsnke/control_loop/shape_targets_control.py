@@ -124,7 +124,7 @@ class ShapeController:
                 : len(self.active_coils), : len(self.active_coils)
             ]
             print("Using default inductance matrix from machine config")
-            print("inductance matrix", self.inductance_full)
+            # print("inductance matrix", self.inductance_full)
         else:
             self.inductance_full = inductance_matrix
 
@@ -133,7 +133,7 @@ class ShapeController:
             print(
                 "No coil resistances provided, using default coil resistances from machine config"
             )
-            print("coil resistances", self.coil_resist)
+            # print("coil resistances", self.coil_resist)
         else:
             self.coil_resist = coil_resist
         # initialise a VC handling object
@@ -171,7 +171,6 @@ class ShapeController:
         print("all targets", all_targs)
 
         print("Shape controller initialised")
-        print(self.feedback_target_scheduler.__dict__)
 
     ### OLD blends function
     # defget_shape_blends(self, targets, time_stamp):

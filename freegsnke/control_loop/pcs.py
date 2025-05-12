@@ -437,94 +437,6 @@ def validate_shot(
         )
 
 
-def build_schedulers(eq, profiles, stepping, control_kwargs):
-    """
-    create necessasry control schedulers from control_kwargs.
-    """
-
-    # Load Schedulers
-    target_ff_scheduler = TargetScheduler(
-        schedule_dict=control_kwargs["ff_target_schedule"],
-        waveform_dict=control_kwargs["ff_target_waveform"],
-    )
-
-    if control_kwargs["vc_flag"] == "file":
-        target_fb_scheduler = ShapeTargetScheduler(
-            waveform_dict=control_kwargs["fb_target_waveform"],
-            schedule_dict=control_kwargs["fb_target_schedule"],
-            vc_flag=control_kwargs["vc_flag"],
-            vc_schedule_dict=control_kwargs["vc_schedule"],
-            shape_blends_dict=control_kwargs["target_blends"],
-            shape_gains_dict=control_kwargs["target_gains"],
-        )
-    else:
-        target_fb_scheduler = ShapeTargetScheduler(
-            waveform_dict=control_kwargs["fb_target_waveform"],
-            schedule_dict=control_kwargs["fb_target_schedule"],
-            vc_flag=control_kwargs["vc_flag"],
-            vc_schedule_dict=None,
-            model_path=control_kwargs["model_path"],
-            n_models=control_kwargs["n_models"],
-            shape_blends_dict=control_kwargs["target_blends"],
-            shape_gains_dict=control_kwargs["target_gains"],
-        )
-
-    # Initialise controllers
-    # Initialise the solenoid controller
-    ip_controller = ControlSolenoid(
-        schedule_dict=control_kwargs["ip_schedule"],
-        waveform_dict=control_kwargs["ip_waveform"],
-        contr_params_dict=control_kwargs["ip_control_params"],
-    )
-
-    shape_controller = ShapeController(
-        eq=eq,
-        profiles=profiles,
-        stepping=stepping,
-        feedback_target_scheduler=target_fb_scheduler,
-        feedforward_target_scheduler=target_ff_scheduler,
-        coils=None,
-        inductance_matrix=inductance_matrix,
-    )
-
-
-def load_control_parameters(config_kwargs):
-    """
-    Load machine specific parameters - inductances, coil gains, etc.
-
-    Parameters
-    ----------
-    config_kwargs : dict
-        dictionary of configuration parameters (values for resistances, inductances, etc.)
-
-    Returns
-    -------
-    inductances_pl : dict
-        dictionary of inductances for plasma and solenoid
-    coil_gain_matrix : np.array
-        diagonal matrix of coil gains
-    Rp : float
-        plasma resistivity
-    """
-    # Load configuration parameters needed at runtime.
-    Rp = config_kwargs["plasma_resistivity"]  # Plasma resistivity
-    inductances_pl = {
-        "plasma": config_kwargs["plasma_inductance"],  # Plasma inductance
-        "mutual": config_kwargs["plas_sol_inductance"],  # Plasma-Solenoid inductance
-    }
-
-    if "inductance_matrix" in config_kwargs.keys():
-        inductance_matrix = config_kwargs["inductance_matrix"]
-        print("Using user provided inductance matrix")
-    else:
-        inductance_matrix = (
-            None  # default inductance matrix (initialized below in shape controller)
-        )
-    coil_gain_matrix = config_kwargs[
-        "coil_gains"
-    ]  # Gain matrix for coils(what are these gains??)
-
-
 def simulate_shot(
     eq_start,
     profiles_start,
@@ -704,87 +616,94 @@ def simulate_shot(
     # do as while loop
     counter = 1
     while t < t_stop:
-        print(f"------\n Simulation at t={t} \n --------")
-        print(f"iteration number: {counter}")
-        counter += 1
-        t += dt
-        ##compute voltage request
-        v_requested = voltage_request(
-            ip_controller,
-            shape_controller,
-            eq=stepping.eq1,
-            profiles=stepping.profiles1,
-            timestamp=t,
-            Rp=Rp,
-            inductacnes_pl=inductances_pl,
-            Rvec=Rvec,
-            inductance_matrix=inductance_matrix,
-            est_I=est_I,
-            measured_I=measured_I,
-            coil_gain_matrix=coil_gain_matrix,
-            coil_perturbation=coil_perturbation,
-        )
-        #### update equi
-
-        v_requested[-1] = vertical_controller(
-            dt=stepping.dt_step,
-            target=0.0,
-            history=history_jz,
-            k_prop=-20000,
-            k_int=0,
-            k_deriv=-50,
-            prop_exponent=1.0,
-            prop_error=1e-3,
-            deriv_threshold=50,
-            int_factor=0.98,
-            # Ip=62000,
-            Ip=stepping.profiles1.Ip,
-            Ip_ref=750e3,
-            derivative_lag=1,
-        )
-
-        # copy from example 6c.
-
-        # update equilibrium
-        # carry out the time step
-        if linear == True:
-            print("updating equilibrium  : LINEAR")
-            stepping.nlstepper(
-                active_voltage_vec=v_requested,
-                linear_only=True,  # linearise solve only
-                verbose=False,
-                # custom_coil_resist=coil_resist,   #options for restistances/inductances used in solve
-                # custom_self_ind=coil_ind)
+        try:
+            print(f"------\n Simulation at t={t} \n --------")
+            print(f"iteration number: {counter}")
+            counter += 1
+            t += dt
+            ##compute voltage request
+            v_requested = voltage_request(
+                ip_controller,
+                shape_controller,
+                eq=stepping.eq1,
+                profiles=stepping.profiles1,
+                timestamp=t,
+                Rp=Rp,
+                inductacnes_pl=inductances_pl,
+                Rvec=Rvec,
+                inductance_matrix=inductance_matrix,
+                est_I=est_I,
+                measured_I=measured_I,
+                coil_gain_matrix=coil_gain_matrix,
+                coil_perturbation=coil_perturbation,
             )
-        elif linear == False:
-            print("updating equilibrium : NON-LINEAR")
-            stepping.nlstepper(
-                active_voltage_vec=v_requested,
-                linear_only=False,  # linearise only
-                verbose=False,
-                # custom_coil_resist=coil_resist,   #options for restistances/inductances used in solve
-                # custom_self_ind=coil_ind)
+            #### update equi
+
+            v_requested[-1] = vertical_controller(
+                dt=stepping.dt_step,
+                target=0.0,
+                history=history_jz,
+                k_prop=-20000,
+                k_int=0,
+                k_deriv=-50,
+                prop_exponent=1.0,
+                prop_error=1e-3,
+                deriv_threshold=50,
+                int_factor=0.98,
+                # Ip=62000,
+                Ip=stepping.profiles1.Ip,
+                Ip_ref=750e3,
+                derivative_lag=1,
             )
-        print("equi updated")
-        # #   # store inputs/outputs
-        xpts = stepping.eq1.xpt[0:2, 0:2]
-        x_point_ind = np.argmin(xpts[:, 1])
-        Zx = xpts[x_point_ind, 1]
-        Rx = xpts[x_point_ind, 0]
-        history_xpoints.append([Rx, Zx])
-        history_Rin.append(stepping.eq1.innerOuterSeparatrix()[0])
-        history_Rout.append(stepping.eq1.innerOuterSeparatrix()[1])
 
-        history_times.append(t)
-        history_Ip.append(stepping.profiles1.Ip)
-        history_full_currents.append(stepping.currents_vec[:-1])
-        history_voltages.append(v_requested)
-        history_plasma_resistivity.append(stepping.plasma_resistivity)
-        history_jz.append(
-            np.mean(stepping.profiles1.jtor / stepping.profiles1.Ip * eq.Z)
-        )
+            # copy from example 6c.
 
-        history_o_points = np.append(history_o_points, [stepping.eq1.opt[0]], axis=0)
+            # update equilibrium
+            # carry out the time step
+            if linear == True:
+                print("updating equilibrium  : LINEAR")
+                stepping.nlstepper(
+                    active_voltage_vec=v_requested,
+                    linear_only=True,  # linearise solve only
+                    verbose=False,
+                    # custom_coil_resist=coil_resist,   #options for restistances/inductances used in solve
+                    # custom_self_ind=coil_ind)
+                )
+            elif linear == False:
+                print("updating equilibrium : NON-LINEAR")
+                stepping.nlstepper(
+                    active_voltage_vec=v_requested,
+                    linear_only=False,  # linearise only
+                    verbose=False,
+                    # custom_coil_resist=coil_resist,   #options for restistances/inductances used in solve
+                    # custom_self_ind=coil_ind)
+                )
+            print("equi updated")
+            # #   # store inputs/outputs
+            xpts = stepping.eq1.xpt[0:2, 0:2]
+            x_point_ind = np.argmin(xpts[:, 1])
+            Zx = xpts[x_point_ind, 1]
+            Rx = xpts[x_point_ind, 0]
+            history_xpoints.append([Rx, Zx])
+            history_Rin.append(stepping.eq1.innerOuterSeparatrix()[0])
+            history_Rout.append(stepping.eq1.innerOuterSeparatrix()[1])
+
+            history_times.append(t)
+            history_Ip.append(stepping.profiles1.Ip)
+            history_full_currents.append(stepping.currents_vec[:-1])
+            history_voltages.append(v_requested)
+            history_plasma_resistivity.append(stepping.plasma_resistivity)
+            history_jz.append(
+                np.mean(stepping.profiles1.jtor / stepping.profiles1.Ip * eq.Z)
+            )
+
+            history_o_points = np.append(
+                history_o_points, [stepping.eq1.opt[0]], axis=0
+            )
+        except Exception as e:
+            print(e)
+            print("Simulation failed at t={t}")
+            break
 
     # lists to numpy arrays
     history_Ip = np.array(history_Ip)

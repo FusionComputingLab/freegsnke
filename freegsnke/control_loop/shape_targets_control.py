@@ -91,14 +91,7 @@ class ShapeController:
         self.active_coils = self.eq.tokamak.coils_list[: self.n_active_coils]
 
         self.active_coils_reduced = deepcopy(self.active_coils)
-        print(self.active_coils)
-        try:
-            self.active_coils_reduced.remove("Solenoid")
-            self.active_coils_reduced.remove("px")
-            self.active_coils_reduced.remove("p6")
-        except:
-            print(f"reduced coil list is {self.active_coils_reduced}")
-        print(self.active_coils_reduced)
+
         # .remove("px").remove("p6")
 
         # create a dictionary to map coil names to their order in the list
@@ -330,7 +323,7 @@ class ShapeController:
         assert (
             shape_gain_matrix.shape[0] == shape_gain_matrix.shape[1] == len(targets_req)
         ), "The gain matrix is not the square or same size as the target vector"
-
+        print("shape gain matrix", shape_gain_matrix)
         # shifts required
         target_deltas = targets_req - targets_obs
         gained_target_deltas = shape_gain_matrix @ target_deltas

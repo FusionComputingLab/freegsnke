@@ -1074,6 +1074,8 @@ class nl_solver:
             self.dIydI = dIydI
             self.dIydI_ICs = np.copy(self.dIydI)
 
+        print("done.")
+
     def set_plasma_resistivity(self, plasma_resistivity):
         """Function to set the resistivity of the plasma.
         self.plasma_resistance_1d is the diagonal of the matrix R_yy, the plasma resistance matrix.
@@ -1457,7 +1459,10 @@ class nl_solver:
         """
         self.assign_currents(currents_vec, profiles=self.profiles2, eq=self.eq2)
         self.NK.forward_solve(
-            self.eq2, self.profiles2, target_relative_tolerance=rtol_NK
+            self.eq2,
+            self.profiles2,
+            target_relative_tolerance=rtol_NK,
+            suppress=True,
         )
 
     # def make_broad_hatIy_conv(self, hatIy1, blend=0):

@@ -213,7 +213,7 @@ class metal_currents:
             self.selected_modes_mask_partial = selected_modes_mask
             print(f"Further mode reduction:")
             print(
-                f"      {len(selected_modes_mask) - np.sum(selected_modes_mask)} previously included modes couple with the plasma less than 'min_dIy_dI' (following Jacobian calculation)"
+                f"   {len(selected_modes_mask) - np.sum(selected_modes_mask)} previously included modes couple with the plasma less than 'min_dIy_dI' (following Jacobian calculation)"
             )
 
             self.n_independent_vars = np.sum(self.selected_modes_mask_partial)

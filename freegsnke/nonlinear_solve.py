@@ -472,7 +472,9 @@ class nl_solver:
 
             self.remove_modes(self.retained_modes_mask[:-1])
 
-            print(f"   Re-sizing the Jacobian matrix to account for removed modes.")
+            print(
+                f"   Re-sizing the Jacobian matrix to account for any removed modes (if required)."
+            )
             print("-----")
 
         # check if input equilibrium and associated linearization have an instability, and its timescale

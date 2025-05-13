@@ -290,24 +290,31 @@ class linear_solver:
         ----------
         parameters are passed in as object attributes
         """
-        # full set of characteristic timescales
-        self.all_timescales = -np.sort(np.linalg.eigvals(self.Mmatrix))
+
+        # full set of characteristic timescales (circuits + plasma)
+        evalues, evectors = np.linalg.eig(self.Mmatrix)
+        ord = np.argsort(evalues)
+        self.all_timescales = -evalues[ord]
+        self.all_modes = evectors[:, ord]
+
+        # extract just the positive (i.e. unstable) eigenvalues
         mask = self.all_timescales > 0
-        # the positive (i.e. unstable) eigenvalues
         self.instability_timescale = self.all_timescales[mask]
         self.growth_rates = 1 / self.instability_timescale
 
-        # full set of characteristic timescales of the metal circuit equations
-        # with fixed Ip
-        all_timescales_const_Ip, eigv = np.linalg.eig(self.Mmatrix[:-1, :-1])
-        ord = np.argsort(all_timescales_const_Ip)
-        self.all_timescales_const_Ip = -all_timescales_const_Ip[ord]
+        # full set of characteristic timescales (circuits only, no plasma)
+        evalues, evectors = np.linalg.eig(self.Mmatrix[:-1, :-1])
+        ord = np.argsort(evalues)
+        self.all_timescales_const_Ip = -evalues[ord]
+        self.all_modes_const_Ip = evectors[:, ord]
+
+        # extract just the positive (i.e. unstable) eigenvalues
         mask = self.all_timescales_const_Ip > 0
         self.instability_timescale_const_Ip = self.all_timescales_const_Ip[mask]
         self.growth_rates_const_Ip = 1 / self.instability_timescale_const_Ip
-        # extract the unstable mode
-        self.all_modes = eigv[:, ord]
-        self.unstable_modes = self.all_modes[:, mask]
+
+        # extract the unstable mode in this case, used in other calculations
+        self.unstable_modes = self.all_modes_const_Ip[:, mask]
         self.unstable_modes /= np.linalg.norm(self.unstable_modes, axis=0)
 
     def calculate_pseudo_rigid_projections(self, dRZdI):

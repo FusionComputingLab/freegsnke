@@ -140,9 +140,13 @@ class TargetScheduler:
             (key for key in self.target_schedule_dict if key <= time_stamp),
             default=None,
         )
-
+        print(closest_key)
         if closest_key is None:
-            print("time requested is before first target schedule time")
+            print(
+                "time requested is before first target schedule time - return empty list"
+            )
+
+            return []
 
         target_names = self.target_schedule_dict[closest_key]
 
@@ -227,6 +231,7 @@ class TargetScheduler:
 
         """
         print("retrieving control parameter", param)
+        print(param_dict[param]["vals"])
         if param not in param_dict.keys():
             print(
                 f"{param} is not present in param_dict, returning None "
@@ -253,5 +258,6 @@ class TargetScheduler:
                 requested_parameter = None
             else:
                 requested_parameter = param_dict[param]["vals"][pos]
+            print(requested_parameter)
 
         return requested_parameter

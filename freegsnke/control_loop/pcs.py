@@ -12,6 +12,7 @@ from pprint import pprint
 from matplotlib import pyplot as plt
 from matplotlib.ticker import FormatStrFormatter
 import time
+import traceback
 
 import freegsnke
 from .ip_control import ControlSolenoid
@@ -701,8 +702,12 @@ def simulate_shot(
                 history_o_points, [stepping.eq1.opt[0]], axis=0
             )
         except Exception as e:
+            print("ERROR")
+            print(type(e))
             print(e)
-            print("Simulation failed at t={t}")
+            print(f"Simulation failed at t={t}")
+            error_msg = traceback.format_exc()
+            print(error_msg)
             break
 
     # lists to numpy arrays

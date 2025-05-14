@@ -86,7 +86,7 @@ class TargetScheduler:
         #                     "compatible with schedule"
         #                 )
 
-    def interpolate(self, time_stamp, target):
+    def interpolate(self, time_stamp, waveform):
         """
         Interpolate the target value at time_stamp, from the information in
         target_waveform_dict.
@@ -106,8 +106,8 @@ class TargetScheduler:
         """
         interpolation = np.interp(
             time_stamp,
-            self.target_waveform_dict[target]["times"],
-            self.target_waveform_dict[target]["vals"],
+            waveform["times"],
+            waveform["vals"],
         )
 
         return interpolation
@@ -162,8 +162,17 @@ class TargetScheduler:
         # get set of targets being controlled at this time
         controlled_targets = self.retrieve_controlled_targets(time_stamp)
 
+        # retrieve correct waveform dict - for shape or ip
+        if "shape_fb" in self.target_waveform_dict.keys():
+            waveform_dict = self.target_waveform_dict["shape_fb"]
+        else:
+            waveform_dict = self.target_waveform_dict
+
         targets_required = np.array(
-            [self.interpolate(time_stamp, targ) for targ in controlled_targets]
+            [
+                self.interpolate(time_stamp, waveform_dict[targ])
+                for targ in controlled_targets
+            ]
         )
 
         return targets_required

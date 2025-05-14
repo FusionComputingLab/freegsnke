@@ -167,40 +167,6 @@ class VirtualCircuitScheduler:
         virtual_circuit = self.vc_schedule[pos]
         return virtual_circuit
 
-    # def retrieve_gains(self, targets, time_stamp=None, time_index=None):
-    #     """
-    #     Retrieve the list of targets to be controlled at a given time, given the target schedule.
-    #     Parameters
-    #     ----------
-    #     time_stamp : float (4 decimal places)
-    #         time stamp of the target to be retrieved
-    #     Returns
-    #     -------
-    #     gains_matrix : np.array
-    #         gains matrix
-    #     """
-    #     # get index for time stamp
-    #     if ((time_stamp is None) ^ (time_index is None)) is False:
-    #         print("Please specify either a time stamp or a time step")
-    #         # Maybe raise error instead
-    #         return None
-
-    #     # if time_stamp is not None and time_index is None:
-    #     if time_stamp is not None:
-    #         position = np.sum(self.vc_times_stop < time_stamp)
-    #         if position >= len(self.vc_times_stop):
-    #             # use last vc if time beyond range
-    #             position = -1
-    #     # elif time_stamp is None and time_index is not None:
-    #     elif time_index is not None:
-    #         position = time_index
-
-    #     gains_arr = np.array([self.gains[position][targ] for targ in targets])
-
-    #     gains_matrix = np.diag(gains_arr)
-
-    #     return gains_matrix
-
 
 class ShapeTargetScheduler(TargetScheduler):
     """

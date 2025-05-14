@@ -209,7 +209,7 @@ class SolenoidScheduler(TargetScheduler):
         self,
         waveform_dict,
         schedule_dict,
-        control_params_dict,
+        sol_vc_dict,
         solenoid_name,
     ):
         """
@@ -221,8 +221,8 @@ class SolenoidScheduler(TargetScheduler):
             dictionary containing target waveform.
         - schedule_dict : dict
             dictionary containing target schedule.
-        - control_params_dict : dict
-            dictionary containing the control parameters sequence.
+        - sol_vc_dict : dict
+            dictionary containing the virtual circuit sequence.
         - solenoid_name : str
             A string to denote the solenoid current ("Solenoid", "P1", etc).
             Defaults to "Solenoid" if not given.
@@ -246,9 +246,9 @@ class SolenoidScheduler(TargetScheduler):
             self.solenoid_name = solenoid_name
 
         # Load the control parameters into a dictionary
-        self.control_params = control_params_dict
+        self.vc_dict = sol_vc_dict
 
-    def retrieve_vc(self):
+    def retrieve_vc(self, time_stamp):
         """
         Patch-job method to give access to the solenoid VC. The `vc` object is
         assigned to the `vc` class attribute.
@@ -259,55 +259,66 @@ class SolenoidScheduler(TargetScheduler):
             The solenoid virtual circuit.
 
         """
-
-        vc = self.control_params["vc"]
-
-        return vc
-
-    def retrieve_parameter(self, time_stamp, query):
-        """
-        Retrieves the value of the queried control parameter at time_stamp.
-
-        Arguments
-        ---------
-        - time_stamp : float
-            Time at which the gains are queried.
-        - query : str
-            Control parameter requested.
-
-        Returns
-        -------
-        float
-            Value of the requested parameter at time_stamp.
-
-        """
-
-        if query not in self.control_params:
+        closest_key = max(
+            (key for key in self.vc_dict if key <= time_stamp),
+            default=None,
+        )
+        # print(closest_key)
+        if closest_key is None:
             print(
-                f"{query} is not present in control_params, returning None "
-                "from retrieve_parameter()"
+                "time requested is before first target schedule time - return empty list"
             )
-            requested_parameter = None
-        else:
-            # Compute the position in the list for query that is the closest
-            # lower time to time_stamp
-            closest_pos = max(
-                (key for key in self.control_params[query].keys() if key <= time_stamp),
-                default=None,
-            )
-            if closest_pos is None:
-                print(
-                    "time requested is before first control parameter time, "
-                    "returning None from retrieve_parameter()"
-                )
-                requested_parameter = None
-            else:
-                # Retrieved the value for this parameter at the chosen position
-                requested_parameter = self.control_params[query][closest_pos]
 
-        return requested_parameter
+            return []
 
-    def get_observed_current(self, time_stamp, query, eq=None):
+        sol_vc = self.vc_dict[closest_key]["vc"]
+
+        return np.array(sol_vc)
+
+    # def retrieve_parameter(self, time_stamp, query):
+    #     """
+    #     Retrieves the value of the queried control parameter at time_stamp.
+
+    #     Arguments
+    #     ---------
+    #     - time_stamp : float
+    #         Time at which the gains are queried.
+    #     - query : str
+    #         Control parameter requested.
+
+    #     Returns
+    #     -------
+    #     float
+    #         Value of the requested parameter at time_stamp.
+
+    #     """
+
+    #     if query not in self.control_params:
+    #         print(
+    #             f"{query} is not present in control_params, returning None "
+    #             "from retrieve_parameter()"
+    #         )
+    #         requested_parameter = None
+    #     else:
+    #         # Compute the position in the list for query that is the closest
+    #         # lower time to time_stamp
+    #         closest_pos = max(
+    #             (key for key in self.control_params[query].keys() if key <= time_stamp),
+    #             default=None,
+    #         )
+    #         if closest_pos is None:
+    #             print(
+    #                 "time requested is before first control parameter time, "
+    #                 "returning None from retrieve_parameter()"
+    #             )
+    #             requested_parameter = None
+    #         else:
+    #             # Retrieved the value for this parameter at the chosen position
+    #             requested_parameter = self.control_params[query][closest_pos]
+
+    #     return requested_parameter
+
+    def get_observed_current(self, query, eq=None):
         """
         Provides the current value for `query` at `time_stamp`, either via
         user-defined sequences (if `query` is present in `control_params` on
@@ -315,8 +326,8 @@ class SolenoidScheduler(TargetScheduler):
 
         Parameters
         ----------
-        - time_stamp : float (4 decimal places)
-            Timestamp for which this pipeline should provide a control voltage.
+        # - time_stamp : float (4 decimal places)
+        #     Timestamp for which this pipeline should provide a control voltage.
         - query : str
             Current queried. It can be either "Ip_obs" or "measured_Isol".
 
@@ -338,28 +349,26 @@ class SolenoidScheduler(TargetScheduler):
             The current value for the queried entity.
 
         """
-        current = self.retrieve_parameter(time_stamp, query)
+        # current = self.retrieve_parameter(time_stamp, query)
 
-        if current is None:
-            if eq is None:
-                raise Exception(
-                    "An Equilibrium object should be provided to "
-                    f"ip_control() if {query} is not provided."
-                )
+        if eq is None:
+            raise Exception(
+                "An Equilibrium object should be provided to "
+                f"ip_control() if {query} is not provided."
+            )
 
-            if query == "Ip_obs":
-                print(
-                    "Ip_obs is not provided, using the equilibrium given to "
-                    "estimate it."
-                )
-                current = eq.plasmaCurrent()
+        if query == "Ip_obs":
+            print(
+                "Ip_obs is not provided, using the equilibrium given to " "estimate it."
+            )
+            current = eq.plasmaCurrent()
 
-            if query == "measured_Isol":
-                print(
-                    "measured_Isol is not provided, using the equilibrium "
-                    "given to estimate it."
-                )
-                current = eq.tokamak[self.solenoid_name].current
+        if query == "measured_Isol":
+            print(
+                "measured_Isol is not provided, using the equilibrium "
+                "given to estimate it."
+            )
+            current = eq.tokamak[self.solenoid_name].current
 
         return current
 

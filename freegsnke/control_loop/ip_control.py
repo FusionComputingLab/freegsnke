@@ -362,3 +362,20 @@ class SolenoidScheduler(TargetScheduler):
                 current = eq.tokamak[self.solenoid_name].current
 
         return current
+
+    def get_vloop_blends(self, time_stamp):
+        """
+        Retrieves the vloop blends for the target at time_stamp, given the target schedule.
+
+        """
+        # get set of targets being controlled at this time
+        print("--- loading shape gains")
+        gains = []
+        # dict format is {time : {target : tau, target_2 : tau_2, ...}}
+        # more likely this if single set of gains for all time.
+        blend = self.retrieve_control_param(
+            param_dict=self.target_waveform_dict,
+            param="blends",
+            time_stamp=time_stamp,
+        )
+        return blend

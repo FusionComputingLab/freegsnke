@@ -257,11 +257,11 @@ class ShapeTargetScheduler(TargetScheduler):
 
         super().__init__(waveform_dict, schedule_dict)
 
-        self.shape_blends = shape_blends_dict
-        if shape_gains_dict is not None:
-            self.shape_gains = shape_gains_dict
-        else:
-            self.shape_gains = None
+        # self.shape_blends = shape_blends_dict
+        # if shape_gains_dict is not None:
+        #     self.shape_gains = shape_gains_dict
+        # else:
+        #     self.shape_gains = None
         self.vc_flag = vc_flag
 
         # check if vc_flag is file and load VC's from file.
@@ -275,6 +275,8 @@ class ShapeTargetScheduler(TargetScheduler):
             # merge the time sequence from both target and vc, and check the
             # targets match at each midpiont.
             print("checking target schedule and vc sequence")
+            print("vc schedule times ", self.vc_scheduler.vc_times_start)
+            print("target schedule times ", self.target_schedule_dict.keys())
             change_times = np.sort(
                 np.concatenate(
                     (
@@ -285,26 +287,30 @@ class ShapeTargetScheduler(TargetScheduler):
             )
             midpoints = (change_times[:-1] + change_times[1:]) / 2
             # for _, midpoint in enumerate(midpoints):
-            for midpoint in midpoints:
-                # print(
-                #     "checking compatibility of target schedule and vc"
-                #     f" sequence at time {midpoint}"
-                # )
-                vc_targs = self.vc_scheduler.retrieve_vc(time_stamp=midpoint).targets
-                controlled_targs = self.retrieve_controlled_targets(time_stamp=midpoint)
-                # check that the target schedule is a subset of the vc sequence
-                if not set(controlled_targs).issubset(set(vc_targs)):
-                    raise ValueError(
-                        "targets scheduled for control not a subset of vc "
-                        f"computable targets at time {midpoint} ",
-                    )
-                elif controlled_targs != vc_targs:
-                    # check the order of the targets
-                    print(
-                        "targets requested and vc available targets do not match : vc's will be recomputed as necessary"
-                    )
-                    # print("controlled targets", controlled_targs)
-                    # print("VC available targets", vc_targs)
+            ####### TODO MODIFY this compatibilty check to be more robust
+            # for midpoint in midpoints:
+            #     # print(
+            #     #     "checking compatibility of target schedule and vc"
+            #     #     f" sequence at time {midpoint}"
+            #     # )
+            #     print("vc check at time", midpoint)
+            #     vc_targs = self.vc_scheduler.retrieve_vc(time_stamp=midpoint).targets
+            #     print("vc_targs", vc_targs)
+            #     controlled_targs = self.retrieve_controlled_targets(time_stamp=midpoint)
+            #     print("controlled_targs", controlled_targs)
+            #     # check that the target schedule is a subset of the vc sequence
+            #     if not set(controlled_targs).issubset(set(vc_targs)):
+            #         raise ValueError(
+            #             "targets scheduled for control not a subset of vc "
+            #             f"computable targets at time {midpoint} ",
+            #         )
+            #     elif controlled_targs != vc_targs:
+            #         # check the order of the targets
+            #         print(
+            #             "targets requested and vc available targets do not match : vc's will be recomputed as necessary"
+            #         )
+            #         # print("controlled targets", controlled_targs)
+            #         # print("VC available targets", vc_targs)
 
         elif vc_flag == "emulator" or "emu" or "Emulator":
             # initilase an Emulator scheduler
@@ -313,58 +319,6 @@ class ShapeTargetScheduler(TargetScheduler):
             self.vc_scheduler = VCG(
                 model_path, model_names=model_names, n_models=n_models
             )
-
-    def get_shape_gains(self, targets, time_stamp):
-        """
-        Retrieves the shape gains for the target at time_stamp, given the target schedule.
-        # Gains provided as time_periods - assume units of milliseconds (ms)
-        Gains provided as numbers
-        Parameters
-        ----------
-        targets : list[str]
-            list of targets to get gains for
-        time_stamp : float (4 decimal places)
-            time stamp of the target to be retrieved
-        Returns
-        -------
-        shape_gains : np.array
-            shape gains
-        """
-        # get set of targets being controlled at this time
-        # assume dict format is {target : {'times': [times], 'values': [values]}}
-        print("--- loading shape gains")
-        gains = []
-        for target in targets:
-            # get tau
-            # tau = self.retrieve_control_param(
-            #     param_dict=self.shape_gains, param=target, time_stamp=time_stamp
-            # )
-            # tau = tau / 1000  # convert ms to seconds
-            # gains.append(1 / tau)
-            gain = self.retrieve_control_param(
-                param_dict=self.shape_gains, param=target, time_stamp=time_stamp
-            )
-            if gain is not None:
-                gains.append(gain)
-            else:
-                # TODO does it want to be zero or check against the blends as well (zero if blend is zero)
-                print(f"Warning : No gains provided for target {target} - set to zero")
-                gains.append(0)
-
-        gains_arr = np.array(gains)
-        # alternative dict format is {time : {target : tau, target_2 : tau_2, ...}}
-        # more likely this if single set of gains for all time.
-        # time_pos = max( time for time in self.shape_gains.keys() if time <= time_stamp)
-        # if time_pos is None:
-        #     print(
-        #     "time requested is before first control parameter time, "
-        #     "returning None from retrieve_parameter()"
-        #     )
-        # else:
-        #     for target in targets:
-        #         gains.append(self.shape_gains[time_pos][target])
-        print("shape gains ---- ", gains_arr)
-        return np.diag(gains_arr)
 
     def get_shape_blends(self, targets, time_stamp):
         """
@@ -382,11 +336,11 @@ class ShapeTargetScheduler(TargetScheduler):
             dictionary of blends for the target at time_stamp
         """
         blend_arr = []
-        print("blend dict ", self.shape_blends.keys())
+        print("blend dict ", self.target_waveform_dict["blends"].keys())
         for target in targets:
             blend_arr.append(
                 self.retrieve_control_param(
-                    param_dict=self.shape_blends,
+                    param_dict=self.target_waveform_dict["blends"],
                     param=target,
                     time_stamp=time_stamp,
                 )

@@ -479,7 +479,7 @@ class nl_solver:
 
         # check if input equilibrium and associated linearization have an instability, and its timescale
         if automatic_timestep_flag + mode_removal + linearize:
-                print("Linear growth calculations:")
+            print("Linear growth calculations:")
             self.linearised_sol.calculate_linear_growth_rate()
             if len(self.linearised_sol.growth_rates):
                 # find stabiltiy margins and unstable modes

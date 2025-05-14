@@ -479,10 +479,9 @@ class nl_solver:
 
         # check if input equilibrium and associated linearization have an instability, and its timescale
         if automatic_timestep_flag + mode_removal + linearize:
-
+                print("Linear growth calculations:")
             self.linearised_sol.calculate_linear_growth_rate()
             if len(self.linearised_sol.growth_rates):
-                print("Linear growth calculations:")
                 # find stabiltiy margins and unstable modes
                 self.linearised_sol.calculate_stability_margin()
                 self.unstable_mode_deformations()
@@ -499,7 +498,7 @@ class nl_solver:
                     f"      No unstable modes found: either plasma stable, or more likely, it is Alfven unstable (i.e. needs more stabilisation from coils and passives)."
                 )
                 print(
-                    f"      Try adding more coils or passive modes (by increasing 'max_mode_frequency' and/or reducing 'min_dIy_dI'."
+                    f"      Try adding more coils or passive modes (by increasing 'max_mode_frequency' and/or reducing 'min_dIy_dI' or increasing 'fix_n_vessel_modes')."
                 )
         print("-----")
 

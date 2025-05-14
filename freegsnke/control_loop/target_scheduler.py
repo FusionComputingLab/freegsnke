@@ -38,14 +38,26 @@ class TargetScheduler:
         print("schedule dictionary")
         pprint(self.target_schedule_dict)
 
+        print("waveform dictionary")
+        pprint(waveform_dict)
         # load target waveform
         # target waveform  dict ~ {target_name : {"times":[time list],
         #                                         "vals": [vals list] , }
 
         self.target_waveform_dict = waveform_dict
-        for key, item in self.target_waveform_dict.items():
-            if len(item["times"]) != len(item["vals"]):
-                raise ValueError("times and vals arrays must be same length")
+        for quantity in self.target_waveform_dict.keys():
+            print("timeseries waveform type", quantity)
+            if "times" in self.target_waveform_dict[quantity].keys():
+                item = self.target_waveform_dict[quantity]
+                if len(item["times"]) != len(item["vals"]):
+                    raise ValueError("times and vals arrays must be same length")
+            else:
+                print("further nested dict")
+                for key, item in self.target_waveform_dict[quantity].items():
+                    print(key, item)
+                    if len(item["times"]) != len(item["vals"]):
+                        print("Error in waveform dict", key)
+                        raise ValueError("times and vals arrays must be same length")
 
         #### TODO MODIFY this check to be more robust
         # check compatibility of target schedule and target waveform
@@ -194,6 +206,7 @@ class TargetScheduler:
 
         return grad_arr
 
+    # def retrieve_timeseries_param(self, param, time_stamp):
     def retrieve_control_param(self, param_dict, param, time_stamp):
         """
         Retrieves the value of the queried control parameter at time_stamp.
@@ -209,14 +222,13 @@ class TargetScheduler:
         Returns
         -------
         requested_parameter : float
-
         """
         print("retrieving time series control parameter", param)
         # print(param_dict[param]["vals"])
         if param not in param_dict.keys():
             print(
                 f"{param} is not present in param_dict, returning None "
-                "from retrieve_control_parameter()"
+                "from retrieve_control_param()"
             )
             requested_parameter = None
         else:
@@ -261,25 +273,7 @@ class TargetScheduler:
         # get set of targets being controlled at this time
         print("--- loading shape gains")
         gains = []
-        # #assume dict format is {target : {'times': [times], 'values': [values]}}
-        # for target in targets:
-        #     # get tau
-        #     # tau = self.retrieve_control_param(
-        #     #     param_dict=self.shape_gains, param=target, time_stamp=time_stamp
-        #     # )
-        #     # tau = tau / 1000  # convert ms to seconds
-        #     # gains.append(1 / tau)
-        #     gain = self.retrieve_control_param(
-        #         param_dict=self.shape_gains, param=target, time_stamp=time_stamp
-        #     )
-        #     if gain is not None:
-        #         gains.append(gain)
-        #     else:
-        #         # TODO does it want to be zero or check against the blends as well (zero if blend is zero)
-        #         print(f"Warning : No gains provided for target {target} - set to zero")
-        #         gains.append(0)
-
-        # alternative dict format is {time : {target : tau, target_2 : tau_2, ...}}
+        # dict format is {time : {target : tau, target_2 : tau_2, ...}}
         # more likely this if single set of gains for all time.
         time_pos = max(
             time for time in self.target_schedule_dict.keys() if time <= time_stamp

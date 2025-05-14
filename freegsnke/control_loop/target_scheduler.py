@@ -1,5 +1,6 @@
 import numpy as np
 import pickle
+from pprint import pprint
 
 
 class TargetScheduler:
@@ -20,7 +21,7 @@ class TargetScheduler:
         Parameters
         ----------
         waveform_dict : dict
-            dictionary containing target waveform.
+            dictionary containing target waveforms.
         schedule_dict : dict
             dictionary containing target schedule.
 
@@ -34,7 +35,8 @@ class TargetScheduler:
         schedule_times = sorted(list(self.target_schedule_dict.keys()))
 
         print("schedule times", schedule_times)
-        print("schedule dictionary", self.target_schedule_dict)
+        print("schedule dictionary")
+        pprint(self.target_schedule_dict)
 
         # load target waveform
         # target waveform  dict ~ {target_name : {"times":[time list],
@@ -45,54 +47,32 @@ class TargetScheduler:
             if len(item["times"]) != len(item["vals"]):
                 raise ValueError("times and vals arrays must be same length")
 
+        #### TODO MODIFY this check to be more robust
         # check compatibility of target schedule and target waveform
-        # checks that ...
-        for time in schedule_times:
-            # ### do this with set check...
-            targ_names = self.target_schedule_dict[time]
-            for targ in targ_names:
-                # check 1 : check if all targets in target schedule are in
-                # target waveform
-                if targ not in self.target_waveform_dict.keys():
-                    raise ValueError(
-                        f"Target {targ} is in schedule but is not defined in"
-                        "target waveform"
-                    )
-                # check 2 : check if targets in each interval lie within time
-                # ranges of target waveform
-                if len(self.target_waveform_dict[targ]["times"]) > 1:
-                    time_start = self.target_waveform_dict[targ]["times"][0]
-                    time_end = self.target_waveform_dict[targ]["times"][-1]
-                    if time_start > time or time_end < time:
-                        print(f"time range for {targ}: ({time_start}, {time_end})")
-                        print(f"target schedule time: {time}")
-                        raise ValueError(
-                            f"Range of defined values for Target {targ} not "
-                            "compatible with schedule"
-                        )
-
-    def load_pickle_dict(self, path):
-        """
-        Load the dictionary from the file.
-
-        Parameters
-        ----------
-        - path : str
-            dictionary containing target schedule.
-
-        Returns
-        -------
-        - pickle_dict : dictionary
-            Dictionary with the file contents.
-
-        """
-        file_ext = (path).split(".")[-1]
-        if file_ext == ("pkl" or "pickle"):
-            print(f"loading {path}")
-            # load target waveform from pickle file
-            with open(path, "rb") as fp:
-                pickle_dict = pickle.load(fp)
-        return pickle_dict
+        # # checks that ...
+        # for time in schedule_times:
+        #     # ### do this with set check...
+        #     targ_names = self.target_schedule_dict[time]
+        #     for targ in targ_names:
+        #         # check 1 : check if all targets in target schedule are in
+        #         # target waveform
+        #         if targ not in self.target_waveform_dict.keys():
+        #             raise ValueError(
+        #                 f"Target {targ} is in schedule but is not defined in"
+        #                 "target waveform"
+        #             )
+        #         # check 2 : check if targets in each interval lie within time
+        #         # ranges of target waveform
+        #         if len(self.target_waveform_dict[targ]["times"]) > 1:
+        #             time_start = self.target_waveform_dict[targ]["times"][0]
+        #             time_end = self.target_waveform_dict[targ]["times"][-1]
+        #             if time_start > time or time_end < time:
+        #                 print(f"time range for {targ}: ({time_start}, {time_end})")
+        #                 print(f"target schedule time: {time}")
+        #                 raise ValueError(
+        #                     f"Range of defined values for Target {targ} not "
+        #                     "compatible with schedule"
+        #                 )
 
     def interpolate(self, time_stamp, target):
         """
@@ -140,7 +120,7 @@ class TargetScheduler:
             (key for key in self.target_schedule_dict if key <= time_stamp),
             default=None,
         )
-        print(closest_key)
+        # print(closest_key)
         if closest_key is None:
             print(
                 "time requested is before first target schedule time - return empty list"
@@ -148,7 +128,7 @@ class TargetScheduler:
 
             return []
 
-        target_names = self.target_schedule_dict[closest_key]
+        target_names = self.target_schedule_dict[closest_key]["targets"]
 
         return target_names
 
@@ -218,6 +198,7 @@ class TargetScheduler:
         """
         Retrieves the value of the queried control parameter at time_stamp.
 
+        Assumes timeseries waveform format - use for blends, vloop, ip, shapes
         Arguments
         ---------
         - time_stamp : float (4 decimal places)
@@ -230,8 +211,8 @@ class TargetScheduler:
         requested_parameter : float
 
         """
-        print("retrieving control parameter", param)
-        print(param_dict[param]["vals"])
+        print("retrieving time series control parameter", param)
+        # print(param_dict[param]["vals"])
         if param not in param_dict.keys():
             print(
                 f"{param} is not present in param_dict, returning None "
@@ -242,14 +223,13 @@ class TargetScheduler:
             # find time position
             arr = param_dict[param]["times"]
             t_val = max(time for time in arr if time <= time_stamp)
-            print("param tval", t_val)
+            # print("param tval", t_val)
             # get index corresponding to the time position
             if isinstance(arr, list):
                 pos = param_dict[param]["times"].index(t_val)
             elif isinstance(arr, np.ndarray):
                 pos = np.where(arr == t_val)[0][0]
 
-            print(f"pos {pos}")
             if pos is None:
                 print(
                     "time requested is before first control parameter time, "
@@ -261,3 +241,57 @@ class TargetScheduler:
             print(requested_parameter)
 
         return requested_parameter
+
+    def get_gains(self, targets, time_stamp, type="Kprop"):
+        """
+        Retrieves the shape gains for the target at time_stamp, given the target schedule.
+        # Gains provided as time_periods - assume units of milliseconds (ms)
+        Gains provided as numbers
+        Parameters
+        ----------
+        targets : list[str]
+            list of targets to get gains for
+        time_stamp : float (4 decimal places)
+            time stamp of the target to be retrieved
+        Returns
+        -------
+        shape_gains : np.array
+            shape gains
+        """
+        # get set of targets being controlled at this time
+        print("--- loading shape gains")
+        gains = []
+        # #assume dict format is {target : {'times': [times], 'values': [values]}}
+        # for target in targets:
+        #     # get tau
+        #     # tau = self.retrieve_control_param(
+        #     #     param_dict=self.shape_gains, param=target, time_stamp=time_stamp
+        #     # )
+        #     # tau = tau / 1000  # convert ms to seconds
+        #     # gains.append(1 / tau)
+        #     gain = self.retrieve_control_param(
+        #         param_dict=self.shape_gains, param=target, time_stamp=time_stamp
+        #     )
+        #     if gain is not None:
+        #         gains.append(gain)
+        #     else:
+        #         # TODO does it want to be zero or check against the blends as well (zero if blend is zero)
+        #         print(f"Warning : No gains provided for target {target} - set to zero")
+        #         gains.append(0)
+
+        # alternative dict format is {time : {target : tau, target_2 : tau_2, ...}}
+        # more likely this if single set of gains for all time.
+        time_pos = max(
+            time for time in self.target_schedule_dict.keys() if time <= time_stamp
+        )
+        if time_pos is None:
+            print(
+                "time requested is before first control parameter time, "
+                "returning None from retrieve_parameter()"
+            )
+        else:
+            for target in targets:
+                gains.append(self.target_schedule_dict[time_pos]["gains"][target][type])
+        gains_arr = np.array(gains)
+        print("gains array ---- ", gains_arr)
+        return gains_arr, np.diag(gains_arr)

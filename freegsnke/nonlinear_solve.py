@@ -2066,7 +2066,7 @@ class nl_solver:
         """Applies the unstable mode m to calculate (dR/dIm, dZ/dIm)
         where R and Z are the current-averaged coords of the plasma (i.e. eq.Rcurrent and eq.Zcurrent)
         and Im is the magnitude of the current in the unstable mode.
-        A maps of the current distribution after m is applied is recorded,
+        A map of the current distribution after Im is applied is recorded,
         together with the map having the same R and Z obtained as a rigid displament
         of the original eq.
 

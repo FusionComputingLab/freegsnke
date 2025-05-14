@@ -293,9 +293,9 @@ class linear_solver:
 
         # full set of characteristic timescales (circuits + plasma)
         evalues, evectors = np.linalg.eig(self.Mmatrix)
-        ord = np.argsort(evalues)
-        self.all_timescales = -evalues[ord]
-        self.all_modes = evectors[:, ord]
+        # ord = np.argsort(evalues)
+        self.all_timescales = -evalues#[ord]
+        self.all_modes = evectors#[:, ord]
 
         # extract just the positive (i.e. unstable) eigenvalues
         mask = self.all_timescales > 0
@@ -304,9 +304,9 @@ class linear_solver:
 
         # full set of characteristic timescales (circuits only, no plasma)
         evalues, evectors = np.linalg.eig(self.Mmatrix[:-1, :-1])
-        ord = np.argsort(evalues)
-        self.all_timescales_const_Ip = -evalues[ord]
-        self.all_modes_const_Ip = evectors[:, ord]
+        # ord = np.argsort(evalues)
+        self.all_timescales_const_Ip = -evalues#[ord]
+        self.all_modes_const_Ip = evectors#[:, ord]
 
         # extract just the positive (i.e. unstable) eigenvalues
         mask = self.all_timescales_const_Ip > 0

@@ -144,7 +144,7 @@ class TargetScheduler:
 
         return target_names
 
-    def desired_target_values(self, time_stamp):
+    def desired_target_values(self, time_stamp, controlled_targets=None):
         """
         Retrieve values for desired control targets as linear interpolation
         between values at two adjacent time stamps.
@@ -160,11 +160,14 @@ class TargetScheduler:
             Requested target values to be used by the control classes.
         """
         # get set of targets being controlled at this time
-        controlled_targets = self.retrieve_controlled_targets(time_stamp)
+        if controlled_targets is None:
+            controlled_targets = self.retrieve_controlled_targets(time_stamp)
 
         # retrieve correct waveform dict - for shape or ip
         if "shape_fb" in self.target_waveform_dict.keys():
             waveform_dict = self.target_waveform_dict["shape_fb"]
+        elif "coil_pert" in self.target_waveform_dict.keys():
+            waveform_dict = self.target_waveform_dict["coil_pert"]
         else:
             waveform_dict = self.target_waveform_dict
 
@@ -177,7 +180,7 @@ class TargetScheduler:
 
         return targets_required
 
-    def feed_forward_gradient(self, time_stamp, targets=None):
+    def feed_forward_gradient(self, time_stamp, waveform_dict=None, targets=None):
         """
         Compute the feed forward gradient of the control voltages.
 
@@ -192,13 +195,19 @@ class TargetScheduler:
         if targets is None:
             targets = self.retrieve_controlled_targets(time_stamp)
 
+        if waveform_dict is None:
+            if "shape_ff" in self.target_waveform_dict.keys():
+                waveform_dict = self.target_waveform_dict["shape_ff"]
+            elif "coil_pert" in self.target_waveform_dict.keys():
+                waveform_dict = self.target_waveform_dict["coil_pert"]
+
         grad_arr = np.zeros(len(targets))
         for i, target in enumerate(targets):
-            slope = np.diff(self.target_waveform_dict[target]["vals"]) / np.diff(
-                self.target_waveform_dict[target]["times"]
+            slope = np.diff(waveform_dict[target]["vals"]) / np.diff(
+                waveform_dict[target]["times"]
             )
             position = np.searchsorted(
-                self.target_waveform_dict[target]["times"][1:], time_stamp, side="right"
+                waveform_dict[target]["times"][1:], time_stamp, side="right"
             )
             # print(f"position index {position}")
             if time_stamp > self.target_waveform_dict[target]["times"][-1]:
@@ -232,7 +241,7 @@ class TargetScheduler:
         -------
         requested_parameter : float
         """
-        print("retrieving time series control parameter", param)
+        # print("retrieving time series control parameter", param)
         # print(param_dict[param]["vals"])
         if param not in param_dict.keys():
             print(
@@ -259,7 +268,7 @@ class TargetScheduler:
                 requested_parameter = None
             else:
                 requested_parameter = param_dict[param]["vals"][pos]
-            print(requested_parameter)
+            # print(requested_parameter)
 
         return requested_parameter
 

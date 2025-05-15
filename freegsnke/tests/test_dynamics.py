@@ -74,7 +74,7 @@ def create_machine():
     )
     keys = list(eq.tokamak.getCurrents().keys())
     for i in np.arange(12):
-        eq.tokamak[keys[i]].current = currents[i]
+        eq.tokamak.set_coil_current(keys[i], currents[i])
     NK.solve(eq, profiles, target_relative_tolerance=1e-8)
 
     # Initialize the evolution object
@@ -89,15 +89,13 @@ def create_machine():
         max_internal_timestep=1,
         plasma_resistivity=5e-7,
         automatic_timestep=False,
-        mode_removal=True,
-        min_dIy_dI=0.1,
     )
     return tokamak, eq, profiles, stepping
 
 
 def test_linearised_growth_rate(create_machine):
     tokamak, eq, profiles, stepping = create_machine
-    true_GR = 0.06767
+    true_GR = 0.05975802
     # check that
     assert (
         abs((stepping.linearised_sol.instability_timescale[0] - true_GR) / true_GR)

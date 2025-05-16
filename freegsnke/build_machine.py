@@ -368,7 +368,7 @@ def build_passives(
     coil_circuits,
     coils_dict,
     coil_names,
-    refine_mode=refine_mode,
+    refine_mode,
 ):
     """
     Build the passive structures in FreeGSNKE using the PassiveStructure function.

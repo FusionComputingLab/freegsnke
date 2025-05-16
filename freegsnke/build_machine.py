@@ -115,6 +115,7 @@ def tokamak(
         coil_circuits=coil_circuits,
         coils_dict=coils_dict,
         coil_names=coil_names,
+        refine_mode=refine_mode,
     )
     n_passive_coils = len(coil_circuits) - n_active_coils
 
@@ -367,6 +368,7 @@ def build_passives(
     coil_circuits,
     coils_dict,
     coil_names,
+    refine_mode=refine_mode,
 ):
     """
     Build the passive structures in FreeGSNKE using the PassiveStructure function.
@@ -381,7 +383,9 @@ def build_passives(
         Dictionary of coil data.
     coil_names : list
         List of circuit\coil names and passive structures.
-
+    refine_mode : str, optional
+        Choose the refinement mode for extended passive structures (input as polygons), by default
+        'G' for 'grid' (use 'LH' for alternative mode using a Latin Hypercube implementation).
 
     Returns
     -------

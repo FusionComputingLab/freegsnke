@@ -99,3 +99,21 @@ class mode_decomposition:
         self.Pmatrix[self.n_active_coils :, self.n_active_coils :] = (
             1.0 * Pmatrix_passive
         )
+
+    def normal_modes_greens(self, eq_vgreen):
+        """
+        Calculates the green functions of the vessel normal modes,
+        i.e. the psi flux per unit current for each mode.
+
+        Parameters
+        ----------
+        eq_vgreen : np.array
+            the vectorised green functions of each coil.
+            Can be found at eq._vgreen. np.shape(eq_vgreen)=(n_coils, nx, ny)
+        """
+
+        dgreen = np.sum(
+            eq_vgreen[:, np.newaxis, :, :] * self.Pmatrix[:, :, np.newaxis, np.newaxis],
+            axis=0,
+        )
+        return dgreen

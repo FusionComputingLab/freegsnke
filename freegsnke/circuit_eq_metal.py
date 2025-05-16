@@ -34,10 +34,10 @@ class metal_currents:
         eq,
         flag_vessel_eig,
         flag_plasma,
+        max_mode_frequency,
+        max_internal_timestep,
+        full_timestep,
         plasma_pts=None,
-        max_mode_frequency=1,
-        max_internal_timestep=0.0001,
-        full_timestep=0.0001,
         coil_resist=None,
         coil_self_ind=None,
         verbose=True,
@@ -125,8 +125,7 @@ class metal_currents:
                 n_active_coils=self.n_active_coils,
             )
             self.max_mode_frequency = max_mode_frequency
-            self.make_selected_mode_mask_from_max_freq()
-            self.initialize_for_eig(self.selected_modes_mask)
+            self.initialize_for_eig(selected_modes_mask=False)
 
         else:
             self.max_mode_frequency = 0
@@ -139,45 +138,101 @@ class metal_currents:
         # Dummy voltage vector
         self.empty_U = np.zeros(self.n_coils)
 
-    def make_selected_mode_mask_from_max_freq(self):
+    def make_selected_mode_mask(self, mode_coupling_masks, verbose):
         """Creates a mask for the vessel normal modes to include in the circuit
         equations, based on the maximum frequency of the selected modes.
         """
+        # this is for passives alone
         selected_modes_mask = self.normal_modes.w_passive < self.max_mode_frequency
+        freq_only_number = np.sum(selected_modes_mask)
+
         # selected_modes_mask = [True,...,True, False,...,False]
+        # this includes the actives too
         self.selected_modes_mask = np.concatenate(
             (np.ones(self.n_active_coils).astype(bool), selected_modes_mask)
         )
-        self.n_independent_vars = np.sum(self.selected_modes_mask)
-        if self.verbose:
+        if verbose:
+            print(f"   Active coils")
             print(
-                "Input 'max_mode_frequency' corresponds to",
-                self.n_independent_vars - self.n_active_coils,
-                "independent passive structure normal modes (in addition to the",
-                self.n_active_coils,
-                "active coils).",
+                f"      total selected = {self.n_active_coils} (out of {self.n_active_coils})"
+            )
+            print(f"   Passive structures")
+            print(
+                f"      {freq_only_number} selected with characteristic timescales larger than 'max_mode_frequency'"
             )
 
-    def initialize_for_eig(self, selected_modes_mask):
+        if mode_coupling_masks is not None:
+            # reintroduce modes that couple strongly
+            self.selected_modes_mask = (
+                self.selected_modes_mask + mode_coupling_masks[0]
+            ).astype(bool)
+            freq_and_thresh_number = np.sum(self.selected_modes_mask)
+            if verbose:
+                print(
+                    f"      {freq_and_thresh_number - (freq_only_number + self.n_active_coils)} selected that couple with the plasma more than 'threshold_dIy_dI', despite having fast timescales"
+                )
+
+            # exclude modes that do not couple enough
+            self.selected_modes_mask = (
+                self.selected_modes_mask * mode_coupling_masks[1]
+            ).astype(bool)
+            final_number = np.sum(self.selected_modes_mask)
+            if verbose:
+                print(
+                    f"      {freq_and_thresh_number - final_number} selected that couple with the plasma less than 'min_dIy_dI', despite having slow timescales"
+                )
+                print(
+                    f"      total selected = {final_number - self.n_active_coils} (out of {self.n_coils - self.n_active_coils})"
+                )
+                print(
+                    f"   Total number of modes = {final_number} ({self.n_active_coils} active coils + {final_number - self.n_active_coils} passive structures)"
+                )
+                print(
+                    f"      (Note: some additional modes may be removed after Jacobian calculation)"
+                )
+
+        self.n_independent_vars = np.sum(self.selected_modes_mask)
+
+    def initialize_for_eig(
+        self, selected_modes_mask=None, mode_coupling_masks=None, verbose=True
+    ):
         """Initializes the metal_currents object for the case where vessel
         eigenmodes are used.
 
         Parameters
         ----------
-        selected_modes_mask : np.ndarray
-            Mask for the vessel normal modes to include in the circuit equations.
+        mode_coupling_metric_masks : (np.ndarray of booles, np.ndarray of booles)
         """
+        if selected_modes_mask is None:
+            # this is the case when mode_coupling_masks are used to build self.selected_modes_mask
+            self.make_selected_mode_mask(mode_coupling_masks, verbose)
+            # Pmatrix is the full matrix that changes the basis in the current space
+            # from the normal modes Id (for diagonal) to the metal currents I:
+            # I = Pmatrix Id
+            # And also
+            # Id = Pmatrix^T I
+            # Therefore, taking the truncation into account:
+            self.P = self.normal_modes.Pmatrix[:, self.selected_modes_mask]
+        elif selected_modes_mask is False:
+            # this is to include ALL modes
+            self.selected_modes_mask = np.ones(self.n_coils).astype(bool)
+            self.n_independent_vars = np.sum(self.selected_modes_mask)
+            self.P = self.normal_modes.Pmatrix[:, self.selected_modes_mask]
+        else:
+            # this is the case used by nonlinear_solver.remove_modes
+            self.selected_modes_mask_partial = selected_modes_mask
+            print(f"Further mode reduction:")
+            print(
+                f"   {len(selected_modes_mask) - np.sum(selected_modes_mask)} previously included modes couple with the plasma less than 'min_dIy_dI' (following Jacobian calculation)"
+            )
 
-        self.selected_modes_mask = selected_modes_mask
-        self.n_independent_vars = np.sum(self.selected_modes_mask)
+            self.n_independent_vars = np.sum(self.selected_modes_mask_partial)
+            print(
+                f"   Final number of modes = {self.n_independent_vars} ({self.n_active_coils} active coils + {self.n_independent_vars - self.n_active_coils} passive structures)"
+            )
 
-        # Pmatrix is the full matrix that changes the basis in the current space
-        # from the normal modes Id (for diagonal) to the metal currents I:
-        # I = Pmatrix Id
-        # And also
-        # Id = Pmatrix^T I
-        # Therefore, taking the truncation into account:
-        self.P = (self.normal_modes.Pmatrix)[:, selected_modes_mask]
+            self.P = self.P[:, self.selected_modes_mask_partial]
+
         self.Pm1 = (self.P).T
 
         # Note Lambda is not actually diagonal because the passive structures has been
@@ -214,6 +269,22 @@ class metal_currents:
             self.forcing_term = self.forcing_term_no_eig_plasma
         else:
             self.forcing_term = self.forcing_term_no_eig_no_plasma
+
+    def reset_timesteps(self, max_internal_timestep, full_timestep):
+        """Resets the timesteps
+
+        Parameters
+        ----------
+        max_internal_timestep : float
+            Maximum value of the 'internal' timestep for implicit euler solver.
+            The 'internal' timestep is the one actually used by the solver.
+        full_timestep : float
+            Timestep by which the equations are advanced. If full_timestep>max_internal_timestep
+            multiple 'internal' steps are executed.
+        """
+        self.solver.set_timesteps(
+            full_timestep=full_timestep, max_internal_timestep=max_internal_timestep
+        )
 
     def reset_mode(
         self,

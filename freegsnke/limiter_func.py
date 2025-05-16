@@ -149,6 +149,7 @@ class Limiter_handler:
         mask_inside_limiter = path.contains_points(points.reshape(-1, 2))
         mask_inside_limiter = mask_inside_limiter.reshape(self.nx, self.ny)
         self.mask_inside_limiter = mask_inside_limiter
+        self.path = path
 
     def broaden_mask(self, mask, layer_size=3):
         """Creates a mask that is wider than the input mask, by a width=`layer_size`

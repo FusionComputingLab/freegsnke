@@ -26,6 +26,9 @@ examples/basic*
 examples/machine*
 examples/example_nonlinear_ev*
 examples/static_*
+examples/VC*
+examples/*_.ipynb
+examples/displacements*
 machine_configs/_*
 machine_configs/*/resistance_*.pickle
 machine_configs/*/resistance.pickle

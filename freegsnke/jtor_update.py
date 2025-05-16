@@ -23,10 +23,18 @@ import freegs4e
 import numpy as np
 from freegs4e.gradshafranov import mu0
 
+from . import jtor_refinement
 from . import switch_profile as swp
 
 
 class Jtor_universal:
+
+    def __init__(self, refine_jtor=False):
+        """Sets default unrefined Jtor."""
+        if refine_jtor:
+            self.Jtor = self.Jtor_refined
+        else:
+            self.Jtor = self.Jtor_unrefined
 
     def set_masks(self, eq):
         """Universal function to set all masks related to the limiter.
@@ -36,6 +44,8 @@ class Jtor_universal:
         eq : FreeGSNKE Equilibrium object
             Specifies the domain properties
         """
+        self.dRdZ = (eq.R_1D[1] - eq.R_1D[0]) * (eq.Z_1D[1] - eq.Z_1D[0])
+
         self.core_mask_limiter = eq.limiter_handler.core_mask_limiter
 
         self.mask_inside_limiter = eq.limiter_handler.mask_inside_limiter
@@ -52,6 +62,43 @@ class Jtor_universal:
                 eq.limiter_handler.mask_inside_limiter, layer_size=1
             )
         ) > 0
+
+        # set mask of the edge domain pixels
+        self.edge_mask = np.zeros_like(eq.R)
+        self.edge_mask[0, :] = self.edge_mask[:, 0] = self.edge_mask[-1, :] = (
+            self.edge_mask[:, -1]
+        ) = 1
+
+    def select_refinement(self, eq, refine_jtor, nnx, nny):
+        """Initializes the object that handles the subgrid refinement of jtor
+
+        Parameters
+        ----------
+        eq : freegs4e Equilibrium object
+            Specifies the domain properties
+        refine_jtor : bool
+            Flag to select whether to apply sug-grid refinement of plasma current distribution jtor
+        nnx : even integer
+            refinement factor in the R direction
+        nny : even integer
+            refinement factor in the Z direction
+        """
+        if refine_jtor:
+            self.jtor_refiner = jtor_refinement.Jtor_refiner(eq, nnx, nny)
+            self.set_refinement_thresholds()
+            self.Jtor = self.Jtor_refined
+        else:
+            self.Jtor = self.Jtor_unrefined
+
+    def set_refinement_thresholds(self, thresholds=(1.0, 1.0)):
+        """Sets the default criteria for refinement -- used when not directly set.
+
+        Parameters
+        ----------
+        thresholds : tuple (threshold for jtor criterion, threshold for gradient criterion)
+            tuple of values used to identify where to apply refinement
+        """
+        self.refinement_thresholds = thresholds
 
     def Jtor_build(
         self,
@@ -94,24 +141,30 @@ class Jtor_universal:
             Same size as psi.
         """
 
-        opt, xpt, diverted_core_mask, psi_bndry = Jtor_part1(
+        opt, xpt, diverted_core_mask, diverted_psi_bndry = Jtor_part1(
             R, Z, psi, psi_bndry, mask_outside_limiter
         )
 
         if diverted_core_mask is None:
             # print('no xpt')
             psi_bndry, limiter_core_mask, flag_limiter = (
-                psi_bndry,
+                diverted_psi_bndry,
                 None,
                 False,
             )
+            # psi_bndry = np.amin(psi[self.limiter_mask_out])
+            # diverted_core_mask = np.copy(self.mask_inside_limiter)
+
         else:
             psi_bndry, limiter_core_mask, flag_limiter = core_mask_limiter(
                 psi,
-                psi_bndry,
+                diverted_psi_bndry,
                 diverted_core_mask,
                 limiter_mask_out,
             )
+            if np.sum(limiter_core_mask * self.mask_inside_limiter) == 0:
+                limiter_core_mask = diverted_core_mask * self.mask_inside_limiter
+                psi_bndry = 1.0 * diverted_psi_bndry
 
         jtor = Jtor_part2(R, Z, psi, opt[0][2], psi_bndry, limiter_core_mask)
         return (
@@ -124,7 +177,7 @@ class Jtor_universal:
             flag_limiter,
         )
 
-    def Jtor(self, R, Z, psi, psi_bndry=None):
+    def Jtor_unrefined(self, R, Z, psi, psi_bndry=None):
         """Replaces the FreeGS4E call, while maintaining the same input structure.
 
         Parameters
@@ -165,6 +218,62 @@ class Jtor_universal:
         )
         return self.jtor
 
+    def Jtor_refined(self, R, Z, psi, psi_bndry=None, thresholds=None):
+        """Implements the call to the Jtor method for the case in which the subgrid refinement is used.
+
+         Parameters
+        ----------
+        R : np.ndarray
+            R coordinates of the domain grid points
+        Z : np.ndarray
+            Z coordinates of the domain grid points
+        psi : np.ndarray
+            Poloidal field flux / 2*pi at each grid points (for example as returned by Equilibrium.psi())
+        psi_bndry : float, optional
+            Value of the poloidal field flux at the boundary of the plasma (last closed flux surface), by default None
+        thresholds : tuple (threshold for jtor criterion, threshold for gradient criterion)
+            tuple of values used to identify where to apply refinement
+            when None, the default refinement_thresholds are used
+
+        Returns
+        -------
+        ndarray
+            2d map of toroidal current values
+        """
+
+        unrefined_jtor = self.Jtor_unrefined(R, Z, psi, psi_bndry)
+        self.unrefined_jtor = 1.0 * unrefined_jtor
+        self.pure_jtor = unrefined_jtor / self.L
+        core_mask = 1.0 * self.limiter_core_mask
+
+        if thresholds == None:
+            thresholds = self.refinement_thresholds
+
+        bilinear_psi_interp, refined_R = self.jtor_refiner.build_bilinear_psi_interp(
+            psi, core_mask, unrefined_jtor, thresholds
+        )
+        refined_jtor = self.Jtor_part2(
+            R,
+            Z,
+            bilinear_psi_interp.reshape(-1, self.jtor_refiner.nny),
+            self.psi_axis,
+            self.psi_bndry,
+            mask=None,
+            torefine=True,
+            refineR=refined_R.reshape(-1, self.jtor_refiner.nny),
+        )
+        refined_jtor = refined_jtor.reshape(
+            -1, self.jtor_refiner.nnx, self.jtor_refiner.nny
+        )
+        self.jtor = self.jtor_refiner.build_from_refined_jtor(
+            self.pure_jtor, refined_jtor
+        )
+        if self.Ip_logic:
+            self.L = self.Ip / (np.sum(self.jtor) * self.dRdZ)
+            self.jtor *= self.L
+
+        return self.jtor
+
 
 class ConstrainBetapIp(freegs4e.jtor.ConstrainBetapIp, Jtor_universal):
     """FreeGSNKE profile class adapting the original FreeGS object with the same name,
@@ -182,8 +291,13 @@ class ConstrainBetapIp(freegs4e.jtor.ConstrainBetapIp, Jtor_universal):
         eq : FreeGSNKE Equilibrium object
             Specifies the domain properties
         """
-        super().__init__(*args, **kwargs)
+        freegs4e.jtor.ConstrainBetapIp.__init__(self, *args, **kwargs)
+        Jtor_universal.__init__(self)
+
+        # profiles need Ip normalization
+        self.Ip_logic = True
         self.profile_parameter = self.betap
+
         self.set_masks(eq=eq)
 
     def Lao_parameters(
@@ -230,8 +344,13 @@ class ConstrainPaxisIp(freegs4e.jtor.ConstrainPaxisIp, Jtor_universal):
         eq : FreeGSNKE Equilibrium object
             Specifies the domain properties
         """
-        super().__init__(*args, **kwargs)
+        freegs4e.jtor.ConstrainPaxisIp.__init__(self, *args, **kwargs)
+        Jtor_universal.__init__(self)
+
+        # profiles need Ip normalization
+        self.Ip_logic = True
         self.profile_parameter = self.paxis
+
         self.set_masks(eq=eq)
 
     def Lao_parameters(
@@ -278,8 +397,13 @@ class Fiesta_Topeol(freegs4e.jtor.Fiesta_Topeol, Jtor_universal):
         eq : FreeGSNKE Equilibrium object
             Specifies the domain properties
         """
-        super().__init__(*args, **kwargs)
+        freegs4e.jtor.Fiesta_Topeol.__init__(self, *args, **kwargs)
+        Jtor_universal.__init__(self)
+
+        # profiles need Ip normalization
+        self.Ip_logic = True
         self.profile_parameter = self.Beta0
+
         self.set_masks(eq=eq)
 
     def Lao_parameters(
@@ -318,16 +442,23 @@ class Lao85(freegs4e.jtor.Lao85, Jtor_universal):
 
     """
 
-    def __init__(self, eq, *args, **kwargs):
+    def __init__(self, eq, *args, refine_jtor=False, nnx=None, nny=None, **kwargs):
         """Instantiates the object.
 
         Parameters
         ----------
         eq : freegs4e Equilibrium object
             Specifies the domain properties
+        refine_jtor : bool
+            Flag to select whether to apply sug-grid refinement of plasma current distribution jtor
+        nnx : even integer
+            refinement factor in the R direction
+        nny : even integer
+            refinement factor in the Z direction
         """
-        super().__init__(*args, **kwargs)
+        freegs4e.jtor.Lao85.__init__(self, *args, **kwargs)
         self.set_masks(eq=eq)
+        self.select_refinement(eq, refine_jtor, nnx, nny)
 
     def Topeol_parameters(self, nn=100, max_it=100, tol=1e-5):
         """Fids best combination of
@@ -375,7 +506,9 @@ class TensionSpline(freegs4e.jtor.TensionSpline, Jtor_universal):
             Specifies the domain properties
         """
 
-        super().__init__(*args, **kwargs)
+        freegs4e.jtor.TensionSpline.__init__(self, *args, **kwargs)
+        Jtor_universal.__init__(self)
+
         self.profile_parameter = [
             self.pp_knots,
             self.pp_values,

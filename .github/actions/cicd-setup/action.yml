@@ -13,3 +13,8 @@ runs:
         python -m pip install --upgrade pip
         pip install ".[freegs4e,dev]"
       shell: bash
+    - name: Install docs dependencies
+      run: |
+        cd docs
+        pip install -r requirements_docs.txt
+      shell: bash

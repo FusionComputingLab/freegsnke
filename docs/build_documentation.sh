@@ -12,6 +12,7 @@ cp "../examples/example4 - using_magnetic_probes.ipynb" notebooks
 cp "../examples/example5 - evolutive_forward_solve.ipynb" notebooks
 cp "../examples/example7 - static_inverse_solve_SPARC.ipynb" notebooks
 cp "../examples/example8 - static_inverse_solve_ITER.ipynb" notebooks
+cp "../examples/example9 - virtual_circuits_MASTU.ipynb" notebooks
 cp ../examples/limiter_currents.json notebooks
 cp ../examples/simple_diverted_currents_PaxisIp.pk notebooks
 cp ../examples/simple_limited_currents_PaxisIp.pk notebooks

@@ -804,7 +804,9 @@ def load_efit_times_and_status_splines(client, shot=45425):
 
 # ------------
 # ------------
-def load_static_solver_inputs(client, shot=45425, zero_passives=False):
+def load_static_solver_inputs(
+    client, active_coils_path, passive_coils_path, shot=45425, zero_passives=False
+):
     """
     Extract the key (magnetics-only) EFIT++ reconstruction data at each time slice so that
     we can use it in FreeGSNKE to carry out static forward GS solves.
@@ -813,6 +815,10 @@ def load_static_solver_inputs(client, shot=45425, zero_passives=False):
     ----------
     client :
         The pyUDA client.
+    active_coils_path : str
+        Path to active coils pickle.
+    passive_coils_path : str
+        Path to passive coils pickle.
     shot : int
         MAST-U shot number.
     zero_passives : bool
@@ -881,8 +887,7 @@ def load_static_solver_inputs(client, shot=45425, zero_passives=False):
     currents_nonsym = {}
     currents_discrepancy = {}
 
-    path = os.environ["ACTIVE_COILS_PATH"]
-    with open(path, "rb") as file:
+    with open(active_coils_path, "rb") as file:
         active_coils = pickle.load(file)
 
     efit_names = current_labels[0:24]  # active coil names in efit
@@ -922,8 +927,7 @@ def load_static_solver_inputs(client, shot=45425, zero_passives=False):
                 currents[active_coil_name] = None
 
     # passive structures
-    path = os.environ["PASSIVE_COILS_PATH"]
-    with open(path, "rb") as file:
+    with open(passive_coils_path, "rb") as file:
         passive_coils = pickle.load(file)
 
     # Passive structures
@@ -975,7 +979,9 @@ def load_static_solver_inputs(client, shot=45425, zero_passives=False):
 
 # ------------
 # ------------
-def load_static_solver_inputs_splines(client, shot=45425, zero_passives=False):
+def load_static_solver_inputs_splines(
+    client, active_coils_path, passive_coils_path, shot=45425, zero_passives=False
+):
     """
     Extract the key (magnetics + motional stark effect) EFIT++ reconstruction data at each
     time slice so that we can use it in FreeGSNKE to carry out static forward GS solves.
@@ -984,6 +990,10 @@ def load_static_solver_inputs_splines(client, shot=45425, zero_passives=False):
     ----------
     client :
         The pyUDA client.
+    active_coils_path : str
+        Path to active coils pickle.
+    passive_coils_path : str
+        Path to passive coils pickle.
     shot : int
         MAST-U shot number.
     zero_passives : bool
@@ -1081,8 +1091,7 @@ def load_static_solver_inputs_splines(client, shot=45425, zero_passives=False):
     currents_nonsym = {}
     currents_discrepancy = {}
 
-    path = os.environ["ACTIVE_COILS_PATH"]
-    with open(path, "rb") as file:
+    with open(active_coils_path, "rb") as file:
         active_coils = pickle.load(file)
 
     efit_names = current_labels[0:24]  # active coil names in efit
@@ -1122,8 +1131,7 @@ def load_static_solver_inputs_splines(client, shot=45425, zero_passives=False):
                 currents[active_coil_name] = None
 
     # passive structures
-    path = os.environ["PASSIVE_COILS_PATH"]
-    with open(path, "rb") as file:
+    with open(passive_coils_path, "rb") as file:
         passive_coils = pickle.load(file)
 
     # Passive structures

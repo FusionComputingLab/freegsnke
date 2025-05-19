@@ -1087,6 +1087,7 @@ class NKGSsolver:
             iterations += 1
 
             if verbose:
+                print(f"Relative error =  {rel_change_full:.2e}")
                 print("-----")
 
             if rel_change_full < threshold_val:

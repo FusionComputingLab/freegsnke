@@ -139,22 +139,23 @@ class nl_solver:
         custom_coil_resist : np.array
             1d array of resistance values for all machine conducting elements,
             including both active coils and passive structures
-            If None, the values calculated in machine_config will be sourced and used
+            If None, the values calculated by default in tokamak will be sourced and used.
         custom_self_ind : np.array
             2d matrix of mutual inductances between all pairs of machine conducting elements,
             including both active coils and passive structures
-            If None, the values calculated in machine_config will be sourced and used
+            If None, the values calculated by default in tokamak will be sourced and used.
         """
 
-        self.nx = np.shape(eq.R)[0]
-        self.ny = np.shape(eq.R)[1]
+        # grid parameters
+        self.nx = eq.nx
+        self.ny = eq.ny
         self.nxny = self.nx * self.ny
         self.eqR = eq.R
         self.eqZ = eq.Z
 
         # area factor for Iy
-        dR = eq.R[1, 0] - eq.R[0, 0]
-        dZ = eq.Z[0, 1] - eq.Z[0, 0]
+        dR = eq.dR
+        dZ = eq.dZ
         self.dRdZ = dR * dZ
 
         # store number of coils and their names/order
@@ -216,6 +217,7 @@ class nl_solver:
 
         # handles the metal circuit eq, mode properties, and performs the vessel mode decomposition
         self.evol_metal_curr = metal_currents(
+            eq=eq,
             flag_vessel_eig=1,
             flag_plasma=1,
             plasma_pts=self.limiter_handler.plasma_pts,
@@ -363,6 +365,7 @@ class nl_solver:
         # This solves the system of circuit eqs based on an assumption
         # for the direction of the plasma current distribution at time t+dt
         self.simplified_solver_J1 = simplified_solver_J1(
+            eq=eq,
             Lambdam1=self.evol_metal_curr.Lambdam1,
             Pm1=self.evol_metal_curr.Pm1,
             Rm1=np.diag(self.evol_metal_curr.Rm1),
@@ -391,6 +394,7 @@ class nl_solver:
 
         # Handles the linearised dynamic problem
         self.linearised_sol = linear_solver(
+            eq=eq,
             Lambdam1=self.evol_metal_curr.Lambdam1,
             Pm1=self.evol_metal_curr.Pm1,
             Rm1=np.diag(self.evol_metal_curr.Rm1),
@@ -470,7 +474,7 @@ class nl_solver:
             self.dRZdI = self.dRZdI[:, self.retained_modes_mask]
             self.final_dI_record = self.final_dI_record[self.retained_modes_mask]
 
-            self.remove_modes(self.retained_modes_mask[:-1])
+            self.remove_modes(eq, self.retained_modes_mask[:-1])
 
             print(
                 f"   Re-sizing the Jacobian matrix to account for any removed modes (if required)."
@@ -609,7 +613,7 @@ class nl_solver:
             self.ndIydI_no_GS[j] = rel_ndIy * self.nIy / starting_dI[j]
         self.starting_dI = 1.0 * starting_dI
 
-    def remove_modes(self, selected_modes_mask):
+    def remove_modes(self, eq, selected_modes_mask):
         """It actions the removal of the unselected normal modes.
         Given a setup with a set of normal modes and a resulting size of the vector self.currents_vec,
         modes that are not selected in the input mask are removed and the circuit equations updated accordingly.
@@ -617,6 +621,8 @@ class nl_solver:
 
         Parameters
         ----------
+        eq : class
+            FreeGSNKE equilibrium object.
         selected_modes_mask : np.array of bool values,
             shape(selected_modes_mask) = shape(self.currents_vec) at the time of calling the function
             indexes corresponding to True are kept, indexes corresponding to False are dropped
@@ -633,6 +639,7 @@ class nl_solver:
         # self.evol_plasma_curr.reset_modes(P=self.evol_metal_curr.P)
 
         self.simplified_solver_J1 = simplified_solver_J1(
+            eq=eq,
             Lambdam1=self.evol_metal_curr.Lambdam1,
             Pm1=self.evol_metal_curr.Pm1,
             Rm1=np.diag(self.evol_metal_curr.Rm1),
@@ -644,6 +651,7 @@ class nl_solver:
         )
 
         self.linearised_sol = linear_solver(
+            eq=eq,
             Lambdam1=self.evol_metal_curr.Lambdam1,
             Pm1=self.evol_metal_curr.Pm1,
             Rm1=np.diag(self.evol_metal_curr.Rm1),

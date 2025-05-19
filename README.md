@@ -155,7 +155,11 @@ Several tests have been built using [pytest](https://docs.pytest.org/en) and are
 
 If your bug fix or feature addition includes a change to how FreeGSNKE fundamentally works or requires a change to the API, be sure to document this appropriately in the user documentation, API documentation, and by writing/changing the notebook examples where appropriate. Also be sure to fully justify why such changes are needed.
 
-Any Jupyter notebooks tracked by the repository should **not** include cell outputs so that we can keep the size of the repository reasonable. Please clear these manually in the notebook itself before submitting merge requests.
+Any Jupyter notebooks tracked by the repository should **not** include cell outputs so that we can keep the size of the repository reasonable. Please clear these manually in the notebook itself before submitting merge requests. The following command does just this:
+
+```bash
+jupyter nbconvert --clear-output --inplace notebook.ipynb
+```
 
 
 ## References

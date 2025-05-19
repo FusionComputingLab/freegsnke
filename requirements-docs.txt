@@ -8,3 +8,4 @@ m2r2==0.3.4
 myst-nb==1.2.0
 docutils==0.21.2
 mistune==0.8.4
+lxml_html_clean==0.4.2

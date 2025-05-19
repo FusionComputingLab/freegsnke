@@ -2,5 +2,5 @@ build
 twine
 pytest
 pre-commit
-black==24.1.1
+black==25.1.0
 isort==5.13.2

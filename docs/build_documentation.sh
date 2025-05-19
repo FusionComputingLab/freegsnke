@@ -27,11 +27,6 @@ cp -r ../machine_configs/MAST-U machine_configs
 cp -r ../machine_configs/SPARC machine_configs
 cp -r ../machine_configs/ITER machine_configs
 
-export ACTIVE_COILS_PATH=../machine_configs/MAST-U/MAST-U_like_active_coils.pickle
-export PASSIVE_COILS_PATH=../machine_configs/MAST-U/MAST-U_like_passive_coils.pickle
-export WALL_PATH=../machine_configs/MAST-U/MAST-U_like_wall.pickle
-export LIMITER_PATH=../machine_configs/MAST-U/MAST-U_like_limiter.pickle
-
 echo "Generating API documentation"
 sphinx-apidoc -e -f --no-toc -o api/ ../freegsnke/
 

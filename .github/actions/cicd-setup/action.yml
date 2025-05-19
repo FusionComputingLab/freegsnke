@@ -11,10 +11,5 @@ runs:
     - name: Install freegsnke and dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install ".[freegs4e,dev]"
-      shell: bash
-    - name: Install docs dependencies
-      run: |
-        cd docs
-        pip install -r requirements_docs.txt
+        pip install ".[freegs4e,dev,docs]"
       shell: bash

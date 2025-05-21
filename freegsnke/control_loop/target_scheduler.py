@@ -44,20 +44,23 @@ class TargetScheduler:
         # target waveform  dict ~ {target_name : {"times":[time list],
         #                                         "vals": [vals list] , }
 
-        self.target_waveform_dict = waveform_dict
-        for quantity in self.target_waveform_dict.keys():
-            print("timeseries waveform type", quantity)
-            if "times" in self.target_waveform_dict[quantity].keys():
-                item = self.target_waveform_dict[quantity]
-                if len(item["times"]) != len(item["vals"]):
-                    raise ValueError("times and vals arrays must be same length")
-            else:
-                print("further nested dict")
-                for key, item in self.target_waveform_dict[quantity].items():
-                    print(key, item)
-                    if len(item["times"]) != len(item["vals"]):
-                        print("Error in waveform dict", key)
-                        raise ValueError("times and vals arrays must be same length")
+        self.ff_waves = waveform_dict["ff"]
+        self.fb_waves = waveform_dict["fb"]
+        self.blends = waveform_dict["blends"]
+
+        # for quantity in self.target_waveform_dict.keys():
+        #     print("timeseries waveform type", quantity)
+        #     if "times" in self.target_waveform_dict[quantity].keys():
+        #         item = self.target_waveform_dict[quantity]
+        #         if len(item["times"]) != len(item["vals"]):
+        #             raise ValueError("times and vals arrays must be same length")
+        #     else:
+        #         print("further nested dict")
+        #         for key, item in self.target_waveform_dict[quantity].items():
+        #             print(key, item)
+        #             if len(item["times"]) != len(item["vals"]):
+        #                 print("Error in waveform dict", key)
+        #                 raise ValueError("times and vals arrays must be same length")
 
         #### TODO MODIFY this check to be more robust
         # check compatibility of target schedule and target waveform
@@ -144,7 +147,9 @@ class TargetScheduler:
 
         return target_names
 
-    def desired_target_values(self, time_stamp, controlled_targets=None):
+    def desired_target_values_fb(
+        self, time_stamp, controlled_targets=None, interpolate=False
+    ):
         """
         Retrieve values for desired control targets as linear interpolation
         between values at two adjacent time stamps.
@@ -163,24 +168,44 @@ class TargetScheduler:
         if controlled_targets is None:
             controlled_targets = self.retrieve_controlled_targets(time_stamp)
 
-        # retrieve correct waveform dict - for shape or ip
-        if "shape_fb" in self.target_waveform_dict.keys():
-            waveform_dict = self.target_waveform_dict["shape_fb"]
-        elif "coil_pert" in self.target_waveform_dict.keys():
-            waveform_dict = self.target_waveform_dict["coil_pert"]
+        if interpolate == True:
+            targets_required = np.array(
+                [
+                    self.interpolate(time_stamp, waveform_dict[targ])
+                    for targ in controlled_targets
+                ]
+            )
         else:
-            waveform_dict = self.target_waveform_dict
-
-        targets_required = np.array(
-            [
-                self.interpolate(time_stamp, waveform_dict[targ])
-                for targ in controlled_targets
-            ]
-        )
+            targets_required = np.array(
+                [
+                    self.get_waveform_value("fb", targ, time_stamp)
+                    for targ in controlled_targets
+                ]
+            )
 
         return targets_required
 
-    def feed_forward_gradient(self, time_stamp, waveform_dict=None, targets=None):
+    def get_blends(self, targets, time_stamp):
+        """get blend values for targets at time_stamp
+
+        parameters
+        targets : list[str]
+            list of targets to get gains for
+        time_stamp : float (4 decimal places)
+            time stamp of the target to be retrieved
+
+        returns
+            blends : np.array
+                blends for the targets specified
+        """
+
+        blends = [
+            self.get_waveform_value("blends", target, time_stamp) for target in targets
+        ]
+
+        return np.array(blends)
+
+    def feed_forward_gradient(self, time_stamp, targets=None):
         """
         Compute the feed forward gradient of the control voltages.
 
@@ -195,11 +220,7 @@ class TargetScheduler:
         if targets is None:
             targets = self.retrieve_controlled_targets(time_stamp)
 
-        if waveform_dict is None:
-            if "shape_ff" in self.target_waveform_dict.keys():
-                waveform_dict = self.target_waveform_dict["shape_ff"]
-            elif "coil_pert" in self.target_waveform_dict.keys():
-                waveform_dict = self.target_waveform_dict["coil_pert"]
+        waveform_dict = self.ff_waves
 
         grad_arr = np.zeros(len(targets))
         for i, target in enumerate(targets):
@@ -225,7 +246,7 @@ class TargetScheduler:
         return grad_arr
 
     # def retrieve_timeseries_param(self, param, time_stamp):
-    def retrieve_control_param(self, param_dict, param, time_stamp):
+    def get_waveform_value(self, param_type, param, time_stamp):
         """
         Retrieves the value of the queried control parameter at time_stamp.
 
@@ -241,22 +262,27 @@ class TargetScheduler:
         -------
         requested_parameter : float
         """
-        # print("retrieving time series control parameter", param)
-        # print(param_dict[param]["vals"])
-        if param not in param_dict.keys():
+
+        if param_type == "ff":
+            waveform_dict = self.ff_waves
+        elif param_type == "fb":
+            waveform_dict = self.fb_waves
+        elif param_type == "blends":
+            waveform_dict = self.blends
+
+        if param not in waveform_dict.keys():
             print(
-                f"{param} is not present in param_dict, returning None "
+                f"{param} is not present in waveform_dict, returning None "
                 "from retrieve_control_param()"
             )
             requested_parameter = None
         else:
             # find time position
-            arr = param_dict[param]["times"]
+            arr = waveform_dict[param]["times"]
             t_val = max(time for time in arr if time <= time_stamp)
-            # print("param tval", t_val)
             # get index corresponding to the time position
             if isinstance(arr, list):
-                pos = param_dict[param]["times"].index(t_val)
+                pos = waveform_dict[param]["times"].index(t_val)
             elif isinstance(arr, np.ndarray):
                 pos = np.where(arr == t_val)[0][0]
 
@@ -267,7 +293,7 @@ class TargetScheduler:
                 )
                 requested_parameter = None
             else:
-                requested_parameter = param_dict[param]["vals"][pos]
+                requested_parameter = waveform_dict[param]["vals"][pos]
             # print(requested_parameter)
 
         return requested_parameter

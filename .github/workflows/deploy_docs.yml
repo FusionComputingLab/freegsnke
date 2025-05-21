@@ -17,7 +17,7 @@ jobs:
       uses: './.github/actions/cicd-setup'
 
     - name: Build docs
-      run: cd docs && bash docs/build_documentation.sh
+      run: cd docs && bash build_documentation.sh
 
     - name: Deploy docs to netlify
       run: cd docs && netlify deploy --site ${{ secrets.NETLIFY_SITE_ID }}  --auth ${{ secrets.NETLIFY_DOCS_DEPLOY_API_TOKEN }} --prod --dir _build/html

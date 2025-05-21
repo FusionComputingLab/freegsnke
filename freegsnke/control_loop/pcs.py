@@ -96,17 +96,20 @@ def calculate_voltage_pf(
     # print("coil_gains shape,", np.shape(coil_gains), coil_gains)
     # print("approved I shape,", np.shape(approved_I), approved_I)
     # print("measured I shape,", np.shape(measured_I), measured_I)
-    approved_I += Ipert
+    # approved_I += Ipert    #??? not sure if this is added or not now
     Corrected_I = coil_gains @ (approved_I - measured_I)
-    # print("corrected I", np.shape(Corrected_I), Corrected_I)
+    print("systems approved I \n", approved_I)
+    print("measured I\n", measured_I)
+    print("PF proportional current rate \n", Corrected_I)
+    print("Systems current rate (shape and ip controlled)\n ", approved_dI_dt)
     # print("inductance_fb", np.shape(inductance_fb), inductance_fb)
     V_fb = inductance_fb @ Corrected_I
-    print(f"    The feedback voltage: {V_fb}")
+    print(f"    The PF feedback voltage: {V_fb}")
 
     # Compute the feedforward voltage
     approved_dI_dt += dIpert_dt
     V_ff = inductance_ff @ approved_dI_dt
-    print(f"    The feedforward voltage: {V_ff}")
+    print(f"    The PF feedforward voltage: {V_ff}")
 
     # Compute the resistive voltage
     V_res = measured_I * R
@@ -236,7 +239,7 @@ def voltage_request(
     return V_out
 
 
-def get_measured_shape_vals(measured_dict, names, pos):
+def get_measured_vals(measured_dict, names, pos):
     """
     Extracts the values of the shape targets from the measured values dictionary.
     dict of form {"times" : [vals], "targ_1" : [vals], "targ_2" : [vals]}
@@ -258,7 +261,7 @@ def get_measured_shape_vals(measured_dict, names, pos):
     return np.array([measured_dict[name][pos] for name in names])
 
 
-def gains_dict_to_matrix(gains_dict, coil_order):
+def get_coil_gain_matrix(gains_dict, coil_order):
     """Converts a dictionary of gains to a matrix.
 
     Parameters
@@ -290,89 +293,56 @@ def gains_dict_to_matrix(gains_dict, coil_order):
     return gains_matrix
 
 
-def validate_shot(
-    config_kwargs,
-    control_kwargs,
-    eq_start,
-    profiles_start,
-    stepping,
-    # ip_vals,
-    # shape_vals,
-    # timestamps,
-    measured_vals,
-):
-    """
-    Run validation of control with historic measurements, rather than equi simulation.
+def build_schedulers(control_kwargs):
 
-    Provide the simulation inputs (schedules, control parameters), eqi, profiles, stepping (provides machine description)
-    provide also the measured values for the plasma current and shape currents, along with associated timestamps.
-
-    Parameters
-    ----------
-    config_kwargs : dict
-        dictionary of configuration parameters (values for resistances, inductances, etc.)
-    control_kwargs : dict
-        dictionary of configuration filespaths (schedules, waveforms, etc)
-    eq_start : eq object
-        equilibrium object
-    profiles_start : profiles object
-        profiles object
-    stepping : stepping object (nl_solver)
-        Non Linear Solver object
-    ip_vals : numpy 1D array
-        measured plasma current values
-    shape_vals : numpy 1D array
-        measured shape current values
-    timestamps : numpy 1D array
-        timestamps for the measured values
-
-    Returns
-    -------
-    None
-    """
-
-    # Load schedulers and controllers
-    # Load configuration parameters needed at runtime.
-    Rp = config_kwargs["plasma_resistivity"]  # Plasma resistivity
-    inductances_pl = {
-        "plasma": config_kwargs["plasma_inductance"],  # Plasma inductance
-        "mutual": config_kwargs["plas_sol_inductance"],  # Plasma-Solenoid inductance
-    }
-
-    if "inductance_matrix" in config_kwargs.keys():
-        inductance_matrix = config_kwargs["inductance_matrix"]
-        print("Using user provided inductance matrix")
-    else:
-        inductance_matrix = (
-            None  # default inductance matrix (initialized below in shape controller)
-        )
-    # coil_gain_matrix = config_kwargs[
-    #     "coil_gains"
-    # ]  # Gain matrix for coils(what are these gains??)
-    active_coils = list(eq_start.tokamak.coils_dict.keys())[
-        : eq_start.tokamak.n_active_coils
-    ]
-    coil_gains_dict = config_kwargs["coil_gains_dict"]
-    coil_gain_matrix = gains_dict_to_matrix(coil_gains_dict, active_coils)
-
-    print("pf coil gains", coil_gain_matrix)
-
-    # Load Schedulers
     target_ff_scheduler = TargetScheduler(
         schedule_dict=control_kwargs["ff_target_schedule"],
         waveform_dict=control_kwargs["ff_target_waveform"],
     )
-    target_fb_scheduler = ShapeTargetScheduler(
-        waveform_dict=control_kwargs["fb_target_waveform"],
-        schedule_dict=control_kwargs["fb_target_schedule"],
-        vc_flag=control_kwargs["vc_flag"],
-        vc_schedule_dict=control_kwargs["vc_schedule"],
-        shape_blends_dict=control_kwargs["target_blends"],
-        shape_gains_dict=control_kwargs["target_gains"],
-    )
 
-    # Initialise controllers
+    if control_kwargs["vc_flag"] == "file":
+        target_fb_scheduler = ShapeTargetScheduler(
+            waveform_dict=control_kwargs["fb_target_waveform"],
+            schedule_dict=control_kwargs["fb_target_schedule"],
+            vc_flag=control_kwargs["vc_flag"],
+            vc_schedule_dict=control_kwargs["vc_schedule"],
+            shape_blends_dict=control_kwargs["target_blends"],
+            shape_gains_dict=control_kwargs["target_gains"],
+        )
+    else:
+        target_fb_scheduler = ShapeTargetScheduler(
+            waveform_dict=control_kwargs["fb_target_waveform"],
+            schedule_dict=control_kwargs["fb_target_schedule"],
+            vc_flag=control_kwargs["vc_flag"],
+            vc_schedule_dict=None,
+            model_path=control_kwargs["model_path"],
+            n_models=control_kwargs["n_models"],
+            shape_blends_dict=control_kwargs["target_blends"],
+            shape_gains_dict=control_kwargs["target_gains"],
+        )
+    coil_perturbation = TargetScheduler(
+        schedule_dict=control_kwargs["coil_pert_schedule"],
+        waveform_dict=control_kwargs["coil_pert_waveform"],
+    )
+    schedulers = {
+        "shape_ff": target_ff_scheduler,
+        "shape_fb": target_fb_scheduler,
+        "coil_pert": coil_perturbation,
+    }
+    return schedulers
+
+
+def build_controllers(
+    control_kwargs,
+    schedulers_dict,
+    eq_start,
+    profiles_start,
+    stepping,
+    shape_control_coils,
+):
+    #  Initialise controllers
     # Initialise the solenoid controller
+
     ip_controller = ControlSolenoid(
         schedule_dict=control_kwargs["ip_schedule"],
         waveform_dict=control_kwargs["ip_waveform"],
@@ -383,59 +353,67 @@ def validate_shot(
         eq=eq_start,
         profiles=profiles_start,
         stepping=stepping,
-        feedback_target_scheduler=target_fb_scheduler,
-        feedforward_target_scheduler=target_ff_scheduler,
-        coils=None,
-        inductance_matrix=inductance_matrix,
-        coil_resist=None,
+        feedback_target_scheduler=schedulers_dict["shape_fb"],
+        feedforward_target_scheduler=schedulers_dict["shape_ff"],
+        coils=shape_control_coils,
+        inductance_matrix=None,
+    )
+    active_coils = list(eq_start.tokamak.coils_dict.keys())[
+        : eq_start.tokamak.n_active_coils
+    ]
+
+    return ip_controller, shape_controller, active_coils
+
+
+def load_parameters(
+    config_kwargs,
+    shape_controller,
+):
+
+    active_coils = list(shape_controller.eq.tokamak.coils_dict.keys())[
+        : shape_controller.eq.tokamak.n_active_coils
+    ]
+
+    # Load configuration parameters needed at runtime.
+    Rp = config_kwargs["plasma_resistivity"]  # Plasma resistivity
+    inductances_pl = {
+        "plasma": config_kwargs["plasma_inductance"],  # Plasma inductance
+        "mutual": config_kwargs["plas_sol_inductance"],  # Plasma-Solenoid inductance
+    }
+
+    if "inductance_matrix" in config_kwargs.keys():
+        inductance_matrix = config_kwargs["inductance_matrix"]
+        print("Using user provided inductance matrix")
+    elif "pf_coil_inductance" in config_kwargs.keys():
+        # order matrix appropriately
+        print("loading coil inductance matrix from dictionary")
+        matrix = config_kwargs["pf_coil_inductance"]["data"]
+        ind_order = {
+            el: i
+            for i, el in enumerate(config_kwargs["pf_coil_inductance"]["coil_order"])
+        }
+        new_order = np.array([ind_order[el] for el in active_coils])
+        inductance_matrix = matrix[new_order, :][:, new_order]
+    else:
+        inductance_matrix = deepcopy(
+            shape_controller.inductance_full
+        )  ### needst tidying as code (inductance matrix recreated multiple times)
+
+    coil_gain_matrix = get_coil_gain_matrix(
+        config_kwargs["coil_gains_dict"], active_coils
     )
 
-    inductance_matrix = deepcopy(
-        shape_controller.inductance_full
-    )  ### needst tidying as code (inductance matrix recreated multiple times)
-    # TODO I_Coil_Pert category ....
-    coil_perturbation = TargetScheduler(
-        schedule_dict=control_kwargs["coil_pert_schedule"],
-        waveform_dict=control_kwargs["coil_pert_waveform"],
-    )
-    currents_start = [eq_start.tokamak.getCurrents()[key] for key in active_coils]
     if "Rvec" in config_kwargs.keys():
         Rvec = config_kwargs["Rvec"]
+    elif "pf_coil_resistances" in config_kwargs.keys():
+        print("loading coil resistances from dictionary")
+        res_dict = config_kwargs["pf_coil_resist"]
+        res_order = [el for el in res_dict["coil_order"]]
+        Rvec = np.array([res_dict["data"][res_order[el]] for el in active_coils])
     else:
         Rvec = shape_controller.coil_resist  # Vector of resistivities
 
-    for i, timestamp in enumerate(measured_vals["time_stamps"]):
-        # Ip_val = ip_vals[i]
-        # shape_vals = shape_vals[i]
-        print(
-            f" --------------- \n TIMESLICE COMPUTATION  {timestamp}, pos {i} \n ---------------"
-        )
-        controlled_targs = (
-            shape_controller.feedback_target_scheduler.retrieve_controlled_targets(
-                timestamp
-            )
-        )
-        Ip_val = get_measured_shape_vals(measured_vals, ["Ip_vals"], i)[0]
-        shape_vals = get_measured_shape_vals(measured_vals, controlled_targs, i)
-
-        voltage_request(
-            ip_controller,
-            shape_controller,
-            eq=eq_start,
-            profiles=profiles_start,
-            timestamp=timestamp,
-            Rp=Rp,
-            inductacnes_pl=inductances_pl,
-            Rvec=Rvec,
-            inductance_matrix=inductance_matrix,
-            est_I=currents_start,
-            measured_I=currents_start,  # ?is this what we want?
-            coil_gain_matrix=coil_gain_matrix,
-            # shape_gain_matrix=shape_gain_matrix,
-            coil_perturbation=coil_perturbation,
-            targ_obs=shape_vals,
-            Ip_obs=Ip_val,
-        )
+    return Rp, inductances_pl, inductance_matrix, coil_gain_matrix, Rvec
 
 
 def simulate_shot(
@@ -446,6 +424,7 @@ def simulate_shot(
     n_iter,
     config_kwargs,
     control_kwargs,
+    shape_control_coils=None,
     linear=True,
 ):
     """Simulate a single shot
@@ -473,107 +452,30 @@ def simulate_shot(
     None
 
     """
+    t1 = time.time()
     # Load Schedulers
-    target_ff_scheduler = TargetScheduler(
-        schedule_dict=control_kwargs["ff_target_schedule"],
-        waveform_dict=control_kwargs["ff_target_waveform"],
-    )
-
-    if control_kwargs["vc_flag"] == "file":
-        target_fb_scheduler = ShapeTargetScheduler(
-            waveform_dict=control_kwargs["fb_target_waveform"],
-            schedule_dict=control_kwargs["fb_target_schedule"],
-            vc_flag=control_kwargs["vc_flag"],
-            vc_schedule_dict=control_kwargs["vc_schedule"],
-            shape_blends_dict=control_kwargs["target_blends"],
-            shape_gains_dict=control_kwargs["target_gains"],
-        )
-    else:
-        target_fb_scheduler = ShapeTargetScheduler(
-            waveform_dict=control_kwargs["fb_target_waveform"],
-            schedule_dict=control_kwargs["fb_target_schedule"],
-            vc_flag=control_kwargs["vc_flag"],
-            vc_schedule_dict=None,
-            model_path=control_kwargs["model_path"],
-            n_models=control_kwargs["n_models"],
-            shape_blends_dict=control_kwargs["target_blends"],
-            shape_gains_dict=control_kwargs["target_gains"],
-        )
+    schedulers = build_schedulers(control_kwargs)
+    coil_perturbation = schedulers["coil_pert"]
+    target_ff_scheduler = schedulers["shape_ff"]
+    target_fb_scheduler = schedulers["shape_fb"]
 
     # Initialise controllers
-    # Initialise the solenoid controller
-    ip_controller = ControlSolenoid(
-        schedule_dict=control_kwargs["ip_schedule"],
-        waveform_dict=control_kwargs["ip_waveform"],
-        contr_params_dict=control_kwargs["ip_control_params"],
+
+    ip_controller, shape_controller, active_coils = build_controllers(
+        control_kwargs,
+        schedulers,
+        eq_start,
+        profiles_start,
+        stepping,
+        shape_control_coils,
     )
 
-    shape_controller = ShapeController(
-        eq=eq_start,
-        profiles=profiles_start,
-        stepping=stepping,
-        feedback_target_scheduler=target_fb_scheduler,
-        feedforward_target_scheduler=target_ff_scheduler,
-        coils=None,
-        inductance_matrix=None,
-    )
-    active_coils = list(eq_start.tokamak.coils_dict.keys())[
-        : eq_start.tokamak.n_active_coils
-    ]
-
-    # print(
-    #     "shape waveform dict",
-    #     shape_controller.feedback_target_scheduler.target_waveform_dict,
-    # )
-    # Load configuration parameters needed at runtime.
-    Rp = config_kwargs["plasma_resistivity"]  # Plasma resistivity
-    inductances_pl = {
-        "plasma": config_kwargs["plasma_inductance"],  # Plasma inductance
-        "mutual": config_kwargs["plas_sol_inductance"],  # Plasma-Solenoid inductance
-    }
-
-    if "inductance_matrix" in config_kwargs.keys():
-        inductance_matrix = config_kwargs["inductance_matrix"]
-        print("Using user provided inductance matrix")
-    elif "pf_coil_inductance" in config_kwargs.keys():
-        # order matrix appropriately
-        print("loading coil inductance matrix from dictionary")
-        matrix = config_kwargs["pf_coil_inductance"]["data"]
-        ind_order = {
-            el: i
-            for i, el in enumerate(config_kwargs["pf_coil_inductance"]["coil_order"])
-        }
-        new_order = np.array([ind_order[el] for el in active_coils])
-        inductance_matrix = matrix[new_order, :][:, new_order]
-    else:
-        inductance_matrix = (
-            None  # default inductance matrix (initialized below in shape controller)
-        )
-
-    coil_gain_matrix = gains_dict_to_matrix(
-        config_kwargs["coil_gains_dict"], active_coils
+    Rp, inductances_pl, inductance_matrix, coil_gain_matrix, Rvec = load_parameters(
+        config_kwargs, shape_controller
     )
 
-    inductance_matrix = deepcopy(
-        shape_controller.inductance_full
-    )  ### needst tidying as code (inductance matrix recreated multiple times)
-    coil_perturbation = TargetScheduler(
-        schedule_dict=control_kwargs["coil_pert_schedule"],
-        waveform_dict=control_kwargs["coil_pert_waveform"],
-    )
-
+    # starting values for simulation
     active_currents = [eq_start.tokamak.getCurrents()[key] for key in active_coils]
-
-    if "Rvec" in config_kwargs.keys():
-        Rvec = config_kwargs["Rvec"]
-    elif "pf_coil_resistances" in config_kwargs.keys():
-        print("loading coil resistances from dictionary")
-        res_dict = config_kwargs["pf_coil_resist"]
-        res_order = [el for el in res_dict["coil_order"]]
-        Rvec = np.array([res_dict["data"][res_order[el]] for el in active_coils])
-    else:
-        Rvec = shape_controller.coil_resist  # Vector of resistivities
-
     measured_I = deepcopy(active_currents)  # Vector of measured coil currents
 
     # Initialise the estimation of the coil currents from the actions applied
@@ -593,11 +495,12 @@ def simulate_shot(
     print(f"Simulation will run for {n_iter} iterations")
     # plot_eqi(eq_start, show=True)
 
+    ### Simulation History - For plotting later ###
+    # initialise storage list for data collection (for plotting later )
     history_jz = [
         np.mean(stepping.profiles1.jtor / stepping.profiles1.Ip * eq.Z)
     ]  # for vertical controller
-
-    # initialise storage list for data collection (for plotting later )
+    history_walltime = [t1]
     history_times = [t]
     history_eqs = [deepcopy(stepping.eq1)]
     history_full_currents = [stepping.currents_vec[:-1]]
@@ -613,15 +516,23 @@ def simulate_shot(
     history_xpoints = [[Rx, Zx]]
     history_Rin = [stepping.eq1.innerOuterSeparatrix()[0]]
     history_Rout = [stepping.eq1.innerOuterSeparatrix()[1]]
+
     # for timestamp in time_slices:  # do around 1000hz
     # do as while loop
     counter = 1
-    while t < t_stop:
+    # while t < t_stop:
+    while counter < n_iter:
         try:
             print(f"------\n Simulation at t={t} \n --------")
             print(f"iteration number: {counter}")
+            # t += dt
+            t = t + counter * dt
             counter += 1
-            t += dt
+            # update measured currents
+            print("updating measured currents")
+            measured_I = np.array(
+                [eq_start.tokamak.getCurrents()[key] for key in active_coils]
+            )
             ##compute voltage request
             v_requested = voltage_request(
                 ip_controller,
@@ -656,9 +567,6 @@ def simulate_shot(
                 Ip_ref=750e3,
                 derivative_lag=1,
             )
-
-            # copy from example 6c.
-
             # update equilibrium
             # carry out the time step
             if linear == True:
@@ -701,6 +609,191 @@ def simulate_shot(
             history_o_points = np.append(
                 history_o_points, [stepping.eq1.opt[0]], axis=0
             )
+            walltime = time.time()
+            history_walltime.append(walltime)
+        except Exception as e:
+            print("ERROR")
+            print(type(e))
+            print(e)
+            print(f"Simulation failed at t={t}")
+            error_msg = traceback.format_exc()
+            print(error_msg)
+            break
+
+    # lists to numpy arrays
+    history_Ip = np.array(history_Ip)
+    history_full_currents = np.array(history_full_currents)
+    history_voltages = np.array(history_voltages)
+    history_plasma_resistivity = np.array(history_plasma_resistivity)
+    history_times = np.array(history_times)
+    history_o_points = np.array(history_o_points)
+    history_xpoints = np.array(history_xpoints)
+
+    linear_flag = str(linear)
+    # save the history to file
+    history_dict = {
+        "linear": linear_flag,
+        "walltime": history_walltime,
+        "times": history_times,
+        "equilibrium": history_eqs,
+        "full_currents": history_full_currents,
+        "Ip": history_Ip,
+        "voltages": history_voltages,
+        "plasma_resistivity": history_plasma_resistivity,
+        "jz": history_jz,
+        "o_points": history_o_points,
+        "xpoints": history_xpoints,
+        "R_in": history_Rin,
+        "R_out": history_Rout,
+        "n_iterations": counter,
+    }
+    # with open("history.pkl", "wb") as fp:
+    #     pickle.dump(history_dict, fp)
+
+    input_waveform_dict = {
+        "R_in": target_fb_scheduler.target_waveform_dict["R_in"],
+        "R_out": target_fb_scheduler.target_waveform_dict["R_out"],
+        "Rx_lower": target_fb_scheduler.target_waveform_dict["Rx_lower"],
+        # "Rs_lower_outer": target_fb_scheduler.target_waveform_dict["Rs_lower_outer"],
+        "Ip": ip_controller.scheduler.target_waveform_dict["Ip"],
+    }
+    t2 = time.time()
+    print("simulation run time ", t2 - t1)
+    return history_dict, input_waveform_dict
+
+
+def validate_shot(
+    config_kwargs,
+    control_kwargs,
+    stepping,
+    shape_control_coils,
+    measured_vals,
+    pcs_vals,
+    time_stamps=None,
+):
+    """
+    Run validation of control with historic measurements, rather than equi simulation.
+
+    Provide the simulation inputs (schedules, control parameters), eqi, profiles, stepping (provides machine description)
+    provide also the measured values for the plasma current and shape currents, along with associated timestamps.
+
+    Parameters
+    ----------
+    config_kwargs : dict
+        dictionary of configuration parameters (values for resistances, inductances, etc.)
+    control_kwargs : dict
+        dictionary of configuration filespaths (schedules, waveforms, etc)
+    profiles_start : profiles object
+        profiles object
+    stepping : stepping object (nl_solver)
+        Non Linear Solver object - contains eq and tokamak info
+    shape_control_coils : list
+        list of coils used in shape control (used by VC's)
+    measured_vals : dict
+        dictionary of waveforms of measured values for plasma/shape values and currents
+    pcs_vals : dict
+        dictionary of waveforms of measured quantities computed in PCS (approved I, dI/dt, etc)
+
+    Returns
+    -------
+    None
+    """
+    t1 = time.time()
+    # Load Schedulers
+    schedulers = build_schedulers(control_kwargs)
+    coil_perturbation = schedulers["coil_pert"]
+    target_ff_scheduler = schedulers["shape_ff"]
+    target_fb_scheduler = schedulers["shape_fb"]
+
+    # Initialise controllers
+    eq_start = stepping.eq1
+    profiles_start = stepping.profiles1
+    ip_controller, shape_controller, active_coils = build_controllers(
+        control_kwargs,
+        schedulers,
+        eq_start,
+        profiles_start,
+        stepping,
+        shape_control_coils,
+    )
+
+    Rp, inductances_pl, inductance_matrix, coil_gain_matrix, Rvec = load_parameters(
+        config_kwargs, shape_controller
+    )
+
+    # starting values for simulation - from PCS data NOT equilbrium now
+    t_start = measured_vals["time_stamps"][0]
+    n_iter = len(measured_vals["time_stamps"])
+    est_I = np.array([pcs_vals["approved_I"][f"{coil}"] for coil in active_coils])
+    measured_I = np.array([measured_vals[f"{coil}"] for coil in active_coils])
+
+    print(f"------\n Simulation at t={t_start} \n --------")
+    print(f"validation will run for {n_iter} iterations")
+    # plot_eqi(eq_start, show=True)
+
+    ### Simulation History - For plotting later ###
+    # initialise storage list for data collection (for plotting later )
+    history_walltime = [t1]
+    history_times = [t]
+    history_full_currents = [stepping.currents_vec[:-1]]
+    history_Ip = [stepping.profiles1.Ip]
+    history_voltages = []
+
+    # for timestamp in time_slices:  # do around 1000hz
+    # do as while loop
+    counter = 1
+    # while t < t_stop:
+    for i in range(n_iter):
+        try:
+            print(f"------\n Simulation at t={t} \n --------")
+            print(f"iteration number: {counter}")
+            # t += dt
+            t = measured_vals["times"]
+            counter += 1
+            # update measured currents
+            print("updating measured currents")
+
+            ##compute voltage request
+            v_requested = voltage_request(
+                ip_controller,
+                shape_controller,
+                eq=stepping.eq1,
+                profiles=stepping.profiles1,
+                timestamp=t,
+                Rp=Rp,
+                inductacnes_pl=inductances_pl,
+                Rvec=Rvec,
+                inductance_matrix=inductance_matrix,
+                est_I=est_I,
+                measured_I=measured_I,
+                coil_gain_matrix=coil_gain_matrix,
+                coil_perturbation=coil_perturbation,
+            )
+
+            # v_requested[-1] = vertical_controller(
+            #     dt=stepping.dt_step,
+            #     target=0.0,
+            #     history=history_jz,
+            #     k_prop=-20000,
+            #     k_int=0,
+            #     k_deriv=-50,
+            #     prop_exponent=1.0,
+            #     prop_error=1e-3,
+            #     deriv_threshold=50,
+            #     int_factor=0.98,
+            #     # Ip=62000,
+            #     Ip=stepping.profiles1.Ip,
+            #     Ip_ref=750e3,
+            #     derivative_lag=1,
+            # )
+
+            history_times.append(t)
+            history_Ip.append(stepping.profiles1.Ip)
+            history_full_currents.append(stepping.currents_vec[:-1])
+            history_voltages.append(v_requested)
+
+            walltime = time.time()
+            history_walltime.append(walltime)
         except Exception as e:
             print("ERROR")
             print(type(e))
@@ -721,29 +814,14 @@ def simulate_shot(
 
     # save the history to file
     history_dict = {
+        "walltime": history_walltime,
         "times": history_times,
-        "equilibrium": history_eqs,
         "full_currents": history_full_currents,
         "Ip": history_Ip,
         "voltages": history_voltages,
-        "plasma_resistivity": history_plasma_resistivity,
-        "jz": history_jz,
-        "o_points": history_o_points,
-        "xpoints": history_xpoints,
-        "R_in": history_Rin,
-        "R_out": history_Rout,
     }
-    # with open("history.pkl", "wb") as fp:
-    #     pickle.dump(history_dict, fp)
-
-    input_waveform_dict = {
-        "R_in": target_fb_scheduler.target_waveform_dict["R_in"],
-        "R_out": target_fb_scheduler.target_waveform_dict["R_out"],
-        "Rx_lower": target_fb_scheduler.target_waveform_dict["Rx_lower"],
-        "Rs_lower_outer": target_fb_scheduler.target_waveform_dict["Rs_lower_outer"],
-        "Ip": ip_controller.scheduler.target_waveform_dict["Ip"],
-    }
-    return history_dict, input_waveform_dict
+    t2 = time.time()
+    return history_dict
 
 
 def plot_evolution(
@@ -764,12 +842,22 @@ def plot_evolution(
     # add end points for plotting flat continuation of input waveforms
     input_wave_aux = deepcopy(input_waveforms)
 
+    runtime = sim_hist["walltime"][-1] - sim_hist["walltime"][0]
+    iters = sim_hist["n_iterations"]
+    time_step = sim_hist["times"][1] - sim_hist["times"][0]
+
     # create figure and axes - 2x3 grid.
     fig, axs = plt.subplots(2, 3, figsize=(20, 10), dpi=80, constrained_layout=True)
+    lin_lab = "Linear" if sim_hist["linear"] == "True" else "Non-Linear"
     if title is None:
-        fig.suptitle("Simulation History")
+        fig.suptitle(
+            f"Simulation History \n  iterations: {iters}, solver_timestep : {time_step:.3g}, runtime: {runtime:.0f} s, {lin_lab} solve "
+        )
     else:
-        fig.suptitle(title)
+        fig.suptitle(
+            title
+            + f"\n  iterations: {iters}, solver_timestep: {time_step:.3g}, runtime: {runtime:.0f} s , {lin_lab} solve "
+        )
 
     axs_flat = axs.flat
     if sim_hist is not None:
@@ -794,28 +882,28 @@ def plot_evolution(
         axs_flat[3].plot(
             sim_hist["times"], sim_hist["xpoints"][:, 0], "k+", linestyle="--"
         )
-        axs_flat[3].set_ylim(
-            top=1.02 * max(sim_hist["xpoints"][:, 0]),
-            bottom=0.98 * min(sim_hist["xpoints"][:, 0]),
-        )
+        # axs_flat[3].set_ylim(
+        #     top=1.02 * max(sim_hist["xpoints"][:, 0]),
+        #     bottom=0.98 * min(sim_hist["xpoints"][:, 0]),
+        # )
         axs_flat[3].yaxis.set_major_formatter(FormatStrFormatter("%.3f"))
 
         axs_flat[3].set_xlabel("Time")
         axs_flat[3].set_ylabel("Rx")
 
         axs_flat[4].plot(sim_hist["times"], sim_hist["R_in"], "k+", linestyle="--")
-        axs_flat[4].set_ylim(
-            top=1.02 * max(sim_hist["R_in"]), bottom=0.98 * min(sim_hist["R_in"])
-        )
+        # axs_flat[4].set_ylim(
+        #     top=1.02 * max(sim_hist["R_in"]), bottom=0.98 * min(sim_hist["R_in"])
+        # )
         axs_flat[4].yaxis.set_major_formatter(FormatStrFormatter("%.3f"))
 
         axs_flat[4].set_xlabel("Time")
         axs_flat[4].set_ylabel("Rin")
 
         axs_flat[5].plot(sim_hist["times"], sim_hist["R_out"], "k+", linestyle="--")
-        axs_flat[5].set_ylim(
-            top=1.02 * max(sim_hist["R_out"]), bottom=0.98 * min(sim_hist["R_out"])
-        )
+        # axs_flat[5].set_ylim(
+        #     top=1.02 * max(sim_hist["R_out"]), bottom=0.98 * min(sim_hist["R_out"])
+        # )
         axs_flat[5].yaxis.set_major_formatter(FormatStrFormatter("%.3f"))
         axs_flat[5].set_xlabel("Time")
         axs_flat[5].set_ylabel("Rout")
@@ -850,7 +938,7 @@ def plot_evolution(
     # set xlims
     for i in range(6):
         if sim_hist is not None and input_wave_aux is not None:
-            tstart = min(sim_hist["times"][0], input_wave_aux["R_in"]["times"][0])
+            tstart = max(sim_hist["times"][0], input_wave_aux["R_in"]["times"][0])
             tend = min(sim_hist["times"][-1], input_wave_aux["R_out"]["times"][-1])
         elif sim_hist is not None and input_wave_aux is None:
             tstart = sim_hist["times"][0]
@@ -861,11 +949,6 @@ def plot_evolution(
 
         axs_flat[i].set_xlim(tstart, tend)
 
-    # for i in range(6):
-    #     axs_flat[i].set_xlim(sim_hist["times"][0], sim_hist["times"][-1])
-
-    # save_time = round(time.time(), 3)
-    # if save_name is None:
     #     save_name = "simulation_"
     if save_name is not None:
         # save the figure

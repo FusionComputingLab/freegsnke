@@ -1,6 +1,6 @@
 
 <div align="center">
-  <img src="_images/freegsnke_logo.png" alt="FreeGSNKE Logo" width="200"><br><br>
+  <img src="https://freegsnke-static-images-bucket.s3.eu-west-2.amazonaws.com/freegsnke_logo.png" alt="FreeGSNKE Logo" width="200"><br><br>
 </div>
 
 # FreeGSNKE: Free-boundary Grad-Shafranov Newton-Krylov Evolve

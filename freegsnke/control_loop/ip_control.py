@@ -38,7 +38,7 @@ class ControlSolenoid:
         self,
         waveform_dict,
         schedule_dict,
-        contr_params_dict,
+        sol_vc_dict,
         solenoid_name=None,
     ):
         """
@@ -52,7 +52,7 @@ class ControlSolenoid:
 
         # Load the scheduler
         self.scheduler = SolenoidScheduler(
-            waveform_dict, schedule_dict, contr_params_dict, solenoid_name
+            waveform_dict, schedule_dict, sol_vc_dict, solenoid_name
         )
 
         self.vc = self.scheduler.retrieve_vc()
@@ -318,59 +318,59 @@ class SolenoidScheduler(TargetScheduler):
 
     #     return requested_parameter
 
-    def get_observed_current(self, query, eq=None):
-        """
-        Provides the current value for `query` at `time_stamp`, either via
-        user-defined sequences (if `query` is present in `control_params` on
-        `time_stamp`) or via an estimation given by the Equilibrium `eq`.
+    # def get_observed_current(self, query, eq=None):
+    #     """
+    #     Provides the current value for `query` at `time_stamp`, either via
+    #     user-defined sequences (if `query` is present in `control_params` on
+    #     `time_stamp`) or via an estimation given by the Equilibrium `eq`.
 
-        Parameters
-        ----------
-        # - time_stamp : float (4 decimal places)
-        #     Timestamp for which this pipeline should provide a control voltage.
-        - query : str
-            Current queried. It can be either "Ip_obs" or "measured_Isol".
+    #     Parameters
+    #     ----------
+    #     # - time_stamp : float (4 decimal places)
+    #     #     Timestamp for which this pipeline should provide a control voltage.
+    #     - query : str
+    #         Current queried. It can be either "Ip_obs" or "measured_Isol".
 
-            "Ip_obs" refers to the required plasma current for this time_stamp.
-            It defaults to the current value stored in the Equilibrium
-            (argument eq) if not given.
+    #         "Ip_obs" refers to the required plasma current for this time_stamp.
+    #         It defaults to the current value stored in the Equilibrium
+    #         (argument eq) if not given.
 
-            "measured_Isol" refers to the measured solenoid current from the
-            tokamak. It defaults to the current value stored in the Equilibrium
-            (argument eq) if not given.
-        - eq : Equilibrium
-            An equilibrium object from which we get information about the
-            plasma or solenoid current when Ip_obs or measured_Isol are not
-            given by the user.
+    #         "measured_Isol" refers to the measured solenoid current from the
+    #         tokamak. It defaults to the current value stored in the Equilibrium
+    #         (argument eq) if not given.
+    #     - eq : Equilibrium
+    #         An equilibrium object from which we get information about the
+    #         plasma or solenoid current when Ip_obs or measured_Isol are not
+    #         given by the user.
 
-        Returns
-        -------
-        float
-            The current value for the queried entity.
+    #     Returns
+    #     -------
+    #     float
+    #         The current value for the queried entity.
 
-        """
-        # current = self.retrieve_parameter(time_stamp, query)
+    #     """
+    #     # current = self.retrieve_parameter(time_stamp, query)
 
-        if eq is None:
-            raise Exception(
-                "An Equilibrium object should be provided to "
-                f"ip_control() if {query} is not provided."
-            )
+    #     if eq is None:
+    #         raise Exception(
+    #             "An Equilibrium object should be provided to "
+    #             f"ip_control() if {query} is not provided."
+    #         )
 
-        if query == "Ip_obs":
-            print(
-                "Ip_obs is not provided, using the equilibrium given to " "estimate it."
-            )
-            current = eq.plasmaCurrent()
+    #     if query == "Ip_obs":
+    #         print(
+    #             "Ip_obs is not provided, using the equilibrium given to " "estimate it."
+    #         )
+    #         current = eq.plasmaCurrent()
 
-        if query == "measured_Isol":
-            print(
-                "measured_Isol is not provided, using the equilibrium "
-                "given to estimate it."
-            )
-            current = eq.tokamak[self.solenoid_name].current
+    #     if query == "measured_Isol":
+    #         print(
+    #             "measured_Isol is not provided, using the equilibrium "
+    #             "given to estimate it."
+    #         )
+    #         current = eq.tokamak[self.solenoid_name].current
 
-        return current
+    #     return current
 
     def get_vloop_blends(self, time_stamp):
         """
@@ -378,13 +378,9 @@ class SolenoidScheduler(TargetScheduler):
 
         """
         # get set of targets being controlled at this time
-        print("--- loading shape gains")
+        print("--- loading  gains")
         gains = []
         # dict format is {time : {target : tau, target_2 : tau_2, ...}}
         # more likely this if single set of gains for all time.
-        blend = self.retrieve_control_param(
-            param_dict=self.target_waveform_dict,
-            param="blends",
-            time_stamp=time_stamp,
-        )
+        blend = self.get_blends(time_stamp=time_stamp, target="Vloop")
         return blend

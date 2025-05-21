@@ -7,9 +7,9 @@ runs:
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
-        python-version: '3.9'
+        python-version: '3.10'
     - name: Install freegsnke and dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install ".[freegs4e,dev]"
+        pip install ".[freegs4e,dev,docs]"
       shell: bash

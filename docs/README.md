@@ -2,24 +2,30 @@
 
 The documentation is built using Sphinx and is partially automatically generated from the code.
 
+The documentation is available at [docs.freegsnke.com](https://docs.freegsnke.com/).
 
-## API documentation
 
-The requirements for building the documentation are kept separate from the FreeGSNKE requirements. FreeGSNKE and its dependencies are required to be installed to build the docs (see the README in the repository root directory for instructions).
+## Building the documentation
 
-To install the documentation requirements, run the following command from the `docs` directory. Ensure that the active programming environment has FreeGSNKE installed.
+To build the documentation locally, first install FreeGSNKE with the `docs` extra. For example, the following command may be run from the FreeGSNKE root directory:
 
 ```bash
-pip install -r requirements_docs.txt
+pip install ".[docs]"
 ```
 
-The documentation can then be built by running:
+Other extras can be installed at the same time, for example:
+
+```bash
+pip install -e ".[freegs4e,dev,docs]"
+```
+
+The documentation can then be built by running the following command from the `docs/` directory:
 
 ```bash
 bash build_documentation.sh
 ```
 
-This may take several minutes to complete as it runs some examples of the code to generate the documentation.
+This may take several minutes to complete as some examples of the code are run to generate the documentation.
 
 ## Viewing the documentation
 

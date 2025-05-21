@@ -103,7 +103,8 @@ FreeGSNKE also interfaces with [UDA](https://github.com/ukaea/UDA), for example,
 
 1. Log into your account at https://git.ccfe.ac.uk/ and follow the instructions [here](https://docs.gitlab.com/user/ssh/) to set up an SSH key to communicate with the CCFE GitLab instance.
 2. Establish a connection to the UKAEA VPN.
-3. When installing FreeGSNKE, specify the `uda` extra: `pip install freegsnke[uda]`. To install both the `uda` and `freegs4e` extras, separate them with a comma: `pip install freegsnke[freegs4e,uda]`.
+3. When installing FreeGSNKE, specify the `uda` extra: `pip install freegsnke[uda]`.
+4. Finally, install the uda-mast package: `pip install "uda-mast @ git+ssh://git@git.ccfe.ac.uk/MAST-U/mastcodes.git@1.3.10#subdirectory=uda/python"`.
 
 ## Contributing
 

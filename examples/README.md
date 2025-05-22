@@ -14,5 +14,6 @@ These example Jupyter notebooks are intended to be the **first port of call for 
 | Example 7 | Static inverse solve in a SPARC-like tokamak. | Anyone |
 | Example 8 | Static inverse solve in an ITER-like tokamak. | Anyone |
 | Example 9 | Learn how to use and build virtual circuits in a MAST-U like tokamak. | Anyone |
+| Example 10 | Learn how to calculate growth rates associated with vertically unstable modes in a MAST-U like tokamak. | Anyone |
 
 If a new example has been created, please add a new line to the table explaining its purpose!

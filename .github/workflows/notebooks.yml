@@ -29,3 +29,5 @@ jobs:
         run: jupyter nbconvert --execute --to notebook --inplace "examples/example5 - evolutive_forward_solve.ipynb"
       - name: Check static inverse solve SPARC notebook
         run: jupyter nbconvert --execute --to notebook --inplace "examples/example7 - static_inverse_solve_SPARC.ipynb"
+      - name: Check virtual circuits MAST-U notebook
+        run: jupyter nbconvert --execute --to notebook --inplace "examples/example9 - virtual_circuits_MASTU.ipynb"

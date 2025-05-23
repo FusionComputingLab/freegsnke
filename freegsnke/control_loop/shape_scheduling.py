@@ -18,7 +18,7 @@ class VirtualCircuitScheduler:
 
     """
 
-    def __init__(self, vc_schedule_dict=None):
+    def __init__(self, vc_schedule_dict):
         """
         Initialise the class
 
@@ -33,26 +33,13 @@ class VirtualCircuitScheduler:
         None
         """
 
-        # self.vc_times_calc = []  # times at which vcs are calculated
-        self.vc_times_start = []  # times at which vcs are to be stopped using
-        self.vc_index = []  #
-        self.vc_schedule = []  # list of virtual circuit ojbects
-        self.gains = []
+        self.vc_schedule_full = vc_schedule_dict
+        print(f"VC schedule with {len(self.vc_schedule_full)} vc phases")
 
-        # input currents and profile parameters to recreate eq if needed
-        self.input_currents = []  # list of input current dictionaries
-        self.input_profile_pars = []  # list of input profile parameter dicts
+        # unpack vc_schedule_dict
+        self.unpack_vc_schedule(vc_schedule_dict)
 
-        if vc_schedule_dict is not None:
-            print("loading vcs from file")
-            # populate the vc_schedule
-            self.load_vcs_from_dict(vc_schedule_dict)
-            n_vc = len(self.vc_times_start)
-            print(f"{n_vc} VC's loaded")
-        else:
-            print("No file waveform_dict provided. Add VC's manually if desired")
-
-    def load_vcs_from_dict(self, vcs_dict):
+    def unpack_vc_schedule(self, vcs_dict):
         """
         Load the virtual circuit matrix, shape matrix, coils and targets from a
         dictionary, and save a list of VC objects and assocated data as class attributes.
@@ -62,56 +49,45 @@ class VirtualCircuitScheduler:
         None :
             Modifies the attributes of the class.
         """
-        # # file extension - hdf5 or csv or ???
-        # file_ext = (path).split(".")[-1]
-        # if file_ext == ("pkl" or "pickle"):
-        #     # load vcs from pickle file
-        #     with open(path, "rb") as fp:
-        #         vcs_dict = pickle.load(fp)
+        # set lists
+        self.vc_times_start = []  # times at which vcs are to be stopped using
+        self.vc_ojbects = []  # list of virtual circuit ojbects
+        self.phase_names = []  # list of phase names
 
         for key, item in vcs_dict.items():
-            # index = item["index"]
+            phase_name = item["phase_name"]
             time_start = item["time_start"]
-            vc_matrix = item["vc_matrix"]
-            shape_matrix = item["shape_matrix"]
-            targets = item["targets"]
-            coils = item["coils"]
-            targets_val = item["targets_val"]
-            input_currents = item["input_currents"]
-            input_profile_pars = item["input_profile_pars"]
-            try:
-                gains_arr = item["target_gains"]
-            except:
-                print("no gains provided - default to 1")
-                gains_arr = np.ones(np.shape(targets))
+            if "vc_matrix" in item.keys():
+                vc_matrix = item["vc_matrix"]
+                shape_matrix = item["shape_matrix"]
+                targets = item["targets"]
+                coils = item["coils"]
+                # create VC object
+                vc_object = VirtualCircuit(
+                    name=f"vc_start_{time_start:.4f}",
+                    eq=None,
+                    profiles=None,
+                    shape_matrix=shape_matrix,
+                    VCs_matrix=vc_matrix,
+                    targets=targets,
+                    coils=coils,
+                    targets_val=None,
+                    targets_options=None,
+                    non_standard_targets=None,
+                )
+            else:
+                vc_matrix = None
+                vc_object = None
+                shape_matrix = None
+                targets = None
+                coils = None
 
-            gains_dict = dict(zip(targets, gains_arr))
-
-            vc_object = VirtualCircuit(
-                name=f"vc_start_{time_start:.4f}",
-                eq=None,
-                profiles=None,
-                shape_matrix=shape_matrix,
-                VCs_matrix=vc_matrix,
-                targets=targets,
-                coils=coils,
-                targets_val=targets_val,
-                targets_options=None,
-                non_standard_targets=None,
-            )
-
-            self.vc_schedule.append(vc_object)
-            # self.vc_times_calc.append(time_calc)
+            self.vc_ojbects.append(vc_object)
             self.vc_times_start.append(time_start)
-            self.input_currents.append(input_currents)
-            self.input_profile_pars.append(input_profile_pars)
-            assert len(gains_arr) == len(
-                targets
-            ), "gains provided don't match with number of targets"
-            self.gains.append(gains_dict)
+            self.phase_names.append(phase_name)
+
         # convert times to numpy array
         self.vc_times_start = np.array(self.vc_times_start)
-        # self.vc_times_calc = np.array(self.vc_times_calc)
 
     # ???? Do we need this???? Maybe delete this method.
     # def add_vc_to_sequence(self, virtual_circuit, time_start, time_start):
@@ -162,9 +138,8 @@ class VirtualCircuitScheduler:
         t_vc = max(time for time in self.vc_times_start if time <= time_stamp)
         # get index corresponding to the time position
         pos = np.where(self.vc_times_start == t_vc)[0][0]
-        print(f"pos {pos}")
 
-        virtual_circuit = self.vc_schedule[pos]
+        virtual_circuit = self.vc_ojbects[pos]
         return virtual_circuit
 
 
@@ -223,11 +198,6 @@ class ShapeTargetScheduler(TargetScheduler):
 
         super().__init__(waveform_dict, schedule_dict)
 
-        # self.shape_blends = shape_blends_dict
-        # if shape_gains_dict is not None:
-        #     self.shape_gains = shape_gains_dict
-        # else:
-        #     self.shape_gains = None
         self.vc_flag = vc_flag
 
         # check if vc_flag is file and load VC's from file.

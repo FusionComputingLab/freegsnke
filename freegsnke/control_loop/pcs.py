@@ -662,6 +662,41 @@ def simulate_shot(
     return history_dict, input_waveform_dict
 
 
+def retrieve_measured_vals(measured_data, quantity, time_stamp, params):
+    """
+    Find the targets that are controlled at time time_stamp.
+
+    Arguments
+    ---------
+    time_stamp : float (4 decimal places)
+        Time stamp of the target to be retrieved.
+
+    Returns
+    -------
+    target_names : list[str]
+        List of target names.
+
+    """
+    dictionary = measured_data[quantity]
+
+    output = []
+    for param in params:
+        if param not in dictionary.keys():
+            print(f"param {param} not in dictionary")
+            output.append(0)
+            continue
+        closest_key = max(
+            (time for time in dictionary[param]["times"] if time <= time_stamp),
+            default=None,
+        )
+        # index = dictionary[param]["times"].index(closest_key)
+        index = np.where(dictionary[param]["times"] == closest_key)[0][0]
+        output.append(dictionary[param]["vals"][index])
+    print("measured values", output)
+
+    return np.array(output)
+
+
 def validate_shot(
     config_kwargs,
     control_kwargs,
@@ -722,36 +757,94 @@ def validate_shot(
     )
 
     # starting values for simulation - from PCS data NOT equilbrium now
-    t_start = measured_vals["time_stamps"][0]
-    n_iter = len(measured_vals["time_stamps"])
-    est_I = np.array([pcs_vals["approved_I"][f"{coil}"] for coil in active_coils])
-    measured_I = np.array([measured_vals[f"{coil}"] for coil in active_coils])
+    t_start = time_stamps[0]
+
+    est_I = retrieve_measured_vals(measured_vals, "approved_I", t_start, active_coils)
 
     print(f"------\n Simulation at t={t_start} \n --------")
-    print(f"validation will run for {n_iter} iterations")
     # plot_eqi(eq_start, show=True)
 
     ### Simulation History - For plotting later ###
     # initialise storage list for data collection (for plotting later )
     history_walltime = [t1]
-    history_times = [t]
+    history_times = [t_start]
     history_full_currents = [stepping.currents_vec[:-1]]
     history_Ip = [stepping.profiles1.Ip]
     history_voltages = []
+    history_voltages_dict = {
+        "Solenoid": [],
+        "d1": [],
+        "d2": [],
+        "d3": [],
+        "dp": [],
+        "d5": [],
+        "d6": [],
+        "d7": [],
+        "p4": [],
+        "p5": [],
+        "p6": [],
+        "px": [],
+    }
+
+    history_approved_I = {
+        "Solenoid": [],
+        "d1": [],
+        "d2": [],
+        "d3": [],
+        "dp": [],
+        "d5": [],
+        "d6": [],
+        "d7": [],
+        "p4": [],
+        "p5": [],
+        "p6": [],
+        "px": [],
+    }
+
+    history_approved_dIdt = {
+        "Solenoid": [],
+        "d1": [],
+        "d2": [],
+        "d3": [],
+        "dp": [],
+        "d5": [],
+        "d6": [],
+        "d7": [],
+        "p4": [],
+        "p5": [],
+        "p6": [],
+        "px": [],
+    }
 
     # for timestamp in time_slices:  # do around 1000hz
     # do as while loop
     counter = 1
     # while t < t_stop:
-    for i in range(n_iter):
+    for t in time_stamps:
         try:
             print(f"------\n Simulation at t={t} \n --------")
             print(f"iteration number: {counter}")
-            # t += dt
-            t = measured_vals["times"]
             counter += 1
-            # update measured currents
-            print("updating measured currents")
+
+            # extract measured values needed.
+            controlled_targets = (
+                shape_controller.feedback_target_scheduler.retrieve_controlled_targets(
+                    t
+                )
+            )
+            targ_obs = retrieve_measured_vals(
+                measured_vals, "shape_reconstructions", t, controlled_targets
+            )
+            print("targets : ", controlled_targets)
+            print(f"targ_obs: {targ_obs}")
+            Ip_obs = retrieve_measured_vals(
+                measured_vals, "measured_Ip", t, active_coils
+            )[0]
+            print(f"Ip_obs: {Ip_obs}")
+            measured_I = retrieve_measured_vals(
+                measured_vals, "approved_I", t, active_coils
+            )[0]
+            print(f"measured_I: {measured_I}")
 
             ##compute voltage request
             v_requested = voltage_request(
@@ -768,6 +861,8 @@ def validate_shot(
                 measured_I=measured_I,
                 coil_gain_matrix=coil_gain_matrix,
                 coil_perturbation=coil_perturbation,
+                targ_obs=targ_obs,
+                Ip_obs=Ip_obs,
             )
 
             # v_requested[-1] = vertical_controller(
@@ -791,6 +886,8 @@ def validate_shot(
             history_Ip.append(stepping.profiles1.Ip)
             history_full_currents.append(stepping.currents_vec[:-1])
             history_voltages.append(v_requested)
+            for i, el in enumerate(active_coils):
+                history_voltages_dict[el].append(v_requested[i])
 
             walltime = time.time()
             history_walltime.append(walltime)
@@ -807,10 +904,7 @@ def validate_shot(
     history_Ip = np.array(history_Ip)
     history_full_currents = np.array(history_full_currents)
     history_voltages = np.array(history_voltages)
-    history_plasma_resistivity = np.array(history_plasma_resistivity)
     history_times = np.array(history_times)
-    history_o_points = np.array(history_o_points)
-    history_xpoints = np.array(history_xpoints)
 
     # save the history to file
     history_dict = {
@@ -819,6 +913,7 @@ def validate_shot(
         "full_currents": history_full_currents,
         "Ip": history_Ip,
         "voltages": history_voltages,
+        "voltages_dict": history_voltages_dict,
     }
     t2 = time.time()
     return history_dict

@@ -1,6 +1,6 @@
 
 <div align="center">
-  <img src="_images/freegsnke_logo.png" alt="FreeGSNKE Logo" width="200"><br><br>
+  <img src="https://freegsnke-static-images-bucket.s3.eu-west-2.amazonaws.com/freegsnke_logo.png" alt="FreeGSNKE Logo" width="200"><br><br>
 </div>
 
 # FreeGSNKE: Free-boundary Grad-Shafranov Newton-Krylov Evolve
@@ -11,7 +11,7 @@ FreeGSNKE (pronounced "free-gee-snake") is a **Python**-based code for **simulat
 Based on the well-established [FreeGS](https://github.com/bendudson/freegs) code, it utilises [FreeGS4E](https://github.com/FusionComputingLab/freegs4e) (a fork of FreeGS) to solve different types of free-boundary Grad-Shafranov equilibrium problem and contains a number of new capabilities over FreeGS. 
 
 **NOTE:**  We recommended reading this page in its entirety before attempting to install or run FreeGSNKE!
-k
+
 ## Capabilities
 FreeGSNKE is capable of solving both **static** (time-<u>in</u>dependent) and **evolutive** (time-dependent) **free-boundary equilibrium problems**. For **fixed-boundary** problems we recommend using FreeGS.
 

@@ -158,7 +158,7 @@ class metal_currents:
             )
             print(f"   Passive structures")
             print(
-                f"      {freq_only_number} selected with characteristic timescales larger than 'max_mode_frequency'"
+                f"      {freq_only_number} selected with characteristic frequency less than 'max_mode_frequency'"
             )
 
         if mode_coupling_masks is not None:
@@ -169,7 +169,7 @@ class metal_currents:
             freq_and_thresh_number = np.sum(self.selected_modes_mask)
             if verbose:
                 print(
-                    f"      {freq_and_thresh_number - (freq_only_number + self.n_active_coils)} selected that couple with the plasma more than 'threshold_dIy_dI', despite having fast timescales"
+                    f"      {freq_and_thresh_number - (freq_only_number + self.n_active_coils)} selected that couple with the plasma more than 'threshold_dIy_dI'"
                 )
 
             # exclude modes that do not couple enough
@@ -179,7 +179,7 @@ class metal_currents:
             final_number = np.sum(self.selected_modes_mask)
             if verbose:
                 print(
-                    f"      {freq_and_thresh_number - final_number} selected that couple with the plasma less than 'min_dIy_dI', despite having slow timescales"
+                    f"      {freq_and_thresh_number - final_number} removed that couple with the plasma less than 'min_dIy_dI'"
                 )
                 print(
                     f"      total selected = {final_number - self.n_active_coils} (out of {self.n_coils - self.n_active_coils})"

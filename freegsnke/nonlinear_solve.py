@@ -83,10 +83,14 @@ class nl_solver:
             It can be changed later by initializing a new set of initial conditions.
             Note however that, to change either the machine or limiter properties
             it will be necessary to instantiate a new nl_solver object.
-        max_mode_frequency : float
-            Threshold value used to include/exclude vessel normal modes.
-            Only modes with smaller characteristic frequencies (larger timescales) are retained.
-            If None, max_mode_frequency is set based on the input timestep: max_mode_frequency = 1/(5*full_timestep)
+        custom_coil_resist : np.array
+            1d array of resistance values for all machine conducting elements,
+            including both active coils and passive structures
+            If None, the values calculated by default in tokamak will be sourced and used.
+        custom_self_ind : np.array
+            2d matrix of mutual inductances between all pairs of machine conducting elements,
+            including both active coils and passive structures
+            If None, the values calculated by default in tokamak will be sourced and used.
         full_timestep : float, optional, by default .0001
             The stepper advances the dynamics by a time interval dt=full_timestep.
             Applies to both linear and non-linear stepper.
@@ -98,53 +102,57 @@ class nl_solver:
             Such sub_step is used to advance the circuit equations
             (under the assumption of constant applied voltage during the full_timestep).
             Note that this input is overridden by 'automatic_timestep' if the latter is not set to False.
-        plasma_resistivity : float, optional, by default 1e-6
-            Resistivity of the plasma. Plasma resistance values for each of the domain grid points are
-            2*np.pi*plasma_resistivity*eq.R/(dR*dZ)
-            where dR*dZ is the area of the domain element.
-        plasma_norm_factor : float, optional, by default 1000
-            The plasma current is re-normalised by this factor,
-            to bring to a value more akin to those of the metal currents
-        blend_hatJ : float, optional, by default 0
-            optional coefficient which enables use a blended version of the normalised plasma current distribution
-            when contracting the plasma lumped circuit eq. from the left. The blend combines the
-            current distribution at time t with (a guess for) the one at time t+dt.
-        dIydI : np.array of size (np.sum(plasma_domain_mask), n_metal_modes+1), optional
-            dIydI_(i,j) = d(Iy_i)/d(I_j)
-            This is the jacobian of the plasma current distribution Iy with respect to all
-            independent metal currents (both active and vessel modes) and to the total plasma current
-            This is provided if known, otherwise calculated here at the linearization eq
         automatic_timestep : (float, float) or False, optional, by default False
             If not False, this overrides inputs full_timestep and max_internal_timestep:
             the timescales of the linearised problem are used to set the size of the timestep.
             The input eq and profiles are used to calculate the fastest growthrate, t_growthrate, henceforth,
             full_timestep = automatic_timestep[0]*t_growthrate
             max_internal_timestep = automatic_timestep[1]*full_timestep
+        plasma_resistivity : float, optional, by default 1e-6
+            Resistivity of the plasma. Plasma resistance values for each of the domain grid points are
+            2*np.pi*plasma_resistivity*eq.R/(dR*dZ) where dR*dZ is the area of the domain element.
+        plasma_norm_factor : float, optional, by default 1000
+            The plasma current is re-normalised by this factor to bring to a value more akin to those of the metal currents.
+        blend_hatJ : float, optional, by default 0
+            optional coefficient which enables use a blended version of the normalised plasma current distribution
+            when contracting the plasma lumped circuit eq. from the left. The blend combines the
+            current distribution at time t with (a guess for) the one at time t+dt.
+        max_mode_frequency : float
+            Threshold value used to include/exclude vessel normal modes.
+            Only modes with smaller characteristic frequencies (larger timescales) are retained.
+            If None, max_mode_frequency is set based on the input timestep: max_mode_frequency = 1/(5*full_timestep)
+        fix_n_vessel_modes : int
+            If -1, modes are selected based on max_mode_frequency, threshold_dIy_dI and min_dIy_dI.
+            If a non-negative integer, the number of vessel modes is fixed accordingly. max_mode_frequency, threshold_dIy_dI and min_dIy_dI are not used.
+        threshold_dIy_dI : float
+            Threshold value to drop vessel modes (number between 0 and 1). 
+            Modes that couple with the plasma more than threshold_dIy_dI*strongest_mode, are included.
+            This criterion is applied based on dIydI_noGS.
+        min_dIy_dI : float
+            Threshold value to drop vessel modes (number between 0 and 1).
+            Modes that couple with the plasma less than min_dIy_dI*strongest_mode, are removed.
+            This criterion is applied based on dIydI_noGS.
+            Note this must be less than or equal to threshold_dIy_dI.
         mode_removal : bool, optional, by default True
             It True, vessel normal modes are dropped after dIydI is calculated
             Modes that couple with the plasma less than min_dIy_dI than the strongest mode, are dropped.
             This criterion is applied based on the actual dIydI, calculated on GS solutions.
         linearize : bool, optional, by default True
             Whether to set up the linearization of the evolutive problem
-        fix_n_vessel_modes : int
-            If -1, modes are selected based on max_mode_frequency, threshold_dIy_dI and min_dIy_dI.
-            If a non-negative integer, the number of vessel modes is fixed accordingly. max_mode_frequency, threshold_dIy_dI and min_dIy_dI are not used.
-        threshold_dIy_dI : float
-            Threshold value to drop vessel modes.
-            Modes that couple with the plasma more than min_dIy_dI than the strongest mode, are included.
-            This criterion is applied based on dIydI_noGS.
-        min_dIy_dI : float
-            Threshold value to drop vessel modes.
-            Modes that couple with the plasma less than min_dIy_dI than the strongest mode, are dropped.
-            This criterion is applied based on dIydI_noGS.
-        custom_coil_resist : np.array
-            1d array of resistance values for all machine conducting elements,
-            including both active coils and passive structures
-            If None, the values calculated by default in tokamak will be sourced and used.
-        custom_self_ind : np.array
-            2d matrix of mutual inductances between all pairs of machine conducting elements,
-            including both active coils and passive structures
-            If None, the values calculated by default in tokamak will be sourced and used.
+        dIydI : np.array of size (np.sum(plasma_domain_mask), n_metal_modes+1), optional
+            dIydI_(i,j) = d(Iy_i)/d(I_j)
+            This is the jacobian of the plasma current distribution Iy with respect to all
+            independent metal currents (both active and vessel modes) and to the total plasma current
+            This is provided if known, otherwise calculated here at the linearization eq
+        target_relative_tolerance_linearization : float
+            Relative tolerance to solve the static GS problems to during the Jacobian calculation.
+        target_dIy : float
+            Target value for the norm of delta(I_y), on which the finite difference derivatives are calculated.
+        force_core_mask_linearization : bool
+            Whether finite difference calculations should all be based on plasmas with the
+            exact same core region or not. 
+        verbose : bool
+            Print interim calculation results to user.
         """
 
         # grid parameters
@@ -170,6 +178,11 @@ class nl_solver:
         self.limiter_handler = eq.limiter_handler
         self.plasma_domain_size = np.sum(self.limiter_handler.mask_inside_limiter)
 
+        # check threshold values
+        if fix_n_vessel_modes < 0:
+            if min_dIy_dI > threshold_dIy_dI:
+                raise ValueError("Inputs require that 'min_dIy_dI' <= 'threshold_dIy_dI', please adjust parameters.")
+        
         # check input eq and profiles are a GS solution
         print("-----")
         print("Checking that the provided 'eq' and 'profiles' are a GS solution...")
@@ -297,9 +310,9 @@ class nl_solver:
 
         else:
             print(
-                f"      'threshold_dIy_dI', 'min_dIy_dI', and 'max_mode_frequency' option selected --> passive structure modes are selected according to these thresholds."
+                f"      'threshold_dIy_dI', 'min_dIy_dI', and 'max_mode_frequency' options selected --> passive structure modes are selected according to these thresholds."
             )
-            # select modes based on ndIydI_no_GS using values of threshold_dIy_dI and min_dIy_dI
+            # select modes based on ndIydI_no_GS using values of threshold_dIy_dI
             mode_coupling_mask_include = np.concatenate(
                 (
                     [True] * self.n_active_coils,
@@ -340,7 +353,7 @@ class nl_solver:
                 f"   Total number of modes = {self.evol_metal_curr.n_independent_vars} ({self.n_active_coils} active coils + {fix_n_vessel_modes} passive structures)"
             )
             print(
-                f"      (Note: some additional modes may be removed after Jacobian calculation)"
+                f"      (Note: some additional modes may be removed after Jacobian calculation if 'mode_removal=True')"
             )
         print("-----")
 
@@ -513,9 +526,14 @@ class nl_solver:
                 print(
                     f"      No unstable modes found: either plasma stable, or more likely, it is Alfven unstable (i.e. needs more stabilisation from coils and passives)."
                 )
-                print(
-                    f"      Try adding more coils or passive modes (by increasing 'max_mode_frequency' and/or reducing 'min_dIy_dI' or increasing 'fix_n_vessel_modes')."
-                )
+                if fix_n_vessel_modes >= 0:
+                    print(
+                        f"      Try adding more passive modes (by increasing 'fix_n_vessel_modes')."
+                    )
+                else:
+                    print(
+                        f"      Try adding more passive modes (by increasing 'max_mode_frequency' and/or 'threshold_dIy_dI' and/or reducing 'min_dIy_dI'."
+                    )
         print("-----")
 
         # if automatic_timestep, reset the timestep accordingly,

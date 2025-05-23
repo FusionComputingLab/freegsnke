@@ -499,6 +499,7 @@ class nl_solver:
         if automatic_timestep_flag + mode_removal + linearize:
             print("Stability paramters:")
             self.linearised_sol.calculate_linear_growth_rate()
+            self.calculate_Leuer_parameter()
             if len(self.linearised_sol.growth_rates):
                 self.unstable_mode_deformations()
 
@@ -506,12 +507,9 @@ class nl_solver:
                 print(f"   Deformable plasma metrics:")
                 print(f"      Growth rate = {self.linearised_sol.growth_rates} [1/s]")
                 print(f"      Instability timescale = {self.linearised_sol.instability_timescale} [s]")
-                # print(f"      Growth rate (assuming constant Ip) = {nonlinear_solver.linearised_sol.growth_rates_const_Ip} [1/s]")
-                # print(f"      Instability timescale (assuming constant Ip) = {nonlinear_solver.linearised_sol.instability_timescale_const_Ip} [s]")
 
                 # rigid plasma metrics
                 print(f"   Rigid plasma metrics:")
-                self.calculate_Leuer_parameter()
                 print(f"      Leuer parameter (ratio of stabilsing to de-stabilising force gradients):")
                 print(f"          between all metals and all metals = {self.Leuer_metals_stab_over_metals_destab}")
                 print(f"          between all metals and active metals = {self.Leuer_metals_stab_over_active_destab}")

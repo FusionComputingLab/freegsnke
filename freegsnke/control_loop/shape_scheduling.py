@@ -203,7 +203,7 @@ class ShapeTargetScheduler(TargetScheduler):
         # check if vc_flag is file and load VC's from file.
         if vc_flag == "file":
             # initilase a vc sequence object
-            assert vc_schedule_dict is not None, "Please provide a vc sequence path"
+            assert vc_schedule_dict is not None, "Please provide a vc schedule"
             self.vc_scheduler = VirtualCircuitScheduler(vc_schedule_dict)
 
             # add check to see if targets in VC's match targets in target
@@ -224,29 +224,29 @@ class ShapeTargetScheduler(TargetScheduler):
             midpoints = (change_times[:-1] + change_times[1:]) / 2
             # for _, midpoint in enumerate(midpoints):
             ####### TODO MODIFY this compatibilty check to be more robust
-            # for midpoint in midpoints:
-            #     # print(
-            #     #     "checking compatibility of target schedule and vc"
-            #     #     f" sequence at time {midpoint}"
-            #     # )
-            #     print("vc check at time", midpoint)
-            #     vc_targs = self.vc_scheduler.retrieve_vc(time_stamp=midpoint).targets
-            #     print("vc_targs", vc_targs)
-            #     controlled_targs = self.retrieve_controlled_targets(time_stamp=midpoint)
-            #     print("controlled_targs", controlled_targs)
-            #     # check that the target schedule is a subset of the vc sequence
-            #     if not set(controlled_targs).issubset(set(vc_targs)):
-            #         raise ValueError(
-            #             "targets scheduled for control not a subset of vc "
-            #             f"computable targets at time {midpoint} ",
-            #         )
-            #     elif controlled_targs != vc_targs:
-            #         # check the order of the targets
-            #         print(
-            #             "targets requested and vc available targets do not match : vc's will be recomputed as necessary"
-            #         )
-            #         # print("controlled targets", controlled_targs)
-            #         # print("VC available targets", vc_targs)
+            for midpoint in midpoints:
+                print(
+                    "checking compatibility of target schedule and vc"
+                    f" sequence at time {midpoint}"
+                )
+                # print("vc check at time", midpoint)
+                vc_targs = self.vc_scheduler.retrieve_vc(time_stamp=midpoint).targets
+                # print("vc_targs", vc_targs)
+                controlled_targs = self.retrieve_controlled_targets(time_stamp=midpoint)
+                # print("controlled_targs", controlled_targs)
+                # check that the target schedule is a subset of the vc sequence
+                if not set(controlled_targs).issubset(set(vc_targs)):
+                    raise ValueError(
+                        "targets scheduled for control not a subset of vc "
+                        f"computable targets at time {midpoint} ",
+                    )
+                elif controlled_targs != vc_targs:
+                    # check the order of the targets
+                    print(
+                        "targets requested and vc available targets do not match : vc's will be recomputed as necessary"
+                    )
+                    # print("controlled targets", controlled_targs)
+                    # print("VC available targets", vc_targs)
 
         elif vc_flag == "emulator" or "emu" or "Emulator":
             # initilase an Emulator scheduler

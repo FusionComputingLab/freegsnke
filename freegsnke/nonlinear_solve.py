@@ -125,7 +125,7 @@ class nl_solver:
             If -1, modes are selected based on max_mode_frequency, threshold_dIy_dI and min_dIy_dI.
             If a non-negative integer, the number of vessel modes is fixed accordingly. max_mode_frequency, threshold_dIy_dI and min_dIy_dI are not used.
         threshold_dIy_dI : float
-            Threshold value to drop vessel modes (number between 0 and 1). 
+            Threshold value to drop vessel modes (number between 0 and 1).
             Modes that couple with the plasma more than threshold_dIy_dI*strongest_mode, are included.
             This criterion is applied based on dIydI_noGS.
         min_dIy_dI : float
@@ -150,7 +150,7 @@ class nl_solver:
             Target value for the norm of delta(I_y), on which the finite difference derivatives are calculated.
         force_core_mask_linearization : bool
             Whether finite difference calculations should all be based on plasmas with the
-            exact same core region or not. 
+            exact same core region or not.
         verbose : bool
             Print interim calculation results to user.
         """
@@ -181,8 +181,10 @@ class nl_solver:
         # check threshold values
         if fix_n_vessel_modes < 0:
             if min_dIy_dI > threshold_dIy_dI:
-                raise ValueError("Inputs require that 'min_dIy_dI' <= 'threshold_dIy_dI', please adjust parameters.")
-        
+                raise ValueError(
+                    "Inputs require that 'min_dIy_dI' <= 'threshold_dIy_dI', please adjust parameters."
+                )
+
         # check input eq and profiles are a GS solution
         print("-----")
         print("Checking that the provided 'eq' and 'profiles' are a GS solution...")
@@ -506,19 +508,28 @@ class nl_solver:
                 # deformable plasma metrics
                 print(f"   Deformable plasma metrics:")
                 print(f"      Growth rate = {self.linearised_sol.growth_rates} [1/s]")
-                print(f"      Instability timescale = {self.linearised_sol.instability_timescale} [s]")
+                print(
+                    f"      Instability timescale = {self.linearised_sol.instability_timescale} [s]"
+                )
 
                 # rigid plasma metrics
                 print(f"   Rigid plasma metrics:")
-                print(f"      Leuer parameter (ratio of stabilsing to de-stabilising force gradients):")
-                print(f"          between all metals and all metals = {self.Leuer_metals_stab_over_metals_destab}")
-                print(f"          between all metals and active metals = {self.Leuer_metals_stab_over_active_destab}")
-                print(f"          between passive metals and active metals = {self.Leuer_passive_stab_over_active_destab}")
+                print(
+                    f"      Leuer parameter (ratio of stabilsing to de-stabilising force gradients):"
+                )
+                print(
+                    f"          between all metals and all metals = {self.Leuer_metals_stab_over_metals_destab}"
+                )
+                print(
+                    f"          between all metals and active metals = {self.Leuer_metals_stab_over_active_destab}"
+                )
+                print(
+                    f"          between passive metals and active metals = {self.Leuer_passive_stab_over_active_destab}"
+                )
 
                 # # find stabiltiy margins and unstable modes
                 # self.linearised_sol.calculate_stability_margin()
                 # print(f"      Stability margin = {self.linearised_sol.stability_margin}")
-
 
             else:
                 print(
@@ -2160,13 +2171,13 @@ class nl_solver:
 
     def calculate_Leuer_parameter(self):
         """
-        Calculate the Leuer stability parameter as defined in equation (6) of "Passive 
+        Calculate the Leuer stability parameter as defined in equation (6) of "Passive
         vertical stability in tokamaks" (Leuer, 1989).
 
         This is defined as the ratio of stabilising force gradients to de-stabilising force gradients
-        caused by the metals around the plasma. 
-        
-        
+        caused by the metals around the plasma.
+
+
         Parameters
         ----------
 
@@ -2174,38 +2185,66 @@ class nl_solver:
 
         # calculate z derivative of mutual inductance matrix (between coils and plasma points)
         M_prime_all_coils_plasma = self.M_coils_plasma(eq=self.eq1, greens=GreensBr)
-        M_prime_actives_plasma = M_prime_all_coils_plasma[0:self.n_active_coils,:]
-        M_prime_passives_plasma = M_prime_all_coils_plasma[self.n_active_coils:,:]
+        M_prime_actives_plasma = M_prime_all_coils_plasma[0 : self.n_active_coils, :]
+        M_prime_passives_plasma = M_prime_all_coils_plasma[self.n_active_coils :, :]
 
         # extract mutual inductances between metals
         M_coils_coils = self.evol_metal_curr.coil_self_ind
-        M_actives_active = M_coils_coils[0:self.n_active_coils,0:self.n_active_coils]
-        M_passives_passives = M_coils_coils[self.n_active_coils:,self.n_active_coils:]
+        M_actives_active = M_coils_coils[
+            0 : self.n_active_coils, 0 : self.n_active_coils
+        ]
+        M_passives_passives = M_coils_coils[
+            self.n_active_coils :, self.n_active_coils :
+        ]
 
         # calculate second z derivative of mutual inductance matrix (between coils and plasma points)
-        M_prime_prime_all_coils_plasma = self.M_coils_plasma(eq=self.eq1, greens=GreensdBrdz)
-        M_prime_prime_actives_plasma = M_prime_prime_all_coils_plasma[0:self.n_active_coils,:]
-        M_prime_prime_passives_plasma = M_prime_prime_all_coils_plasma[self.n_active_coils:,:]
+        M_prime_prime_all_coils_plasma = self.M_coils_plasma(
+            eq=self.eq1, greens=GreensdBrdz
+        )
+        M_prime_prime_actives_plasma = M_prime_prime_all_coils_plasma[
+            0 : self.n_active_coils, :
+        ]
+        M_prime_prime_passives_plasma = M_prime_prime_all_coils_plasma[
+            self.n_active_coils :, :
+        ]
 
         # extract plasma current density vector and currents in the metals
         I_all_coils = self.eq1.tokamak.getCurrentsVec()
-        I_actives = I_all_coils[0:self.n_active_coils]
-        I_passives = I_all_coils[self.n_active_coils:]
+        I_actives = I_all_coils[0 : self.n_active_coils]
+        I_passives = I_all_coils[self.n_active_coils :]
 
         # calculate stabilising force gradients created by actives, passives, and all metals
-        self.actives_stab_force = (self.Iy @ M_prime_actives_plasma.T) @ np.linalg.solve(M_actives_active, M_prime_actives_plasma @ self.Iy)
-        self.passives_stab_force = (self.Iy @ M_prime_passives_plasma.T) @ np.linalg.solve(M_passives_passives, M_prime_passives_plasma @ self.Iy)
-        self.all_coils_stab_force = (self.Iy @ M_prime_all_coils_plasma.T) @ np.linalg.solve(M_coils_coils, M_prime_all_coils_plasma @ self.Iy)
+        self.actives_stab_force = (
+            self.Iy @ M_prime_actives_plasma.T
+        ) @ np.linalg.solve(M_actives_active, M_prime_actives_plasma @ self.Iy)
+        self.passives_stab_force = (
+            self.Iy @ M_prime_passives_plasma.T
+        ) @ np.linalg.solve(M_passives_passives, M_prime_passives_plasma @ self.Iy)
+        self.all_coils_stab_force = (
+            self.Iy @ M_prime_all_coils_plasma.T
+        ) @ np.linalg.solve(M_coils_coils, M_prime_all_coils_plasma @ self.Iy)
 
         # calculate de-stabilising force gradients created by actives, passives, and all metals
-        self.actives_destab_force = self.Iy @ (M_prime_prime_actives_plasma.T @ I_actives)
-        self.passives_destab_force = self.Iy @ (M_prime_prime_passives_plasma.T @ I_passives)
-        self.all_coils_destab_force = self.Iy @ (M_prime_prime_all_coils_plasma.T @ I_all_coils)
+        self.actives_destab_force = self.Iy @ (
+            M_prime_prime_actives_plasma.T @ I_actives
+        )
+        self.passives_destab_force = self.Iy @ (
+            M_prime_prime_passives_plasma.T @ I_passives
+        )
+        self.all_coils_destab_force = self.Iy @ (
+            M_prime_prime_all_coils_plasma.T @ I_all_coils
+        )
 
         # use these to return the Leuer parameters in different cases
-        self.Leuer_passive_stab_over_active_destab = self.passives_stab_force/self.actives_destab_force
-        self.Leuer_metals_stab_over_active_destab = self.all_coils_stab_force/self.actives_destab_force
-        self.Leuer_metals_stab_over_metals_destab = self.all_coils_stab_force/self.all_coils_destab_force
+        self.Leuer_passive_stab_over_active_destab = (
+            self.passives_stab_force / self.actives_destab_force
+        )
+        self.Leuer_metals_stab_over_active_destab = (
+            self.all_coils_stab_force / self.actives_destab_force
+        )
+        self.Leuer_metals_stab_over_metals_destab = (
+            self.all_coils_stab_force / self.all_coils_destab_force
+        )
 
     def M_coils_plasma(
         self,
@@ -2227,7 +2266,7 @@ class nl_solver:
         Returns
         -------
         M : np.ndarray
-            Array of mutual inductances. 
+            Array of mutual inductances.
         """
 
         # plasma grid points (inside limiter)
@@ -2242,10 +2281,15 @@ class nl_solver:
                 eq.tokamak.coils_dict[labelj]["coords"][0][np.newaxis, :],
                 eq.tokamak.coils_dict[labelj]["coords"][1][np.newaxis, :],
             )
-            greenm *= eq.tokamak.coils_dict[labelj]["polarity"][np.newaxis, :]    # mulitply by polarity of filaments
-            greenm *= eq.tokamak.coils_dict[labelj]["multiplier"][np.newaxis, :]  # mulitply by mulitplier of filaments
-            greenm *= eq.tokamak.coils_dict[labelj]["coords"][0][np.newaxis, :]   # multiply by R co-ords
-            M[j] = np.sum(greenm, axis=-1) # sum over filaments
-            
+            greenm *= eq.tokamak.coils_dict[labelj]["polarity"][
+                np.newaxis, :
+            ]  # mulitply by polarity of filaments
+            greenm *= eq.tokamak.coils_dict[labelj]["multiplier"][
+                np.newaxis, :
+            ]  # mulitply by mulitplier of filaments
+            greenm *= eq.tokamak.coils_dict[labelj]["coords"][0][
+                np.newaxis, :
+            ]  # multiply by R co-ords
+            M[j] = np.sum(greenm, axis=-1)  # sum over filaments
+
         return -2 * np.pi * M
-        

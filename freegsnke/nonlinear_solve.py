@@ -1084,8 +1084,6 @@ class nl_solver:
             self.dIydI = dIydI
             self.dIydI_ICs = np.copy(self.dIydI)
 
-        print("done.")
-
     def set_plasma_resistivity(self, plasma_resistivity):
         """Function to set the resistivity of the plasma.
         self.plasma_resistance_1d is the diagonal of the matrix R_yy, the plasma resistance matrix.
@@ -1969,7 +1967,9 @@ class nl_solver:
 
                 # update plasma flux if trial_currents and plasma_flux exceedingly far from GS solution
                 if control_GS:
-                    self.NK.forward_solve(self.eq2, self.profiles2, self.rtol_NK)
+                    self.NK.forward_solve(
+                        self.eq2, self.profiles2, self.rtol_NK, suppress=True
+                    )
                     self.trial_plasma_psi *= 1 - blend_GS
                     self.trial_plasma_psi += blend_GS * self.eq2.plasma_psi
 
@@ -2080,9 +2080,15 @@ class nl_solver:
                 print(f"Forward evolutive solve DID NOT CONVERGE.")
             else:
                 print(f"Forward evolutive solve SUCCESS.")
-            print(f"   Last max. relative currents change: {np.max(rel_curr_res):.2e} (vs. requested {target_relative_tol_currents:.2e}).")
-            print(f"   Last max. relative flux change: {np.max(r_res_GS):.2e} (vs. requested {target_relative_tol_GS:.2e}).")
-            print(f"   Iterations taken: {int(iterations)}/{int(max_solving_iterations)}.")
+            print(
+                f"   Last max. relative currents change: {np.max(rel_curr_res):.2e} (vs. requested {target_relative_tol_currents:.2e})."
+            )
+            print(
+                f"   Last max. relative flux change: {np.max(r_res_GS):.2e} (vs. requested {target_relative_tol_GS:.2e})."
+            )
+            print(
+                f"   Iterations taken: {int(iterations)}/{int(max_solving_iterations)}."
+            )
 
     def unstable_mode_deformations(self, starting_dI=50, rtol_NK=1e-7, target_dIy=2e-3):
         """Applies the unstable mode m to calculate (dR/dIm, dZ/dIm)

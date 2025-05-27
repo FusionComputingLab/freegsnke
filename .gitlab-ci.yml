@@ -48,8 +48,6 @@ Core tests:
     - merge_requests
   extends: .before_script_tests
   script:
-    # TESTS
-    - python -m pytest -v
     # Formatting
     - black --check freegsnke/
     - isort --check --diff freegsnke/
@@ -57,6 +55,9 @@ Core tests:
     - cd docs/
     - pip install -r requirements_docs.txt
     - bash build_documentation.sh
+    # TESTS
+    - cd $CI_PROJECT_DIR
+    - python -m pytest -v
   artifacts:
     paths:
       - docs/_build/html

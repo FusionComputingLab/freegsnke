@@ -35,11 +35,9 @@ class mode_decomposition:
         coil_resist : np.array
             1d array of resistance values for all machine conducting elements,
             including both active coils and passive structures.
-            Normally calculated (or fetched) in machine_config.py
         coil_self_ind : np.array
             2d matrix of mutual inductances between all pairs of machine conducting elements,
             including both active coils and passive structures
-            Normally calculated (or fetched) in machine_config.py
         """
 
         # check number of coils is compatible with data provided
@@ -101,3 +99,21 @@ class mode_decomposition:
         self.Pmatrix[self.n_active_coils :, self.n_active_coils :] = (
             1.0 * Pmatrix_passive
         )
+
+    def normal_modes_greens(self, eq_vgreen):
+        """
+        Calculates the green functions of the vessel normal modes,
+        i.e. the psi flux per unit current for each mode.
+
+        Parameters
+        ----------
+        eq_vgreen : np.array
+            the vectorised green functions of each coil.
+            Can be found at eq._vgreen. np.shape(eq_vgreen)=(n_coils, nx, ny)
+        """
+
+        dgreen = np.sum(
+            eq_vgreen[:, np.newaxis, :, :] * self.Pmatrix[:, :, np.newaxis, np.newaxis],
+            axis=0,
+        )
+        return dgreen

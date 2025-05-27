@@ -12,6 +12,7 @@ cp "../examples/example4 - using_magnetic_probes.ipynb" notebooks
 cp "../examples/example5 - evolutive_forward_solve.ipynb" notebooks
 cp "../examples/example7 - static_inverse_solve_SPARC.ipynb" notebooks
 cp "../examples/example8 - static_inverse_solve_ITER.ipynb" notebooks
+cp "../examples/example9 - virtual_circuits_MASTU.ipynb" notebooks
 cp ../examples/limiter_currents.json notebooks
 cp ../examples/simple_diverted_currents_PaxisIp.pk notebooks
 cp ../examples/simple_limited_currents_PaxisIp.pk notebooks
@@ -25,11 +26,6 @@ mkdir -p machine_configs
 cp -r ../machine_configs/MAST-U machine_configs
 cp -r ../machine_configs/SPARC machine_configs
 cp -r ../machine_configs/ITER machine_configs
-
-export ACTIVE_COILS_PATH=../machine_configs/MAST-U/MAST-U_like_active_coils.pickle
-export PASSIVE_COILS_PATH=../machine_configs/MAST-U/MAST-U_like_passive_coils.pickle
-export WALL_PATH=../machine_configs/MAST-U/MAST-U_like_wall.pickle
-export LIMITER_PATH=../machine_configs/MAST-U/MAST-U_like_limiter.pickle
 
 echo "Generating API documentation"
 sphinx-apidoc -e -f --no-toc -o api/ ../freegsnke/

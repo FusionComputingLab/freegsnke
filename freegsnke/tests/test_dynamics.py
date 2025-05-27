@@ -7,20 +7,20 @@ import numpy as np
 import pytest
 from IPython.display import clear_output, display
 
-os.environ["ACTIVE_COILS_PATH"] = "./machine_configs/test/active_coils.pickle"
-os.environ["PASSIVE_COILS_PATH"] = "./machine_configs/test/passive_coils.pickle"
-os.environ["WALL_PATH"] = "./machine_configs/test/wall.pickle"
-os.environ["LIMITER_PATH"] = "./machine_configs/test/limiter.pickle"
-os.environ["PROBE_PATH"] = "./machine_configs/test/magnetic_probes.pickle"
-
-# from freegs4e import faster_shape
-
 from freegsnke import build_machine
 
 
 @pytest.fixture()
 def create_machine():
-    tokamak = build_machine.tokamak()
+
+    # build machine
+    tokamak = build_machine.tokamak(
+        active_coils_path=f"./machine_configs/test/active_coils.pickle",
+        passive_coils_path=f"./machine_configs/test/passive_coils.pickle",
+        limiter_path=f"./machine_configs/test/limiter.pickle",
+        wall_path=f"./machine_configs/test/wall.pickle",
+        magnetic_probe_path=f"./machine_configs/test/magnetic_probes.pickle",
+    )
 
     # Creates equilibrium object and initializes it with
     # a "good" solution
@@ -46,7 +46,6 @@ def create_machine():
 
     profiles = ConstrainPaxisIp(
         eq,
-        tokamak.limiter,
         8.1e3,  # Plasma pressure on axis [Pascals]
         6.2e5,  # Plasma current [Amps]
         0.5,  # vacuum f = R*Bt
@@ -75,7 +74,7 @@ def create_machine():
     )
     keys = list(eq.tokamak.getCurrents().keys())
     for i in np.arange(12):
-        eq.tokamak[keys[i]].current = currents[i]
+        eq.tokamak.set_coil_current(keys[i], currents[i])
     NK.solve(eq, profiles, target_relative_tolerance=1e-8)
 
     # Initialize the evolution object
@@ -90,15 +89,13 @@ def create_machine():
         max_internal_timestep=1,
         plasma_resistivity=5e-7,
         automatic_timestep=False,
-        mode_removal=True,
-        min_dIy_dI=0.1,
     )
     return tokamak, eq, profiles, stepping
 
 
 def test_linearised_growth_rate(create_machine):
     tokamak, eq, profiles, stepping = create_machine
-    true_GR = 0.06767
+    true_GR = 0.05975802
     # check that
     assert (
         abs((stepping.linearised_sol.instability_timescale[0] - true_GR) / true_GR)

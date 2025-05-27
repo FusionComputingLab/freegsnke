@@ -1,6 +1,6 @@
 
 <div align="center">
-  <img src="_images/freegsnke_logo.png" alt="FreeGSNKE Logo" width="200"><br><br>
+  <img src="https://freegsnke-static-images-bucket.s3.eu-west-2.amazonaws.com/freegsnke_logo.png" alt="FreeGSNKE Logo" width="200"><br><br>
 </div>
 
 # FreeGSNKE: Free-boundary Grad-Shafranov Newton-Krylov Evolve
@@ -19,7 +19,7 @@ FreeGSNKE can solve:
 
 | Problem Type | Objective | Example use cases | 
 | --- | --- | --- |
-| **Static forward** | **Solve for the plasma equilibrium** using user-defined poloidal field coil currents, passive structure currents, and plasma current density profiles. | Plasma scenario design and shape control. Equilibrium library generation (for emulation). Initial condition generation for evolutive simulations. |
+| **Static forward** | **Solve for the plasma equilibrium** using user-defined poloidal field coil currents, passive structure currents, and plasma current density profiles. | Plasma scenario design and shape control. Equilibrium library generation (for emulation). Initial condition generation for evolutive simulations. Vitual circuit design. |
 | **Static inverse** | **Estimate poloidal field coil currents** using user-defined constraints (e.g. isoflux and X-point locations) and plasma current density profiles for a desired plasma equilibrium shape. | Plasma scenario design. Optimisation of poloidal field coil or magnetic probe locations. |
 | **Evolutive forward** | **Solve simultaneously for the plasma equilibrium, the poloidal field coil (and passive structure) currents, and the total plasma current over time from an initial equilibrium** using user-defined time-dependent poloidal field coil voltages and plasma current density profile parameters. | Full shot simulations. Vertical stability analysis. |
 
@@ -97,6 +97,14 @@ The extra `freegs4e` dependency installs [FreeGS4E](https://github.com/FusionCom
 
 If you are planning to develop FreeGSNKE, see the below section on [contributing](#contributing) code.
 
+#### Installing FreeGSNKE with UDA
+
+FreeGSNKE also interfaces with [UDA](https://github.com/ukaea/UDA), for example, to simulate past MAST-U shots. See examples 6a, 6b and 6c for more information. If you require this functionality and have the necessary privileges, follow these steps to install the required packages:
+
+1. Log into your account at https://git.ccfe.ac.uk/ and follow the instructions [here](https://docs.gitlab.com/user/ssh/) to set up an SSH key to communicate with the CCFE GitLab instance.
+2. Establish a connection to the UKAEA VPN.
+3. When installing FreeGSNKE, specify the `uda` extra: `pip install freegsnke[uda]`.
+4. Finally, install the uda-mast package: `pip install "uda-mast @ git+ssh://git@git.ccfe.ac.uk/MAST-U/mastcodes.git@1.3.10#subdirectory=uda/python"`.
 
 ## Contributing
 
@@ -136,7 +144,7 @@ This will install FreeGSNKE in editable mode, including the optional development
 
 If you are also planning to co-develop [FreeGS4E](https://github.com/FusionComputingLab/freegs4e), you will need to install it in editable mode as well. This can be done by cloning the FreeGS4E repository, installing using the development instructions, and then installing FreeGSNKE in editable mode with:
 ```shell
-pip install ".[dev]"
+pip install -e ".[dev]"
 ```
 Notice that the `freegs4e` extra has been omitted from the FreeGSNKE installation command in this case.
 
@@ -148,7 +156,11 @@ Several tests have been built using [pytest](https://docs.pytest.org/en) and are
 
 If your bug fix or feature addition includes a change to how FreeGSNKE fundamentally works or requires a change to the API, be sure to document this appropriately in the user documentation, API documentation, and by writing/changing the notebook examples where appropriate. Also be sure to fully justify why such changes are needed.
 
-Any Jupyter notebooks tracked by the repository should **not** include cell outputs so that we can keep the size of the repository reasonable. Please clear these manually in the notebook itself before submitting merge requests.
+Any Jupyter notebooks tracked by the repository should **not** include cell outputs so that we can keep the size of the repository reasonable. Please clear these manually in the notebook itself before submitting merge requests. The following command does just this:
+
+```bash
+jupyter nbconvert --clear-output --inplace notebook.ipynb
+```
 
 
 ## References
@@ -173,7 +185,8 @@ Here are a list of FreeGSNKE papers that describe or use the code:
 
 - N. C. Amorisco et al, "FreeGSNKE: A Python-based dynamic free-boundary toroidal plasma equilibrium solver", Physics of Plasmas, **31**, 042517 (2024). DOI: [10.1063/5.0188467](https://doi.org/10.1063/5.0188467).
 - A. Agnello et al, "Emulation techniques for scenario and classical control design of tokamak plasmas", Physics of Plasmas, **31**, 043091 (2024). DOI: [10.1063/5.0187822](https://doi.org/10.1063/5.0187822).
-- K. Pentland et al, "Validation of the static forward Grad-Shafranov equilibrium solvers in FreeGSNKE and Fiesta using EFIT++ reconstructions from MAST-U", arXiv (2024). DOI: [2407.12432](https://arxiv.org/abs/2407.12432).
+- K. Pentland et al, "Validation of the static forward Grad-Shafranov equilibrium solvers in FreeGSNKE and Fiesta using EFIT++ reconstructions from MAST-U", Physica Scripta, **100**, 025608 (2025). DOI: [10.1088/1402-4896/ada192](https://iopscience.iop.org/article/10.1088/1402-4896/ada192).
+- K. Pentland et al, "Multiple solutions to the static forward free-boundary Grad-Shafranov problem on MAST-U", arXiv (2025). DOI: [2503.05674](https://arxiv.org/abs/2503.05674).
  
 
 If you would like your FreeGSNKE-related paper to be added, please let us know!

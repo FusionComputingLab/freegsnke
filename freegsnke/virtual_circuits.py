@@ -388,7 +388,7 @@ class VirtualCircuitHandling:
 
         # directly assign the currents
         for i, coil in enumerate(coils):
-            eq.tokamak[coil].current = currents_vec[i]
+            eq.tokamak.set_coil_current(coil, currents_vec[i])
 
     def assign_currents_solve_GS(self, currents_vec, coils, target_relative_tolerance):
         """
@@ -463,9 +463,7 @@ class VirtualCircuitHandling:
         self.assign_currents_solve_GS(currents, coils, self.target_relative_tolerance)
 
         # difference between plasma current vectors (before and after the solve)
-        dIy_0 = (
-            self._profiles2.limiter_handler.Iy_from_jtor(self._profiles2.jtor) - self.Iy
-        )
+        dIy_0 = self._eq2.limiter_handler.Iy_from_jtor(self._profiles2.jtor) - self.Iy
 
         # relative norm of plasma current change
         rel_ndIy_0 = np.linalg.norm(dIy_0) / self._nIy

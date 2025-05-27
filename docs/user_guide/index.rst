@@ -19,3 +19,4 @@ The notebooks are displayed statically on the following pages, but running them 
     ../notebooks/example5 - evolutive_forward_solve
     ../notebooks/example7 - static_inverse_solve_SPARC
     ../notebooks/example8 - static_inverse_solve_ITER
+    ../notebooks/example9 - virtual_circuits_MASTU

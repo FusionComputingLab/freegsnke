@@ -68,29 +68,46 @@ class Probes:
     Methods currently have floop or pickup positions as default, but these can be changed with optional argument.
     """
 
-    def __init__(self, coils_dict):
+    def __init__(
+        self,
+        coils_dict,
+        magnetic_probe_data,
+        magnetic_probe_path,
+    ):
         """
-        Initialise the following
-        - read the probe dictionaries from file
+        Sets up the magnetic probes object if the required data is passed to it via
+        'magnetic_probe_data' or 'magnetic_probe_path'.
+
+        Parameters
+        ----------
+        coils_dict : dict
+            Dictionary containing the active coil data.
+        magnetic_probe_data : dict
+            Dictionary containing the magnetic probes data.
+        magnetic_probe_path : str
+            Path to the pickle file containing the magnetic probe data.
+
         """
-        # extract probe dictionaries, and set variables for each probe type
-        try:
-            probe_path = os.environ.get("PROBE_PATH", None)
-            if probe_path is None:
-                raise ValueError("PROBE_PATH environment variable not set.")
 
-            with open(probe_path, "rb") as file:
-                probe_dict = pickle.load(file)
+        # magnetic probes not strictly required
+        if magnetic_probe_data is not None and magnetic_probe_path is not None:
+            raise ValueError(
+                "Provide only one of 'magnetic_probe_data' or 'magnetic_probe_path', not both."
+            )
+        elif magnetic_probe_data is None and magnetic_probe_path is None:
+            print("Magnetic probes --> none provided.")
+        else:
+            if magnetic_probe_path is not None:
+                with open(magnetic_probe_path, "rb") as f:
+                    magnetic_probe_data = pickle.load(f)
+                print("Magnetic probes --> built from pickle file.")
+            else:
+                print("Magnetic probes --> built from user-provided data.")
 
-            # set coil lists and probe lists
-            self.floops = probe_dict["flux_loops"]
-            self.pickups = probe_dict["pickups"]
-        except ValueError:
-            print("No probe configuration is provided")
-
-        # store coil info
-        self.coil_names = [name for name in coils_dict]
-        self.coils_dict = coils_dict
+            self.floops = magnetic_probe_data["flux_loops"]
+            self.pickups = magnetic_probe_data["pickups"]
+            self.coil_names = list(coils_dict.keys())
+            self.coils_dict = coils_dict
 
     def initialise_setup(self, eq):
         """

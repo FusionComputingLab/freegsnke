@@ -22,7 +22,6 @@ along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 import numpy as np
 from scipy.linalg import solve_sylvester
 
-from . import machine_config
 from .implicit_euler import implicit_euler_solver
 
 
@@ -35,11 +34,12 @@ class linear_solver:
 
     def __init__(
         self,
+        eq,
         Lambdam1,
         Pm1,
         Rm1,
         Mey,
-        Myy,
+        # limiter_handler,
         plasma_norm_factor,
         plasma_resistance_1d,
         max_internal_timestep=0.0001,
@@ -53,6 +53,8 @@ class linear_solver:
 
         Parameters
         ----------
+        eq : class
+            FreeGSNKE equilibrium object.
         Lambdam1: np.array
             State matrix of the circuit equations for the metal in normal mode form:
             P is the identity on the active coils and diagonalises the isolated dynamics
@@ -65,9 +67,6 @@ class linear_solver:
             matrix of inductance values between grid points in the reduced plasma domain and all metal coils
             (active coils and passive-structure filaments)
             Calculated by the metal_currents object
-        Myy: np.array
-            inductance matrix of grid points in the reduced plasma domain
-            Calculated by plasma_current object
         plasma_norm_factor: float
             an overall factor to work with a rescaled plasma current, so that
             it's within a comparable range with metal currents
@@ -83,7 +82,7 @@ class linear_solver:
         self.plasma_norm_factor = plasma_norm_factor
 
         if Lambdam1 is None:
-            self.Lambdam1 = Pm1 @ (Rm1 @ (machine_config.coil_self_ind @ (Pm1.T)))
+            self.Lambdam1 = Pm1 @ (Rm1 @ (eq.tokamak.coil_self_ind @ (Pm1.T)))
         else:
             self.Lambdam1 = Lambdam1
         self.n_independent_vars = np.shape(self.Lambdam1)[0]
@@ -103,9 +102,9 @@ class linear_solver:
         self.Pm1Rm1 = Pm1 @ Rm1
         self.Pm1Rm1Mey = np.matmul(self.Pm1Rm1, Mey)
         self.MyeP_T = Pm1 @ Mey
-        self.Myy = Myy
+        # self.handleMyy = Myy_handler(limiter_handler)
 
-        self.n_active_coils = machine_config.n_active_coils
+        self.n_active_coils = eq.tokamak.n_active_coils
 
         self.solver = implicit_euler_solver(
             Mmatrix=np.eye(self.n_independent_vars + 1),
@@ -120,7 +119,7 @@ class linear_solver:
         self.empty_U = np.zeros(np.shape(self.Pm1Rm1)[1])
         # dummy voltage vec for eig modes
         self.forcing = np.zeros(self.n_independent_vars + 1)
-        self.profile_forcing = np.zeros(self.n_independent_vars + 1)
+        self.profiles_forcing = np.zeros(self.n_independent_vars + 1)
 
     def reset_plasma_resistivity(self, plasma_resistance_1d):
         """Resets the value of the plasma resistivity,
@@ -132,16 +131,16 @@ class linear_solver:
             Vector of 2pi resistivity R/dA for all domain grid points in the reduced plasma domain
         """
         self.plasma_resistance_1d = plasma_resistance_1d
-        self.set_linearization_point(None, None)
+        self.set_linearization_point(None, None, None)
 
     def reset_timesteps(self, max_internal_timestep, full_timestep):
         """Resets the integration timesteps, calling self.solver.set_timesteps
 
         Parameters
         ----------
-        max_internal_timestep: float
+        max_internal_timestep : float
             integration substep of the ciruit equation, calling an implicit-Euler solver
-        full_timestep: float
+        full_timestep : float
             integration timestep of the circuit equation
         """
         self.max_internal_timestep = max_internal_timestep
@@ -150,24 +149,29 @@ class linear_solver:
             full_timestep=full_timestep, max_internal_timestep=max_internal_timestep
         )
 
-    def set_linearization_point(self, dIydI, hatIy0):
+    def set_linearization_point(self, dIydI, hatIy0, Myy_hatIy0):
         """Initialises an implicit-Euler solver with the appropriate matrices for the linearised dynamic problem.
 
         Parameters
         ----------
-        dIydI = np.array
+        dIydI : np.array
             partial derivatives of plasma-cell currents on the reduced plasma domain with respect to all intependent metal currents
             (active coil currents, vessel normal modes, total plasma current divided by plasma_norm_factor).
             These would typically come from having solved the forward Grad-Shafranov problem. Finite difference Jacobian.
             Calculated by the nl_solver object
-        hatIy0 = np.array
+        hatIy0 : np.array
             Plasma current distribution on the reduced plasma domain (1d) of the equilibrium around which the dynamics is linearised.
             This is normalised by the total plasma current, so that this vector sums to 1.
+        Myy_hatIy0 : np.array
+            The matrix product np.dot(Myy, hatIy0) in the same reduced domain as hatIy0
+            This is provided by Myy_handler
         """
         if dIydI is not None:
             self.dIydI = dIydI
         if hatIy0 is not None:
             self.hatIy0 = hatIy0
+        if Myy_hatIy0 is not None:
+            self.Myy_hatIy0 = Myy_hatIy0
 
         self.build_Mmatrix()
 
@@ -234,12 +238,9 @@ class linear_solver:
         # metal to plasma
         self.M0matrix[-1, :-1] = np.dot(self.MyeP_T, self.hatIy0)
         # metal to plasma plasma-mediated
-        self.dMmatrix[-1, :-1] = np.dot(
-            np.matmul(self.Myy, self.dIydI[:, :-1]).T, self.hatIy0
-        )
+        self.dMmatrix[-1, :-1] = np.dot(self.dIydI[:, :-1].T, self.Myy_hatIy0)
 
-        JMyy = np.dot(self.Myy, self.hatIy0)
-        self.dMmatrix[-1, -1] = np.dot(self.dIydI[:, -1], JMyy)
+        self.dMmatrix[-1, -1] = np.dot(self.dIydI[:, -1], self.Myy_hatIy0)
 
         self.dMmatrix[-1, :] /= nRp
         self.M0matrix[-1, :] /= nRp
@@ -247,24 +248,24 @@ class linear_solver:
         self.Mmatrix = self.M0matrix + self.dMmatrix
 
         # build necessary terms to incorporate forcing term from variations of the profile parameters
-        # MIdot + RI = V - self.Vm1Rm12Mey_plus@self.dIydpars@d_profile_pars_dt
+        # MIdot + RI = V - self.Vm1Rm12Mey_plus@self.dIydpars@d_profiles_pars_dt
         # if self.dIydpars is not None:
         #     Pm1Rm1Mey_plus = np.concatenate(
         #         (self.Pm1Rm1Mey, JMyy[np.newaxis] / nRp), axis=0
         #     )
         #     self.forcing_pars_matrix = np.matmul(Pm1Rm1Mey_plus, self.dIydpars)
 
-    def stepper(self, It, active_voltage_vec, d_profile_pars_dt=None):
+    def stepper(self, It, active_voltage_vec, d_profiles_pars_dt=None):
         """Executes the time advancement. Uses the implicit_euler instance.
 
         Parameters
         ----------
-        It = np.array
+        It : np.array
             vector of all independent currents that are solved for by the linearides problem, in terms of normal modes:
             (active currents, vessel normal modes, total plasma current divided by normalisation factor)
-        active_voltage_vec = np.array
+        active_voltage_vec : np.array
             voltages applied to the active coils
-        d_profile_pars_dt = np.array
+        d_profiles_pars_dt : np.array
             time derivative of the profile parameters, not used atm
         other parameters are passed in as object attributes
         """
@@ -273,8 +274,8 @@ class linear_solver:
         self.forcing[-1] = 0.0
 
         # add forcing term from time derivative of profile parameters
-        if d_profile_pars_dt is not None:
-            self.forcing -= np.dot(self.forcing_pars_matrix, d_profile_pars_dt)
+        if d_profiles_pars_dt is not None:
+            self.forcing -= np.dot(self.forcing_pars_matrix, d_profiles_pars_dt)
 
         Itpdt = self.solver.full_stepper(It, self.forcing)
         return Itpdt
@@ -289,19 +290,59 @@ class linear_solver:
         ----------
         parameters are passed in as object attributes
         """
-        # full set of characteristic timescales
-        self.all_timescales = np.sort(np.linalg.eigvals(self.Mmatrix))
-        # full set of characteristic timescales of the metal circuit equations
-        self.all_timescales_const_Ip = np.sort(
-            np.linalg.eigvals(self.Mmatrix[:-1, :-1])
-        )
-        mask = self.all_timescales < 0
-        # the negative (i.e. unstable) eigenvalues
-        self.instability_timescale = -self.all_timescales[mask]
+
+        # full set of characteristic timescales (circuits + plasma)
+        evalues, evectors = np.linalg.eig(self.Mmatrix)
+        # ord = np.argsort(evalues)
+        self.all_timescales = -evalues  # [ord]
+        self.all_modes = evectors  # [:, ord]
+
+        # extract just the positive (i.e. unstable) eigenvalues
+        mask = self.all_timescales > 0
+        self.instability_timescale = self.all_timescales[mask]
         self.growth_rates = 1 / self.instability_timescale
-        mask = self.all_timescales_const_Ip < 0
-        self.instability_timescale_const_Ip = -self.all_timescales_const_Ip[mask]
+
+        # full set of characteristic timescales (circuits only, no plasma)
+        evalues, evectors = np.linalg.eig(self.Mmatrix[:-1, :-1])
+        # ord = np.argsort(evalues)
+        self.all_timescales_const_Ip = -evalues  # [ord]
+        self.all_modes_const_Ip = evectors  # [:, ord]
+
+        # extract just the positive (i.e. unstable) eigenvalues
+        mask = self.all_timescales_const_Ip > 0
+        self.instability_timescale_const_Ip = self.all_timescales_const_Ip[mask]
         self.growth_rates_const_Ip = 1 / self.instability_timescale_const_Ip
+
+        # extract the unstable mode in this case, used in other calculations
+        self.unstable_modes = self.all_modes_const_Ip[:, mask]
+        self.unstable_modes /= np.linalg.norm(self.unstable_modes, axis=0)
+
+    def calculate_pseudo_rigid_projections(self, dRZdI):
+        """Projects the unstable modes on the vectors of currents
+        which best isolate an R or a Z movement of the plasma
+
+
+        Parameters
+        ----------
+        dRZdI : np.array
+            Jacobian of Rcurrent and Zcurrent shifts wrt the modes,
+            as calculated in nonlinear_solve
+
+        Returns
+        -------
+        np.array
+            proj[i,0] is the scalar product of the unstable mode i on the vector of modes resulting in an Rcurrent shift
+            proj[i,1] is the scalar product of the unstable mode i on the vector of modes resulting in an Zcurrent shift
+        """
+
+        # calculate vectors of currents for R and Z movements
+        rigid_VC = np.linalg.pinv(dRZdI[:, :-1])
+        rigid_VC /= np.linalg.norm(rigid_VC, axis=0)
+        # project on unstable mode
+        proj = np.sum(
+            rigid_VC[:, np.newaxis, :] * self.unstable_modes[:, :, np.newaxis], axis=0
+        )
+        return proj
 
     def calculate_stability_margin(
         self,

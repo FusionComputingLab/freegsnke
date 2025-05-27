@@ -23,7 +23,6 @@ along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 
 import numpy as np
 
-from . import machine_config
 from .implicit_euler import implicit_euler_solver
 
 
@@ -37,11 +36,12 @@ class simplified_solver_J1:
 
     def __init__(
         self,
+        eq,
         Lambdam1,
         Pm1,
         Rm1,
         Mey,
-        Myy,
+        # limiter_handler,
         plasma_norm_factor,
         plasma_resistance_1d,
         full_timestep=0.0001,
@@ -54,6 +54,8 @@ class simplified_solver_J1:
 
         Parameters
         ----------
+        eq : class
+            FreeGSNKE equilibrium Object
         Lambdam1: np.array
             State matrix of the circuit equations for the metal in normal mode form:
             P is the identity on the active coils and diagonalises the isolated dynamics
@@ -66,9 +68,6 @@ class simplified_solver_J1:
             matrix of inductance values between grid points in the reduced plasma domain and all metal coils
             (active coils and passive-structure filaments)
             Calculated by the metal_currents object
-        Myy: np.array
-            inductance matrix of grid points in the reduced plasma domain
-            Calculated by plasma_current object
         plasma_norm_factor: float
             an overall factor to work with a rescaled plasma current, so that
             it's within a comparable range with metal currents
@@ -97,10 +96,10 @@ class simplified_solver_J1:
         self.Pm1Rm1 = Pm1 @ Rm1
         self.Pm1Rm1Mey = np.matmul(self.Pm1Rm1, Mey)
         self.MyeP_T = Pm1 @ Mey
-        self.Myy = Myy
+        # self.handleMyy = Myy_handler(limiter_handler)
 
-        self.n_active_coils = machine_config.n_active_coils
-        self.n_coils = machine_config.n_coils
+        self.n_active_coils = eq.tokamak.n_active_coils
+        self.n_coils = eq.tokamak.n_coils
 
         self.plasma_resistance_1d = plasma_resistance_1d
 
@@ -151,21 +150,27 @@ class simplified_solver_J1:
         """
         self.plasma_resistance_1d = plasma_resistance_1d
 
-    def prepare_solver(self, hatIy_left, hatIy_0, hatIy_1, active_voltage_vec):
+    def prepare_solver(
+        self, hatIy_left, hatIy_0, hatIy_1, active_voltage_vec, Myy_hatIy_left
+    ):
         """Computes the actual matrices that are needed in the ODE for the extensive currents
          and that must be passed to the implicit-Euler solver.
 
         Parameters
         ----------
         hatIy_left: np.array
-            guess for gridded plasma current to left-contract the plasma evolution equation
+            normalised plasma current distribution on the reduced domain.
+            This is used to left-contract the plasma evolution equation
             (e.g. at time t, or t+dt, or a combination)
         hatIy_0: np.array
-            gridded plasma current to left-contract the plasma evolution equation at time t
+            normalised plasma current distribution on the reduced domain at time t
         hatIy_1: np.array
-            (guessed) gridded plasma current to left-contract the plasma evolution equation at time t+dt
+            (guessed) normalised plasma current distribution on the reduced domain at time t+dt
         active_voltage_vec: np.array
             voltages applied to the active coils
+        Myy_hatIy_left : np.array
+            The matrix product np.dot(Myy, hatIy_left) in the same reduced domain as hatIy_left
+            This is provided by Myy_handler
         """
 
         Rp = np.sum(self.plasma_resistance_1d * hatIy_left * hatIy_1)
@@ -180,7 +185,7 @@ class simplified_solver_J1:
         self.Mmatrix[:-1, -1] = np.dot(simplified_mutual, hatIy_1)
         self.Lmatrix[:-1, -1] = np.dot(simplified_mutual, hatIy_0)
 
-        simplified_self_left = np.dot(self.Myy, hatIy_left) / Rp
+        simplified_self_left = Myy_hatIy_left / Rp
         simplified_self_1 = np.dot(simplified_self_left, hatIy_1)
         simplified_self_0 = np.dot(simplified_self_left, hatIy_0)
         self.Mmatrix[-1, -1] = simplified_self_1
@@ -194,7 +199,9 @@ class simplified_solver_J1:
         self.empty_U[: self.n_active_coils] = active_voltage_vec
         self.forcing[:-1] = np.dot(self.Pm1Rm1, self.empty_U)
 
-    def stepper(self, It, hatIy_left, hatIy_0, hatIy_1, active_voltage_vec):
+    def stepper(
+        self, It, hatIy_left, hatIy_0, hatIy_1, active_voltage_vec, Myy_hatIy_left
+    ):
         """Computes and returns the set of extensive currents at time t+dt
 
         Parameters
@@ -210,16 +217,21 @@ class simplified_solver_J1:
         hatIy_0: np.array
             normalised plasma current distribution on the reduced domain at time t
         hatIy_1: np.array
-            normalised plasma current distribution on the reduced domain at time t+dt
+            (guessed) normalised plasma current distribution on the reduced domain at time t+dt
         active_voltage_vec: np.array
             voltages applied to the active coils
+        Myy_hatIy_left : np.array
+            The matrix product np.dot(Myy, hatIy_left) in the same reduced domain as hatIy_left
+            This is provided by Myy_handler
 
         Returns
         -------
         Itpdt: np.array
             currents (active coils, vessel eigenmodes, total plasma current) at time t+dt
         """
-        self.prepare_solver(hatIy_left, hatIy_0, hatIy_1, active_voltage_vec)
+        self.prepare_solver(
+            hatIy_left, hatIy_0, hatIy_1, active_voltage_vec, Myy_hatIy_left
+        )
         Itpdt = self.solver.full_stepper(It, self.forcing)
         return Itpdt
 
@@ -269,7 +281,7 @@ class simplified_solver_J1:
         res_met = np.dot(self.Lambdam1, Id_dot)
         res_met += np.dot(self.Pm1Rm1Mey, Iy_dot) * self.plasma_norm_factor
         # plasma lump
-        res_pl = np.dot(self.Myy, Iy_dot)
+        res_pl = self.handleMyy.dot(Iy_dot)
         res_pl += np.dot(self.MyeP_T, Id_dot) / self.plasma_norm_factor
         res_pl = np.dot(res_pl, hatIy_left)
         res_pl /= Rp

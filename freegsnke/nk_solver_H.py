@@ -137,6 +137,7 @@ class nksolver:
         target_relative_unexplained_residual,
         max_n_directions,
         clip,
+        # clip_quantiles,
     ):
         """Performs the iteration of the NK solution method:
         1) explores direction dx
@@ -174,7 +175,7 @@ class nksolver:
         """
 
         nR0 = np.linalg.norm(R0)
-        self.max_dim = max_n_directions + 1
+        self.max_dim = int(max_n_directions + 1)
 
         # orthogonal basis in x space
         self.Q = np.zeros((self.problem_dimension, self.max_dim))
@@ -199,6 +200,11 @@ class nksolver:
         this_step_size = adjusted_step_size * ((1 + self.n_it) ** scaling_with_n)
 
         dx /= np.linalg.norm(dx)
+        # # new addition
+        # if clip_quantiles is not None:
+        #     q1, q2 = np.quantile(dx, clip_quantiles)
+        #     dx = np.clip(dx, q1, q2)
+
         self.Qn[:, self.n_it] = np.copy(dx)
         dx *= this_step_size
         self.Q[:, self.n_it] = np.copy(dx)
@@ -215,6 +221,10 @@ class nksolver:
             # prepare for next step
             if explore:
                 self.n_it += 1
+                # # new addition
+                # if clip_quantiles is not None:
+                #     q1, q2 = np.quantile(dx, clip_quantiles)
+                #     dx = np.clip(dx, q1, q2)
                 self.Qn[:, self.n_it] = np.copy(dx)
                 this_step_size = adjusted_step_size * (
                     (1 + self.n_it) ** scaling_with_n

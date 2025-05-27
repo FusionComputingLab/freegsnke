@@ -52,24 +52,69 @@ class Limiter_handler:
 
         self.build_mask_inside_limiter()
         self.limiter_points()
-        self.extract_plasma_pts()
+        self.plasma_pts = self.extract_plasma_pts(eq.R, eq.Z, self.mask_inside_limiter)
+        self.idxs_mask = self.extract_index_mask(self.mask_inside_limiter)
 
-    def extract_plasma_pts(
-        self,
-    ):
-        # Extracts R and Z coordinates of the grid points in the reduced plasma domain
-        # i.e. inside the limiter
-        self.plasma_pts = np.concatenate(
+    def extract_index_mask(self, mask):
+        """Extracts the indices of the R and Z coordinates of the grid points in the reduced plasma domain
+           i.e. inside the limiter
+
+        Parameters
+        ----------
+        mask : np.ndarray of bool
+            Specifies the mask of the relevant region
+        """
+
+        nx, ny = np.shape(mask)
+        idxs_mask = np.mgrid[0:nx, 0:ny][np.tile(mask, (2, 1, 1))].reshape(2, -1)
+
+        return idxs_mask
+
+    def extract_plasma_pts(self, R, Z, mask):
+        """Extracts R and Z coordinates of the grid points in the reduced plasma domain
+           i.e. inside the limiter
+
+        Parameters
+        ----------
+        R : np.ndarray
+            R coordinates on the domain grid, e.g. eq.R
+        Z : np.ndarray
+            Z coordinates on the domain grid, e.g. eq.Z
+        mask : np.ndarray of bool
+            Specifies the mask of the relevant region
+        """
+        plasma_pts = np.concatenate(
             (
-                self.eqR[self.mask_inside_limiter][:, np.newaxis],
-                self.eqZ[self.mask_inside_limiter][:, np.newaxis],
+                R[mask][:, np.newaxis],
+                Z[mask][:, np.newaxis],
             ),
             axis=-1,
         )
 
-        self.idxs_mask = np.mgrid[0 : self.nx, 0 : self.ny][
-            np.tile(self.mask_inside_limiter, (2, 1, 1))
-        ].reshape(2, -1)
+        return plasma_pts
+
+    def reduce_rect_domain(self, map):
+        """Reduce map from the whole domain to the smallest rectangular domain around limiter mask
+
+        Parameters
+        ----------
+        map : np.ndarray
+            Same dimensions as eq.R
+        """
+
+        return map[self.Rrange[0] : self.Rrange[1], self.Zrange[0] : self.Zrange[1]]
+
+    def build_reduced_rect_domain(
+        self,
+    ):
+        """Build smallest rectangular domain around limiter mask"""
+
+        self.Rrange = (min(self.idxs_mask[0]), max(self.idxs_mask[0]) + 1)
+        self.Zrange = (min(self.idxs_mask[1]), max(self.idxs_mask[1]) + 1)
+
+        # self.eqR_red = self.reduce_rect_domain(self.eqR)
+        # self.eqZ_red = self.reduce_rect_domain(self.eqZ)
+        self.mask_inside_limiter_red = self.reduce_rect_domain(self.mask_inside_limiter)
 
     def build_mask_inside_limiter(
         self,
@@ -104,6 +149,35 @@ class Limiter_handler:
         mask_inside_limiter = path.contains_points(points.reshape(-1, 2))
         mask_inside_limiter = mask_inside_limiter.reshape(self.nx, self.ny)
         self.mask_inside_limiter = mask_inside_limiter
+        self.path = path
+
+    def broaden_mask(self, mask, layer_size=3):
+        """Creates a mask that is wider than the input mask, by a width=`layer_size`
+
+        Parameters
+        ----------
+        layer_size : int, optional
+            Width of the layer, by default 3
+
+        Returns
+        -------
+        layer_mask : np.ndarray
+            Broader mask
+        """
+        nx, ny = np.shape(mask)
+
+        layer_mask = np.zeros(
+            np.array([nx, ny]) + 2 * np.array([layer_size, layer_size])
+        )
+
+        for i in np.arange(-layer_size, layer_size + 1) + layer_size:
+            for j in np.arange(-layer_size, layer_size + 1) + layer_size:
+                layer_mask[i : i + nx, j : j + ny] += mask
+        layer_mask = layer_mask[
+            layer_size : layer_size + nx, layer_size : layer_size + ny
+        ]
+        layer_mask = (layer_mask > 0).astype(bool)
+        return layer_mask
 
     def make_layer_mask(self, mask, layer_size=3):
         """Creates a mask for the points just outside the input mask, with a width=`layer_size`
@@ -119,20 +193,9 @@ class Limiter_handler:
             Mask of the points outside the mask within a distance of `layer_size`
         """
 
-        layer_mask = np.zeros(
-            np.array([self.nx, self.ny]) + 2 * np.array([layer_size, layer_size])
-        )
-
-        for i in np.arange(-layer_size, layer_size + 1) + layer_size:
-            for j in np.arange(-layer_size, layer_size + 1) + layer_size:
-                layer_mask[i : i + self.nx, j : j + self.ny] += mask
-        layer_mask = layer_mask[
-            layer_size : layer_size + self.nx, layer_size : layer_size + self.ny
-        ]
-        layer_mask *= 1 - mask
-        layer_mask = (layer_mask > 0).astype(bool)
-        self.layer_mask = layer_mask
-        return layer_mask
+        layer_mask = self.broaden_mask(mask, layer_size=layer_size)
+        layer_mask = layer_mask * np.logical_not(mask)
+        return layer_mask.astype(bool)
 
     def limiter_points(self, refine=6):
         """Based on the limiter vertices, it builds the refined list of points on the boundary
@@ -394,10 +457,7 @@ class Limiter_handler:
         hat_Iy = self.normalize_sum(hat_Iy)
         return hat_Iy
 
-    def check_if_outside_domain(self, jtor):
-        return np.sum(jtor[self.layer_mask])
-
-    def rebuild_map2d(self, reduced_vector):
+    def rebuild_map2d(self, reduced_vector, map_dummy, idxs_mask):
         """Rebuilds 2d map on full domain corresponding to 1d vector
         reduced_vector on smaller plasma domain
 
@@ -405,14 +465,19 @@ class Limiter_handler:
         ----------
         reduced_vector : np.ndarray
             1d vector on reduced plasma domain
+        map_dummy : np.ndarray
+            Specifies the size of the desired rectangular map
+        idxs_mask : np.ndarray
+            Specifies the location of the pixels of the reduced vector in the rectangular domain
+            Note this is specific to map_dummy, e.g. use self.extract_index_mask
 
         Returns
         -------
         self.map2d : np.ndarray
-            2d map on full domain. Values on gridpoints outside the
+            2d map on domain as map_dummy. Values on gridpoints outside the
             reduced plasma domain are set to zero.
         """
-        map2d = np.zeros_like(self.eqR)
-        map2d[self.idxs_mask[0], self.idxs_mask[1]] = reduced_vector
-        # self.map2d = map2d.copy()
+
+        map2d = np.zeros_like(map_dummy.astype(reduced_vector.dtype))
+        map2d[idxs_mask[0], idxs_mask[1]] = reduced_vector
         return map2d

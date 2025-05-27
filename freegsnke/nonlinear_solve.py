@@ -155,6 +155,8 @@ class nl_solver:
             Print interim calculation results to user.
         """
 
+        print("-----")
+
         # grid parameters
         self.nx = eq.nx
         self.ny = eq.ny
@@ -185,8 +187,12 @@ class nl_solver:
                     "Inputs require that 'min_dIy_dI' <= 'threshold_dIy_dI', please adjust parameters."
                 )
 
+        # check number of passives
+        if self.n_passive_coils < fix_n_vessel_modes:
+            print(f"'fix_n_vessel_modes' ({fix_n_vessel_modes}) exceeds number of passive strucutres ({self.n_passive_coils}), setting 'fix_n_vessel_modes' to {self.n_passive_coils} ")
+            fix_n_vessel_modes = self.n_passive_coils
+
         # check input eq and profiles are a GS solution
-        print("-----")
         print("Checking that the provided 'eq' and 'profiles' are a GS solution...")
 
         # instantiating static GS solver on eq's domain
@@ -251,9 +257,15 @@ class nl_solver:
         )
         # build full vector of vessel mode currents
         self.build_current_vec(eq, profiles)
+        print("done.")
+        print("-----")
 
         # prepare initial current shifts for the linearization using a
         # vanilla metric for the coupling between modes and plasma
+
+        # if no passives we don't need to do any selection
+        print("Identifying mode selection criteria...")
+
         mode_coupling_metric = np.linalg.norm(
             self.vessel_modes_greens * profiles.jtor,
             axis=(1, 2),
@@ -265,85 +277,98 @@ class nl_solver:
         self.starting_dI = target_dIy / mode_coupling_metric
         self.final_dI_record = np.zeros_like(self.starting_dI)
         self.approved_target_dIy = target_dIy * np.ones_like(self.starting_dI)
-        print("done.")
-        print("-----")
 
-        print("Identifying mode selection criteria...")
-        # prepare ndIydI_no_GS for mode selection
-        self.build_dIydI_noGS(
-            force_core_mask_linearization,
-            self.starting_dI,
-            profiles.diverted_core_mask,
-            verbose,
-        )
+        if self.n_passive_coils > 0:
 
-        # select modes according to the provided thresholds:
-        # include all modes that couple more than the threshold_dIy_dI
-        # with respect to the strongest coupling vessel mode
-        strongest_coupling_vessel_mode = max(self.ndIydI_no_GS[self.n_active_coils :])
-        if fix_n_vessel_modes >= 0:  # type(fix_n_vessel_modes) is int:
-            # select modes based on ndIydI_no_GS up to fix_n_modes exactly
-            print(
-                f"      'fix_n_vessel_modes' option selected --> passive structure modes that couple most to the strongest passive structure mode are being selected."
+            # prepare ndIydI_no_GS for mode selection
+            self.build_dIydI_noGS(
+                force_core_mask_linearization,
+                self.starting_dI,
+                profiles.diverted_core_mask,
+                verbose,
             )
 
-            ordered_ndIydI_no_GS = np.sort(self.ndIydI_no_GS[self.n_active_coils :])
-            if fix_n_vessel_modes > 0:
-                threshold_value = ordered_ndIydI_no_GS[-fix_n_vessel_modes]
+            # select modes according to the provided thresholds:
+            # include all modes that couple more than the threshold_dIy_dI
+            # with respect to the strongest coupling vessel mode
+            strongest_coupling_vessel_mode = max(self.ndIydI_no_GS[self.n_active_coils :])
+            if fix_n_vessel_modes >= 0:  # type(fix_n_vessel_modes) is int:
+                # select modes based on ndIydI_no_GS up to fix_n_modes exactly
+                print(
+                    f"      'fix_n_vessel_modes' option selected --> passive structure modes that couple most to the strongest passive structure mode are being selected."
+                )
+
+                ordered_ndIydI_no_GS = np.sort(self.ndIydI_no_GS[self.n_active_coils :])
+                if fix_n_vessel_modes > 0:
+                    threshold_value = ordered_ndIydI_no_GS[-fix_n_vessel_modes]
+                else:
+                    threshold_value = (
+                        ordered_ndIydI_no_GS[-1] * 1.1
+                    )  # scale up so no modes are selected
+
+                mode_coupling_mask_include = np.concatenate(
+                    (
+                        [True] * self.n_active_coils,
+                        self.ndIydI_no_GS[self.n_active_coils :] >= threshold_value,
+                    )
+                )
+                mode_coupling_mask_exclude = np.concatenate(
+                    (
+                        [True] * self.n_active_coils,
+                        self.ndIydI_no_GS[self.n_active_coils :] >= threshold_value,
+                    )
+                )
+                # the number of modes is being fixed:
+                mode_removal = False
+
             else:
-                threshold_value = (
-                    ordered_ndIydI_no_GS[-1] * 1.1
-                )  # scale up so no modes are selected
+                print(
+                    f"      'threshold_dIy_dI', 'min_dIy_dI', and 'max_mode_frequency' options selected --> passive structure modes are selected according to these thresholds."
+                )
+                # select modes based on ndIydI_no_GS using values of threshold_dIy_dI
+                mode_coupling_mask_include = np.concatenate(
+                    (
+                        [True] * self.n_active_coils,
+                        self.ndIydI_no_GS[self.n_active_coils :]
+                        >= threshold_dIy_dI * strongest_coupling_vessel_mode,
+                    )
+                )
+                # exclude all modes that couple less than min_dIy_dI
+                mode_coupling_mask_exclude = np.concatenate(
+                    (
+                        [True] * self.n_active_coils,
+                        self.ndIydI_no_GS[self.n_active_coils :]
+                        >= min_dIy_dI * strongest_coupling_vessel_mode,
+                    )
+                )
+        else:
+            print("      no passive modes present!")
 
-            mode_coupling_mask_include = np.concatenate(
-                (
-                    [True] * self.n_active_coils,
-                    self.ndIydI_no_GS[self.n_active_coils :] >= threshold_value,
-                )
-            )
-            mode_coupling_mask_exclude = np.concatenate(
-                (
-                    [True] * self.n_active_coils,
-                    self.ndIydI_no_GS[self.n_active_coils :] >= threshold_value,
-                )
-            )
-            # the number of modes is being fixed:
+            # only active coils selected
+            mode_coupling_mask_include = [True] * self.n_active_coils
+            
+            # exclude all modes that couple less than min_dIy_dI
+            mode_coupling_mask_exclude = mode_coupling_mask_include
+
+            # set mode removal to false
             mode_removal = False
 
-        else:
-            print(
-                f"      'threshold_dIy_dI', 'min_dIy_dI', and 'max_mode_frequency' options selected --> passive structure modes are selected according to these thresholds."
-            )
-            # select modes based on ndIydI_no_GS using values of threshold_dIy_dI
-            mode_coupling_mask_include = np.concatenate(
-                (
-                    [True] * self.n_active_coils,
-                    self.ndIydI_no_GS[self.n_active_coils :]
-                    >= threshold_dIy_dI * strongest_coupling_vessel_mode,
-                )
-            )
-            # exclude all modes that couple less than min_dIy_dI
-            mode_coupling_mask_exclude = np.concatenate(
-                (
-                    [True] * self.n_active_coils,
-                    self.ndIydI_no_GS[self.n_active_coils :]
-                    >= min_dIy_dI * strongest_coupling_vessel_mode,
-                )
-            )
+        print("-----")
+
 
         # enact the mode selection
         mode_coupling_masks = (
             mode_coupling_mask_include,
             mode_coupling_mask_exclude,
         )
-        print("-----")
 
-        print(f"Initial mode selection:")
         self.evol_metal_curr.initialize_for_eig(
             selected_modes_mask=None,
             mode_coupling_masks=mode_coupling_masks,
             verbose=(fix_n_vessel_modes < 0),  # (type(fix_n_vessel_modes) is not int)
         )
+
+        print(f"Initial mode selection:")
         if fix_n_vessel_modes >= 0:
             print(f"   Active coils")
             print(

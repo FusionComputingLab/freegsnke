@@ -169,7 +169,7 @@ class metal_currents:
             freq_and_thresh_number = np.sum(self.selected_modes_mask)
             if verbose:
                 print(
-                    f"      {freq_and_thresh_number - (freq_only_number + self.n_active_coils)} selected that couple with the plasma more than 'threshold_dIy_dI'"
+                    f"      {freq_and_thresh_number - (freq_only_number + self.n_active_coils)} recovered that couple with the plasma more than 'threshold_dIy_dI'"
                 )
 
             # exclude modes that do not couple enough

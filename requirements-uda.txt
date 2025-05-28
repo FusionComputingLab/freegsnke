@@ -1,2 +1,1 @@
 uda
-uda-mast @ git+ssh://git@git.ccfe.ac.uk/MAST-U/mastcodes.git@1.3.10#subdirectory=uda/python

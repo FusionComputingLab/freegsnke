@@ -12,8 +12,6 @@ from .. import virtual_circuits as vc  # import the virtual circuit class
 from ..equilibrium_update import Equilibrium
 from ..nonlinear_solve import nl_solver
 from ..virtual_circuits import VirtualCircuit
-
-
 from .shape_scheduling import ShapeTargetScheduler
 from .target_scheduler import TargetScheduler
 
@@ -29,7 +27,7 @@ class ShapeController:
     stepping :  stepping object (nl solver)
     active_coils : list of all active coils
     coils : list of coils to be used in controller
-    coil_order_dictionary : dictionary mapping coil names to their order in the list
+    active_coil_order_dictionary : dictionary mapping coil names to their order in the list of active coils
     inductance_full : full inductance matrix for all active coils
     VCH (virtual circuit handling class)
     feedback_target_scheduler (target scheduler class)
@@ -70,6 +68,8 @@ class ShapeController:
                 list of coil names, defaults to all active coils defined in get_active_coils.
             inductance_matrix : np.array (optional)
                 inductance matrix, defaults to machine inductance matrix.
+            coil_resist : np.array (optional)
+                coil resistances, defaults to machine coil resistances.
         """
         # assign equi and profiles objects
         self.eq = eq
@@ -80,23 +80,15 @@ class ShapeController:
             stepping.n_active_coils
         )  # could also be eq.tokamak.n_active_coils
         print("number active coils", self.n_active_coils)
-        # initialise targets with defaults or lists given
-        # if targets is None:
-        #     targets = ["R_in", "R_out", "Rx_lower", "Rs_lower_outer"]
-        #     self.targets = targets
-        # else:
-        #     self.targets = targets
 
         # set coil lists and dictionary for all active coils
         self.active_coils = self.eq.tokamak.coils_list[: self.n_active_coils]
 
         self.active_coils_reduced = deepcopy(self.active_coils)
 
-        # .remove("px").remove("p6")
-
         # create a dictionary to map coil names to their order in the list
         coil_order_dictionary = {coil: i for i, coil in enumerate(self.active_coils)}
-        self.coil_order_dictionary = coil_order_dictionary
+        self.active_coil_order_dictionary = coil_order_dictionary
 
         # assign coils to default or
         if coils is None:
@@ -113,7 +105,8 @@ class ShapeController:
         # get inductance matrix (full with all active coils)
         # ??Machine config and inductance matrix will come from stepping function later??
         if inductance_matrix is None:
-            self.inductance_full = machine_config.coil_self_ind[
+            tok = stepping.eq1.tokamak  # get tokamak object ??? use eq or stepping eq
+            self.inductance_full = tok.coil_self_ind[
                 : len(self.active_coils), : len(self.active_coils)
             ]
             print("Using default inductance matrix from machine config")
@@ -122,7 +115,8 @@ class ShapeController:
             self.inductance_full = inductance_matrix
 
         if coil_resist is None:
-            self.coil_resist = machine_config.coil_resist[: len(self.active_coils)]
+            tok = stepping.eq1.tokamak
+            self.coil_resist = tok.coil_resist[: len(self.active_coils)]
             print(
                 "No coil resistances provided, using default coil resistances from machine config"
             )
@@ -158,15 +152,13 @@ class ShapeController:
             self.feedforward_target_scheduler = feedforward_target_scheduler
 
         # create blend dict from schedule OR load from file
-        all_targs = sorted(
-            set(self.feedback_target_scheduler.target_waveform_dict.keys())
-        )
+        all_targs = sorted(set(self.feedback_target_scheduler.fb_waves.keys()))
         print("all targets", all_targs)
 
         print("Shape controller initialised")
 
     ### OLD blends function
-    # defget_shape_blends(self, targets, time_stamp):
+    # def get_shape_blends(self, targets, time_stamp):
     #     """
     #     Retrieves the blends for the target at time_stamp
 
@@ -218,7 +210,7 @@ class ShapeController:
             pass
 
         # create mask for selecting part of inductance matrix
-        mask = [self.coil_order_dictionary[coil] for coil in coils]
+        mask = [self.active_coil_order_dictionary[coil] for coil in coils]
         print("coil ordering mask ", mask)
         inductance_reduced = self.inductance_full[np.ix_(mask, mask)]
         self.inductance_reduced = inductance_reduced
@@ -324,10 +316,10 @@ class ShapeController:
             shape_gain_matrix.shape[0] == shape_gain_matrix.shape[1] == len(targets_req)
         ), "The gain matrix is not the square or same size as the target vector"
         print("shape gain matrix", shape_gain_matrix)
+
         # shifts required
         target_deltas = targets_req - targets_obs
         gained_target_deltas = shape_gain_matrix @ target_deltas
-        print("requested targets", targets_req)
         print("required target deltas", target_deltas)
         print("gained target deltas", gained_target_deltas)
         return gained_target_deltas
@@ -581,7 +573,9 @@ class ShapeController:
         reshaped_currents = np.zeros(len(self.active_coils))
         for i, coil in enumerate(virtual_circuit.coils):
             # voltages_v1[i] = np.dot(inductance_matrix[self.coil_order_dictionary[coil],:], delta_currents[:])
-            reshaped_currents[self.coil_order_dictionary[coil]] = delta_currents[i]
+            reshaped_currents[self.active_coil_order_dictionary[coil]] = delta_currents[
+                i
+            ]
         print("reshaped currents")
         print(reshaped_currents)
 
@@ -672,8 +666,8 @@ class ShapeController:
         #         shape_gain_matrix = np.identity(len(controlled_targets))
         #         # or gain matrix is the one provided???
 
-        shape_gain_matrix = self.feedback_target_scheduler.get_shape_gains(
-            targets=controlled_targets, time_stamp=time_stamp
+        shape_gain_matrix = self.feedback_target_scheduler.get_gains(
+            targets=controlled_targets, time_stamp=time_stamp, type="Kprop"
         )
         print("shape target gains", shape_gain_matrix)
         # get the virtual circuit object
@@ -681,11 +675,11 @@ class ShapeController:
             eq=eq, profiles=profiles, time_stamp=time_stamp, coils=self.control_coils
         )
 
-        desired_target_values = self.feedback_target_scheduler.desired_target_values(
+        desired_target_values = self.feedback_target_scheduler.desired_target_values_fb(
             time_stamp
         )
 
-        fb_blends_arr = self.feedback_target_scheduler.get_shape_blends(
+        fb_blends_arr = self.feedback_target_scheduler.get_blends(
             controlled_targets, time_stamp
         )
         print("fb blends", fb_blends_arr)

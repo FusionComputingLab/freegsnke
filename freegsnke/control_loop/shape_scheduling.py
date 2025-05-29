@@ -4,10 +4,12 @@ Module for target and virtual circuit sequencing in control loop.
 """
 
 import pickle
-import numpy as np
 
+import numpy as np
 from fnkemu.virtual_circuits.virtual_circuit_generator import VC_Generator as VCG
+
 from freegsnke.virtual_circuits import VirtualCircuit
+
 from .target_scheduler import TargetScheduler
 
 
@@ -162,8 +164,6 @@ class ShapeTargetScheduler(TargetScheduler):
         self,
         waveform_dict,
         schedule_dict,
-        shape_blends_dict,
-        shape_gains_dict,
         vc_flag="file",
         vc_schedule_dict=None,
         model_path=None,
@@ -223,30 +223,30 @@ class ShapeTargetScheduler(TargetScheduler):
             )
             midpoints = (change_times[:-1] + change_times[1:]) / 2
             # for _, midpoint in enumerate(midpoints):
-            ####### TODO MODIFY this compatibilty check to be more robust
-            for midpoint in midpoints:
-                print(
-                    "checking compatibility of target schedule and vc"
-                    f" sequence at time {midpoint}"
-                )
-                # print("vc check at time", midpoint)
-                vc_targs = self.vc_scheduler.retrieve_vc(time_stamp=midpoint).targets
-                # print("vc_targs", vc_targs)
-                controlled_targs = self.retrieve_controlled_targets(time_stamp=midpoint)
-                # print("controlled_targs", controlled_targs)
-                # check that the target schedule is a subset of the vc sequence
-                if not set(controlled_targs).issubset(set(vc_targs)):
-                    raise ValueError(
-                        "targets scheduled for control not a subset of vc "
-                        f"computable targets at time {midpoint} ",
-                    )
-                elif controlled_targs != vc_targs:
-                    # check the order of the targets
-                    print(
-                        "targets requested and vc available targets do not match : vc's will be recomputed as necessary"
-                    )
-                    # print("controlled targets", controlled_targs)
-                    # print("VC available targets", vc_targs)
+            # ####### TODO MODIFY this compatibilty check to be more robust
+            # for midpoint in midpoints:
+            #     print(
+            #         "checking compatibility of target schedule and vc"
+            #         f" sequence at time {midpoint}"
+            #     )
+            #     # print("vc check at time", midpoint)
+            #     vc_targs = self.vc_scheduler.retrieve_vc(time_stamp=midpoint).targets
+            #     # print("vc_targs", vc_targs)
+            #     controlled_targs = self.retrieve_controlled_targets(time_stamp=midpoint)
+            #     # print("controlled_targs", controlled_targs)
+            #     # check that the target schedule is a subset of the vc sequence
+            #     if not set(controlled_targs).issubset(set(vc_targs)):
+            #         raise ValueError(
+            #             "targets scheduled for control not a subset of vc "
+            #             f"computable targets at time {midpoint} ",
+            #         )
+            #     elif controlled_targs != vc_targs:
+            #         # check the order of the targets
+            #         print(
+            #             "targets requested and vc available targets do not match : vc's will be recomputed as necessary"
+            #         )
+            #         # print("controlled targets", controlled_targs)
+            #         # print("VC available targets", vc_targs)
 
         elif vc_flag == "emulator" or "emu" or "Emulator":
             # initilase an Emulator scheduler
@@ -256,35 +256,35 @@ class ShapeTargetScheduler(TargetScheduler):
                 model_path, model_names=model_names, n_models=n_models
             )
 
-    def get_shape_blends(self, targets, time_stamp):
-        """
-        Retrieves the blends for the target at time_stamp
+    # def get_shape_blends(self, targets, time_stamp):
+    #     """
+    #     Retrieves the blends for the target at time_stamp
 
-        Parameters
-        ----------
-        targets : list[str]
-        time_stamp : float
-            time stamp of the target to be retrieved
+    #     Parameters
+    #     ----------
+    #     targets : list[str]
+    #     time_stamp : float
+    #         time stamp of the target to be retrieved
 
-        Returns
-        -------
-        blends : dict
-            dictionary of blends for the target at time_stamp
-        """
-        blend_arr = []
-        print("blend dict ", self.target_waveform_dict["blends"].keys())
-        for target in targets:
-            blend_arr.append(
-                self.retrieve_control_param(
-                    param_dict=self.target_waveform_dict["blends"],
-                    param=target,
-                    time_stamp=time_stamp,
-                )
-            )
-        print("blends", blend_arr)
-        return np.array(blend_arr)
+    #     Returns
+    #     -------
+    #     blends : dict
+    #         dictionary of blends for the target at time_stamp
+    #     """
+    #     blend_arr = []
+    #     print("blend dict ", self.blends.keys())
+    #     for target in targets:
+    #         blend_arr.append(
+    #             self.get_waveform_value(
+    #                 param_dict=self.blends,
+    #                 param=target,
+    #                 time_stamp=time_stamp,
+    #             )
+    #         )
+    #     print("blends", blend_arr)
+    #     return np.array(blend_arr)
 
-    def get_vc(self, eq, profiles, time_stamp, coils):
+    def get_vc(self, time_stamp, eq=None, profiles=None, coils=None):
         """
         Get VC object given time stamp.
         - load from file if provided or compute with emulator
@@ -294,6 +294,9 @@ class ShapeTargetScheduler(TargetScheduler):
             print("loading VC from file")
             vc = self.vc_scheduler.retrieve_vc(time_stamp=time_stamp)
         elif self.vc_flag == "Emulator" or "emulator" or "emu":
+            assert (
+                eq is not None and profiles is not None and coils is not None
+            ), "Need eq, profiles and coils to compute VC"
             print("Computing VC from emulator")
             control_targs = self.retrieve_controlled_targets(time_stamp)
             vc = self.vc_scheduler.build_vc(

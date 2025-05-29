@@ -1,6 +1,7 @@
-import numpy as np
 import pickle
 from pprint import pprint
+
+import numpy as np
 
 
 class TargetScheduler:
@@ -231,7 +232,7 @@ class TargetScheduler:
                 waveform_dict[target]["times"][1:], time_stamp, side="right"
             )
             # print(f"position index {position}")
-            if time_stamp > self.target_waveform_dict[target]["times"][-1]:
+            if time_stamp > waveform_dict[target]["times"][-1]:
                 print(
                     "time_stamp is greater than the last waveform time stamp "
                     f"for target {target}"

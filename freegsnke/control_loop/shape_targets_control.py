@@ -92,7 +92,9 @@ class ShapeController:
         all_targs = sorted(set(self.feedback_target_scheduler.fb_waves.keys()))
         print("all targets", all_targs)
 
+        # initialise the VCH object
         print("Shape controller initialised")
+        print("Now please initialise the VCH object with .initialise_VCH(stepping)")
 
     def initialise_VCH(self, stepping, target_relative_tolerance=1e-7):
         """initialise the VCH object as class attribute.
@@ -102,7 +104,7 @@ class ShapeController:
         Inputs
         ------
         stepping : object
-            stepping object
+            stepping object, to provide solver information
         target_relative_tolerance : float
             target relative tolerance
 

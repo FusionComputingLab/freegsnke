@@ -145,6 +145,34 @@ class VirtualCircuitScheduler:
         return virtual_circuit
 
 
+def pre_run_emulators(vcg, stepping, targets, coils):
+    """pre run emulators on given equilibrium and set of targets/coils for speed up later
+        Run this after init.
+
+    Inputs :
+    --------
+    vcg : object
+        virtual circuit generator object (from freegsnke emu)
+    stepping : object
+        stepping object
+    targets : list[str]
+        list of targets to be used for shape control
+    coils : list[str]
+        list of coils to be used for shape control
+
+    Returns
+    -------
+    None
+    """
+
+    vcg.build_vc(
+        eq=stepping.eq1,
+        profiles=stepping.profiles1,
+        targets=targets,
+        coils=coils,
+    )
+
+
 class ShapeTargetScheduler(TargetScheduler):
     """
     Class to build a target sequences from file, and store the sequence of
@@ -164,11 +192,8 @@ class ShapeTargetScheduler(TargetScheduler):
         self,
         waveform_dict,
         schedule_dict,
+        vc_scheduler,
         vc_flag="file",
-        vc_schedule_dict=None,
-        model_path=None,
-        model_names=None,
-        n_models=None,
     ):
         """
         Initialise the class
@@ -179,17 +204,12 @@ class ShapeTargetScheduler(TargetScheduler):
             dictionary containing target waveform
         schedule_dict : dict
             dictionary containing target schedule
-        shape_blends_dict : dict
-            path to file containing target blend waveform
-        shape_gains_dict : dict
-            path to file containing target gains
         vc_flag : str   (optional)
             flag to indicate whether to load virtual circuit from file or NN
             emulator (default = "file")
             options = ["file", "Emulator"]
-        vc_schedule_dict : str (optional)
-            dictionary containing virtual circuit sequence, if
-            vc_flag = "file"
+        vc_scheduler : object
+            virtual circuit scheduler object - either a VirtualCircuitScheduler (file)  or VCG (emulator)
 
         Returns
         -------
@@ -199,15 +219,12 @@ class ShapeTargetScheduler(TargetScheduler):
         super().__init__(waveform_dict, schedule_dict)
 
         self.vc_flag = vc_flag
+        assert vc_scheduler is not None, "Please provide a vc schedule"
 
-        # check if vc_flag is file and load VC's from file.
+        # check if vc_flag is file .
         if vc_flag == "file":
-            # initilase a vc sequence object
-            assert vc_schedule_dict is not None, "Please provide a vc schedule"
-            self.vc_scheduler = VirtualCircuitScheduler(vc_schedule_dict)
-
-            # add check to see if targets in VC's match targets in target
-            # schedule
+            self.vc_scheduler_file = vc_scheduler
+            # check consistency of target schedule and vc schedule
             # merge the time sequence from both target and vc, and check the
             # targets match at each midpiont.
             print("checking target schedule and vc sequence")
@@ -249,12 +266,9 @@ class ShapeTargetScheduler(TargetScheduler):
             #         # print("VC available targets", vc_targs)
 
         elif vc_flag == "emulator" or "emu" or "Emulator":
-            # initilase an Emulator scheduler
-            assert model_path is not None, "Please provide a model path"
-            print("initialising an emulator scheduler")
-            self.vc_scheduler = VCG(
-                model_path, model_names=model_names, n_models=n_models
-            )
+            print("Initialising an emulator scheduler")
+            self.vc_scheduler_emu = vc_scheduler
+            print("please run pre_run_emulators now")
 
     # def get_shape_blends(self, targets, time_stamp):
     #     """
@@ -292,14 +306,15 @@ class ShapeTargetScheduler(TargetScheduler):
 
         if self.vc_flag == "file":
             print("loading VC from file")
-            vc = self.vc_scheduler.retrieve_vc(time_stamp=time_stamp)
+            vc = self.vc_scheduler_file.retrieve_vc(time_stamp=time_stamp)
+
         elif self.vc_flag == "Emulator" or "emulator" or "emu":
             assert (
                 eq is not None and profiles is not None and coils is not None
             ), "Need eq, profiles and coils to compute VC"
             print("Computing VC from emulator")
             control_targs = self.retrieve_controlled_targets(time_stamp)
-            vc = self.vc_scheduler.build_vc(
+            vc = self.vc_scheduler_emu.build_vc(
                 eq, profiles, coils=coils, targets=control_targs
             )
         return vc

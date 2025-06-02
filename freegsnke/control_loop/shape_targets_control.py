@@ -16,6 +16,42 @@ from .shape_scheduling import ShapeTargetScheduler
 from .target_scheduler import TargetScheduler
 
 
+def get_inductance_resistance(stepping):
+    """get inductance matrix and coil resistances from stepping object (Freegsnke)
+
+    Inputs :
+    --------
+    stepping : object
+        stepping object
+
+    Returns
+    -------
+    inductance_full : np.array
+        full inductance matrix in freegsnke for all active coils
+
+    coil_resist : np.array
+        coil resistances in freegsnke for all active coils
+    """
+
+    # assign equi and profiles objects
+    # self.stepping = stepping
+    n_active_coils = stepping.n_active_coils  # could also be eq.tokamak.n_active_coils
+    print("number active coils", n_active_coils)
+    tok = stepping.eq1.tokamak
+    active_coils = tok.coils_list[:n_active_coils]
+
+    inductance_full = tok.coil_self_ind[: len(active_coils), : len(active_coils)]
+    coil_resist = tok.coil_resist[: len(active_coils)]
+    print("Inductances and resistances retrieved for all active coils :", active_coils)
+    coil_order_dictionary = {coil: i for i, coil in enumerate(active_coils)}
+
+    return {
+        "inductance_full": inductance_full,
+        "coil_resist": coil_resist,
+        "coils": active_coils,
+    }
+
+
 class ShapeController:
     """
     Class to implement control voltages from virtual circuit, and given a set of observed target values, and a set of requested target values.
@@ -33,7 +69,7 @@ class ShapeController:
 
 
     Methods :
-    get_inductance_reduced : retrieve inductance matrix from machine config, and select rows/columns
+    reshape_inductance : retrieve inductance matrix from machine config, and select rows/columns
     calc_vc_from_eq : retrieve from file or compute a virtual circuit object from freegsnke or NN emulator.
     calculate_blended_feedback_current_rate_vc_proportional : compute feedback voltages from a virtual circuit object and a set of target shifts.
     feedback_current_rate_timefunc : compute feedback voltages from a time provided by retrieving targets at given time from the target waveformr and computing with calculate_blended_feedback_current_rate_vc_proportional.
@@ -44,8 +80,7 @@ class ShapeController:
         feedback_target_scheduler: ShapeTargetScheduler,
         active_coils,
         control_coils,
-        inductance_matrix,
-        coil_resist,
+        machine_parameters,
     ):
         """
         Initialize the control voltages class
@@ -60,40 +95,45 @@ class ShapeController:
                 TargetScheduler object - contains targets and vc schedule for simulation.
             coils : list[str]
                 list of coil names to be used for shape control, defaults to all active coils defined in get_active_coils.
-            inductance_matrix : np.array (
-                inductance matrix, defaults to machine inductance matrix.
-            coil_resist : np.array
-                coil resistances, defaults to machine coil resistances.
+            machine_parameters : dict
+                dictionary containing full inductance matrix and coil resistances
         """
         self.active_coils = active_coils
-        # self.active_coils_reduced = deepcopy(self.active_coils)
 
         # create a dictionary to map coil names to their order in the list
-        coil_order_dictionary = {coil: i for i, coil in enumerate(self.active_coils)}
-        self.active_coil_order_dictionary = coil_order_dictionary
+        self.active_coil_order_dictionary = {
+            coil: i for i, coil in enumerate(self.active_coils)
+        }
 
         # assign coils to default or
         if control_coils is None:
             print("initialising with default all active coils")
-            self.control_coils = deepcopy(self.active_coils_reduced)
+            self.control_coils = deepcopy(self.active_coils)
         else:
             print("initialising with custom coils")
             self.control_coils = control_coils
-
-        print("Default targets and current's initialised")
-        print("all active", self.active_coils)
-        print("control coils", self.control_coils)
 
         # initialise a target scheduler object
         self.feedback_target_scheduler = feedback_target_scheduler
         print("target scheduler flag :", self.feedback_target_scheduler.vc_flag)
 
-        # create blend dict from schedule OR load from file
-        all_targs = sorted(set(self.feedback_target_scheduler.fb_waves.keys()))
-        print("all targets", all_targs)
+        # set machine parameters (inductance and resistances for coils)
+        self.inductance_full = machine_parameters["inductance_full"]
+        self.coil_resist = machine_parameters["coil_resist"]
+        self.machine_param_coil_order = machine_parameters["coils"]
+        self.active_coil_order_dictionarycoil_order_dictionary = {
+            coil: i for i, coil in enumerate(self.active_coils)
+        }
 
+        # reorder inductance matrix and coil resistances to match coil order
+        self.inductance_full = self.reshape_inductance(coils=self.active_coils)
+        self.coil_resist = self.reorder_resistance(coils=self.active_coils)
+        # reduced inductance matrix for control coils
+        self.inductance_reduced = self.reshape_inductance(coils=self.control_coils)
         # initialise the VCH object
         print("Shape controller initialised")
+        print("all active", self.active_coils)
+        print("control coils", self.control_coils)
         print("Now please initialise the VCH object with .initialise_VCH(stepping)")
 
     def initialise_VCH(self, stepping, target_relative_tolerance=1e-7):
@@ -145,7 +185,7 @@ class ShapeController:
     #     print(f"blends for {targets} at time {time_stamp}: {blend_arr}")
     #     return np.array(blend_arr)
 
-    def get_inductance_reduced(self, coils=None):
+    def reshape_inductance(self, coils=None):
         """
         Select appropriate inductance rows and columns from inductance matrix, given set of coils in the VC.
 
@@ -171,12 +211,16 @@ class ShapeController:
             pass
 
         # create mask for selecting part of inductance matrix
-        mask = [self.active_coil_order_dictionary[coil] for coil in coils]
+        mask = [self.machine_param_coil_order[coil] for coil in coils]
         print("coil ordering mask ", mask)
         inductance_reduced = self.inductance_full[np.ix_(mask, mask)]
-        self.inductance_reduced = inductance_reduced
 
         return inductance_reduced
+
+    def reorder_resistance(self, coils):
+        """reorder coil resistances to match coil order"""
+        mask = [self.machine_param_coil_order[coil] for coil in coils]
+        return self.coil_resist[np.ix_(mask)]
 
     ## this function will be replaced by instance of build virtual circuit class.
     def calc_vc_from_eq(self, targets, eq, profiles, coils=None):
@@ -549,7 +593,7 @@ class ShapeController:
         # # option 2 reshape inductance matrix, multiply by currents and then fill in zeros
         # print("doing option 2")
         # print("delta currents", delta_currents)
-        # inductance_matrix_controlled = self.get_inductance_reduced(
+        # inductance_matrix_controlled = self.reshape_inductance(
         #     coils=virtual_circuit.coils
         # )
         # voltages_v2_controlled = np.dot(inductance_matrix_controlled, delta_currents)

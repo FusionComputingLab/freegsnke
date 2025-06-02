@@ -13,7 +13,6 @@ from ..equilibrium_update import Equilibrium
 from ..nonlinear_solve import nl_solver
 from ..virtual_circuits import VirtualCircuit
 from .shape_scheduling import ShapeTargetScheduler
-from .target_scheduler import TargetScheduler
 
 
 def get_inductance_resistance(stepping):
@@ -268,11 +267,10 @@ class ShapeController:
 
     def calculate_gained_target_deltas(
         self,
-        eq,
         targets,
-        shape_gain_matrix,
         targets_req,
-        targets_obs=None,
+        targets_obs,
+        shape_gain_matrix,
     ):
         """Calculate the target deltas between the required and observed targets
 
@@ -302,13 +300,7 @@ class ShapeController:
             array of target deltas
         """
 
-        if targets_obs is None:
-            # get the targets from the equilibrium
-            print("Observed targets not provided, calculating from equilibrium")
-            _, targets_obs = self.VCH.calculate_targets(eq, targets)
-            print("observed targets", targets_obs)
-
-            # check dimensions of target values
+        # check dimensions of target values
         assert len(targets_req) == len(
             targets_obs
         ), "The target required and observed vectors are not the same length"
@@ -321,66 +313,10 @@ class ShapeController:
         # shifts required
         target_deltas = targets_req - targets_obs
         gained_target_deltas = shape_gain_matrix @ target_deltas
+        print("targets names", targets)
         print("required target deltas", target_deltas)
         print("gained target deltas", gained_target_deltas)
         return gained_target_deltas
-
-    # THIS IS REDUNDANT NOW I THINK
-    # def blended_ff_fb_targs(self, time_stamp, eq):
-    #     """
-    #     Combine feedback and feed forward targets.
-
-    #     Parameters
-    #     ----------
-    #     time_stamp : float
-    #         time stamp of the target to be retrieved
-    #     Returns
-    #     -------
-    #     combined_targs : list[str]
-    #         list of target names
-    #     """
-    #     # get set of targets being controlled at this time
-    #     controlled_targets = self.feedback_target_scheduler.retrieve_controlled_targets(
-    #         time_stamp
-    #     )
-    #     feed_forward_targets = list(
-    #         self.feedforward_target_scheduler.target_waveform_dict.keys()
-    #     )  # these hard coded, or hard coded in init? or just get all targets from scheduler?
-    #     all_targs = sorted(set(controlled_targets + feed_forward_targets))
-    #     # ?? control targs should be subset of feedforward targets?
-    #     # dictionary of blend vals basaed on if target in controlled or not. ()
-    #     blend_vals = {
-    #         targ: 1 if targ in controlled_targets else 0 for targ in all_targs
-    #     }  # blends for controlled targets 1
-
-    #     ff_gradients = self.feedforward_target_scheduler.feed_forward_gradient(
-    #         time_stamp=time_stamp, targets=all_targs
-    #     )
-    #     ff_grad_dict = dict(zip(all_targs, ff_gradients))
-
-    #     # compute gained control targets
-    #     shape_gain_matrix = self.feedback_target_scheduler.vc_scheduler.retrieve_gains(
-    #         controlled_targets, time_stamp
-    #     )
-    #     targets_req = self.feedback_target_scheduler.desired_target_values(time_stamp)
-    #     gained_control_targs = self.calculate_gained_target_deltas(
-    #         eq,
-    #         targets=controlled_targets,
-    #         shape_gain_matrix=shape_gain_matrix,
-    #         targets_req=targets_req,
-    #         targets_obs=None,
-    #     )
-    #     gained_targs_dict = dict(zip(controlled_targets, gained_control_targs))
-
-    #     blended_dict = {}
-    #     for targ in all_targs:
-    #         blended_dict[targ] = (
-    #             ff_grad_dict[targ] + blend_vals[targ] * gained_targs_dict[targ]
-    #         )
-
-    #     # convert to array, ordered according to all_targs ?? maybe this need changing/fixing order?
-    #     blended_array = np.array([blended_dict[targ] for targ in all_targs])
-    #     return blended_array
 
     @staticmethod
     def recompute_vc_from_sensitivity(virtual_circuit, targets):
@@ -451,16 +387,14 @@ class ShapeController:
 
     def calculate_blended_feedback_current_rate_vc_proportional(
         self,
-        eq,
-        profiles,
+        targets,
         targets_req,
+        targets_obs,
         targets_blends,
         ff_deltas,
-        targets_obs=None,
-        targets=None,
-        coils=None,
+        shape_gain_matrix,
         virtual_circuit: VirtualCircuit = None,
-        shape_gain_matrix=None,
+        coils=None,
     ):
         """
         Compute current given a set of target value shifts and vc matrix, at a given time.
@@ -500,38 +434,9 @@ class ShapeController:
         feedback_voltages : array
             feedback voltages
         """
-
-        # # check coils and targets and update attributes accordingly
-        # if targets is not None:
-        #     self.targets = targets
-
         if coils is None:
             print("coils being set to default active coils reduced")
-            coils = self.active_coils_reduced
-        # build VC object if not provided
-        if virtual_circuit is None:
-            print("No VC object passed, building one with ")
-            # check coils in virtual circuit match those in the tokamak
-            print("target names provided ", targets)
-            print("control coils", self.control_coils)
-            virtual_circuit = self.calc_vc_from_eq(
-                eq=eq, profiles=profiles, targets=targets, coils=coils
-            )
-        else:
-            print("Virtual circuit provided with :")
-            print("targets", virtual_circuit.targets)
-            print("coils", virtual_circuit.coils)
-
-        # assign virtual circuit attribute to class
-        # self.virtual_circuit = virtual_circuit
-
-        # if not targets == virtual_circuit.targets:
-        #     # raise error ? or recompute VC from sensitivity
-        #     print(f"target names provided {targets}")
-        #     print(f"virtual circuit targets {virtual_circuit.targets}")
-        #     raise ValueError(
-        #         "The virtual circuit targets do not match the targets requested. Check the VC and Target sequence"
-        #     )
+            coils = self.control_coils
 
         if targets == virtual_circuit.targets:
             # targets match - do nothing and use VC provided
@@ -559,7 +464,10 @@ class ShapeController:
 
         # compute the shape target deltas
         gained_target_deltas = self.calculate_gained_target_deltas(
-            eq, targets, shape_gain_matrix, targets_req, targets_obs
+            targets=targets,
+            targets_req=targets_req,
+            targets_obs=targets_obs,
+            shape_gain_matrix=shape_gain_matrix,
         )
 
         blended_target_deltas = (
@@ -617,9 +525,9 @@ class ShapeController:
     def feedback_current_rate_timefunc(
         self,
         time_stamp,
-        eq,
-        profiles,
-        target_obs=None,
+        target_obs,
+        eq=None,
+        profiles=None,
     ):
         """
         Compute current given a set of target value shifts and vc matrix, at a time provided.
@@ -650,24 +558,7 @@ class ShapeController:
             print("no controlled targets at time ", time_stamp)
             return np.zeros(len(self.active_coils))
 
-        # if shape_gain_matrix is None:
-        #     if self.feedback_target_scheduler.vc_flag == "file":
-        #         shape_gain_matrix = (
-        #             self.feedback_target_scheduler.vc_scheduler.retrieve_gains(
-        #                 targets=controlled_targets, time_stamp=time_stamp
-        #             )
-        #         )
-        #     elif (
-        #         self.feedback_target_scheduler.vc_flag == "emulator"
-        #         or "emu"
-        #         or "Emulator"
-        #     ):
-        #         # set default gains for emulators - this may want to be updated in future
-        #         print("using emulators - gains default to identity matrix ")
-        #         shape_gain_matrix = np.identity(len(controlled_targets))
-        #         # or gain matrix is the one provided???
-
-        shape_gain_matrix = self.feedback_target_scheduler.get_gains(
+        gains_arr, shape_gain_matrix = self.feedback_target_scheduler.get_gains(
             targets=controlled_targets, time_stamp=time_stamp, type="Kprop"
         )
         print("shape target gains", shape_gain_matrix)
@@ -691,15 +582,13 @@ class ShapeController:
 
         # compute the proportional voltages
         current_rate = self.calculate_blended_feedback_current_rate_vc_proportional(
-            eq,
-            profiles,
             targets=controlled_targets,
             targets_req=desired_target_values,
+            targets_obs=target_obs,
             targets_blends=fb_blends_arr,
             ff_deltas=ff_deltas,
-            targets_obs=target_obs,
-            virtual_circuit=virtual_circuit,
             shape_gain_matrix=shape_gain_matrix,
+            virtual_circuit=virtual_circuit,
         )
 
         return current_rate

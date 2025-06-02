@@ -24,7 +24,6 @@ class ShapeController:
     ------------
     eq : eq object
     profiles : profiles object
-    stepping :  stepping object (nl solver)
     active_coils : list of all active coils
     coils : list of coils to be used in controller
     active_coil_order_dictionary : dictionary mapping coil names to their order in the list of active coils
@@ -42,14 +41,11 @@ class ShapeController:
 
     def __init__(
         self,
-        eq: Equilibrium,
-        profiles,
-        stepping: nl_solver,
         feedback_target_scheduler: ShapeTargetScheduler,
-        feedforward_target_scheduler: TargetScheduler = None,
-        coils=None,
-        inductance_matrix=None,
-        coil_resist=None,
+        active_coils,
+        control_coils,
+        inductance_matrix,
+        coil_resist,
     ):
         """
         Initialize the control voltages class
@@ -60,102 +56,65 @@ class ShapeController:
                 equilibrium object
             profiles : list of profiles
                 list of profiles
-            stepping : Non Linear Solver object
-                Non Linear Solver object
             feedback_target_scheduler : TargetScheduler object
                 TargetScheduler object - contains targets and vc schedule for simulation.
-            coils : list[str]   (optional)
-                list of coil names, defaults to all active coils defined in get_active_coils.
-            inductance_matrix : np.array (optional)
+            coils : list[str]
+                list of coil names to be used for shape control, defaults to all active coils defined in get_active_coils.
+            inductance_matrix : np.array (
                 inductance matrix, defaults to machine inductance matrix.
-            coil_resist : np.array (optional)
+            coil_resist : np.array
                 coil resistances, defaults to machine coil resistances.
         """
-        # assign equi and profiles objects
-        self.eq = eq
-        self.profiles = profiles
-
-        # self.stepping = stepping
-        self.n_active_coils = (
-            stepping.n_active_coils
-        )  # could also be eq.tokamak.n_active_coils
-        print("number active coils", self.n_active_coils)
-
-        # set coil lists and dictionary for all active coils
-        self.active_coils = self.eq.tokamak.coils_list[: self.n_active_coils]
-
-        self.active_coils_reduced = deepcopy(self.active_coils)
+        self.active_coils = active_coils
+        # self.active_coils_reduced = deepcopy(self.active_coils)
 
         # create a dictionary to map coil names to their order in the list
         coil_order_dictionary = {coil: i for i, coil in enumerate(self.active_coils)}
         self.active_coil_order_dictionary = coil_order_dictionary
 
         # assign coils to default or
-        if coils is None:
+        if control_coils is None:
             print("initialising with default all active coils")
             self.control_coils = deepcopy(self.active_coils_reduced)
         else:
             print("initialising with custom coils")
-            self.control_coils = coils
+            self.control_coils = control_coils
 
         print("Default targets and current's initialised")
         print("all active", self.active_coils)
         print("control coils", self.control_coils)
 
-        # get inductance matrix (full with all active coils)
-        # ??Machine config and inductance matrix will come from stepping function later??
-        if inductance_matrix is None:
-            tok = stepping.eq1.tokamak  # get tokamak object ??? use eq or stepping eq
-            self.inductance_full = tok.coil_self_ind[
-                : len(self.active_coils), : len(self.active_coils)
-            ]
-            print("Using default inductance matrix from machine config")
-            # print("inductance matrix", self.inductance_full)
-        else:
-            self.inductance_full = inductance_matrix
-
-        if coil_resist is None:
-            tok = stepping.eq1.tokamak
-            self.coil_resist = tok.coil_resist[: len(self.active_coils)]
-            print(
-                "No coil resistances provided, using default coil resistances from machine config"
-            )
-            # print("coil resistances", self.coil_resist)
-        else:
-            self.coil_resist = coil_resist
-        # initialise a VC handling object
-        self.VCH = vc.VirtualCircuitHandling()
-        self.VCH.define_solver(stepping.NK, target_relative_tolerance=1e-7)
-
         # initialise a target scheduler object
         self.feedback_target_scheduler = feedback_target_scheduler
         print("target scheduler flag :", self.feedback_target_scheduler.vc_flag)
-        if self.feedback_target_scheduler.vc_flag == (
-            "Emulator" or "emu" or "emulator"
-        ):
-
-            # pre run the emulators so future calls to calculate_blended_feedback_current_rate_vc_proportional are quicker
-            start_targs = self.feedback_target_scheduler.target_schedule_dict[
-                list(self.feedback_target_scheduler.target_schedule_dict.keys())[0]
-            ]
-            self.feedback_target_scheduler.vc_scheduler.build_vc(
-                eq=self.eq,
-                profiles=self.profiles,
-                targets=start_targs,
-                coils=self.control_coils,
-            )
-
-        if feedforward_target_scheduler is None:
-            print("No feedforward scheduler provided. will copy the feedback scheduler")
-            self.feedforward_target_scheduler = deepcopy(self.feedback_target_scheduler)
-        else:
-            self.feedforward_target_scheduler = feedforward_target_scheduler
 
         # create blend dict from schedule OR load from file
         all_targs = sorted(set(self.feedback_target_scheduler.fb_waves.keys()))
         print("all targets", all_targs)
 
         print("Shape controller initialised")
+
+    def initialise_VCH(self, stepping, target_relative_tolerance=1e-7):
+        """initialise the VCH object as class attribute.
+        This must be done after the class is initialised and before first call to calculate_blended_feedback_current_rate_vc_proportional
+
+
+        Inputs
+        ------
+        stepping : object
+            stepping object
+        target_relative_tolerance : float
+            target relative tolerance
+
+        Returns
+        -------
+        None
+            Modifies the class attribute self.VCH
+        """
+        self.VCH = vc.VirtualCircuitHandling()
+        self.VCH.define_solver(
+            stepping.NK, target_relative_tolerance=target_relative_tolerance
+        )
 
     ### OLD blends function
     # def get_shape_blends(self, targets, time_stamp):
@@ -218,7 +177,7 @@ class ShapeController:
         return inductance_reduced
 
     ## this function will be replaced by instance of build virtual circuit class.
-    def calc_vc_from_eq(self, targets, eq=None, profiles=None, coils=None):
+    def calc_vc_from_eq(self, targets, eq, profiles, coils=None):
         """
         Compute a VC using freegsnke VirtualCircuitHandling.
 
@@ -242,10 +201,6 @@ class ShapeController:
         virtual_circuit : object
             virtual circuit object
         """
-        if eq is None:
-            eq = self.eq
-        if profiles is None:
-            profiles = self.profiles
 
         # if targets and coils are provided, update targets/coils attributes
         if coils is None:

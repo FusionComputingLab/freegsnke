@@ -83,7 +83,7 @@ class mode_decomposition:
 
         ordw = np.argsort(w)
         self.w_passive = w[ordw]
-        Pmatrix_passive = v[:,ordw]
+        Pmatrix_passive = v[:, ordw]
 
         # A sign convention for the sign of the normal modes is set
         # The way this is achieved is just a choice:

@@ -20,7 +20,7 @@ along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 import numpy as np
-from scipy.linalg import solve_sylvester, solve
+from scipy.linalg import solve, solve_sylvester
 
 from .implicit_euler import implicit_euler_solver
 
@@ -215,7 +215,6 @@ class linear_solver:
             * self.plasma_norm_factor
         )
 
-
         # M0 matrix
         self.M0matrix = np.zeros(
             (self.n_independent_vars + 1, self.n_independent_vars + 1)
@@ -226,7 +225,6 @@ class linear_solver:
         )
         # metal to plasma
         self.M0matrix[-1, :-1] = np.dot(self.MyeP_T, self.hatIy0) / nRp
-
 
         # dMmatrix
         self.dMmatrix = np.zeros(

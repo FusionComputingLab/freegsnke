@@ -190,7 +190,9 @@ class nl_solver:
 
         # check number of passives
         if self.n_passive_coils < fix_n_vessel_modes:
-            print(f"'fix_n_vessel_modes' ({fix_n_vessel_modes}) exceeds number of passive strucutres ({self.n_passive_coils}), setting 'fix_n_vessel_modes' to {self.n_passive_coils} ")
+            print(
+                f"'fix_n_vessel_modes' ({fix_n_vessel_modes}) exceeds number of passive strucutres ({self.n_passive_coils}), setting 'fix_n_vessel_modes' to {self.n_passive_coils} "
+            )
             fix_n_vessel_modes = self.n_passive_coils
 
         # check input eq and profiles are a GS solution
@@ -317,7 +319,7 @@ class nl_solver:
                     # threshold_value = ordered_ndIydI_no_GS[i]
                     # fix_n_vessel_modes = len(ordered_ndIydI_no_GS) - i
 
-                else: # zero modes to be selected 
+                else:  # zero modes to be selected
                     threshold_value = (
                         strongest_coupling_vessel_mode * 1.1
                     )  # scale up so no modes are selected
@@ -362,7 +364,7 @@ class nl_solver:
 
             # only active coils selected
             mode_coupling_mask_include = [True] * self.n_active_coils
-            
+
             # exclude all modes that couple less than min_dIy_dI
             mode_coupling_mask_exclude = mode_coupling_mask_include
 
@@ -381,7 +383,7 @@ class nl_solver:
         self.evol_metal_curr.initialize_for_eig(
             selected_modes_mask=None,
             mode_coupling_masks=mode_coupling_masks,
-            verbose=(fix_n_vessel_modes < 0), 
+            verbose=(fix_n_vessel_modes < 0),
         )
 
         if fix_n_vessel_modes >= 0:

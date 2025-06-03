@@ -118,7 +118,7 @@ class VirtualCircuitScheduler:
 
     #     # update other parts such as vc_index, input currents, profile pars etc
 
-    def retrieve_vc(self, time_stamp):
+    def get_vc(self, time_stamp):
         """
         Retrieve appropriate virtual circuit object from the sequence of
         virtual circuits.
@@ -223,7 +223,7 @@ class ShapeTargetScheduler(TargetScheduler):
 
         # check if vc_flag is file .
         if vc_flag == "file":
-            self.vc_scheduler_file = vc_scheduler
+            self.vc_scheduler = vc_scheduler
             # check consistency of target schedule and vc schedule
             # merge the time sequence from both target and vc, and check the
             # targets match at each midpiont.
@@ -267,7 +267,7 @@ class ShapeTargetScheduler(TargetScheduler):
 
         elif vc_flag == "emulator" or "emu" or "Emulator":
             print("Initialising an emulator scheduler")
-            self.vc_scheduler_emu = vc_scheduler
+            self.vc_scheduler = vc_scheduler
             print("please run pre_run_emulators now")
 
     # def get_shape_blends(self, targets, time_stamp):
@@ -306,7 +306,7 @@ class ShapeTargetScheduler(TargetScheduler):
 
         if self.vc_flag == "file":
             print("loading VC from file")
-            vc = self.vc_scheduler_file.retrieve_vc(time_stamp=time_stamp)
+            vc = self.vc_scheduler.get_vc(time_stamp=time_stamp)
 
         elif self.vc_flag == "Emulator" or "emulator" or "emu":
             assert (

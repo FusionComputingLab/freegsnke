@@ -48,6 +48,7 @@ def get_inductance_resistance(stepping):
         "inductance_full": inductance_full,
         "coil_resist": coil_resist,
         "coils": active_coils,
+        "coil_order_dictionary": coil_order_dictionary,
     }
 
 
@@ -77,8 +78,8 @@ class ShapeController:
     def __init__(
         self,
         feedback_target_scheduler: ShapeTargetScheduler,
-        active_coils,
-        control_coils,
+        active_coils: list[str],
+        control_coils: list[str],
         machine_parameters,
     ):
         """
@@ -119,8 +120,9 @@ class ShapeController:
         # set machine parameters (inductance and resistances for coils)
         self.inductance_full = machine_parameters["inductance_full"]
         self.coil_resist = machine_parameters["coil_resist"]
-        self.machine_param_coil_order = machine_parameters["coils"]
-        self.active_coil_order_dictionarycoil_order_dictionary = {
+        self.machine_coils = machine_parameters["coils"]
+        self.machine_param_coil_order = machine_parameters["coil_order_dictionary"]
+        self.active_coil_order_dictionary = {
             coil: i for i, coil in enumerate(self.active_coils)
         }
 
@@ -156,6 +158,7 @@ class ShapeController:
         self.VCH.define_solver(
             stepping.NK, target_relative_tolerance=target_relative_tolerance
         )
+        print("Initialised VCH in shape controller")
 
     ### OLD blends function
     # def get_shape_blends(self, targets, time_stamp):
@@ -219,7 +222,7 @@ class ShapeController:
     def reorder_resistance(self, coils):
         """reorder coil resistances to match coil order"""
         mask = [self.machine_param_coil_order[coil] for coil in coils]
-        return self.coil_resist[np.ix_(mask)]
+        return self.coil_resist[_(mask)]
 
     ## this function will be replaced by instance of build virtual circuit class.
     def calc_vc_from_eq(self, targets, eq, profiles, coils=None):
@@ -575,7 +578,7 @@ class ShapeController:
             controlled_targets, time_stamp
         )
         print("fb blends", fb_blends_arr)
-        ff_deltas = self.feedforward_target_scheduler.feed_forward_gradient(
+        ff_deltas = self.feedback_target_scheduler.feed_forward_gradient(
             time_stamp, targets=controlled_targets
         )
         print("ff deltas", ff_deltas)

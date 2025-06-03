@@ -239,7 +239,9 @@ class metal_currents:
         # diagonalised separately from the active coils. The modes of used for the passive structures
         # diagonalise the isolated dynamics of the walls.
         # Equation is Lambda**(-1)Iddot + I = F
-        self.Lambdam1 = self.Pm1 @ (self.normal_modes.rm1l_non_symm @ self.P)
+        self.RP = np.diag(self.coil_resist) @ self.Pm1.T
+        self.Pm1Rm1 = np.linalg.solve(self.RP.T @ self.RP, self.RP.T)
+        self.Lambdam1 = (self.Pm1Rm1 @ self.coil_self_ind) @ self.Pm1.T
 
         self.solver = implicit_euler_solver(
             Mmatrix=self.Lambdam1,

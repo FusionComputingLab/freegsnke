@@ -59,23 +59,31 @@ class mode_decomposition:
         # 1. active coils
         # normal modes are not used for the active coils,
         # but they're calculated here for the check on negative eigenvalues below
-        mm1 = np.linalg.inv(
-            self.coil_self_ind[: self.n_active_coils, : self.n_active_coils]
-        )
+        # mm1 = np.linalg.inv(
+        #     self.coil_self_ind[: self.n_active_coils, : self.n_active_coils]
+        # )
         r12 = np.diag(self.coil_resist[: self.n_active_coils] ** 0.5)
-        w, v = np.linalg.eig(r12 @ mm1 @ r12)
+        # w, v = np.linalg.eig(r12 @ mm1 @ r12)
+
+        mm1 = self.coil_self_ind[: self.n_active_coils, : self.n_active_coils]
+        w, v = np.linalg.eig(r12 @ np.linalg.solve(mm1, r12))
+
         ordw = np.argsort(w)
         w_active = w[ordw]
 
         # 2. passive structures
         r12 = np.diag(self.coil_resist[self.n_active_coils :] ** 0.5)
-        mm1 = np.linalg.inv(
-            self.coil_self_ind[self.n_active_coils :, self.n_active_coils :]
-        )
-        w, v = np.linalg.eig(r12 @ mm1 @ r12)
+        # mm1 = np.linalg.inv(
+        #     self.coil_self_ind[self.n_active_coils :, self.n_active_coils :]
+        # )
+        # # w, v = np.linalg.eig(r12 @ mm1 @ r12)
+
+        mm1 = self.coil_self_ind[self.n_active_coils :, self.n_active_coils :]
+        w, v = np.linalg.eig(r12 @ np.linalg.solve(mm1, r12))
+
         ordw = np.argsort(w)
         self.w_passive = w[ordw]
-        Pmatrix_passive = ((v.T)[ordw]).T
+        Pmatrix_passive = v[:,ordw]
 
         # A sign convention for the sign of the normal modes is set
         # The way this is achieved is just a choice:

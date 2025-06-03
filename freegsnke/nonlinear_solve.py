@@ -292,19 +292,34 @@ class nl_solver:
             # select modes according to the provided thresholds:
             # include all modes that couple more than the threshold_dIy_dI
             # with respect to the strongest coupling vessel mode
-            strongest_coupling_vessel_mode = max(self.ndIydI_no_GS[self.n_active_coils :])
-            if fix_n_vessel_modes >= 0:  # type(fix_n_vessel_modes) is int:
+            ordered_ndIydI_no_GS = np.sort(self.ndIydI_no_GS[self.n_active_coils :])
+            strongest_coupling_vessel_mode = ordered_ndIydI_no_GS[-1]
+            if fix_n_vessel_modes >= 0:
                 # select modes based on ndIydI_no_GS up to fix_n_modes exactly
                 print(
                     f"      'fix_n_vessel_modes' option selected --> passive structure modes that couple most to the strongest passive structure mode are being selected."
                 )
 
-                ordered_ndIydI_no_GS = np.sort(self.ndIydI_no_GS[self.n_active_coils :])
                 if fix_n_vessel_modes > 0:
                     threshold_value = ordered_ndIydI_no_GS[-fix_n_vessel_modes]
-                else:
+                    # threshold_value = strongest_coupling_vessel_mode*(len(ordered_ndIydI_no_GS)-fix_n_vessel_modes)/len(ordered_ndIydI_no_GS)
+
+                    # tol = 1e-1  # Define a tolerance for "similarity"
+
+                    # # Convert to positive index for scanning
+                    # i = len(ordered_ndIydI_no_GS) - fix_n_vessel_modes
+
+                    # # Walk backward while values are close to threshold_value
+                    # while i > 0 and abs(ordered_ndIydI_no_GS[i] - ordered_ndIydI_no_GS[i-1])/abs(ordered_ndIydI_no_GS[i-1]) < tol:
+                    #     i -= 1
+
+                    # # Final threshold
+                    # threshold_value = ordered_ndIydI_no_GS[i]
+                    # fix_n_vessel_modes = len(ordered_ndIydI_no_GS) - i
+
+                else: # zero modes to be selected 
                     threshold_value = (
-                        ordered_ndIydI_no_GS[-1] * 1.1
+                        strongest_coupling_vessel_mode * 1.1
                     )  # scale up so no modes are selected
 
                 mode_coupling_mask_include = np.concatenate(
@@ -355,7 +370,7 @@ class nl_solver:
             mode_removal = False
 
         print("-----")
-
+        print(f"Initial mode selection:")
 
         # enact the mode selection
         mode_coupling_masks = (
@@ -366,10 +381,9 @@ class nl_solver:
         self.evol_metal_curr.initialize_for_eig(
             selected_modes_mask=None,
             mode_coupling_masks=mode_coupling_masks,
-            verbose=(fix_n_vessel_modes < 0),  # (type(fix_n_vessel_modes) is not int)
+            verbose=(fix_n_vessel_modes < 0), 
         )
 
-        print(f"Initial mode selection:")
         if fix_n_vessel_modes >= 0:
             print(f"   Active coils")
             print(
@@ -552,10 +566,6 @@ class nl_solver:
                 print(
                     f"          between passive metals and active metals = {self.Leuer_passive_stab_over_active_destab}"
                 )
-
-                # # find stabiltiy margins and unstable modes
-                # self.linearised_sol.calculate_stability_margin()
-                # print(f"      Stability margin = {self.linearised_sol.stability_margin}")
 
             else:
                 print(

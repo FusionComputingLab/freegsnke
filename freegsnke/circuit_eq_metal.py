@@ -158,7 +158,7 @@ class metal_currents:
             )
             print(f"   Passive structures")
             print(
-                f"      {freq_only_number} selected with characteristic timescales larger than 'max_mode_frequency'"
+                f"      {freq_only_number} selected with characteristic frequency less than 'max_mode_frequency'"
             )
 
         if mode_coupling_masks is not None:
@@ -169,7 +169,7 @@ class metal_currents:
             freq_and_thresh_number = np.sum(self.selected_modes_mask)
             if verbose:
                 print(
-                    f"      {freq_and_thresh_number - (freq_only_number + self.n_active_coils)} selected that couple with the plasma more than 'threshold_dIy_dI', despite having fast timescales"
+                    f"      {freq_and_thresh_number - (freq_only_number + self.n_active_coils)} recovered that couple with the plasma more than 'threshold_dIy_dI'"
                 )
 
             # exclude modes that do not couple enough
@@ -179,7 +179,7 @@ class metal_currents:
             final_number = np.sum(self.selected_modes_mask)
             if verbose:
                 print(
-                    f"      {freq_and_thresh_number - final_number} selected that couple with the plasma less than 'min_dIy_dI', despite having slow timescales"
+                    f"      {freq_and_thresh_number - final_number} removed that couple with the plasma less than 'min_dIy_dI'"
                 )
                 print(
                     f"      total selected = {final_number - self.n_active_coils} (out of {self.n_coils - self.n_active_coils})"
@@ -239,7 +239,9 @@ class metal_currents:
         # diagonalised separately from the active coils. The modes of used for the passive structures
         # diagonalise the isolated dynamics of the walls.
         # Equation is Lambda**(-1)Iddot + I = F
-        self.Lambdam1 = self.Pm1 @ (self.normal_modes.rm1l_non_symm @ self.P)
+        self.RP = np.diag(self.coil_resist) @ self.Pm1.T
+        self.Pm1Rm1 = np.linalg.solve(self.RP.T @ self.RP, self.RP.T)
+        self.Lambdam1 = (self.Pm1Rm1 @ self.coil_self_ind) @ self.Pm1.T
 
         self.solver = implicit_euler_solver(
             Mmatrix=self.Lambdam1,

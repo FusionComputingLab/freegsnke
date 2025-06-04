@@ -84,6 +84,7 @@ def create_machine():
     stepping = nonlinear_solve.nl_solver(
         profiles=profiles,
         eq=eq,
+        GSStaticSolver=NK,
         max_mode_frequency=10**2.5,
         full_timestep=3e-3,
         max_internal_timestep=1,

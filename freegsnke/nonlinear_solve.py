@@ -45,6 +45,7 @@ class nl_solver:
         self,
         profiles,
         eq,
+        GSStaticSolver,
         custom_coil_resist=None,
         custom_self_ind=None,
         full_timestep=0.0001,
@@ -63,6 +64,8 @@ class nl_solver:
         target_relative_tolerance_linearization=1e-8,
         target_dIy=1e-3,
         force_core_mask_linearization=False,
+        l2_reg=1e-6,
+        collinearity_reg=1e-6,
         verbose=False,
     ):
         """Initializes the time-evolution Object.
@@ -82,6 +85,7 @@ class nl_solver:
             It can be changed later by initializing a new set of initial conditions.
             Note however that, to change either the machine or limiter properties
             it will be necessary to instantiate a new nl_solver object.
+        GSStaticSolver : FreeGSNKE static solver object
         max_mode_frequency : float
             Threshold value used to include/exclude vessel normal modes.
             Only modes with smaller characteristic frequencies (larger timescales) are retained.
@@ -144,6 +148,10 @@ class nl_solver:
             2d matrix of mutual inductances between all pairs of machine conducting elements,
             including both active coils and passive structures
             If None, the values calculated by default in tokamak will be sourced and used.
+        l2_reg : float
+            Tychonoff regularization coeff used by the nonlinear solver
+        collinearity_reg : float
+            Tychonoff regularization coeff which further penalizes collinear terms used by the nonlinear solver
         """
 
         # grid parameters
@@ -174,7 +182,7 @@ class nl_solver:
         print("Checking that the provided 'eq' and 'profiles' are a GS solution...")
 
         # instantiating static GS solver on eq's domain
-        self.NK = NKGSsolver(eq)
+        self.NK = GSStaticSolver
         self.NK.forward_solve(
             eq,
             profiles,
@@ -408,11 +416,15 @@ class nl_solver:
 
         # sets up NK solver on the full grid, to be used when solving the
         # circuits equations as a problem in the plasma flux
-        self.psi_nk_solver = nk_solver.nksolver(self.nxny, verbose=True)
+        self.psi_nk_solver = nk_solver.nksolver(self.nxny, 
+                                                l2_reg=l2_reg,
+                                                collinearity_reg=collinearity_reg)
 
         # sets up NK solver for the currents
         self.currents_nk_solver = nk_solver.nksolver(
-            self.extensive_currents_dim, verbose=True
+            self.extensive_currents_dim, 
+            l2_reg=l2_reg,
+            collinearity_reg=collinearity_reg
         )
 
         # counter for the step advancement of the dynamics
@@ -1056,12 +1068,13 @@ class nl_solver:
                             "Final current shift=",
                             self.final_dI_record[j],
                         )
-                        print(
-                            "Final relative Iy change=",
-                            rel_ndIy,
-                            "; core_check=",
-                            core_check,
-                        )
+                        if force_core_mask_linearization:
+                            print(
+                                "Final relative Iy change=",
+                                rel_ndIy,
+                                "; core_check=",
+                                core_check,
+                            )
                         print(
                             "Initial residual=",
                             self.NK.initial_rel_residual,

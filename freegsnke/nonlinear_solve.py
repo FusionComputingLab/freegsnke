@@ -417,15 +417,15 @@ class nl_solver:
 
         # sets up NK solver on the full grid, to be used when solving the
         # circuits equations as a problem in the plasma flux
-        self.psi_nk_solver = nk_solver.nksolver(self.nxny, 
-                                                l2_reg=l2_reg,
-                                                collinearity_reg=collinearity_reg)
+        self.psi_nk_solver = nk_solver.nksolver(
+            self.nxny, l2_reg=l2_reg, collinearity_reg=collinearity_reg
+        )
 
         # sets up NK solver for the currents
         self.currents_nk_solver = nk_solver.nksolver(
-            self.extensive_currents_dim, 
+            self.extensive_currents_dim,
             l2_reg=l2_reg,
-            collinearity_reg=collinearity_reg
+            collinearity_reg=collinearity_reg,
         )
 
         # counter for the step advancement of the dynamics

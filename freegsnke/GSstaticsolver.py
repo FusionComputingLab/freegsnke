@@ -44,10 +44,12 @@ class NKGSsolver:
     The non-linear solvers are called using the 'forward_solve', 'inverse_solve' or generic 'solve' methods.
     """
 
-    def __init__(self, eq, 
-                 l2_reg=1e-6,
-                 collinearity_reg=1e-6,
-                 ):
+    def __init__(
+        self,
+        eq,
+        l2_reg=1e-6,
+        collinearity_reg=1e-6,
+    ):
         """Instantiates the solver object.
         Based on the domain grid of the input equilibrium object, it prepares
         - the linear solver 'self.linear_GS_solver'
@@ -90,9 +92,11 @@ class NKGSsolver:
         dZ = Z[0, 1] - Z[0, 0]
         self.dRdZ = dR * dZ
 
-        self.nksolver = nk_solver.nksolver(problem_dimension=self.nx * self.ny,
-                                           l2_reg=l2_reg,
-                                           collinearity_reg=collinearity_reg)
+        self.nksolver = nk_solver.nksolver(
+            problem_dimension=self.nx * self.ny,
+            l2_reg=l2_reg,
+            collinearity_reg=collinearity_reg,
+        )
 
         # linear solver for del*Psi=RHS with fixed RHS
         self.linear_GS_solver = freegs4e.multigrid.createVcycle(

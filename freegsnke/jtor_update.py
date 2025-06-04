@@ -147,7 +147,7 @@ class Jtor_universal:
     ):
         """
         Replaces Jtor_part1 when that fails. Implements a new algorithm to define the LCFS.
-        This is considerably more time consuming, but essential when the default routines in 
+        This is considerably more time consuming, but essential when the default routines in
         critical fail, as for example when the Xpt is not correctly identified.
 
 

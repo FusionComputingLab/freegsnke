@@ -34,10 +34,9 @@ class nksolver:
     F(x_0 + dx) is minimum.
     """
 
-    def __init__(self, problem_dimension, 
-                 l2_reg=1e-6,
-                 collinearity_reg=1e-6,
-                 verbose=False):
+    def __init__(
+        self, problem_dimension, l2_reg=1e-6, collinearity_reg=1e-6, verbose=False
+    ):
         """Instantiates the class.
 
         Parameters
@@ -163,10 +162,8 @@ class nksolver:
             # Omega[:-1, :-1] = 1.0 * self.Omega
             # self.Omega = np.matmul(givrot, Omega)
             return next_candidate
-        
-    def set_regularization(self, 
-                           l2_reg,
-                           collinearity_reg):
+
+    def set_regularization(self, l2_reg, collinearity_reg):
         """Sets the regularization coeffs
 
         Parameters
@@ -290,7 +287,8 @@ class nksolver:
                 - 1
             )
             collinear_aware_regulariz = (
-                np.eye(self.n_it + 1) * self.l2_reg + collinearity_penalty * self.collinearity_reg
+                np.eye(self.n_it + 1) * self.l2_reg
+                + collinearity_penalty * self.collinearity_reg
             )
             self.collinear_aware_regulariz = collinear_aware_regulariz * nR0**2
 
@@ -300,7 +298,7 @@ class nksolver:
                     self.G[:, : self.n_it + 1].T @ self.G[:, : self.n_it + 1]
                     + self.collinear_aware_regulariz
                 ),
-                np.dot(self.G[:, : self.n_it + 1].T, - R0),
+                np.dot(self.G[:, : self.n_it + 1].T, -R0),
             )
             coeffs = np.clip(coeffs, -clip, clip)
             # calculare the corresponding fraction of residual that is currently explained

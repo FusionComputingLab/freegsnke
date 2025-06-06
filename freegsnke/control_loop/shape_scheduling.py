@@ -3,10 +3,10 @@ Module for target and virtual circuit sequencing in control loop.
 
 """
 
-import pickle
+# import pickle
 
 import numpy as np
-from fnkemu.virtual_circuits.virtual_circuit_generator import VC_Generator as VCG
+# from fnkemu.virtual_circuits.virtual_circuit_generator import VC_Generator as VCG
 
 from freegsnke.virtual_circuits import VirtualCircuit
 
@@ -53,7 +53,7 @@ class VirtualCircuitScheduler:
         """
         # set lists
         self.vc_times_start = []  # times at which vcs are to be stopped using
-        self.vc_ojbects = []  # list of virtual circuit ojbects
+        self.vc_objects = []  # list of virtual circuit ojbects
         self.phase_names = []  # list of phase names
 
         for key, item in vcs_dict.items():
@@ -84,7 +84,7 @@ class VirtualCircuitScheduler:
                 targets = None
                 coils = None
 
-            self.vc_ojbects.append(vc_object)
+            self.vc_objects.append(vc_object)
             self.vc_times_start.append(time_start)
             self.phase_names.append(phase_name)
 
@@ -141,7 +141,7 @@ class VirtualCircuitScheduler:
         # get index corresponding to the time position
         pos = np.where(self.vc_times_start == t_vc)[0][0]
 
-        virtual_circuit = self.vc_ojbects[pos]
+        virtual_circuit = self.vc_objects[pos]
         return virtual_circuit
 
 
@@ -224,6 +224,7 @@ class ShapeTargetScheduler(TargetScheduler):
         # check if vc_flag is file .
         if vc_flag == "file":
             self.vc_scheduler = vc_scheduler
+
             # check consistency of target schedule and vc schedule
             # merge the time sequence from both target and vc, and check the
             # targets match at each midpiont.

@@ -219,7 +219,7 @@ class ShapeController:
     def reorder_resistance(self, coils):
         """reorder coil resistances to match coil order"""
         mask = [self.machine_param_coil_order[coil] for coil in coils]
-        return self.coil_resist[(mask)]
+        return self.coil_resist[np.ix_(mask)]
 
     ## this function will be replaced by instance of build virtual circuit class.
     def calc_vc_from_eq(self, targets, eq, profiles, coils=None):
@@ -316,7 +316,7 @@ class ShapeController:
         print("targets names", targets)
         print("required target deltas", target_deltas)
         print("gained target deltas", gained_target_deltas)
-        return gained_target_deltas
+        return gained_target_deltas, target_deltas
 
     @staticmethod
     def recompute_vc_from_sensitivity(virtual_circuit, targets, targets_obs=None):
@@ -483,7 +483,7 @@ class ShapeController:
         reshaped_currents = np.zeros(len(self.active_coils))
         for i, coil in enumerate(virtual_circuit.coils):
             # voltages_v1[i] = np.dot(inductance_matrix[self.coil_order_dictionary[coil],:], delta_currents[:])
-            #PCO patch until we sort this out
+            # PCO patch until we sort this out
             if coil == "pc":
                 continue
             reshaped_currents[self.active_coil_order_dictionary[coil]] = delta_currents[

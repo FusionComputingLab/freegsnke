@@ -20,6 +20,8 @@ class ControlSolenoid:
         dictionary containing target schedule.
     - contr_params_dict : str
         dictionary containing control parameters sequence.
+    - integral_term_0 : float
+        Value of the integral term at the beginning of the control.
     - solenoid_name : str
         A string to denote the solenoid current ("Solenoid", "P1", etc).
         Defaults to "Solenoid" if not given.
@@ -39,6 +41,7 @@ class ControlSolenoid:
         waveform_dict,
         schedule_dict,
         sol_vc_dict,
+        integral_term_0,
         solenoid_name=None,
     ):
         """
@@ -55,28 +58,40 @@ class ControlSolenoid:
             waveform_dict, schedule_dict, sol_vc_dict, solenoid_name
         )
 
-        self.vc = self.scheduler.retrieve_vc()
-        print(f"  The virtual circuit vector: {self.vc}")
+        # print(f"  The virtual circuit vector: {self.scheduler.vc_dict}")
 
-    def calculate_solenoid_delta(
-        self, inductacnes_pl, gain, blend, Ip_req, Ip_obs, Vloop_ff
-    ):
+        # The accumulated error in the plasma category
+        self.integral = integral_term_0
+
+    def calculate_solenoid_delta(self,
+                                 Kp,
+                                 Ki,
+                                 dt,
+                                 blend,
+                                 Ip_req,
+                                 Ip_obs,
+                                 Vloop_ff,
+                                 sol_vc):
         """
         Calculates the vector of current trajectories ΔI/Δt, as prescribed
         in the plasma category (and circuits category, supposedly) of the
         MAST-U PCS. The equations followed are:
 
-        Vloop_fb = gain * (Ip_req - Ip_obs) * M_p
-        Vloop = Vloop_fb * blend + Vloop_ff * (1 - blend)
-        ΔIsol/Δt = -Vloop / M_sp
+        Ip_error = (Ip_req - Ip_obs)
+        integral = Ip_error * dt
+        Vloop_fb = Kp * Ip_error + Ki * (integral + 0.5 * Ip_error * dt)
+        Vloop = Vloop_fb * blend + Vloop_ff * (1 - blend)/M_sp
+        ΔIsol/Δt = -Vloop
         ΔI/Δt = ΔIsol/Δt * vc_vector
 
         Parameters
         ----------
-        - inductacnes_pl : dict
+        - inductances_pl : dict
             A dictionary with all the required inductacnes_pl.
-        - gain : float
+        - Kp : float
             A proportional term used in the Vloop_fb computation.
+        - Ki : float
+            An integral term used in the Vloop_fb computation.
         - blend : float
             A value between 0 and 1 that acts as a weight in the Vloops sum.
         - Ip_req : float
@@ -97,26 +112,33 @@ class ControlSolenoid:
         delta_Ip = Ip_req - Ip_obs
         print(f"    The delta plasma current: {delta_Ip}")
 
-        # Compute the feedback loop voltage
-        M_p = inductacnes_pl["plasma"]
-        Vloop_fb = gain * delta_Ip * M_p
+        self.integral += delta_Ip * dt
+
+        integral_term = self.integral + 0.5 * delta_Ip * dt
+        Vloop_fb = Kp * delta_Ip + Ki * integral_term
         print(f"    The feedback loop voltage: {Vloop_fb}")
 
+        # This suggests that Vloop_fb is multiplied by the inductance, as an
+        # output (so it's actually a current), and that it's given in KA.
+        return Vloop_fb*-1.58*1e-2
+
         # Compute the loop voltage as a weighted sum
-        Vloop = blend * Vloop_fb + (1 - blend) * Vloop_ff
-        print(f"    The full loop voltage: {Vloop}")
+        M_sp = 1.580*1e-5 * 1e3
+        dIsoldt = blend * Vloop_fb - (1 - blend) * Vloop_ff * (1 / M_sp)
+
+        # return dIsoldt
 
         # Compute the rate of change of the solenoid current
-        M_sp = inductacnes_pl["mutual"]
-        dIsoldt = -Vloop * (1 / M_sp)
         print(f"    The trajectory for the solenoid current: {dIsoldt}")
 
-        # Apply dIsoldt to virtual circuit vector to get the current trajectories
-        # of the active coils
-        dI_dt = dIsoldt * self.vc
+        # Apply dIsoldt to virtual circuit vector to get the current
+        # trajectories of the active coils
+        dI_dt = dIsoldt * sol_vc
+        print(f"    The trajectory for the solenoid current, after VC: {dI_dt[0]}")
+
         return dI_dt
 
-    def ip_control(self, time_stamp, Rp, inductacnes_pl, Ip_obs=None, eq=None):
+    def ip_control(self, ts, prev_ts, Ip_obs=None, eq=None):
         """
         Execute all the steps in the pipeline for the control of the solenoid
         current, as prescribed by the PCS. This method is the API by design of
@@ -132,7 +154,9 @@ class ControlSolenoid:
         - inductacnes_pl : dict
             A dictionary with all the required inductacnes_pl.
         - Ip_obs : float
-            The observed plasma current. Defaults to None, in which case the observed plasma current is taken from the equilibrium/control params dictionary.
+            The observed plasma current. Defaults to None, in which case the
+            observed plasma current is taken from the equilibrium/control
+            params dictionary.
         - eq : equilibrium object
             optional equilibrium object
 
@@ -143,7 +167,7 @@ class ControlSolenoid:
            solenoid coil.
         """
         if Ip_obs is None:
-            Ip_obs = self.scheduler.get_observed_current(time_stamp, "Ip_obs", eq)
+            Ip_obs = self.scheduler.get_observed_current(ts, "Ip_obs", eq)
             print(f"  Ip from equilibrium: {Ip_obs}")
         else:
             print(f"User defined Ip_obs: {Ip_obs}")
@@ -151,34 +175,44 @@ class ControlSolenoid:
         # print(f"  The observed Ip: {Ip_obs}")
         # Implement the plasma category. First, the relevant entities should be
         # retrieved from the scheduler
-        controlled_targets = self.scheduler.desired_target_values(time_stamp)
-        if not controlled_targets:
-            print(f"  The plasma current is not controlled at t: {time_stamp}")
-            # return None
-            dI_dt = np.zeros_like(self.vc)  # return array of zeros if not controlled
+        Ip_req = self.scheduler.get_waveform_value(
+            param_type="Ip",  param="plasma", time_stamp=ts
+        )
+
+        # TODO check if this is monitored this way
+        if not Ip_req:
+            print(f"  The plasma current is not controlled at t: {ts}")
+            # return array of zeros if not controlled
+            dI_dt = np.zeros_like(self.scheduler.vc_dict)
             return dI_dt
-        Ip_req = controlled_targets[0]
-        control_params = self.scheduler.control_params
         print(f"  The requested Ip: {Ip_req}")
-        Vloop_req = self.scheduler.retrieve_control_param(
-            param_dict=control_params, time_stamp=time_stamp, param="Vloop"
+
+        Vloop_req = self.scheduler.get_waveform_value(
+            param_type="ff",  param="plasma", time_stamp=ts
         )
-        print(f"  The requested Vloop: {Vloop_req}")
-        gain_p = self.scheduler.retrieve_control_param(
-            param_dict=control_params, time_stamp=time_stamp, param="Kp"
-        )
-        print(f"  The plasma gain: {gain_p}")
-        blend = self.scheduler.retrieve_control_param(
-            param_dict=control_params, time_stamp=time_stamp, param="blend"
+        print(f"  The requested FF_Vloop: {Vloop_req}")
+
+        gain_p, _ = self.scheduler.get_gains(
+                ["plasma"], time_stamp=ts, K_type="Kprop")
+        gain_int, _ = self.scheduler.get_gains(
+                ["plasma"], time_stamp=ts, K_type="Kint")
+        print(f"  The plasma gains: Kp={gain_p}, Kint={gain_int}")
+
+        blend = self.scheduler.get_waveform_value(
+            param_type="blends",  param="plasma", time_stamp=ts
         )
         print(f"  The blend value: {blend}")
+        print("dt: ", (ts - prev_ts))
+
         dI_dt = self.calculate_solenoid_delta(
-            inductacnes_pl=inductacnes_pl,
-            Ip_obs=Ip_obs,
-            Ip_req=Ip_req,
-            Vloop_ff=Vloop_req,
-            gain=gain_p,
+            Kp=gain_p[0],
+            Ki=gain_int[0],
+            dt=(ts - prev_ts),
             blend=blend,
+            Ip_req=Ip_req,
+            Ip_obs=Ip_obs,
+            Vloop_ff=Vloop_req,
+            sol_vc=self.scheduler.retrieve_vc(ts)
         )
 
         return dI_dt
@@ -235,6 +269,9 @@ class SolenoidScheduler(TargetScheduler):
 
         # Execute the parent __init__()
         super().__init__(waveform_dict, schedule_dict)
+
+        # Ip requested
+        self.ips = waveform_dict["Ip"]
 
         if solenoid_name is None:
             print(

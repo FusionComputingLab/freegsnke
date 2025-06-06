@@ -36,11 +36,11 @@ class TargetScheduler:
         schedule_times = sorted(list(self.target_schedule_dict.keys()))
 
         print("schedule times", schedule_times)
-        print("schedule dictionary")
-        pprint(self.target_schedule_dict)
+        # print("schedule dictionary")
+        # pprint(self.target_schedule_dict)
 
-        print("waveform dictionary")
-        pprint(waveform_dict)
+        # print("waveform dictionary")
+        # pprint(waveform_dict)
         # load target waveform
         # target waveform  dict ~ {target_name : {"times":[time list],
         #                                         "vals": [vals list] , }
@@ -252,8 +252,9 @@ class TargetScheduler:
         Retrieves the value of the queried control parameter at time_stamp.
 
         Assumes timeseries waveform format - use for blends, vloop, ip, shapes
-        Arguments
-        ---------
+
+        Parameters
+        ----------
         - time_stamp : float (4 decimal places)
             Time stamp of the target to be retrieved.
         - param : str
@@ -270,6 +271,8 @@ class TargetScheduler:
             waveform_dict = self.fb_waves
         elif param_type == "blends":
             waveform_dict = self.blends
+        elif param_type == "Ip":
+            waveform_dict = self.ips
 
         if param not in waveform_dict.keys():
             print(
@@ -299,7 +302,7 @@ class TargetScheduler:
 
         return requested_parameter
 
-    def get_gains(self, targets, time_stamp, type="Kprop"):
+    def get_gains(self, targets, time_stamp, K_type="Kprop"):
         """
         Retrieves the shape gains for the target at time_stamp, given the target schedule.
         # Gains provided as time_periods - assume units of milliseconds (ms)
@@ -316,7 +319,10 @@ class TargetScheduler:
             shape gains
         """
         # get set of targets being controlled at this time
-        print("--- loading shape gains")
+        if targets[0] == "plasma":
+            print("--- loading plasma gains")
+        else:
+            print("--- loading shape gains")
         gains = []
         # dict format is {time : {target : tau, target_2 : tau_2, ...}}
         # more likely this if single set of gains for all time.
@@ -330,7 +336,7 @@ class TargetScheduler:
             )
         else:
             for target in targets:
-                gains.append(self.target_schedule_dict[time_pos]["gains"][target][type])
+                gains.append(self.target_schedule_dict[time_pos]["gains"][target][K_type])
         gains_arr = np.array(gains)
         print("gains array ---- ", gains_arr)
         return gains_arr, np.diag(gains_arr)

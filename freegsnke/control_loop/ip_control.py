@@ -41,7 +41,7 @@ class ControlSolenoid:
         waveform_dict,
         schedule_dict,
         sol_vc_dict,
-        integral_term_0,
+        integral_term_0=0,
         solenoid_name=None,
     ):
         """
@@ -60,7 +60,8 @@ class ControlSolenoid:
 
         # print(f"  The virtual circuit vector: {self.scheduler.vc_dict}")
 
-        # The accumulated error in the plasma category
+        # The accumulated error in the plasma category. Defaults to 0 if not
+        # given.
         self.integral = integral_term_0
 
     def calculate_solenoid_delta(self,

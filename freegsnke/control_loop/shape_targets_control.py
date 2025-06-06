@@ -122,9 +122,6 @@ class ShapeController:
         self.coil_resist = machine_parameters["coil_resist"]
         self.machine_coils = machine_parameters["coils"]
         self.machine_param_coil_order = machine_parameters["coil_order_dictionary"]
-        self.active_coil_order_dictionary = {
-            coil: i for i, coil in enumerate(self.active_coils)
-        }
 
         # reorder inductance matrix and coil resistances to match coil order
         self.inductance_full = self.reshape_inductance(coils=self.active_coils)
@@ -222,7 +219,7 @@ class ShapeController:
     def reorder_resistance(self, coils):
         """reorder coil resistances to match coil order"""
         mask = [self.machine_param_coil_order[coil] for coil in coils]
-        return self.coil_resist[_(mask)]
+        return self.coil_resist[(mask)]
 
     ## this function will be replaced by instance of build virtual circuit class.
     def calc_vc_from_eq(self, targets, eq, profiles, coils=None):
@@ -322,7 +319,7 @@ class ShapeController:
         return gained_target_deltas
 
     @staticmethod
-    def recompute_vc_from_sensitivity(virtual_circuit, targets):
+    def recompute_vc_from_sensitivity(virtual_circuit, targets, targets_obs=None):
         """
         Recompute a virtual circuit from the sensitivity matrix, using the targets provided.
 
@@ -368,7 +365,8 @@ class ShapeController:
         ]
         targ_values = np.array(
             [
-                virtual_circuit.targets_val[i]
+                # virtual_circuit.targets_val[i]
+                targets_obs[i]
                 for i in np.array([vc_targ_order_dict[targ] for targ in targets])
             ]
         )
@@ -451,7 +449,7 @@ class ShapeController:
                 "targets are a subset of the VC targets - recomputing VC from sensitivity"
             )
             virtual_circuit = self.recompute_vc_from_sensitivity(
-                virtual_circuit, targets
+                virtual_circuit, targets, targets_obs
             )
             # print("VC targets now ", virtual_circuit.targets)
             # print("coils now ", virtual_circuit.coils)
@@ -485,6 +483,9 @@ class ShapeController:
         reshaped_currents = np.zeros(len(self.active_coils))
         for i, coil in enumerate(virtual_circuit.coils):
             # voltages_v1[i] = np.dot(inductance_matrix[self.coil_order_dictionary[coil],:], delta_currents[:])
+            #PCO patch until we sort this out
+            if coil == "pc":
+                continue
             reshaped_currents[self.active_coil_order_dictionary[coil]] = delta_currents[
                 i
             ]

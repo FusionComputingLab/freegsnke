@@ -543,6 +543,7 @@ class nl_solver:
         if automatic_timestep_flag + mode_removal + linearize:
             print("Stability paramters:")
             self.linearised_sol.calculate_linear_growth_rate()
+            self.linearised_sol.calculate_stability_margin()
             self.calculate_Leuer_parameter()
             if len(self.linearised_sol.growth_rates):
                 self.unstable_mode_deformations()
@@ -552,6 +553,9 @@ class nl_solver:
                 print(f"      Growth rate = {self.linearised_sol.growth_rates} [1/s]")
                 print(
                     f"      Instability timescale = {self.linearised_sol.instability_timescale} [s]"
+                )
+                print(
+                    f"      Inductive stability margin = {self.linearised_sol.stability_margin}"
                 )
 
                 # rigid plasma metrics

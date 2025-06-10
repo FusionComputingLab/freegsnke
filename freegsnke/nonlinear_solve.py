@@ -501,7 +501,7 @@ class nl_solver:
             if len(self.linearised_sol.growth_rates):
                 # find stabiltiy margins and unstable modes
                 self.linearised_sol.calculate_stability_margin()
-                self.unstable_mode_deformations()
+                # self.unstable_mode_deformations()
                 print(f"      Growth rate = {self.linearised_sol.growth_rates} [1/s]")
                 print(
                     f"      Instability timescale = {self.linearised_sol.instability_timescale} [s]"
@@ -1070,12 +1070,15 @@ class nl_solver:
                             self.final_dI_record[j],
                         )
                         if force_core_mask_linearization:
-                            print(
-                                "Final relative Iy change=",
-                                rel_ndIy,
-                                "; core_check=",
-                                core_check,
-                            )
+                            try:
+                                print(
+                                    "Final relative Iy change=",
+                                    rel_ndIy,
+                                    "; core_check=",
+                                    core_check,
+                                )
+                            except:
+                                print('failed printout!')
                         print(
                             "Initial residual=",
                             self.NK.initial_rel_residual,

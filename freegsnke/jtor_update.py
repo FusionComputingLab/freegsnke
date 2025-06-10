@@ -142,7 +142,7 @@ class Jtor_universal:
         psi,
         psi_bndry=None,
         mask_outside_limiter=None,
-        rel_tolerance_xpt=1e-4,
+        rel_tolerance_xpt=1e-10,
         starting_dx=0.05,
     ):
         """
@@ -181,6 +181,7 @@ class Jtor_universal:
 
         # prepare psi_map to use
         psi_map = np.copy(psi)
+        self.psi_map = psi_map
         min_psi = np.amin(psi_map)
         psi_map[:, 0] = psi_map[0, :] = psi_map[-1, :] = psi_map[:, -1] = min_psi
         del_psi = np.amax(psi_map) - min_psi
@@ -247,6 +248,7 @@ class Jtor_universal:
 
         # build opt, xpt and diverted core mask accordingly
         self.lcfs = all_regions[regions_order[idx]][:-1]
+        self.lcfs = self.lcfs * self.dR_dZ[np.newaxis] + self.R0Z0[np.newaxis]
         # build xpt
         psi_bndry = current_psi_level * del_psi
         dist = np.linalg.norm(

@@ -124,8 +124,11 @@ class ShapeController:
         self.machine_param_coil_order = machine_parameters["coil_order_dictionary"]
 
         # reorder inductance matrix and coil resistances to match coil order
-        self.inductance_full = self.reshape_inductance(coils=self.active_coils)
-        self.coil_resist = self.reorder_resistance(coils=self.active_coils)
+        # ### ??? inducnace for active coils or control coils ???
+        # self.inductance_full = self.reshape_inductance(coils=self.active_coils)
+        # self.coil_resist = self.reorder_resistance(coils=self.active_coils)
+        self.inductance_full = self.reshape_inductance(coils=self.control_coils)
+        self.coil_resist = self.reorder_resistance(coils=self.control_coils)
         # reduced inductance matrix for control coils
         self.inductance_reduced = self.reshape_inductance(coils=self.control_coils)
         # initialise the VCH object

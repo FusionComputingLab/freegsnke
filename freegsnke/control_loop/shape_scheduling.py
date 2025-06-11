@@ -6,11 +6,12 @@ Module for target and virtual circuit sequencing in control loop.
 # import pickle
 
 import numpy as np
-# from fnkemu.virtual_circuits.virtual_circuit_generator import VC_Generator as VCG
 
 from freegsnke.virtual_circuits import VirtualCircuit
 
 from .target_scheduler import TargetScheduler
+
+# from fnkemu.virtual_circuits.virtual_circuit_generator import VC_Generator as VCG
 
 
 class VirtualCircuitScheduler:
@@ -59,12 +60,16 @@ class VirtualCircuitScheduler:
         for key, item in vcs_dict.items():
             phase_name = item["phase_name"]
             time_start = item["time_start"]
+            print("time start", time_start)
             if "vc_matrix" in item.keys():
                 vc_matrix = item["vc_matrix"]
                 shape_matrix = item["shape_matrix"]
                 targets = item["targets"]
                 coils = item["coils"]
                 # create VC object
+                print("buliding VC")
+                print("targets", targets)
+                print("matrix", vc_matrix)
                 vc_object = VirtualCircuit(
                     name=f"vc_start_{time_start:.4f}",
                     eq=None,
@@ -118,7 +123,7 @@ class VirtualCircuitScheduler:
 
     #     # update other parts such as vc_index, input currents, profile pars etc
 
-    def get_vc(self, time_stamp):
+    def get_vc(self, time_stamp, targets=None):
         """
         Retrieve appropriate virtual circuit object from the sequence of
         virtual circuits.
@@ -136,12 +141,49 @@ class VirtualCircuitScheduler:
         vc : object (VirtualCircuit)
             virtual circuit object to be used by the control voltages class
         """
+        print("GETTING VC")
         # find time position corresponding to vc to be used.
         t_vc = max(time for time in self.vc_times_start if time <= time_stamp)
         # get index corresponding to the time position
         pos = np.where(self.vc_times_start == t_vc)[0][0]
+        print("vc position", pos)
 
         virtual_circuit = self.vc_objects[pos]
+        print("vc object matrix", virtual_circuit.VCs_matrix)
+        if targets is not None:
+            print("checking targets and reorder if necessary")
+            print("vc targets", virtual_circuit.targets)
+            print("VCs matrix", virtual_circuit.VCs_matrix)
+            print("requested targets", targets)
+            # check that the target schedule is a subset of the vc sequence
+            if not set(targets).issubset(set(virtual_circuit.targets)):
+                raise ValueError(
+                    "targets scheduled for control not a subset of vc "
+                    f"computable targets at time {time_stamp} ",
+                )
+            elif targets != virtual_circuit.targets:
+                # check the order of the targets and select columns corresponding to the targets
+                print(
+                    "targets and vc targets do not match : Selecting columns corresponding to the targets"
+                )
+                targ_order_dict = dict(
+                    zip(
+                        virtual_circuit.targets, np.arange(len(virtual_circuit.targets))
+                    )
+                )
+                mask = [targ_order_dict[targ] for targ in targets]
+                print("coil ordering mask ", mask)
+                # print("coil ordering mask ", mask)
+                vc_mat_reduced = virtual_circuit.VCs_matrix[:, mask]
+                # vc_mat_reduced = virtual_circuit.VCs_matrix[:, np.ix_(mask)]
+                targs_reduced = [
+                    virtual_circuit.targets[i]
+                    for i in np.array([targ_order_dict[targ] for targ in targets])
+                ]
+                # reassign to VC object
+                virtual_circuit.VCs_matrix = vc_mat_reduced
+                virtual_circuit.targets = targs_reduced
+        print("VCs matrix", virtual_circuit.VCs_matrix)
         return virtual_circuit
 
 
@@ -299,7 +341,7 @@ class ShapeTargetScheduler(TargetScheduler):
     #     print("blends", blend_arr)
     #     return np.array(blend_arr)
 
-    def get_vc(self, time_stamp, eq=None, profiles=None, coils=None):
+    def get_vc(self, time_stamp, eq=None, profiles=None, coils=None, targets=None):
         """
         Get VC object given time stamp.
         - load from file if provided or compute with emulator
@@ -307,7 +349,7 @@ class ShapeTargetScheduler(TargetScheduler):
 
         if self.vc_flag == "file":
             print("loading VC from file")
-            vc = self.vc_scheduler.get_vc(time_stamp=time_stamp)
+            vc = self.vc_scheduler.get_vc(time_stamp=time_stamp, targets=targets)
 
         elif self.vc_flag == "Emulator" or "emulator" or "emu":
             assert (

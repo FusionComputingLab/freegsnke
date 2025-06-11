@@ -464,7 +464,7 @@ class ShapeController:
             )
 
         # compute the shape target deltas
-        gained_target_deltas = self.calculate_gained_target_deltas(
+        gained_target_deltas, _ = self.calculate_gained_target_deltas(
             targets=targets,
             targets_req=targets_req,
             targets_obs=targets_obs,
@@ -563,12 +563,16 @@ class ShapeController:
             return np.zeros(len(self.active_coils))
 
         gains_arr, shape_gain_matrix = self.feedback_target_scheduler.get_gains(
-            targets=controlled_targets, time_stamp=time_stamp, type="Kprop"
+            targets=controlled_targets, time_stamp=time_stamp, K_type="Kprop"
         )
         print("shape target gains", shape_gain_matrix)
         # get the virtual circuit object
         virtual_circuit = self.feedback_target_scheduler.get_vc(
-            eq=eq, profiles=profiles, time_stamp=time_stamp, coils=self.control_coils
+            eq=eq,
+            profiles=profiles,
+            time_stamp=time_stamp,
+            coils=self.control_coils,
+            targets=controlled_targets,
         )
 
         desired_target_values = self.feedback_target_scheduler.desired_target_values_fb(

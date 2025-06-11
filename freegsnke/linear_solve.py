@@ -36,6 +36,7 @@ class linear_solver:
         self,
         eq,
         Lambdam1,
+        P,
         Pm1,
         Rm1,
         Mey,
@@ -58,9 +59,11 @@ class linear_solver:
         Lambdam1: np.array
             State matrix of the circuit equations for the metal in normal mode form:
             P is the identity on the active coils and diagonalises the isolated dynamics
-            of the passive coils, R^{-1/2}L_{passive}R^{-1/2}
+            of the passive coils, R^{-1}L_{passive}
+        P: np.array
+            change of basis matrix, as defined above, with modes appropriately removed
         Pm1: np.array
-            change of basis matrix, as defined above, to the power of -1
+            change of basis matrix, as defined above, to the power of -1, with modes appropriately removed
         Rm1: np.array
             matrix of all metal resitances to the power of -1. Diagonal.
         Mey: np.array
@@ -81,10 +84,10 @@ class linear_solver:
         self.full_timestep = full_timestep
         self.plasma_norm_factor = plasma_norm_factor
 
-        if Lambdam1 is None:
-            self.Lambdam1 = Pm1 @ (Rm1 @ (eq.tokamak.coil_self_ind @ (Pm1.T)))
-        else:
-            self.Lambdam1 = Lambdam1
+        # if Lambdam1 is None:
+        #     self.Lambdam1 = Pm1 @ (Rm1 @ (eq.tokamak.coil_self_ind @ (Pm1.T)))
+        # else:
+        self.Lambdam1 = Lambdam1
         self.n_independent_vars = np.shape(self.Lambdam1)[0]
 
         self.Mmatrix = np.zeros(
@@ -101,7 +104,7 @@ class linear_solver:
         self.Rm1 = Rm1
         self.Pm1Rm1 = Pm1 @ Rm1
         self.Pm1Rm1Mey = np.matmul(self.Pm1Rm1, Mey)
-        self.MyeP_T = Pm1 @ Mey
+        self.MyeP = np.matmul(Mey.T, P)
         # self.handleMyy = Myy_handler(limiter_handler)
 
         self.n_active_coils = eq.tokamak.n_active_coils
@@ -236,7 +239,7 @@ class linear_solver:
         self.dMmatrix[:-1, -1] = np.dot(self.Pm1Rm1Mey, self.dIydI[:, -1])
 
         # metal to plasma
-        self.M0matrix[-1, :-1] = np.dot(self.MyeP_T, self.hatIy0)
+        self.M0matrix[-1, :-1] = np.dot(self.MyeP, self.hatIy0)
         # metal to plasma plasma-mediated
         self.dMmatrix[-1, :-1] = np.dot(self.dIydI[:, :-1].T, self.Myy_hatIy0)
 

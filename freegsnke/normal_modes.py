@@ -122,7 +122,8 @@ class mode_decomposition:
         """
 
         dgreen = np.sum(
-            eq_vgreen[np.newaxis, :, :, :] * self.Pmatrixm1[:, :, np.newaxis, np.newaxis],
+            eq_vgreen[np.newaxis, :, :, :]
+            * self.Pmatrixm1[:, :, np.newaxis, np.newaxis],
             axis=1,
         )
         return dgreen

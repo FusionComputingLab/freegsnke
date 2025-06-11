@@ -1082,7 +1082,7 @@ class nl_solver:
                                     core_check,
                                 )
                             except:
-                                print('failed printout!')
+                                print("failed printout!")
                         print(
                             "Initial residual=",
                             self.NK.initial_rel_residual,

@@ -104,7 +104,7 @@ class linear_solver:
         self.Rm1 = Rm1
         self.Pm1Rm1 = Pm1 @ Rm1
         self.Pm1Rm1Mey = np.matmul(self.Pm1Rm1, Mey)
-        self.MyeP = np.matmul(Mey.T, P)
+        self.MyeP = np.matmul(Mey.T, P).T
         # self.handleMyy = Myy_handler(limiter_handler)
 
         self.n_active_coils = eq.tokamak.n_active_coils

@@ -376,6 +376,7 @@ class nl_solver:
         self.simplified_solver_J1 = simplified_solver_J1(
             eq=eq,
             Lambdam1=self.evol_metal_curr.Lambdam1,
+            P=self.evol_metal_curr.P,
             Pm1=self.evol_metal_curr.Pm1,
             Rm1=np.diag(self.evol_metal_curr.Rm1),
             Mey=self.evol_metal_curr.Mey_matrix,
@@ -405,6 +406,7 @@ class nl_solver:
         self.linearised_sol = linear_solver(
             eq=eq,
             Lambdam1=self.evol_metal_curr.Lambdam1,
+            P=self.evol_metal_curr.P,
             Pm1=self.evol_metal_curr.Pm1,
             Rm1=np.diag(self.evol_metal_curr.Rm1),
             Mey=self.evol_metal_curr.Mey_matrix,
@@ -654,6 +656,7 @@ class nl_solver:
         self.simplified_solver_J1 = simplified_solver_J1(
             eq=eq,
             Lambdam1=self.evol_metal_curr.Lambdam1,
+            P=self.evol_metal_curr.P,
             Pm1=self.evol_metal_curr.Pm1,
             Rm1=np.diag(self.evol_metal_curr.Rm1),
             Mey=self.evol_metal_curr.Mey_matrix,
@@ -666,6 +669,7 @@ class nl_solver:
         self.linearised_sol = linear_solver(
             eq=eq,
             Lambdam1=self.evol_metal_curr.Lambdam1,
+            P=self.evol_metal_curr.P,
             Pm1=self.evol_metal_curr.Pm1,
             Rm1=np.diag(self.evol_metal_curr.Rm1),
             Mey=self.evol_metal_curr.Mey_matrix,

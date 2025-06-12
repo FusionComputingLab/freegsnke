@@ -149,7 +149,7 @@ class VirtualCircuitScheduler:
         print("vc position", pos)
 
         virtual_circuit = self.vc_objects[pos]
-        print("vc object matrix", virtual_circuit.VCs_matrix)
+        # print("vc object matrix", virtual_circuit.VCs_matrix)
         if targets is not None:
             print("checking targets and reorder if necessary")
             print("vc targets", virtual_circuit.targets)
@@ -183,7 +183,6 @@ class VirtualCircuitScheduler:
                 # reassign to VC object
                 virtual_circuit.VCs_matrix = vc_mat_reduced
                 virtual_circuit.targets = targs_reduced
-        print("VCs matrix", virtual_circuit.VCs_matrix)
         return virtual_circuit
 
 

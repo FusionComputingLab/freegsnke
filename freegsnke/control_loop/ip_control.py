@@ -4,6 +4,7 @@ Module to control plasma current Ip during a tokamak shot.
 """
 
 import numpy as np
+
 from .target_scheduler import TargetScheduler
 
 
@@ -64,15 +65,9 @@ class ControlSolenoid:
         # given.
         self.integral = integral_term_0
 
-    def calculate_solenoid_delta(self,
-                                 Kp,
-                                 Ki,
-                                 dt,
-                                 blend,
-                                 Ip_req,
-                                 Ip_obs,
-                                 Vloop_ff,
-                                 sol_vc):
+    def calculate_solenoid_delta(
+        self, Kp, Ki, dt, blend, Ip_req, Ip_obs, Vloop_ff, sol_vc
+    ):
         """
         Calculates the vector of current trajectories ΔI/Δt, as prescribed
         in the plasma category (and circuits category, supposedly) of the
@@ -121,10 +116,10 @@ class ControlSolenoid:
 
         # This suggests that Vloop_fb is multiplied by the inductance, as an
         # output (so it's actually a current), and that it's given in KA.
-        return Vloop_fb*-1.58*1e-2
+        # return Vloop_fb*-1.58*1e-2
 
         # Compute the loop voltage as a weighted sum
-        M_sp = 1.580*1e-5 * 1e3
+        M_sp = 1.580 * 1e-5 * 1e3
         dIsoldt = blend * Vloop_fb - (1 - blend) * Vloop_ff * (1 / M_sp)
 
         # return dIsoldt
@@ -177,7 +172,7 @@ class ControlSolenoid:
         # Implement the plasma category. First, the relevant entities should be
         # retrieved from the scheduler
         Ip_req = self.scheduler.get_waveform_value(
-            param_type="Ip",  param="plasma", time_stamp=ts
+            param_type="Ip", param="plasma", time_stamp=ts
         )
 
         # TODO check if this is monitored this way
@@ -189,18 +184,16 @@ class ControlSolenoid:
         print(f"  The requested Ip: {Ip_req}")
 
         Vloop_req = self.scheduler.get_waveform_value(
-            param_type="ff",  param="plasma", time_stamp=ts
+            param_type="ff", param="plasma", time_stamp=ts
         )
         print(f"  The requested FF_Vloop: {Vloop_req}")
 
-        gain_p, _ = self.scheduler.get_gains(
-                ["plasma"], time_stamp=ts, K_type="Kprop")
-        gain_int, _ = self.scheduler.get_gains(
-                ["plasma"], time_stamp=ts, K_type="Kint")
+        gain_p, _ = self.scheduler.get_gains(["plasma"], time_stamp=ts, K_type="Kprop")
+        gain_int, _ = self.scheduler.get_gains(["plasma"], time_stamp=ts, K_type="Kint")
         print(f"  The plasma gains: Kp={gain_p}, Kint={gain_int}")
 
         blend = self.scheduler.get_waveform_value(
-            param_type="blends",  param="plasma", time_stamp=ts
+            param_type="blends", param="plasma", time_stamp=ts
         )
         print(f"  The blend value: {blend}")
         print("dt: ", (ts - prev_ts))
@@ -213,7 +206,7 @@ class ControlSolenoid:
             Ip_req=Ip_req,
             Ip_obs=Ip_obs,
             Vloop_ff=Vloop_req,
-            sol_vc=self.scheduler.retrieve_vc(ts)
+            sol_vc=self.scheduler.retrieve_vc(ts),
         )
 
         return dI_dt

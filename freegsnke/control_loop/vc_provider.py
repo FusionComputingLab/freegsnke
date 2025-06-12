@@ -24,9 +24,8 @@ along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 import abc
-import numpy as np
 
-from freegsnke import ObservableRegistry
+from freegsnke.observable_registry import ObservableRegistry
 from freegsnke.virtual_circuits import VirtualCircuit
 
 
@@ -39,23 +38,74 @@ class VirtualCircuitProvider(abc.ABC):
                     timestamp).
     """
 
+    def __init__(self, observable_registry: ObservableRegistry | None = None):
+        """
+        Initialise the virtual circuit provider.
+
+        Parameters
+        ----------
+        observable_registry : ObservableRegistry | None (default: None)
+            The observable registry to set the provider to use.
+        """
+        self._observable_registry = None
+        if observable_registry is None or self._validate_observable_registry(
+            observable_registry
+        ):
+            self._observable_registry = observable_registry
+
     @abc.abstractmethod
-    def get_vc(self, time_stamp: float, targets: list[str], observable_registry: ObservableRegistry) -> VirtualCircuit | None:
+    def get_vc(
+        self,
+        timestamp: float,
+        targets: list[str],
+    ) -> VirtualCircuit | None:
         """
         Gets a Virtual Circuit for the given timestamp and observables requested from
         the registry.
 
         Parameters
         ----------
-        time_stamp : float (4 decimal places)
-            time stamp of the virtual circuit to be retrieved
-        observable_registry : ObservableRegistry
-            registry to obtain observables from
+        timestamp : float (4 decimal places)
+            timestamp at which the virtual circuit should be retrieved
+        targets : list[str]
+            list of targets to get a virtual circuit for
 
         Returns
         -------
         vc : VirtualCircuit | None
             virtual circuit object to be used by the control voltages class or None if
             no virtual circuit could be obtained or constructed.
+        """
+        pass
+
+    def set_observable_registry(self, observable_registry: ObservableRegistry) -> bool:
+        """
+        Sets observable registry to provided registry if it provides the necessary
+        observables for the provider to execute get_vc correctly.
+
+        Parameters
+        ----------
+        observable_registry : ObservableRegistry | None (default: None)
+            The observable registry to set the provider to use.
+        """
+        if not self._validate_observable_registry(observable_registry):
+            return False
+
+        self._observable_registry = observable_registry
+        return True
+
+    @abc.abstractmethod
+    def _validate_observable_registry(
+        self, observable_registry: ObservableRegistry
+    ) -> bool:
+        """
+        Determine if the provided observable registry satisfies the necessary
+        requirements for get_vc to be executed correctly. E.g. does it provide access to
+        all the physical parameters of an equilibrium needed by a model.
+
+        Parameters
+        ----------
+        observable_registry : ObservableRegistry
+            The observable registry to validate.
         """
         pass

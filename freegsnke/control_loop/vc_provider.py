@@ -41,6 +41,11 @@ class VirtualCircuitProvider(abc.ABC):
     def __init__(self, observable_registry: ObservableRegistry | None = None):
         """
         Initialise the virtual circuit provider.
+
+        Parameters
+        ----------
+        observable_registry : ObservableRegistry | None (default: None)
+            The observable registry to set the provider to use.
         """
         self._observable_registry = None
         if observable_registry is None or self._validate_observable_registry(
@@ -80,7 +85,7 @@ class VirtualCircuitProvider(abc.ABC):
 
         Parameters
         ----------
-        observable_registry : ObservableRegistry
+        observable_registry : ObservableRegistry | None (default: None)
             The observable registry to set the provider to use.
         """
         if not self._validate_observable_registry(observable_registry):
@@ -97,5 +102,10 @@ class VirtualCircuitProvider(abc.ABC):
         Determine if the provided observable registry satisfies the necessary
         requirements for get_vc to be executed correctly. E.g. does it provide access to
         all the physical parameters of an equilibrium needed by a model.
+
+        Parameters
+        ----------
+        observable_registry : ObservableRegistry
+            The observable registry to validate.
         """
         pass

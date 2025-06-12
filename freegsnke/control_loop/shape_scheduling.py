@@ -7,14 +7,16 @@ Module for target and virtual circuit sequencing in control loop.
 
 import numpy as np
 
+from freegsnke.observable_registry import ObservableRegistry
 from freegsnke.virtual_circuits import VirtualCircuit
 
 from .target_scheduler import TargetScheduler
+from .vc_provider import VirtualCircuitProvider
 
 # from fnkemu.virtual_circuits.virtual_circuit_generator import VC_Generator as VCG
 
 
-class VirtualCircuitScheduler:
+class VirtualCircuitScheduler(VirtualCircuitProvider):
     """
     Class to build a virtual circuit objects from file, and store the sequence
     of virtual circuits along with appropriate time stamps.
@@ -123,23 +125,27 @@ class VirtualCircuitScheduler:
 
     #     # update other parts such as vc_index, input currents, profile pars etc
 
-    def get_vc(self, time_stamp, targets=None):
+    def get_vc(
+        self,
+        time_stamp: float,
+        targets: list[str],
+    ) -> VirtualCircuit | None:
         """
-        Retrieve appropriate virtual circuit object from the sequence of
-        virtual circuits.
+        Gets a Virtual Circuit for the given timestamp and observables requested from
+        the registry.
 
         Parameters
         ----------
-        time_stamp : float (4 decimal places)
-            time stamp of the virtual circuit to be retrieved
-        time_index : int
-            index in the sequence of virtual circuits to be retrieved. Start at
-            zero.
+        timestamp : float (4 decimal places)
+            timestamp at which the virtual circuit should be retrieved
+        targets : list[str]
+            list of targets to get a virtual circuit for
 
         Returns
         -------
-        vc : object (VirtualCircuit)
-            virtual circuit object to be used by the control voltages class
+        vc : VirtualCircuit | None
+            virtual circuit object to be used by the control voltages class or None if
+            no virtual circuit could be obtained or constructed.
         """
         print("GETTING VC")
         # find time position corresponding to vc to be used.
@@ -185,6 +191,24 @@ class VirtualCircuitScheduler:
                 virtual_circuit.targets = targs_reduced
         print("VCs matrix", virtual_circuit.VCs_matrix)
         return virtual_circuit
+
+    def _validate_observable_registry(
+        self, observable_registry: ObservableRegistry
+    ) -> bool:
+        """
+        Determine if the provided observable registry satisfies the necessary
+        requirements for get_vc to be executed correctly. E.g. does it provide access to
+        all the physical parameters of an equilibrium needed by a model.
+
+        This class does not require any observable registry as the VC matrices are
+        already built and do not need to be computed.
+
+        Parameters
+        ----------
+        observable_registry : ObservableRegistry
+            The observable registry to validate.
+        """
+        return True
 
 
 def pre_run_emulators(vcg, stepping, targets, coils):

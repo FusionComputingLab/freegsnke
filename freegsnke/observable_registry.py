@@ -3,7 +3,7 @@ from typing import Any, Callable, TypeAlias
 ObservableFunc: TypeAlias = Callable[[float], Any]
 
 
-class ObservableRegstry:
+class ObservableRegistry:
     """
     An observable registry provides an abstracted means of obtaining observables
     regarding an equilibrium and associated parameters. The idea is that any diagnostic

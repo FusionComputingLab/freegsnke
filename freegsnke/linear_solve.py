@@ -20,7 +20,7 @@ along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 import numpy as np
-from scipy.linalg import solve_sylvester
+from scipy.linalg import solve, solve_sylvester
 
 from .implicit_euler import implicit_euler_solver
 
@@ -39,7 +39,6 @@ class linear_solver:
         Pm1,
         Rm1,
         Mey,
-        # limiter_handler,
         plasma_norm_factor,
         plasma_resistance_1d,
         max_internal_timestep=0.0001,
@@ -81,8 +80,15 @@ class linear_solver:
         self.full_timestep = full_timestep
         self.plasma_norm_factor = plasma_norm_factor
 
+        self.Pm1 = Pm1
+        self.Rm1 = Rm1
+        self.RP = np.diag(eq.tokamak.coil_resist) @ Pm1.T
+        self.Pm1Rm1 = np.linalg.solve(self.RP.T @ self.RP, self.RP.T)
+        self.Pm1Rm1Mey = np.matmul(self.Pm1Rm1, Mey)
+        self.MyeP_T = Pm1 @ Mey
+
         if Lambdam1 is None:
-            self.Lambdam1 = Pm1 @ (Rm1 @ (eq.tokamak.coil_self_ind @ (Pm1.T)))
+            self.Lambdam1 = (self.Pm1Rm1 @ eq.tokamak.coil_self_ind) @ Pm1.T
         else:
             self.Lambdam1 = Lambdam1
         self.n_independent_vars = np.shape(self.Lambdam1)[0]
@@ -96,13 +102,6 @@ class linear_solver:
         self.dMmatrix = np.zeros(
             (self.n_independent_vars + 1, self.n_independent_vars + 1)
         )
-
-        self.Pm1 = Pm1
-        self.Rm1 = Rm1
-        self.Pm1Rm1 = Pm1 @ Rm1
-        self.Pm1Rm1Mey = np.matmul(self.Pm1Rm1, Mey)
-        self.MyeP_T = Pm1 @ Mey
-        # self.handleMyy = Myy_handler(limiter_handler)
 
         self.n_active_coils = eq.tokamak.n_active_coils
 
@@ -211,40 +210,38 @@ class linear_solver:
 
         """
 
-        self.M0matrix = np.zeros(
-            (self.n_independent_vars + 1, self.n_independent_vars + 1)
-        )
-        self.dMmatrix = np.zeros(
-            (self.n_independent_vars + 1, self.n_independent_vars + 1)
-        )
-
         nRp = (
             np.sum(self.plasma_resistance_1d * self.hatIy0 * self.hatIy0)
             * self.plasma_norm_factor
         )
 
+        # M0 matrix
+        self.M0matrix = np.zeros(
+            (self.n_independent_vars + 1, self.n_independent_vars + 1)
+        )
         # metal-metal before plasma
         self.M0matrix[: self.n_independent_vars, : self.n_independent_vars] = np.copy(
             self.Lambdam1
+        )
+        # metal to plasma
+        self.M0matrix[-1, :-1] = np.dot(self.MyeP_T, self.hatIy0) / nRp
+
+        # dMmatrix
+        self.dMmatrix = np.zeros(
+            (self.n_independent_vars + 1, self.n_independent_vars + 1)
         )
         # metal-metal plasma-mediated
         self.dMmatrix[: self.n_independent_vars, : self.n_independent_vars] = np.matmul(
             self.Pm1Rm1Mey, self.dIydI[:, :-1]
         )
-
         # plasma to metal
         self.dMmatrix[:-1, -1] = np.dot(self.Pm1Rm1Mey, self.dIydI[:, -1])
-
-        # metal to plasma
-        self.M0matrix[-1, :-1] = np.dot(self.MyeP_T, self.hatIy0)
         # metal to plasma plasma-mediated
         self.dMmatrix[-1, :-1] = np.dot(self.dIydI[:, :-1].T, self.Myy_hatIy0)
-
         self.dMmatrix[-1, -1] = np.dot(self.dIydI[:, -1], self.Myy_hatIy0)
-
         self.dMmatrix[-1, :] /= nRp
-        self.M0matrix[-1, :] /= nRp
 
+        # combine
         self.Mmatrix = self.M0matrix + self.dMmatrix
 
         # build necessary terms to incorporate forcing term from variations of the profile parameters
@@ -348,7 +345,11 @@ class linear_solver:
         self,
     ):
         """
-        Here we calculate the stability margin parameter from:
+        Here we calculate the inductive stability margin parameter from:
+
+        https://dx.doi.org/10.1088/0029-5515/49/11/115003
+
+        which references the original paper:
 
         https://iopscience.iop.org/article/10.1088/0029-5515/45/8/021
 

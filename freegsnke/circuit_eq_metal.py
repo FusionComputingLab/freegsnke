@@ -234,7 +234,7 @@ class metal_currents:
             )
 
             self.P = self.P[:, self.selected_modes_mask_partial]
-            self.Pm1 = self.normal_modes.Pmatrixm1[self.selected_modes_mask]
+            self.Pm1 = self.Pm1[self.selected_modes_mask_partial]
 
         # this is not needed any longer and now incorrect, the eigenvectors in P are independent but NOT orthogonal
         # self.Pm1 = (self.P).T

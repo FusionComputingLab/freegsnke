@@ -49,19 +49,38 @@ class TargetScheduler:
         self.fb_waves = waveform_dict["fb"]
         self.blends = waveform_dict["blends"]
 
-        # for quantity in self.target_waveform_dict.keys():
-        #     print("timeseries waveform type", quantity)
-        #     if "times" in self.target_waveform_dict[quantity].keys():
-        #         item = self.target_waveform_dict[quantity]
-        #         if len(item["times"]) != len(item["vals"]):
-        #             raise ValueError("times and vals arrays must be same length")
-        #     else:
-        #         print("further nested dict")
-        #         for key, item in self.target_waveform_dict[quantity].items():
-        #             print(key, item)
-        #             if len(item["times"]) != len(item["vals"]):
-        #                 print("Error in waveform dict", key)
-        #                 raise ValueError("times and vals arrays must be same length")
+        # check targets in schedule targets and waveform targets are the same set of targets.
+        ff_targets = list(self.ff_waves.keys())
+        fb_targets = list(self.fb_waves.keys())
+        blend_targets = list(self.blends.keys())
+
+        # check targets in schedule targets and waveform targets are the same set of targets.
+        for t, val in self.target_schedule_dict.items():
+            targs_in_sched = val["targets"]
+            # check if subset of targets in schedule are in targets in waveform
+            if not set(targs_in_sched).issubset(set(ff_targets)):
+                print(
+                    f"Scheduling error at time {t} - missing ff waves for targets requested"
+                )
+                raise ValueError(
+                    "Targets in schedule not a subset of targets in ff waveform"
+                )
+            elif not set(targs_in_sched).issubset(set(fb_targets)):
+                print(
+                    f"Scheduling error at time {t} - missing fb waves for targets requested"
+                )
+                raise ValueError(
+                    "Targets in schedule not a subset of targets in fb waveform"
+                )
+            elif not set(targs_in_sched).issubset(set(blend_targets)):
+                print(
+                    f"Scheduling error at time {t} - missing blends for targets requested"
+                )
+                raise ValueError(
+                    "Targets in schedule not a subset of targets in blend waveform"
+                )
+
+        #  OR popualte ff waves etc with targets from schedule
 
         #### TODO MODIFY this check to be more robust
         # check compatibility of target schedule and target waveform
@@ -329,6 +348,7 @@ class TargetScheduler:
         time_pos = max(
             time for time in self.target_schedule_dict.keys() if time <= time_stamp
         )
+
         if time_pos is None:
             print(
                 "time requested is before first control parameter time, "
@@ -336,7 +356,14 @@ class TargetScheduler:
             )
         else:
             for target in targets:
-                gains.append(self.target_schedule_dict[time_pos]["gains"][target][K_type])
+                blend = self.get_blends(time_stamp, target)
+                if blend == 0.0:
+                    gains.append(0)
+                    print("blend is zero - FF only so set gain to zero")
+                else:
+                    gains.append(
+                        self.target_schedule_dict[time_pos]["gains"][target][K_type]
+                    )
         gains_arr = np.array(gains)
-        print("gains array ---- ", gains_arr)
+        # print("gains array ---- ", gains_arr)
         return gains_arr, np.diag(gains_arr)

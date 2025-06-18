@@ -85,9 +85,9 @@ def create_machine():
         profiles=profiles,
         eq=eq,
         GSStaticSolver=NK,
+        fix_n_vessel_modes=50,
         max_mode_frequency=10**2.5,
         full_timestep=3e-3,
-        max_internal_timestep=1,
         plasma_resistivity=5e-7,
         automatic_timestep=False,
     )
@@ -96,7 +96,7 @@ def create_machine():
 
 def test_linearised_growth_rate(create_machine):
     tokamak, eq, profiles, stepping = create_machine
-    true_GR = 0.05975802
+    true_GR = 0.0586
     # check that
     assert (
         abs((stepping.linearised_sol.instability_timescale[0] - true_GR) / true_GR)

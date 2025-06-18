@@ -69,15 +69,18 @@ class mode_decomposition:
 
         # 2. passive structures
         rm1 = np.diag(self.coil_resist[self.n_active_coils :] ** -1)
-        mm1 = self.coil_self_ind[self.n_active_coils :, self.n_active_coils :]
-        w, v = np.linalg.eig(rm1 @ mm1)
+        mm = self.coil_self_ind[self.n_active_coils :, self.n_active_coils :]
+        w, v = np.linalg.eig(rm1 @ mm)
+        # w as calculated here are timescales
+        # here we switch to frequencies
+        w = 1./w
         ordw = np.argsort(w)
         self.w_passive = w[ordw]
         Pmatrix_passive = v[:, ordw]
 
         # A sign convention for the sign of the normal modes is set
         # The way this is achieved is just a choice:
-        Pmatrix_passive /= np.sign(np.sum(Pmatrix_passive, axis=0, keepdims=True))
+        # Pmatrix_passive /= np.sign(np.sum(Pmatrix_passive, axis=0, keepdims=True))
 
         # find inverse
         Pmatrix_passive_m1 = np.linalg.inv(Pmatrix_passive)

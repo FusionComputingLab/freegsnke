@@ -202,6 +202,7 @@ class nl_solver:
         self.dt_step = full_timestep
         self.max_internal_timestep = max_internal_timestep
         self.set_plasma_resistivity(plasma_resistivity)
+        self.target_dIy = target_dIy
 
         # prepare for mode selection
         if max_mode_frequency is None:
@@ -362,6 +363,42 @@ class nl_solver:
         self.approved_target_dIy = np.concatenate(
             (self.approved_target_dIy, [target_dIy])
         )
+        
+        # need to build this
+        #
+        #
+                #
+        #
+                #
+        #
+                #
+        #
+                #
+        #
+                #
+        #
+                #
+        #
+                #
+        #
+                #
+        #
+                #
+        #
+                #
+        #
+                #
+        #
+                #
+        #
+                #
+        #
+                #
+        #
+                #
+        #
+        
+        # self.approved_target_dItheta  1e-3*np.ones(nonlinear_solver.n_profiles_parameters)
 
         # This solves the system of circuit eqs based on an assumption
         # for the direction of the plasma current distribution at time t+dt
@@ -692,134 +729,266 @@ class nl_solver:
         self.assign_currents_solve_GS(self.trial_currents, self.rtol_NK)
         self.trial_plasma_psi = np.copy(self.eq2.plasma_psi)
 
-    # # not used atm, used when building the Jacobian of the plasma current distribution with respect to the coefficients of the profiles object
-    # def prepare_build_dIydpars(self, profiles, rtol_NK, target_dIy, starting_dpars):
-    #     """Prepares to compute the term d(Iy)/d(alpha_m, alpha_n, profifile_par)
-    #     where profiles_par = paxis or betap.
-    #     It infers the value of delta(indep_variable) corresponding to a change delta(I_y)
-    #     with norm(delta(I_y))=target_dIy.
+    def prepare_build_dIydtheta(
+        self, 
+        profiles, 
+        rtol_NK, 
+        target_dIy, 
+        starting_dthetas):
+        """
+        
+        Prepares to compute the term d(Iy)/d(theta) where theta is a vector of the parameters
+        that define the plasma current density profile being used. 
+        It infers the value of delta(indep_variable) corresponding to a change delta(I_y)
+        with norm(delta(I_y))=target_dIy.
 
-    #     Parameters
-    #     ----------
-    #     profiles : FreeGS4E profiles object
-    #         The profiles object of the initial condition equilibrium, i.e. the linearization point.
-    #     rtol_NK : float
-    #         Relative tolerance to be used in the static GS problems.
-    #     target_dIy : float
-    #         Target value for the norm of delta(I_y), on which th finite difference derivative is calculated.
-    #     starting_dpars : tuple (d_alpha_m, d_alpha_n, relative_d_profiles_par)
-    #         Initial value to be used as delta(indep_variable) to infer the slope of norm(delta(I_y))/delta(indep_variable).
-    #         Note that the first two values in the tuple are absolute deltas,
-    #         while the third value is relative, d_profiles_par = relative_d_profiles_par * profiles_par
-    #     """
+        Parameters
+        ----------
+        profiles : FreeGS4E profiles object
+            The profiles object of the initial condition equilibrium, i.e. the linearization point.
+        rtol_NK : float
+            Relative tolerance to be used in the static GS problems.
+        target_dIy : float
+            Target value for the norm of delta(I_y), on which th finite difference derivative is calculated.
+        starting_dthetas : tuple (d_alpha_m, d_alpha_n, relative_d_profiles_par)
+            Initial value to be used as delta(indep_variable) to infer the slope of norm(delta(I_y))/delta(indep_variable).
+            Note that the first two values in the tuple are absolute deltas,
+            while the third value is relative, d_profiles_par = relative_d_profiles_par * profiles_par
+        """
 
-    #     current_ = np.copy(self.currents_vec)
+        current_ = np.copy(self.currents_vec)
 
-    #     # vary alpha_m
-    #     self.check_and_change_profiles(
-    #         profiles_coefficients=(
-    #             profiles.alpha_m + starting_dpars[0],
-    #             profiles.alpha_n,
-    #         )
-    #     )
-    #     self.assign_currents_solve_GS(current_, rtol_NK)
-    #     dIy_0 = self.limiter_handler.Iy_from_jtor(self.profiles2.jtor) - self.Iy
-    #     rel_ndIy_0 = np.linalg.norm(dIy_0) / self.nIy
-    #     self.final_dpars_record[0] = starting_dpars[0] * target_dIy / rel_ndIy_0
+        # for setting profile parameters
+        if self.profiles_type == "ConstrainPaxisIp":
+            param = "paxis"
+        elif self.profiles_type == "ConstrainBetapIp":
+            param = "betap"
+        elif self.profiles_type == "Fiesta_Topeol":
+            param = "beta0"
+        else:
+            param = None
 
-    #     # vary alpha_n
-    #     self.check_and_change_profiles(
-    #         profiles_coefficients=(
-    #             profiles.alpha_m,
-    #             profiles.alpha_n + starting_dpars[1],
-    #         )
-    #     )
-    #     self.assign_currents_solve_GS(current_, rtol_NK)
-    #     dIy_0 = self.limiter_handler.Iy_from_jtor(self.profiles2.jtor) - self.Iy
-    #     rel_ndIy_0 = np.linalg.norm(dIy_0) / self.nIy
-    #     self.final_dpars_record[1] = starting_dpars[1] * target_dIy / rel_ndIy_0
+        # carry out the initial perturbations
+        if param is not None:
 
-    #     # vary paxis or betap
-    #     self.check_and_change_profiles(
-    #         profiles_coefficients=(profiles.alpha_m, profiles.alpha_n),
-    #         profiles_parameter=(1 + starting_dpars[2]) * profiles.profiles_parameter,
-    #     )
-    #     self.assign_currents_solve_GS(current_, rtol_NK)
-    #     dIy_0 = self.limiter_handler.Iy_from_jtor(self.profiles2.jtor) - self.Iy
-    #     rel_ndIy_0 = np.linalg.norm(dIy_0) / self.nIy
-    #     self.final_dpars_record[2] = (
-    #         starting_dpars[2] * profiles.profiles_parameter * target_dIy / rel_ndIy_0
-    #     )
+            dIy_0 = np.zeros(len(self.dIy),3)
+            rel_ndIy_0 = np.zeros(3)
 
-    # # not used atm, builds the Jacobian of the plasma current distribution with respect to the coefficients of the profiles object
-    # # can only handle ConstrainPaxisIp and ConstrainBetapIp profiles families.
-    # def build_dIydIpars(self, profiles, rtol_NK, verbose=False):
-    #     """Compute the matrix d(Iy)/d(alpha_m, alpha_n, profifile_par) as a finite difference derivative,
-    #     using the value of delta(indep_viriable) inferred earlier by self.prepare_build_dIypars.
+            # vary alpha_m
+            self.check_and_change_profiles(
+                profiles_parameters={
+                    "alpha_m": profiles.alpha_m + starting_dthetas[0],
+                    "alpha_n": profiles.alpha_n,
+                    param: getattr(profiles, param),
+                }
+            )
+            self.assign_currents_solve_GS(current_, rtol_NK)
+            dIy_0[:,0] = self.limiter_handler.Iy_from_jtor(self.profiles2.jtor) - self.Iy
+            rel_ndIy_0[i] = np.linalg.norm(dIy_0[:,0]) / self.nIy
+            self.final_dtheta_record[0] = starting_dthetas[0] * target_dIy / rel_ndIy_0[i]
 
-    #     Parameters
-    #     ----------
-    #     profiles : FreeGS4E profiles object
-    #         The profiles object of the initial condition equilibrium, i.e. the linearization point.
-    #     rtol_NK : float
-    #         Relative tolerance to be used in the static GS problems.
+            # vary alpha_n
+            self.check_and_change_profiles(
+                profiles_parameters={
+                    "alpha_m": profiles.alpha_m,
+                    "alpha_n": profiles.alpha_n + starting_dthetas[1],
+                    param: getattr(profiles, param),
+                }
+            )
+            self.assign_currents_solve_GS(current_, rtol_NK)
+            dIy_0[:,1] = self.limiter_handler.Iy_from_jtor(self.profiles2.jtor) - self.Iy
+            rel_ndIy_0[i] = np.linalg.norm(dIy_0[:,1]) / self.nIy
+            self.final_dtheta_record[1] = starting_dthetas[1] * target_dIy / rel_ndIy_0[i]
 
-    #     """
+            # vary paxis, betap or beta0
+            self.check_and_change_profiles(
+                profiles_parameters={
+                    "alpha_m": profiles.alpha_m,
+                    "alpha_n": profiles.alpha_n,
+                    param: getattr(profiles, param) * (1 + starting_dthetas[2]),
+                }
+            )
+            self.assign_currents_solve_GS(current_, rtol_NK)
+            dIy_0[:,2] = self.limiter_handler.Iy_from_jtor(self.profiles2.jtor) - self.Iy
+            rel_ndIy_0[i] = np.linalg.norm(dIy_0[:,2]) / self.nIy
+            self.final_dtheta_record[2] = (
+                starting_dthetas[2] * getattr(profiles, param) * target_dIy / rel_ndIy_0[i]
+            )
+        
+        else: # this is particular to the Lao profile coefficients (which there may be few or many of)
 
-    #     current_ = np.copy(self.currents_vec)
+            dIy_0 = np.zeros((len(self.Iy),self.n_profiles_parameters))
+            rel_ndIy_0 = np.zeros(self.n_profiles_parameters)
 
-    #     # vary alpha_m
-    #     self.check_and_change_profiles(
-    #         profiles_coefficients=(
-    #             profiles.alpha_m + self.final_dpars_record[0],
-    #             profiles.alpha_n,
-    #         ),
-    #         profiles_parameter=profiles.profiles_parameter,
-    #     )
-    #     self.assign_currents_solve_GS(current_, rtol_NK)
-    #     dIy_1 = self.limiter_handler.Iy_from_jtor(self.profiles2.jtor) - self.Iy
-    #     self.dIydpars[:, 0] = dIy_1 / self.final_dpars_record[0]
-    #     if verbose:
-    #         print(
-    #             "alpha_m gradient calculated on the finite difference: delta_alpha_m =",
-    #             self.final_dpars_record[0],
-    #             ", norm(deltaIy) =",
-    #             np.linalg.norm(dIy_1),
-    #         )
+            # for each alpha coefficient
+            alpha_base = profiles.alpha.copy()
+            alpha_n = len(profiles.alpha)
+            for i in range(0,alpha_n):
+                alpha_shift = alpha_base.copy()
+                alpha_shift[i] += starting_dthetas[i]
+                self.check_and_change_profiles(
+                    profiles_parameters={
+                        "alpha": alpha_shift,
+                        "beta": profiles.beta,
+                    }
+                )
+                self.assign_currents_solve_GS(current_, rtol_NK)
+                dIy_0[:,i] = self.limiter_handler.Iy_from_jtor(self.profiles2.jtor) - self.Iy
+                rel_ndIy_0[i] = np.linalg.norm(dIy_0[:,i]) / self.nIy
+                self.final_dtheta_record[i] = starting_dthetas[i] * target_dIy / rel_ndIy_0[i]
 
-    #     # vary alpha_n
-    #     self.check_and_change_profiles(
-    #         profiles_coefficients=(
-    #             profiles.alpha_m,
-    #             profiles.alpha_n + self.final_dpars_record[1],
-    #         )
-    #     )
-    #     self.assign_currents_solve_GS(current_, rtol_NK)
-    #     dIy_1 = self.limiter_handler.Iy_from_jtor(self.profiles2.jtor) - self.Iy
-    #     self.dIydpars[:, 1] = dIy_1 / self.final_dpars_record[1]
-    #     if verbose:
-    #         print(
-    #             "alpha_n gradient calculated on the finite difference: delta_alpha_n =",
-    #             self.final_dpars_record[1],
-    #             ", norm(deltaIy) =",
-    #             np.linalg.norm(dIy_1),
-    #         )
+            # for each beta coefficient
+            beta_base = profiles.beta.copy()
+            beta_n = len(profiles.beta)
+            for i in range(0,beta_n):
+                beta_shift = beta_base.copy()
+                beta_shift[i] += starting_dthetas[i + alpha_n]
+                self.check_and_change_profiles(
+                    profiles_parameters={
+                        "alpha": profiles.alpha,
+                        "beta": beta_shift,
+                    }
+                )
+                self.assign_currents_solve_GS(current_, rtol_NK)
+                dIy_0[:,i+alpha_n] = self.limiter_handler.Iy_from_jtor(self.profiles2.jtor) - self.Iy
+                rel_ndIy_0[i+alpha_n] = np.linalg.norm(dIy_0[:,i+alpha_n]) / self.nIy
+                self.final_dtheta_record[i+alpha_n] = starting_dthetas[i+alpha_n] * target_dIy / rel_ndIy_0[i+alpha_n]
 
-    #     # vary paxis or betap
-    #     self.check_and_change_profiles(
-    #         profiles_coefficients=(profiles.alpha_m, profiles.alpha_n),
-    #         profiles_parameter=profiles.profiles_parameter + self.final_dpars_record[2],
-    #     )
-    #     self.assign_currents_solve_GS(current_, rtol_NK)
-    #     dIy_1 = self.limiter_handler.Iy_from_jtor(self.profiles2.jtor) - self.Iy
-    #     self.dIydpars[:, 2] = dIy_1 / self.final_dpars_record[2]
-    #     if verbose:
-    #         print(
-    #             "profiles_par gradient calculated on the finite difference: delta_profiles_par =",
-    #             self.final_dpars_record[2],
-    #             ", norm(deltaIy) =",
-    #             np.linalg.norm(dIy_1),
-    #         )
+        return dIy_0 / starting_dthetas, rel_ndIy_0
+
+    def build_dIydtheta(self, profiles, rtol_NK, verbose=False):
+        """
+        
+        Compute the matrix d(Iy)/d(theta) as a finite difference derivative,
+        using the value of delta(indep_viriable) inferred earlier by self.prepare_build_dIypars.
+
+        Parameters
+        ----------
+        profiles : FreeGS4E profiles object
+            The profiles object of the initial condition equilibrium, i.e. the linearization point.
+        rtol_NK : float
+            Relative tolerance to be used in the static GS problems.
+
+        """
+
+        current_ = np.copy(self.currents_vec)
+
+        # for setting profile parameters
+        if self.profiles_type == "ConstrainPaxisIp":
+            param = "paxis"
+        elif self.profiles_type == "ConstrainBetapIp":
+            param = "betap"
+        elif self.profiles_type == "Fiesta_Topeol":
+            param = "beta0"
+        else:
+            param = None
+
+        # carry out the initial perturbations
+        if param is not None:
+
+            # vary alpha_m
+            self.check_and_change_profiles(
+                profiles_parameters={
+                    "alpha_m": profiles.alpha_m + self.final_dtheta_record[0],
+                    "alpha_n": profiles.alpha_n,
+                    param: getattr(profiles, param),
+                }
+            )
+            self.assign_currents_solve_GS(current_, rtol_NK)
+            dIy_1 = self.limiter_handler.Iy_from_jtor(self.profiles2.jtor) - self.Iy
+            self.dIydtheta[:, 0] = dIy_1 / self.final_dtheta_record[0]
+            if verbose:
+                print(
+                    "alpha_m gradient calculated on the finite difference: delta_alpha_m =",
+                    self.final_dtheta_record[0],
+                    ", norm(deltaIy) =",
+                    np.linalg.norm(dIy_1),
+                )
+
+            # vary alpha_n
+            self.check_and_change_profiles(
+                profiles_parameters={
+                    "alpha_m": profiles.alpha_m,
+                    "alpha_n": profiles.alpha_n + self.final_dtheta_record[1],
+                    param: getattr(profiles, param),
+                }
+            )
+            self.assign_currents_solve_GS(current_, rtol_NK)
+            dIy_1 = self.limiter_handler.Iy_from_jtor(self.profiles2.jtor) - self.Iy
+            self.dIydtheta[:, 1] = dIy_1 / self.final_dtheta_record[1]
+            if verbose:
+                print(
+                    "alpha_n gradient calculated on the finite difference: delta_alpha_n =",
+                    self.final_dtheta_record[1],
+                    ", norm(deltaIy) =",
+                    np.linalg.norm(dIy_1),
+                )
+
+            # vary paxis, betap or beta0
+            self.check_and_change_profiles(
+                profiles_parameters={
+                    "alpha_m": profiles.alpha_m,
+                    "alpha_n": profiles.alpha_n,
+                    param: getattr(profiles, param) + self.final_dtheta_record[2],
+                }            )
+            self.assign_currents_solve_GS(current_, rtol_NK)
+            dIy_1 = self.limiter_handler.Iy_from_jtor(self.profiles2.jtor) - self.Iy
+            self.dIydtheta[:, 2] = dIy_1 / self.final_dtheta_record[2]
+            if verbose:
+                print(
+                    f"{param} gradient calculated on the finite difference: delta_{param} =",
+                    self.final_dtheta_record[2],
+                    ", norm(deltaIy) =",
+                    np.linalg.norm(dIy_1),
+                )
+
+        else: # this is particular to the Lao profile coefficients (which there may be few or many of)
+
+            # for each alpha coefficient
+            n_alpha = len(profiles.alpha)
+            alpha_base = profiles.alpha.copy()
+            for i in range(0,n_alpha):
+                alpha_shift = alpha_base.copy()
+                alpha_shift[i] += self.final_dtheta_record[i]
+                self.check_and_change_profiles(
+                    profiles_parameters={
+                        "alpha": alpha_shift,
+                        "beta": profiles.beta,
+                    }
+                )
+                self.assign_currents_solve_GS(current_, rtol_NK)
+                dIy_1 = self.limiter_handler.Iy_from_jtor(self.profiles2.jtor) - self.Iy
+                self.dIydtheta[:, i] = dIy_1 / self.final_dtheta_record[i]
+                if verbose:
+                    print(f"dIy/d(alpha_{i}) gradient:")
+                    print(f"  norm(dIy) = {np.linalg.norm(dIy_1)}")
+                    print(f"  finite difference d(alpha_{i}) = {self.final_dtheta_record[i]}")
+                    print(f"  norm(dIy)/norm(Iy) = {np.linalg.norm(dIy_1)/self.nIy} (vs. target_dIy = {self.target_dIy})")
+
+            # for each beta coefficient
+            n_beta = len(profiles.beta)
+            beta_base = profiles.beta.copy()
+            for i in range(0,n_beta):
+                beta_shift = beta_base.copy()
+                beta_shift[i] += self.final_dtheta_record[i + n_alpha]
+                self.check_and_change_profiles(
+                    profiles_parameters={
+                        "alpha": profiles.alpha,
+                        "beta": beta_shift,
+                    }
+                )
+                self.assign_currents_solve_GS(current_, rtol_NK)
+                dIy_1 = self.limiter_handler.Iy_from_jtor(self.profiles2.jtor) - self.Iy
+                self.dIydtheta[:, i + n_alpha] = dIy_1 / self.final_dtheta_record[i + n_alpha]
+                if verbose:
+                    print(f"dIy/d(beta_{i}) gradient:")
+                    print(f"  norm(dIy) = {np.linalg.norm(dIy_1)}")
+                    print(f"  finite difference d(alpha_{i}) = {self.final_dtheta_record[i+n_alpha]}")
+                    print(f"  norm(dIy)/norm(Iy) = {np.linalg.norm(dIy_1)/self.nIy} (vs. target_dIy = {self.target_dIy})")
+
+### NEED SOME OUTPUTS HERE (check build_linearization below)
+        return dIy_0 / starting_dthetas, rel_ndIy_0
+
 
     def prepare_build_dIydI_j(
         self,
@@ -913,11 +1082,12 @@ class nl_solver:
         eq,
         profiles,
         dIydI,
+        # dIydtheta,
         target_relative_tolerance_linearization,
         force_core_mask_linearization,
         verbose,
     ):
-        """Builds the Jacobian d(Iy)/dI to set up the solver of the linearised problem.
+        """Builds the Jacobians d(Iy)/dI and d(Iy)/dtheta to set up the solver of the linearised problem.
 
         Parameters
         ----------
@@ -926,11 +1096,13 @@ class nl_solver:
         profiles : FreeGS4E profiles Object
             profiles properties of the equilibrium around which to linearise.
         dIydI : np.array
-            input Jacobian, enter where available, otherwise this will be calculated here
-        rtol_NK : float
+            input Jacobian of plasma current density to metal currents, enter where available, otherwise this will be calculated here
+        dIydtheta : np.array
+            input Jacobian of plasma current density to pasma current density profile parameters, enter where available, otherwise this will be calculated here
+        target_relative_tolerance_linearization : float
             Relative tolerance to be used in the static GS problems.
-        target_dIy : float, by default 0.001.
-            Target relative value for the norm of delta(I_y), on which the finite difference derivative is calculated.
+        force_core_mask_linearization : bool
+            Forces the perturbed plasma core mask to remain the same as the original when calculating the dIydI Jacobian.
         """
 
         if (dIydI is None) and (self.dIydI is None):
@@ -1084,6 +1256,91 @@ class nl_solver:
             self.dIydI = dIydI
             self.dIydI_ICs = np.copy(self.dIydI)
 
+        # compose the vector of initial delta_theta (profile parameters) to be used for the finite difference calculation
+        # - this uses the variation to Jtor caused by the parameter's contribution to the change in poloidal flux, ignoring the response of the plasma
+
+        # # build/update dIydtheta
+        # if dIydtheta is None and force_core_mask_linearization is False:
+        #     if self.dIydtheta_ICs is None:
+        #         print(
+        #             f"Building the {self.plasma_domain_size} x {self.n_profiles_parameters} Jacobian (dIy/dtheta)",
+        #             "of plasma current density (inside the LCFS)",
+        #             "with respect to all plasma current density profile parameters within Jtor.",
+        #         )
+
+        #         self.dIydtheta = np.zeros((self.plasma_domain_size, self.n_profiles_parameters))
+        #         self.ddIyddtheta = np.zeros(self.n_profiles_parameters)
+        #         self.final_dtheta_record = np.zeros(self.n_profiles_parameters)
+
+        #         # prepare to build the Jacobian by finding appropriate step size
+        #         dIydItheta, ndIy = self.prepare_build_dIydtheta(
+        #             profiles=profiles,
+        #             rtol_NK=target_relative_tolerance_linearization,
+        #             target_dIy=?,  self.approved_target_dIy[j]
+        #             starting_dthetas=?, self.starting_dI[j]
+        #             )
+
+        #         if verbose:
+        #             print(f"Prepping dIy/d(thetas) gradients:")
+        #             print(f"  Starting_dthetas = {self.starting_dthetas}")
+        #             print(f"  Final_dthetas = {self.final_dtheta_record}")
+
+        #         if (
+        #             np.abs(np.log10(self.final_dI_record[j] / self.starting_dI[j]))
+        #             > 0.5
+        #         ):
+        #             dIydIj, rel_ndIy = self.build_dIydI_j(
+        #                 j,
+        #                 target_relative_tolerance_linearization,
+        #             )
+        #             core_check = (
+        #                 np.sum(
+        #                     np.abs(
+        #                         self.profiles1.diverted_core_mask.astype(float)
+        #                         - self.profiles2.diverted_core_mask.astype(float)
+        #                     )
+        #                 )
+        #                 == 0
+        #             )
+        #         else:
+        #             self.final_dI_record[j] = 1.0 * self.starting_dI[j]
+
+        #         if verbose:
+        #             print(
+        #                 "Final current shift=",
+        #                 self.final_dI_record[j],
+        #             )
+        #             print(
+        #                 "Final relative Iy change=",
+        #                 rel_ndIy,
+        #                 "; core_check=",
+        #                 core_check,
+        #             )
+        #             print(
+        #                 "Initial residual=",
+        #                 self.NK.initial_rel_residual,
+        #                 ". Final residual=",
+        #                 self.NK.relative_change,
+        #             )
+        #             print(" ")
+
+        #         self.dIydI[:, j] = np.copy(dIydIj)
+        #         R0 = self.eq2.Rcurrent()
+        #         Z0 = self.eq2.Zcurrent()
+        #         self.dRZdI[0, j] = (R0 - self.R0) / self.final_dI_record[j]
+        #         self.dRZdI[1, j] = (Z0 - self.Z0) / self.final_dI_record[j]
+
+
+        #         self.dIydI_ICs = np.copy(self.dIydI)
+        #     else:
+        #         self.dIydI = np.copy(self.dIydI_ICs)
+        # else:
+        #     self.dIydI = dIydI
+        #     self.dIydI_ICs = np.copy(self.dIydI)
+
+
+
+
     def set_plasma_resistivity(self, plasma_resistivity):
         """Function to set the resistivity of the plasma.
         self.plasma_resistance_1d is the diagonal of the matrix R_yy, the plasma resistance matrix.
@@ -1215,25 +1472,32 @@ class nl_solver:
         # note the parameters here are the same that should be provided
         # to the stepper if these are time evolving
         if self.profiles_type == "ConstrainPaxisIp":
+            self.n_profiles_parameters = 3
             self.profiles_parameters = {
-                "paxis": profiles.paxis,
                 "alpha_m": profiles.alpha_m,
                 "alpha_n": profiles.alpha_n,
+                "paxis": profiles.paxis,
             }
         elif self.profiles_type == "ConstrainBetapIp":
+            self.n_profiles_parameters = 3
             self.profiles_parameters = {
-                "betap": profiles.betap,
                 "alpha_m": profiles.alpha_m,
                 "alpha_n": profiles.alpha_n,
+                "betap": profiles.betap,
             }
         elif self.profiles_type == "Fiesta_Topeol":
+            self.n_profiles_parameters = 3
             self.profiles_parameters = {
-                "beta0": profiles.beta0,
                 "alpha_m": profiles.alpha_m,
                 "alpha_n": profiles.alpha_n,
+                "beta0": profiles.beta0,
             }
         elif self.profiles_type == "Lao85":
-            self.profiles_parameters = {"alpha": profiles.alpha, "beta": profiles.beta}
+            self.n_profiles_parameters = len(profiles.alpha) + len(profiles.beta)
+            self.profiles_parameters = {
+                "alpha": profiles.alpha, 
+                "beta": profiles.beta
+            }
 
     def get_vessel_currents(self, eq):
         """Uses the input equilibrium to extract values for all metal currents,
@@ -1246,9 +1510,6 @@ class nl_solver:
             Initial equilibrium. eq.tokamak is used to extract current values.
         """
         self.vessel_currents_vec = eq.tokamak.getCurrentsVec()
-        # eq_currents = eq.tokamak.getCurrents()
-        # for i, labeli in enumerate(self.coils_order):
-        #     self.vessel_currents_vec[i] = eq_currents[labeli]
 
     def build_current_vec(self, eq, profiles):
         """Builds the vector of currents in which the dynamics is actually solved, self.currents_vec

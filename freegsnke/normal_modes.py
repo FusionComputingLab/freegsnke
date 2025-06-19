@@ -73,7 +73,7 @@ class mode_decomposition:
         w, v = np.linalg.eig(rm1 @ mm)
         # w as calculated here are timescales
         # here we switch to frequencies
-        w = 1./w
+        w = 1.0 / w
         ordw = np.argsort(w)
         self.w_passive = w[ordw]
         Pmatrix_passive = v[:, ordw]

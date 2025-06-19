@@ -71,8 +71,8 @@ class ShapeController:
     Methods :
     reshape_inductance : retrieve inductance matrix from machine config, and select rows/columns
     calc_vc_from_eq : retrieve from file or compute a virtual circuit object from freegsnke or NN emulator.
-    calculate_blended_feedback_current_rate_vc_proportional : compute feedback voltages from a virtual circuit object and a set of target shifts.
-    feedback_current_rate_timefunc : compute feedback voltages from a time provided by retrieving targets at given time from the target waveformr and computing with calculate_blended_feedback_current_rate_vc_proportional.
+    calculate_blended_target_deltas : compute feedback voltages from a virtual circuit object and a set of target shifts.
+    feedback_current_rate_timefunc : compute feedback voltages from a time provided by retrieving targets at given time from the target waveformr and computing with calculate_blended_target_deltas.
     """
 
     def __init__(
@@ -139,7 +139,7 @@ class ShapeController:
 
     def initialise_VCH(self, stepping, target_relative_tolerance=1e-7):
         """initialise the VCH object as class attribute.
-        This must be done after the class is initialised and before first call to calculate_blended_feedback_current_rate_vc_proportional
+        This must be done after the class is initialised and before first call to calculate_blended_target_deltas
 
 
         Inputs
@@ -311,18 +311,18 @@ class ShapeController:
         assert (
             shape_gain_matrix.shape[0] == shape_gain_matrix.shape[1] == len(targets_req)
         ), "The gain matrix is not the square or same size as the target vector"
-        print("shape gain matrix", shape_gain_matrix)
+        # print("shape gain matrix", shape_gain_matrix)
 
         # shifts required
         target_deltas = targets_req - targets_obs
         gained_target_deltas = shape_gain_matrix @ target_deltas
-        print("targets names", targets)
-        print("required target deltas", target_deltas)
-        print("gained target deltas", gained_target_deltas)
+        # print("targets names", targets)
+        # print("required target deltas", target_deltas)
+        # print("gained target deltas", gained_target_deltas)
         return gained_target_deltas, target_deltas
 
     @staticmethod
-    def recompute_vc_from_sensitivity(virtual_circuit, targets, targets_obs=None):
+    def recompute_vc_from_sensitivity(virtual_circuit, targets):
         """
         Recompute a virtual circuit from the sensitivity matrix, using the targets provided.
 
@@ -366,13 +366,13 @@ class ShapeController:
             virtual_circuit.targets[i]
             for i in np.array([vc_targ_order_dict[targ] for targ in targets])
         ]
-        targ_values = np.array(
-            [
-                # virtual_circuit.targets_val[i]
-                targets_obs[i]
-                for i in np.array([vc_targ_order_dict[targ] for targ in targets])
-            ]
-        )
+        # targ_values = np.array(
+        #     [
+        #         # virtual_circuit.targets_val[i]
+        #         targets_obs[i]
+        #         for i in np.array([vc_targ_order_dict[targ] for targ in targets])
+        #     ]
+        # )
 
         virtualcircuit = vc.VirtualCircuit(
             name="recomputed_vc",
@@ -381,7 +381,7 @@ class ShapeController:
             shape_matrix=sens_reduced,
             VCs_matrix=vc_mat_reduced,
             targets=targs_reduced,
-            targets_val=targ_values,
+            targets_val=None,
             non_standard_targets=None,
             targets_options=None,
             coils=virtual_circuit.coils,
@@ -389,7 +389,7 @@ class ShapeController:
 
         return virtualcircuit
 
-    def calculate_blended_feedback_current_rate_vc_proportional(
+    def calculate_blended_target_deltas(
         self,
         targets,
         targets_req,
@@ -397,7 +397,6 @@ class ShapeController:
         targets_blends,
         ff_deltas,
         shape_gain_matrix,
-        virtual_circuit: VirtualCircuit = None,
         coils=None,
     ):
         """
@@ -442,6 +441,44 @@ class ShapeController:
             print("coils being set to default active coils reduced")
             coils = self.control_coils
 
+        # compute the shape target deltas
+        gained_target_deltas, _ = self.calculate_gained_target_deltas(
+            targets=targets,
+            targets_req=targets_req,
+            targets_obs=targets_obs,
+            shape_gain_matrix=shape_gain_matrix,
+        )
+
+        blended_target_deltas = (
+            targets_blends * gained_target_deltas + (1 - targets_blends) * ff_deltas
+        )
+
+        return blended_target_deltas
+
+    def apply_shape_vc(
+        self,
+        targets: list[str],
+        target_deltas: np.array,
+        virtual_circuit: VirtualCircuit,
+    ):
+        """
+        Apply the virtual circuit to the target deltas.
+
+        Parameters
+        ----------
+        targets : list[str]
+            The targets to apply the virtual circuit to.
+        target_deltas : np.array
+            The target deltas (rates) from shape/div category
+        virtual_circuit : VirtualCircuit
+            The virtual circuit object to be applied to the target deltas.
+
+        Returns
+        -------
+        np.array
+            The coil current rates after being applied to the virtual circuit.
+        """
+
         if targets == virtual_circuit.targets:
             # targets match - do nothing and use VC provided
             pass
@@ -452,7 +489,7 @@ class ShapeController:
                 "targets are a subset of the VC targets - recomputing VC from sensitivity"
             )
             virtual_circuit = self.recompute_vc_from_sensitivity(
-                virtual_circuit, targets, targets_obs
+                virtual_circuit, targets
             )
             # print("VC targets now ", virtual_circuit.targets)
             # print("coils now ", virtual_circuit.coils)
@@ -465,21 +502,9 @@ class ShapeController:
             raise ValueError(
                 "The virtual circuit targets do not match the targets requested. Check the VC and Target sequence"
             )
-
-        # compute the shape target deltas
-        gained_target_deltas, _ = self.calculate_gained_target_deltas(
-            targets=targets,
-            targets_req=targets_req,
-            targets_obs=targets_obs,
-            shape_gain_matrix=shape_gain_matrix,
-        )
-
-        blended_target_deltas = (
-            targets_blends * gained_target_deltas + (1 - targets_blends) * ff_deltas
-        )
         # do matrix multiplication VC @ G @ delta
         # delta_currents = virtual_circuit.VCs_matrix @ gained_target_deltas
-        delta_currents = virtual_circuit.VCs_matrix @ blended_target_deltas
+        delta_currents = virtual_circuit.VCs_matrix @ target_deltas
         print("shape current deltas", delta_currents)
 
         # option 1 reorder currents, fill in zeros and multiply by inductance matrix
@@ -592,13 +617,18 @@ class ShapeController:
         print("ff deltas", ff_deltas)
 
         # compute the proportional voltages
-        current_rate = self.calculate_blended_feedback_current_rate_vc_proportional(
+        shape_rate = self.calculate_blended_target_deltas(
             targets=controlled_targets,
             targets_req=desired_target_values,
             targets_obs=target_obs,
             targets_blends=fb_blends_arr,
             ff_deltas=ff_deltas,
             shape_gain_matrix=shape_gain_matrix,
+        )
+
+        current_rate = self.apply_shape_vc(
+            targets=controlled_targets,
+            target_deltas=shape_rate,
             virtual_circuit=virtual_circuit,
         )
 

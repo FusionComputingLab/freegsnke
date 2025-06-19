@@ -258,7 +258,7 @@ class ShapeTargetScheduler(TargetScheduler):
         self,
         waveform_dict,
         schedule_dict,
-        vc_scheduler,
+        vc_scheduler: VirtualCircuitProvider,
         vc_flag="file",
     ):
         """
@@ -274,9 +274,8 @@ class ShapeTargetScheduler(TargetScheduler):
             flag to indicate whether to load virtual circuit from file or NN
             emulator (default = "file")
             options = ["file", "Emulator"]
-        vc_scheduler : object
-            virtual circuit scheduler object - either a VirtualCircuitScheduler (file)  or VCG (emulator)
-
+        vc_scheduler : object :VC provicer
+            A VC provider, instance of VirtualCircuitProvider - either from file, emu or rtvc
         Returns
         -------
         None

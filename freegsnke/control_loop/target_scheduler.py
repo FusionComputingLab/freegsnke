@@ -220,7 +220,10 @@ class TargetScheduler:
         """
 
         blends = [
-            self.get_waveform_value("blends", target, time_stamp) for target in targets
+            self.get_waveform_value(
+                param_type="blends", param=target, time_stamp=time_stamp
+            )
+            for target in targets
         ]
 
         return np.array(blends)
@@ -302,6 +305,7 @@ class TargetScheduler:
         else:
             # find time position
             arr = waveform_dict[param]["times"]
+            print(f"times arr at time {time_stamp} : {arr}")
             t_val = max(time for time in arr if time <= time_stamp)
             # get index corresponding to the time position
             if isinstance(arr, list):
@@ -355,8 +359,11 @@ class TargetScheduler:
                 "returning None from retrieve_parameter()"
             )
         else:
+            print("gains at time ", time_pos)
             for target in targets:
-                blend = self.get_blends(time_stamp, target)
+                print("target ", target)
+                blend = self.get_blends(time_stamp=time_pos, targets=[target])
+                print("blend ", blend)
                 if blend == 0.0:
                     gains.append(0)
                     print("blend is zero - FF only so set gain to zero")

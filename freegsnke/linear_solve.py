@@ -39,7 +39,6 @@ class linear_solver:
         Pm1,
         Rm1,
         Mey,
-        # limiter_handler,
         plasma_norm_factor,
         plasma_resistance_1d,
         max_internal_timestep=0.0001,
@@ -131,7 +130,7 @@ class linear_solver:
             Vector of 2pi resistivity R/dA for all domain grid points in the reduced plasma domain
         """
         self.plasma_resistance_1d = plasma_resistance_1d
-        self.set_linearization_point(None, None, None)
+        self.set_linearization_point(None, None, None, None)
 
     def reset_timesteps(self, max_internal_timestep, full_timestep):
         """Resets the integration timesteps, calling self.solver.set_timesteps
@@ -149,7 +148,7 @@ class linear_solver:
             full_timestep=full_timestep, max_internal_timestep=max_internal_timestep
         )
 
-    def set_linearization_point(self, dIydI, hatIy0, Myy_hatIy0):
+    def set_linearization_point(self, dIydI, dIydtheta, hatIy0, Myy_hatIy0):
         """Initialises an implicit-Euler solver with the appropriate matrices for the linearised dynamic problem.
 
         Parameters
@@ -159,6 +158,9 @@ class linear_solver:
             (active coil currents, vessel normal modes, total plasma current divided by plasma_norm_factor).
             These would typically come from having solved the forward Grad-Shafranov problem. Finite difference Jacobian.
             Calculated by the nl_solver object
+        dIydtheta : np.array
+            partial derivatives of plasma-cell currents on the reduced plasma domain with respect to all plasma current density
+            profile parameters
         hatIy0 : np.array
             Plasma current distribution on the reduced plasma domain (1d) of the equilibrium around which the dynamics is linearised.
             This is normalised by the total plasma current, so that this vector sums to 1.
@@ -168,6 +170,8 @@ class linear_solver:
         """
         if dIydI is not None:
             self.dIydI = dIydI
+        if dIydtheta is not None:
+            self.dIydtheta = dIydtheta
         if hatIy0 is not None:
             self.hatIy0 = hatIy0
         if Myy_hatIy0 is not None:
@@ -201,9 +205,6 @@ class linear_solver:
         where A = dIy/dId
               B = dIy/dIp
               C = dIy/plasmapars
-        Here we take C=0, that is the linearised dynamics does not account for evolving
-        plasma parameters atm.
-
 
         Parameters
         ----------
@@ -249,13 +250,19 @@ class linear_solver:
 
         # build necessary terms to incorporate forcing term from variations of the profile parameters
         # MIdot + RI = V - self.Vm1Rm12Mey_plus@self.dIydpars@d_profiles_pars_dt
-        # if self.dIydpars is not None:
-        #     Pm1Rm1Mey_plus = np.concatenate(
-        #         (self.Pm1Rm1Mey, JMyy[np.newaxis] / nRp), axis=0
-        #     )
-        #     self.forcing_pars_matrix = np.matmul(Pm1Rm1Mey_plus, self.dIydpars)
+        self.forcing_pars_matrix = None
+        if self.dIydtheta is not None:
+            Pm1Rm1Mey_plus = np.concatenate(
+                (self.Pm1Rm1Mey, self.Myy_hatIy0[np.newaxis] / nRp), axis=0
+            )
+            self.forcing_pars_matrix = np.matmul(Pm1Rm1Mey_plus, self.dIydtheta)
 
-    def stepper(self, It, active_voltage_vec, d_profiles_pars_dt=None):
+    def stepper(
+        self,
+        It,
+        active_voltage_vec,
+        profile_parameters_vec,
+    ):
         """Executes the time advancement. Uses the implicit_euler instance.
 
         Parameters
@@ -265,19 +272,22 @@ class linear_solver:
             (active currents, vessel normal modes, total plasma current divided by normalisation factor)
         active_voltage_vec : np.array
             voltages applied to the active coils
-        d_profiles_pars_dt : np.array
-            time derivative of the profile parameters, not used atm
-        other parameters are passed in as object attributes
+        profile_parameters_vec : np.array
+            Vector of plasma current density profile parameters at the current timestep.
         """
+
+        # baseline forcing term (from the active coil voltages)
         self.empty_U[: self.n_active_coils] = active_voltage_vec
         self.forcing[:-1] = np.dot(self.Pm1Rm1, self.empty_U)
         self.forcing[-1] = 0.0
-
-        # add forcing term from time derivative of profile parameters
-        if d_profiles_pars_dt is not None:
-            self.forcing -= np.dot(self.forcing_pars_matrix, d_profiles_pars_dt)
+        print(self.forcing)
+        # additional forcing due to the time derivative of profile parameters
+        if self.forcing_pars_matrix is not None:
+            self.forcing -= np.dot(self.forcing_pars_matrix, profile_parameters_vec)
+        print(self.forcing)
 
         Itpdt = self.solver.full_stepper(It, self.forcing)
+
         return Itpdt
 
     def calculate_linear_growth_rate(

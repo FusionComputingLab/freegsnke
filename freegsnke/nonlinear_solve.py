@@ -378,21 +378,21 @@ class nl_solver:
         # for setting profile parameters starting shifts (for Jacobians)
         if self.profiles_param is not None:
             # alpha_m
-            self.starting_dtheta[0] = (profiles.alpha_m + 1e-10) * target_dIy
+            self.starting_dtheta[0] = (profiles.alpha_m + 1e-10) * 0.01
             # alpha_n
-            self.starting_dtheta[1] = (profiles.alpha_n + 1e-10) * target_dIy
+            self.starting_dtheta[1] = (profiles.alpha_n + 1e-10) * 0.01
             # paxis/betap/beta0
             self.starting_dtheta[2] = (
                 getattr(profiles, self.profiles_param) + 1e-10
-            ) * target_dIy
+            ) * 0.01
 
         else:  # lao
             # alpha coeffs
             n_alpha = len(profiles.alpha)
-            self.starting_dtheta[0:n_alpha] = (profiles.alpha + 1e-10) * target_dIy
+            self.starting_dtheta[0:n_alpha] = (profiles.alpha + 1e-10) * 0.01
 
             # beta coeffs
-            self.starting_dtheta[n_alpha:] = (profiles.beta + 1e-10) * target_dIy
+            self.starting_dtheta[n_alpha:] = (profiles.beta + 1e-10) * 0.01
 
         # This solves the system of circuit eqs based on an assumption
         # for the direction of the plasma current distribution at time t+dt
@@ -702,12 +702,19 @@ class nl_solver:
         )
 
         self.linearised_sol.set_linearization_point(
-            dIydI=self.dIydI, hatIy0=self.blended_hatIy, Myy_hatIy0=self.Myy_hatIy0
+            dIydI=self.dIydI,
+            dIydtheta=self.dIydtheta,
+            hatIy0=self.blended_hatIy,
+            Myy_hatIy0=self.Myy_hatIy0,
         )
 
         self.build_current_vec(self.eq1, self.profiles1)
 
-    def set_linear_solution(self, active_voltage_vec, d_profiles_pars_dt=None):
+    def set_linear_solution(
+        self,
+        active_voltage_vec,
+        profile_parameters_vec,
+    ):
         """Uses the solver of the linearised problem to set up an initial guess for the nonlinear solver
         for the currents at time t+dt. Uses self.currents_vec as I(t).
         Solves GS at time t+dt using the currents derived from the linearised dynamics.
@@ -716,15 +723,14 @@ class nl_solver:
         ----------
         active_voltage_vec : np.array
             Vector of external voltage applied to the active coils during the timestep.
-        d_profiles_pars_dt : None
-            Does not currently use d_profiles_pars_dt
-            The evolution of the profiles coefficient is not accounted by the linearised dynamical evolution.
+        profile_parameters_vec : np.array
+            Vector of plasma current density profile parameters at the current timestep.
         """
 
         self.trial_currents = self.linearised_sol.stepper(
             It=self.currents_vec,
             active_voltage_vec=active_voltage_vec,
-            d_profiles_pars_dt=d_profiles_pars_dt,
+            profile_parameters_vec=profile_parameters_vec,
         )
         self.assign_currents_solve_GS(self.trial_currents, self.rtol_NK)
         self.trial_plasma_psi = np.copy(self.eq2.plasma_psi)
@@ -1509,6 +1515,9 @@ class nl_solver:
                 "paxis": profiles.paxis,
             }
             self.profiles_param = "paxis"
+            self.profiles_parameters_vec = np.array(
+                [profiles.alpha_m, profiles.alpha_n, profiles.paxis]
+            )
         elif self.profiles_type == "ConstrainBetapIp":
             self.n_profiles_parameters = 3
             self.profiles_parameters = {
@@ -1517,6 +1526,9 @@ class nl_solver:
                 "betap": profiles.betap,
             }
             self.profiles_param = "betap"
+            self.profiles_parameters_vec = np.array(
+                [profiles.alpha_m, profiles.alpha_n, profiles.betap]
+            )
         elif self.profiles_type == "Fiesta_Topeol":
             self.n_profiles_parameters = 3
             self.profiles_parameters = {
@@ -1525,11 +1537,16 @@ class nl_solver:
                 "beta0": profiles.beta0,
             }
             self.profiles_param = "beta0"
-
+            self.profiles_parameters_vec = np.array(
+                [profiles.alpha_m, profiles.alpha_n, profiles.beta0]
+            )
         elif self.profiles_type == "Lao85":
             self.n_profiles_parameters = len(profiles.alpha) + len(profiles.beta)
             self.profiles_parameters = {"alpha": profiles.alpha, "beta": profiles.beta}
             self.profiles_param = None
+            self.profiles_parameters_vec = np.concatenate(
+                (profiles.alpha, profiles.beta)
+            )
 
     def get_vessel_currents(self, eq):
         """Uses the input equilibrium to extract values for all metal currents,
@@ -1666,7 +1683,10 @@ class nl_solver:
         # transfer linearization to linear solver:
         self.Myy_hatIy0 = self.handleMyy.dot(self.hatIy)
         self.linearised_sol.set_linearization_point(
-            dIydI=self.dIydI_ICs, hatIy0=self.blended_hatIy, Myy_hatIy0=self.Myy_hatIy0
+            dIydI=self.dIydI_ICs,
+            dIydtheta=self.dIydtheta_ICs,
+            hatIy0=self.blended_hatIy,
+            Myy_hatIy0=self.Myy_hatIy0,
         )
 
     def step_complete_assign(self, working_relative_tol_GS, from_linear=False):
@@ -2198,7 +2218,10 @@ class nl_solver:
         # solves the linearised problem for the currents and assigns
         # results in preparation for the nonlinear calculations
         # Solution and GS equilibrium are assigned to self.trial_currents and self.trial_plasma_psi
-        self.set_linear_solution(active_voltage_vec)
+        self.set_linear_solution(
+            active_voltage_vec=active_voltage_vec,
+            profile_parameters_vec=self.profiles_parameters_vec,
+        )
 
         # check Matrix is still applicable
         myy_flag = self.handleMyy.check_Myy(self.hatIy)

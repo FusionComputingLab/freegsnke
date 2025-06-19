@@ -306,7 +306,13 @@ class TargetScheduler:
             # find time position
             arr = waveform_dict[param]["times"]
             print(f"times arr at time {time_stamp} : {arr}")
-            t_val = max(time for time in arr if time <= time_stamp)
+            eps = 1e-8
+            t_vals_temp = [time for time in arr if time <= time_stamp + eps]
+            if len(t_vals_temp) == 0:
+                raise ValueError(
+                    f"No time values in array less than or equal to {time_stamp}"
+                )
+            t_val = max(t_vals_temp)
             # get index corresponding to the time position
             if isinstance(arr, list):
                 pos = waveform_dict[param]["times"].index(t_val)

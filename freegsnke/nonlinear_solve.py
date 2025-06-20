@@ -182,7 +182,7 @@ class nl_solver:
         print("-----")
         print("Checking that the provided 'eq' and 'profiles' are a GS solution...")
 
-        # instantiating static GS solver on eq's domain
+        # storing the static solver
         self.NK = GSStaticSolver
         self.NK.forward_solve(
             eq,
@@ -971,6 +971,7 @@ class nl_solver:
                 )
 
                 self.dIydI = np.zeros((self.plasma_domain_size, self.n_metal_modes + 1))
+                self.psideltaI = np.zeros((self.n_metal_modes + 1, self.nx, self.ny))
                 self.ddIyddI = np.zeros(self.n_metal_modes + 1)
                 self.final_dI_record = np.zeros(self.n_metal_modes + 1)
 
@@ -1092,6 +1093,7 @@ class nl_solver:
                         print(" ")
 
                     self.dIydI[:, j] = np.copy(dIydIj)
+                    self.psideltaI[j] = np.copy(self.eq2.psi())
                     R0 = self.eq2.Rcurrent()
                     Z0 = self.eq2.Zcurrent()
                     self.dRZdI[0, j] = (R0 - self.R0) / self.final_dI_record[j]
@@ -1337,6 +1339,8 @@ class nl_solver:
         self.get_profiles_values(profiles)
 
         # set internal copy of the equilibrium and profile
+        # note that at this stage, the equilibrium may have vessel currents. 
+        # These can not be reproduced exactly if modes are truncated. 
         self.eq1 = deepcopy(eq)
         self.profiles1 = deepcopy(profiles)
         # The pair self.eq1 and self.profiles1 is the pair that is advanced at each timestep.
@@ -1349,15 +1353,19 @@ class nl_solver:
         self.build_current_vec(self.eq1, self.profiles1)
         self.current_at_last_linearization = np.copy(self.currents_vec)
 
-        # ensure internal equilibrium is a GS solution
+        # This has truncated the vessel currents, which needs to be mirrored in the equilibrium
+        # First, the modified currents are assigned
         self.assign_currents(self.currents_vec, profiles=self.profiles1, eq=self.eq1)
-        # self.NK.forward_solve(
-        #     self.eq1,
-        #     self.profiles1,
-        #     target_relative_tolerance=target_relative_tolerance_linearization,
-        # )
+        # Then the equilibrium is solved again to ensure it is the solution relevant to the truncated currents, 
+        # and not to the full set of vessel currents!
+        self.NK.forward_solve(
+            self.eq1,
+            self.profiles1,
+            target_relative_tolerance=target_relative_tolerance_linearization,
+        )
 
         # self.eq2 and self.profiles2 are used as auxiliary objects when solving for the dynamics
+        # They are used for all intermediate calculations, so
         # they should not be used to extract properties of the evolving equilibrium
         self.eq2 = deepcopy(self.eq1)
         self.profiles2 = deepcopy(self.profiles1)

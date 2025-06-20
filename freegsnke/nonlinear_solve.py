@@ -713,7 +713,7 @@ class nl_solver:
     def set_linear_solution(
         self,
         active_voltage_vec,
-        profile_parameters_vec,
+        dtheta_dt,
     ):
         """Uses the solver of the linearised problem to set up an initial guess for the nonlinear solver
         for the currents at time t+dt. Uses self.currents_vec as I(t).
@@ -723,14 +723,14 @@ class nl_solver:
         ----------
         active_voltage_vec : np.array
             Vector of external voltage applied to the active coils during the timestep.
-        profile_parameters_vec : np.array
-            Vector of plasma current density profile parameters at the current timestep.
+        dtheta_dt : np.array
+            Vector of plasma current density profile parameters derivateives with respect to t.
         """
 
         self.trial_currents = self.linearised_sol.stepper(
             It=self.currents_vec,
             active_voltage_vec=active_voltage_vec,
-            profile_parameters_vec=profile_parameters_vec,
+            dtheta_dt=dtheta_dt,
         )
         self.assign_currents_solve_GS(self.trial_currents, self.rtol_NK)
         self.trial_plasma_psi = np.copy(self.eq2.plasma_psi)
@@ -2203,11 +2203,22 @@ class nl_solver:
             NK iterations are interrupted when this limit is surpassed.
         """
 
+        # retrieve the old profile parameter values
+        self.get_profiles_values(self.profiles1)
+        old_params = self.profiles_parameters_vec
+
         # check if profiles parameters are being evolved
         # and action the change where necessary
         self.check_and_change_profiles(
             profiles_parameters=profiles_parameters,
         )
+
+        # retrieve the old profile parameter values
+        self.get_profiles_values(self.profiles1)
+        new_params = self.profiles_parameters_vec
+
+        # calculate change in profiles across timestep: (profiles(t+dt)-profiles(t))/dt
+        dtheta_dt = (new_params - old_params) / self.dt_step
 
         # check if plasma resistivity is being evolved
         # and action the change where necessary
@@ -2220,7 +2231,7 @@ class nl_solver:
         # Solution and GS equilibrium are assigned to self.trial_currents and self.trial_plasma_psi
         self.set_linear_solution(
             active_voltage_vec=active_voltage_vec,
-            profile_parameters_vec=self.profiles_parameters_vec,
+            dtheta_dt=dtheta_dt,
         )
 
         # check Matrix is still applicable

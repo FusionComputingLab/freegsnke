@@ -261,7 +261,7 @@ class linear_solver:
         self,
         It,
         active_voltage_vec,
-        profile_parameters_vec,
+        dtheta_dt,
     ):
         """Executes the time advancement. Uses the implicit_euler instance.
 
@@ -272,8 +272,8 @@ class linear_solver:
             (active currents, vessel normal modes, total plasma current divided by normalisation factor)
         active_voltage_vec : np.array
             voltages applied to the active coils
-        profile_parameters_vec : np.array
-            Vector of plasma current density profile parameters at the current timestep.
+        dtheta_dt : np.array
+            Vector of plasma current density profile parameters derivateives with respect to t.
         """
 
         # baseline forcing term (from the active coil voltages)
@@ -283,7 +283,7 @@ class linear_solver:
         print(self.forcing)
         # additional forcing due to the time derivative of profile parameters
         if self.forcing_pars_matrix is not None:
-            self.forcing -= np.dot(self.forcing_pars_matrix, profile_parameters_vec)
+            self.forcing -= np.dot(self.forcing_pars_matrix, dtheta_dt)
         print(self.forcing)
 
         Itpdt = self.solver.full_stepper(It, self.forcing)

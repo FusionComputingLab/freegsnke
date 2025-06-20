@@ -4,7 +4,7 @@ Module to control plasma current Ip during a tokamak shot.
 """
 
 import numpy as np
-
+from copy import deepcopy
 from .target_scheduler import TargetScheduler
 
 
@@ -42,6 +42,7 @@ class ControlSolenoid:
         waveform_dict,
         schedule_dict,
         sol_vc_dict,
+        pi_state,
         integral_term_0=0,
         solenoid_name=None,
     ):
@@ -63,11 +64,25 @@ class ControlSolenoid:
 
         # The accumulated error in the plasma category. Defaults to 0 if not
         # given.
-        self.integral = integral_term_0
+        self.internal = integral_term_0
 
-    def calculate_solenoid_delta(
-        self, Kp, Ki, dt, blend, Ip_req, Ip_obs, Vloop_ff, sol_vc
-    ):
+        # testing
+        self.pi_state = deepcopy(pi_state)
+
+    def calculate_solenoid_delta(self,
+                                 Kp,
+                                 Ki,
+                                 dt,
+                                 blend,
+                                 Ip_req,
+                                 Ip_obs,
+                                 Vloop_ff,
+                                 sol_vc,
+                                 pi_state,
+                                 delta_Ip_gt,
+                                 prev_delta_Ip_gt,
+                                 M_sp=1.5801*1e-5 * 1e3    # Henrys
+                                 ):
         """
         Calculates the vector of current trajectories ΔI/Δt, as prescribed
         in the plasma category (and circuits category, supposedly) of the
@@ -106,35 +121,71 @@ class ControlSolenoid:
 
         # Compute the required change for Ip
         delta_Ip = Ip_req - Ip_obs
-        print(f"    The delta plasma current: {delta_Ip}")
+        # print(f"    The delta plasma current: {delta_Ip_gt}")
 
-        self.integral += delta_Ip * dt
+        integral = self.internal + (delta_Ip_gt * dt) / 2  # Trapezoidal rule
+        # self.internal = pi_state
+        self.internal += delta_Ip_gt * dt
 
-        integral_term = self.integral + 0.5 * delta_Ip * dt
-        Vloop_fb = Kp * delta_Ip + Ki * integral_term
-        print(f"    The feedback loop voltage: {Vloop_fb}")
+        # print(f"    The pi_state: {self.internal}")
 
+        dIsol_fb = Kp * delta_Ip_gt + Ki * integral
+        # print("{:<14.10f}".format(delta_Ip_gt),
+        #       "{:<14.10f}".format(self.internal), end=' ')
+        #       "{:<14.10f}".format(integral), end=' ')
+        #       "{:<18.10f}".format(- dIsol_fb * M_sp), end=' ')
         # This suggests that Vloop_fb is multiplied by the inductance, as an
         # output (so it's actually a current), and that it's given in KA.
-        # return Vloop_fb*-1.58*1e-2
+        # print(f"    The feedback Isol for loop voltage: {dIsol_fb}")
 
         # Compute the loop voltage as a weighted sum
-        M_sp = 1.580 * 1e-5 * 1e3
-        dIsoldt = blend * Vloop_fb - (1 - blend) * Vloop_ff * (1 / M_sp)
+        # dIsoldt = blend * Vloop_fb - (1 - blend) * Vloop_ff * (1 / M_sp)
 
-        # return dIsoldt
+        if blend == 0:
+            dIsoldt = - Vloop_ff * (1 / M_sp)
+        elif blend == 1:
+            dIsoldt = dIsol_fb
+        else:
+            raise ValueError(f"Blend should either 1 or 0, not {blend}.")
 
         # Compute the rate of change of the solenoid current
-        print(f"    The trajectory for the solenoid current: {dIsoldt}")
+        # print(f"    The trajectory for the solenoid current: {dIsoldt}")
 
         # Apply dIsoldt to virtual circuit vector to get the current
-        # trajectories of the active coils
+        # trajectories of the active coils.
         dI_dt = dIsoldt * sol_vc
-        print(f"    The trajectory for the solenoid current, after VC: {dI_dt[0]}")
+        # print(f"    The trajectory for the solenoid current, after VC: {dI_dt[0]}")
 
-        return dI_dt
+        # testing
+        results = {
+                   "delta_Ip": delta_Ip,
+                   "pIstate": self.internal,
+                   "Vloop_fb": dIsol_fb * (-M_sp),
+                   "dIsoldt": dIsoldt,
+                   "dI_dt": dI_dt[0],
+                   "blends": blend,
+                   "Kps": Kp,
+                   "Kis": Ki,
+                   "dts": dt
+                   }
 
-    def ip_control(self, ts, prev_ts, Ip_obs=None, eq=None):
+        # return dI_dt
+        return results
+
+    def get_pistate(self, ts):
+        """ Auxiliar method written for testing purposes. To be deleted when
+        the code is validated
+        """
+
+        # idx = np.where(np.isclose(self.pi_state["times"], ts, atol=1e-10))[0]
+        # idx = np.where(self.pi_state["times"] == ts)[0][0]
+        idx = np.asarray(self.pi_state["times"] == ts).nonzero()[0][0]
+
+        # print("pi_state at this ts:", self.pi_state["vals"][idx])
+
+        return self.pi_state["vals"][idx]
+
+    def ip_control(self, ts, prev_ts, delta_Ip_gt, prev_delta_Ip_gt, Ip_obs=None, eq=None):
         """
         Execute all the steps in the pipeline for the control of the solenoid
         current, as prescribed by the PCS. This method is the API by design of
@@ -168,7 +219,6 @@ class ControlSolenoid:
         else:
             print(f"User defined Ip_obs: {Ip_obs}")
 
-        # print(f"  The observed Ip: {Ip_obs}")
         # Implement the plasma category. First, the relevant entities should be
         # retrieved from the scheduler
         Ip_req = self.scheduler.get_waveform_value(
@@ -181,23 +231,26 @@ class ControlSolenoid:
             # return array of zeros if not controlled
             dI_dt = np.zeros_like(self.scheduler.vc_dict)
             return dI_dt
-        print(f"  The requested Ip: {Ip_req}")
+        # print(f"  The requested Ip: {Ip_req}")
 
         Vloop_req = self.scheduler.get_waveform_value(
             param_type="ff", param="plasma", time_stamp=ts
         )
-        print(f"  The requested FF_Vloop: {Vloop_req}")
+        # print(f"  The requested FF_Vloop: {Vloop_req}")
 
-        gain_p, _ = self.scheduler.get_gains(["plasma"], time_stamp=ts, K_type="Kprop")
-        gain_int, _ = self.scheduler.get_gains(["plasma"], time_stamp=ts, K_type="Kint")
-        print(f"  The plasma gains: Kp={gain_p}, Kint={gain_int}")
+        gain_p, _ = self.scheduler.get_gains(
+                ["plasma"], time_stamp=ts, K_type="Kprop")
+        gain_int, _ = self.scheduler.get_gains(
+                ["plasma"], time_stamp=ts, K_type="Kint")
+        # print(f"  The plasma gains: Kp={gain_p}, Kint={gain_int}")
 
         blend = self.scheduler.get_waveform_value(
             param_type="blends", param="plasma", time_stamp=ts
         )
-        print(f"  The blend value: {blend}")
-        print("dt: ", (ts - prev_ts))
+        # print(f"  The blend value: {blend}")
+        # print("dt: ", (ts - prev_ts))
 
+        # print("{:<18.5f}".format(ts), end=' ')
         dI_dt = self.calculate_solenoid_delta(
             Kp=gain_p[0],
             Ki=gain_int[0],
@@ -207,6 +260,9 @@ class ControlSolenoid:
             Ip_obs=Ip_obs,
             Vloop_ff=Vloop_req,
             sol_vc=self.scheduler.retrieve_vc(ts),
+            pi_state=self.get_pistate(ts),
+            delta_Ip_gt=delta_Ip_gt,
+            prev_delta_Ip_gt=prev_delta_Ip_gt
         )
 
         return dI_dt

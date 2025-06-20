@@ -154,12 +154,12 @@ class VirtualCircuitScheduler(VirtualCircuitProvider):
         t_vc = max(time for time in self.vc_times_start if time <= time_stamp)
         # get index corresponding to the time position
         pos = np.where(self.vc_times_start == t_vc)[0][0]
-        # print("vc position", pos)
+        print("vc position", pos)
 
         virtual_circuit = self.vc_objects[pos]
         if virtual_circuit is None:
             return None
-        # print("vc object matrix", virtual_circuit.VCs_matrix)
+        print("vc object matrix", virtual_circuit.VCs_matrix)
         if targets is not None:
             print(f"checking targets and reorder if necessary - time{time_stamp}")
             print("vc targets", virtual_circuit.targets)
@@ -182,7 +182,7 @@ class VirtualCircuitScheduler(VirtualCircuitProvider):
                     )
                 )
                 mask = [targ_order_dict[targ] for targ in targets]
-                # print("coil ordering mask ", mask)
+                print("coil ordering mask ", mask)
                 # print("coil ordering mask ", mask)
                 vc_mat_reduced = virtual_circuit.VCs_matrix[:, mask]
                 # vc_mat_reduced = virtual_circuit.VCs_matrix[:, np.ix_(mask)]
@@ -206,6 +206,24 @@ class VirtualCircuitScheduler(VirtualCircuitProvider):
                 # virtual_circuit_copy.VCs_matrix = vc_mat_reduced
                 # virtual_circuit_copy.targets = targs_reduced
         return virtual_circuit_copy
+
+    def _validate_observable_registry(
+        self, observable_registry: ObservableRegistry
+    ) -> bool:
+        """
+        Determine if the provided observable registry satisfies the necessary
+        requirements for get_vc to be executed correctly. E.g. does it provide access to
+        all the physical parameters of an equilibrium needed by a model.
+
+        This class does not require any observable registry as the VC matrices are
+        already built and do not need to be computed.
+
+        Parameters
+        ----------
+        observable_registry : ObservableRegistry
+            The observable registry to validate.
+        """
+        return True
 
     def _validate_observable_registry(
         self, observable_registry: ObservableRegistry

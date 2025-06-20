@@ -196,12 +196,19 @@ class TargetScheduler:
                 ]
             )
         else:
-            targets_required = np.array(
-                [
-                    self.get_waveform_value("fb", targ, time_stamp)
-                    for targ in controlled_targets
-                ]
-            )
+            targets_required = np.zeros(len(controlled_targets))
+            for i, targ in enumerate(controlled_targets):
+                targ_val = self.get_waveform_value("fb", targ, time_stamp)
+                if targ_val is not None:
+                    targets_required[i] = targ_val
+                else:
+                    print(f"No fb value for target {targ} at time {time_stamp}")
+            # targets_required = np.array(
+            #     [
+            #         self.get_waveform_value("fb", targ, time_stamp)
+            #         for targ in controlled_targets
+            #     ]
+            # )
 
         return targets_required
 
@@ -305,7 +312,7 @@ class TargetScheduler:
         else:
             # find time position
             arr = waveform_dict[param]["times"]
-            print(f"times arr at time {time_stamp} : {arr}")
+            print(f"waveform for target {param} at time {time_stamp} : {arr}")
             eps = 1e-8
             t_vals_temp = [time for time in arr if time <= time_stamp + eps]
             if len(t_vals_temp) == 0:

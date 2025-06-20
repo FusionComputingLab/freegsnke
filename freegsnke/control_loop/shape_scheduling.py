@@ -5,6 +5,8 @@ Module for target and virtual circuit sequencing in control loop.
 
 # import pickle
 
+from copy import deepcopy
+
 import numpy as np
 
 from freegsnke.observable_registry import ObservableRegistry
@@ -128,7 +130,7 @@ class VirtualCircuitScheduler(VirtualCircuitProvider):
     def get_vc(
         self,
         time_stamp: float,
-        targets: list[str],
+        targets: list[str] = None,
     ) -> VirtualCircuit | None:
         """
         Gets a Virtual Circuit for the given timestamp and observables requested from
@@ -155,9 +157,11 @@ class VirtualCircuitScheduler(VirtualCircuitProvider):
         print("vc position", pos)
 
         virtual_circuit = self.vc_objects[pos]
+        if virtual_circuit is None:
+            return None
         print("vc object matrix", virtual_circuit.VCs_matrix)
         if targets is not None:
-            print("checking targets and reorder if necessary")
+            print(f"checking targets and reorder if necessary - time{time_stamp}")
             print("vc targets", virtual_circuit.targets)
             print("VCs matrix", virtual_circuit.VCs_matrix)
             print("requested targets", targets)
@@ -187,10 +191,39 @@ class VirtualCircuitScheduler(VirtualCircuitProvider):
                     for i in np.array([targ_order_dict[targ] for targ in targets])
                 ]
                 # reassign to VC object
-                virtual_circuit.VCs_matrix = vc_mat_reduced
-                virtual_circuit.targets = targs_reduced
-        print("VCs matrix", virtual_circuit.VCs_matrix)
-        return virtual_circuit
+                virtual_circuit_copy = VirtualCircuit(
+                    name="reduced_vc",
+                    eq=None,
+                    profiles=None,
+                    shape_matrix=None,
+                    targets_options=None,
+                    non_standard_targets=None,
+                    targets_val=None,
+                    coils=virtual_circuit.coils,
+                    VCs_matrix=vc_mat_reduced,
+                    targets=targs_reduced,
+                )
+                # virtual_circuit_copy.VCs_matrix = vc_mat_reduced
+                # virtual_circuit_copy.targets = targs_reduced
+        return virtual_circuit_copy
+
+    def _validate_observable_registry(
+        self, observable_registry: ObservableRegistry
+    ) -> bool:
+        """
+        Determine if the provided observable registry satisfies the necessary
+        requirements for get_vc to be executed correctly. E.g. does it provide access to
+        all the physical parameters of an equilibrium needed by a model.
+
+        This class does not require any observable registry as the VC matrices are
+        already built and do not need to be computed.
+
+        Parameters
+        ----------
+        observable_registry : ObservableRegistry
+            The observable registry to validate.
+        """
+        return True
 
     def _validate_observable_registry(
         self, observable_registry: ObservableRegistry
@@ -313,9 +346,11 @@ class ShapeTargetScheduler(TargetScheduler):
             #         f" sequence at time {midpoint}"
             #     )
             #     # print("vc check at time", midpoint)
-            #     vc_targs = self.vc_scheduler.retrieve_vc(time_stamp=midpoint).targets
-            #     # print("vc_targs", vc_targs)
             #     controlled_targs = self.retrieve_controlled_targets(time_stamp=midpoint)
+            #     vc_targs = self.vc_scheduler.get_vc(
+            #         time_stamp=midpoint, targets=controlled_targs
+            #     ).targets
+            #     # print("vc_targs", vc_targs)
             #     # print("controlled_targs", controlled_targs)
             #     # check that the target schedule is a subset of the vc sequence
             #     if not set(controlled_targs).issubset(set(vc_targs)):

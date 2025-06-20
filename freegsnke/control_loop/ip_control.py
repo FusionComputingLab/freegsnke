@@ -222,7 +222,7 @@ class ControlSolenoid:
         # Implement the plasma category. First, the relevant entities should be
         # retrieved from the scheduler
         Ip_req = self.scheduler.get_waveform_value(
-            param_type="Ip",  param="plasma", time_stamp=ts
+            param_type="Ip", param="plasma", time_stamp=ts
         )
 
         # TODO check if this is monitored this way
@@ -234,7 +234,7 @@ class ControlSolenoid:
         # print(f"  The requested Ip: {Ip_req}")
 
         Vloop_req = self.scheduler.get_waveform_value(
-            param_type="ff",  param="plasma", time_stamp=ts
+            param_type="ff", param="plasma", time_stamp=ts
         )
         # print(f"  The requested FF_Vloop: {Vloop_req}")
 
@@ -245,7 +245,7 @@ class ControlSolenoid:
         # print(f"  The plasma gains: Kp={gain_p}, Kint={gain_int}")
 
         blend = self.scheduler.get_waveform_value(
-            param_type="blends",  param="plasma", time_stamp=ts
+            param_type="blends", param="plasma", time_stamp=ts
         )
         # print(f"  The blend value: {blend}")
         # print("dt: ", (ts - prev_ts))

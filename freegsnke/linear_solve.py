@@ -20,7 +20,7 @@ along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 import numpy as np
-from scipy.linalg import solve_sylvester
+from scipy.linalg import solve, solve_sylvester
 
 from .implicit_euler import implicit_euler_solver
 
@@ -37,7 +37,6 @@ class linear_solver:
         eq,
         Lambdam1,
         P,
-        Pm1,
         Rm1,
         Mey,
         # limiter_handler,
@@ -62,8 +61,6 @@ class linear_solver:
             of the passive coils, R^{-1}L_{passive}
         P: np.array
             change of basis matrix, as defined above, with modes appropriately removed
-        Pm1: np.array
-            change of basis matrix, as defined above, to the power of -1, with modes appropriately removed
         Rm1: np.array
             matrix of all metal resitances to the power of -1. Diagonal.
         Mey: np.array
@@ -84,10 +81,17 @@ class linear_solver:
         self.full_timestep = full_timestep
         self.plasma_norm_factor = plasma_norm_factor
 
-        # if Lambdam1 is None:
-        #     self.Lambdam1 = Pm1 @ (Rm1 @ (eq.tokamak.coil_self_ind @ (Pm1.T)))
-        # else:
-        self.Lambdam1 = Lambdam1
+        self.P = P
+        self.Rm1 = Rm1
+        self.RP = np.diag(eq.tokamak.coil_resist) @ P
+        self.RP_inv = np.linalg.solve(self.RP.T @ self.RP, self.RP.T)
+        self.RP_inv_Mey = np.matmul(self.RP_inv, Mey)
+        self.MyeP = np.matmul(Mey.T, P).T
+
+        if Lambdam1 is None:
+            self.Lambdam1 = self.RP_inv @ (eq.tokamak.coil_self_ind @ P)
+        else:
+            self.Lambdam1 = Lambdam1
         self.n_independent_vars = np.shape(self.Lambdam1)[0]
 
         self.Mmatrix = np.zeros(
@@ -99,13 +103,6 @@ class linear_solver:
         self.dMmatrix = np.zeros(
             (self.n_independent_vars + 1, self.n_independent_vars + 1)
         )
-
-        self.Pm1 = Pm1
-        self.Rm1 = Rm1
-        self.Pm1Rm1 = Pm1 @ Rm1
-        self.Pm1Rm1Mey = np.matmul(self.Pm1Rm1, Mey)
-        self.MyeP = np.matmul(Mey.T, P).T
-        # self.handleMyy = Myy_handler(limiter_handler)
 
         self.n_active_coils = eq.tokamak.n_active_coils
 
@@ -119,7 +116,7 @@ class linear_solver:
         self.plasma_resistance_1d = plasma_resistance_1d
 
         # dummy vessel voltage vector
-        self.empty_U = np.zeros(np.shape(self.Pm1Rm1)[1])
+        self.empty_U = np.zeros(np.shape(self.RP_inv)[1])
         # dummy voltage vec for eig modes
         self.forcing = np.zeros(self.n_independent_vars + 1)
         self.profiles_forcing = np.zeros(self.n_independent_vars + 1)
@@ -214,49 +211,47 @@ class linear_solver:
 
         """
 
-        self.M0matrix = np.zeros(
-            (self.n_independent_vars + 1, self.n_independent_vars + 1)
-        )
-        self.dMmatrix = np.zeros(
-            (self.n_independent_vars + 1, self.n_independent_vars + 1)
-        )
-
         nRp = (
             np.sum(self.plasma_resistance_1d * self.hatIy0 * self.hatIy0)
             * self.plasma_norm_factor
         )
 
+        # M0 matrix
+        self.M0matrix = np.zeros(
+            (self.n_independent_vars + 1, self.n_independent_vars + 1)
+        )
         # metal-metal before plasma
         self.M0matrix[: self.n_independent_vars, : self.n_independent_vars] = np.copy(
             self.Lambdam1
         )
-        # metal-metal plasma-mediated
-        self.dMmatrix[: self.n_independent_vars, : self.n_independent_vars] = np.matmul(
-            self.Pm1Rm1Mey, self.dIydI[:, :-1]
-        )
-
-        # plasma to metal
-        self.dMmatrix[:-1, -1] = np.dot(self.Pm1Rm1Mey, self.dIydI[:, -1])
-
         # metal to plasma
         self.M0matrix[-1, :-1] = np.dot(self.MyeP, self.hatIy0)
+        self.M0matrix[-1, :] /= nRp
+
+        # dM matrix
+        self.dMmatrix = np.zeros(
+            (self.n_independent_vars + 1, self.n_independent_vars + 1)
+        )
+        # metal-metal plasma-mediated
+        self.dMmatrix[: self.n_independent_vars, : self.n_independent_vars] = np.matmul(
+            self.RP_inv_Mey, self.dIydI[:, :-1]
+        )
+        # plasma to metal
+        self.dMmatrix[:-1, -1] = np.dot(self.RP_inv_Mey, self.dIydI[:, -1])
         # metal to plasma plasma-mediated
         self.dMmatrix[-1, :-1] = np.dot(self.dIydI[:, :-1].T, self.Myy_hatIy0)
-
         self.dMmatrix[-1, -1] = np.dot(self.dIydI[:, -1], self.Myy_hatIy0)
-
         self.dMmatrix[-1, :] /= nRp
-        self.M0matrix[-1, :] /= nRp
 
         self.Mmatrix = self.M0matrix + self.dMmatrix
 
         # build necessary terms to incorporate forcing term from variations of the profile parameters
         # MIdot + RI = V - self.Vm1Rm12Mey_plus@self.dIydpars@d_profiles_pars_dt
         # if self.dIydpars is not None:
-        #     Pm1Rm1Mey_plus = np.concatenate(
-        #         (self.Pm1Rm1Mey, JMyy[np.newaxis] / nRp), axis=0
+        #     RP_inv_Mey_plus = np.concatenate(
+        #         (self.RP_inv_Mey, JMyy[np.newaxis] / nRp), axis=0
         #     )
-        #     self.forcing_pars_matrix = np.matmul(Pm1Rm1Mey_plus, self.dIydpars)
+        #     self.forcing_pars_matrix = np.matmul(RP_inv_Mey_plus, self.dIydpars)
 
     def stepper(self, It, active_voltage_vec, d_profiles_pars_dt=None):
         """Executes the time advancement. Uses the implicit_euler instance.
@@ -273,7 +268,7 @@ class linear_solver:
         other parameters are passed in as object attributes
         """
         self.empty_U[: self.n_active_coils] = active_voltage_vec
-        self.forcing[:-1] = np.dot(self.Pm1Rm1, self.empty_U)
+        self.forcing[:-1] = np.dot(self.RP_inv, self.empty_U)
         self.forcing[-1] = 0.0
 
         # add forcing term from time derivative of profile parameters

@@ -169,7 +169,7 @@ class metal_currents:
             freq_and_thresh_number = np.sum(self.selected_modes_mask)
             if verbose:
                 print(
-                    f"      {freq_and_thresh_number - (freq_only_number + self.n_active_coils)} selected that couple with the plasma more than 'threshold_dIy_dI', despite having fast timescales"
+                    f"      {freq_and_thresh_number - (freq_only_number + self.n_active_coils)} recovered that couple with the plasma more than 'threshold_dIy_dI'"
                 )
 
             # exclude modes that do not couple enough
@@ -179,7 +179,7 @@ class metal_currents:
             final_number = np.sum(self.selected_modes_mask)
             if verbose:
                 print(
-                    f"      {freq_and_thresh_number - final_number} selected that couple with the plasma less than 'min_dIy_dI', despite having slow timescales"
+                    f"      {freq_and_thresh_number - final_number} removed that couple with the plasma less than 'min_dIy_dI'"
                 )
                 print(
                     f"      total selected = {final_number - self.n_active_coils} (out of {self.n_coils - self.n_active_coils})"
@@ -213,13 +213,13 @@ class metal_currents:
             # Id = Pmatrixm1 I
             # Therefore, taking the truncation into account:
             self.P = self.normal_modes.Pmatrix[:, self.selected_modes_mask]
-            self.Pm1 = self.normal_modes.Pmatrixm1[self.selected_modes_mask]
+            # self.Pm1 = self.normal_modes.Pmatrixm1[self.selected_modes_mask]
         elif selected_modes_mask is False:
             # this is to include ALL modes
             self.selected_modes_mask = np.ones(self.n_coils).astype(bool)
             self.n_independent_vars = np.sum(self.selected_modes_mask)
             self.P = self.normal_modes.Pmatrix[:, self.selected_modes_mask]
-            self.Pm1 = self.normal_modes.Pmatrixm1[self.selected_modes_mask]
+            # self.Pm1 = self.normal_modes.Pmatrixm1[self.selected_modes_mask]
         else:
             # this is the case used by nonlinear_solver.remove_modes
             self.selected_modes_mask_partial = selected_modes_mask
@@ -234,7 +234,7 @@ class metal_currents:
             )
 
             self.P = self.P[:, self.selected_modes_mask_partial]
-            self.Pm1 = self.Pm1[self.selected_modes_mask_partial]
+            # self.Pm1 = self.Pm1[self.selected_modes_mask_partial]
 
         # this is not needed any longer and now incorrect, the eigenvectors in P are independent but NOT orthogonal
         # self.Pm1 = (self.P).T
@@ -243,7 +243,10 @@ class metal_currents:
         # diagonalised separately from the active coils. The modes of used for the passive structures
         # diagonalise the isolated dynamics of the walls.
         # Equation is Lambda**(-1)Iddot + I = F
-        self.Lambdam1 = self.Pm1 @ (self.normal_modes.rm1l_non_symm @ self.P)
+        # self.Lambdam1 = self.Pm1 @ (self.normal_modes.rm1l_non_symm @ self.P)
+        self.RP = np.diag(self.coil_resist) @ self.P
+        self.RP_inv = np.linalg.solve(self.RP.T @ self.RP, self.RP.T)
+        self.Lambdam1 = (self.RP_inv @ self.coil_self_ind) @ self.P
 
         self.solver = implicit_euler_solver(
             Mmatrix=self.Lambdam1,
@@ -361,7 +364,7 @@ class metal_currents:
         all_Us = np.zeros_like(self.empty_U)
         all_Us[: self.n_active_coils] = active_voltage_vec
         all_Us -= self.Mey @ Iydot
-        all_Us = np.dot(self.Pm1, self.Rm1 * all_Us)
+        all_Us = self.RP_inv @ all_Us
         return all_Us
 
     def forcing_term_eig_no_plasma(self, active_voltage_vec, Iydot=0):
@@ -382,7 +385,7 @@ class metal_currents:
         """
         all_Us = self.empty_U.copy()
         all_Us[: self.n_active_coils] = active_voltage_vec
-        all_Us = np.dot(self.Pm1, self.Rm1 * all_Us)
+        all_Us = self.RP_inv @ all_Us
         return all_Us
 
     def forcing_term_no_eig_plasma(self, active_voltage_vec, Iydot):
@@ -426,29 +429,40 @@ class metal_currents:
         return all_Us
 
     def IvesseltoId(self, Ivessel):
-        """Given the vector of currents in the metals basis, Ivessel, returns Id
+        """
+        Given the vector of currents in the metals, this returns Id,
         the vector of currents in the eigenmodes basis.
 
         Parameters
         ----------
         Ivessel : np.ndarray
-            Vessel currents.
+            Vessel currents (all metals).
 
         Returns
         -------
         Id : np.ndarray
-
+            Currents in the eigenmode basis.
         """
-        Id = np.dot(self.Pm1, Ivessel)
-        return Id
+
+        return np.linalg.lstsq(self.P, Ivessel, rcond=None)[0]
 
     def IdtoIvessel(self, Id):
-        """Given Id, returns Ivessel.
+        """
+        Given the vector of currents in the eigenmode basis, this returns Ivessel,
+        the vector of currents in all the metals.
 
         Parameters
-        ----------"""
-        Ivessel = np.dot(self.P, Id)
-        return Ivessel
+        ----------
+        Id : np.ndarray
+            Currents in the eigenmode basis.
+
+        Returns
+        -------
+        Ivessel : np.ndarray
+            Vessel currents (all metals).
+        """
+
+        return self.P @ Id
 
     def stepper(self, It, active_voltage_vec, Iydot=0):
         """Steps the circuit equation forward in time.

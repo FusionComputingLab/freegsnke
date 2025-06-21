@@ -538,7 +538,7 @@ class nl_solver:
             self.calculate_Leuer_parameter()
 
             if len(self.linearised_sol.growth_rates):
-                # self.unstable_mode_deformations()
+                self.unstable_mode_deformations()
                 # deformable plasma metrics
                 print(f"   Deformable plasma metrics:")
                 print(f"      Growth rate = {self.linearised_sol.growth_rates} [1/s]")

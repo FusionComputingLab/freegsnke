@@ -2317,11 +2317,13 @@ class nl_solver:
             profiles_parameters=profiles_parameters,
         )
 
-        # retrieve the old profile parameter values
+        # retrieve the new profile parameter values (if present)
         self.get_profiles_values(self.profiles1)
         new_params = self.profiles_parameters_vec
 
         # calculate change in profiles across timestep: (profiles(t+dt)-profiles(t))/dt
+        # should be zero if no change
+        print(dtheta_dt)
         dtheta_dt = (new_params - old_params) / self.dt_step
 
         # check if plasma resistivity is being evolved

@@ -110,6 +110,11 @@ class mode_decomposition:
         #     1.0 * Pmatrix_passive_m1
         # )
 
+        # calculate the inverse
+        self.Pmatrix_inverse = np.linalg.solve(
+            self.Pmatrix.T @ self.Pmatrix, self.Pmatrix.T
+        )
+
     def normal_modes_greens(self, eq_vgreen):
         """
         Calculates the green functions of the vessel normal modes,
@@ -122,14 +127,10 @@ class mode_decomposition:
             Can be found at eq._vgreen. np.shape(eq_vgreen)=(n_coils, nx, ny)
         """
 
-        # dgreen = np.sum(
-        #     eq_vgreen[np.newaxis, :, :, :]
-        #     * self.Pmatrixm1[:, :, np.newaxis, np.newaxis],
-        #     axis=1,
-        # )
-
-        rhs = eq_vgreen.reshape(eq_vgreen.shape[0], -1)  # shape (n, a*b)
-        dgreen_flat = np.linalg.solve(self.Pmatrix, rhs)  # shape (n, a*b)
-        dgreen = dgreen_flat.reshape(eq_vgreen.shape)
+        dgreen = np.sum(
+            eq_vgreen[np.newaxis, :, :, :]
+            * self.Pmatrix_inverse[:, :, np.newaxis, np.newaxis],
+            axis=1,
+        )
 
         return dgreen

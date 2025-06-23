@@ -25,6 +25,7 @@ examples/paper
 examples/basic*
 examples/machine*
 examples/example_nonlinear_ev*
+examples/example6c*
 examples/static_*
 examples/VC*
 examples/*_.ipynb

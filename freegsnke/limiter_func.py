@@ -42,6 +42,8 @@ class Limiter_handler:
         self.limiter = limiter
         self.eqR = eq.R
         self.eqZ = eq.Z
+        self.eqR_1D = self.eqR[:, 0]
+        self.eqZ_1D = self.eqZ[0, :]
 
         self.dR = self.eqR[1, 0] - self.eqR[0, 0]
         self.dZ = self.eqZ[0, 1] - self.eqZ[0, 0]
@@ -49,6 +51,8 @@ class Limiter_handler:
         self.nx, self.ny = np.shape(eq.R)
         self.nxny = self.nx * self.ny
         self.map2d = np.zeros_like(eq.R)
+        self.eqRidx = np.tile(np.arange(self.nx)[:, np.newaxis], (1, self.ny))
+        self.eqZidx = np.tile(np.arange(self.ny)[:, np.newaxis], (1, self.nx)).T
 
         self.build_mask_inside_limiter()
         self.limiter_points()
@@ -197,7 +201,7 @@ class Limiter_handler:
         layer_mask = layer_mask * np.logical_not(mask)
         return layer_mask.astype(bool)
 
-    def limiter_points(self, refine=6):
+    def limiter_points(self, refine=16):
         """Based on the limiter vertices, it builds the refined list of points on the boundary
         of the region where the plasma is allowed. These refined boundary points are those on which the flux
         function is interpolated to find the value of psi_boundary in the case of a limiter plasma.
@@ -215,21 +219,85 @@ class Limiter_handler:
             ),
             axis=-1,
         )
+        dverts = verts[1:] - verts[:-1]
+        idxR = (
+            np.sum(
+                np.tile(self.eqR_1D[np.newaxis], (len(verts), 1)) < verts[:, :1], axis=1
+            )
+            - 1
+        )
+        idxZ = (
+            np.sum(
+                np.tile(self.eqZ_1D[np.newaxis], (len(verts), 1)) < verts[:, 1:], axis=1
+            )
+            - 1
+        )
 
-        refined_ddiag = (self.dR**2 + self.dZ**2) ** 0.5 / refine
+        all_fine_verts = []
+        for i in range(len(verts) - 1):
 
-        fine_points = []
-        for i in range(1, len(verts)):
-            dv = verts[i : i + 1] - verts[i - 1 : i]
-            ndv = np.linalg.norm(dv)
-            nn = np.round(ndv // refined_ddiag).astype(int)
-            if nn:
-                points = dv * np.arange(nn)[:, np.newaxis] / nn
-                points += verts[i - 1 : i]
-                fine_points.append(points)
-        fine_points = np.concatenate(fine_points, axis=0)
+            if dverts[i, 0] == 0:
+                # line is vertical
+                # line can only intersect the horizontal grid
+                min_Z = min(idxZ[i : i + 2])
+                max_Z = max(idxZ[i : i + 2])
+                Zvals = self.eqZ_1D[min_Z + 1 : max_Z + 1]
+                Rvals = np.array([verts[i, 0]] * len(Zvals))
+                fine_verts = np.array([Rvals, Zvals]).T
 
-        # finds the grid vertex with coords just below each of the fine_points along the limiter
+            elif dverts[i, 1] == 0:
+                # line is horizontal
+                # line can only intersect the vertical grid
+                min_R = min(idxR[i : i + 2])
+                max_R = max(idxR[i : i + 2])
+                Rvals = self.eqR_1D[min_R + 1 : max_R + 1]
+                Zvals = np.array([verts[i, 1]] * len(Rvals))
+                fine_verts = np.array([Rvals, Zvals]).T
+
+            else:
+                # not vertical
+                aa = dverts[i, 1] / dverts[i, 0]
+                bb = verts[i, 1] - aa * verts[i, 0]
+
+                # add all intersections with the vertical grid
+                min_R = min(idxR[i : i + 2])
+                max_R = max(idxR[i : i + 2])
+                Rvals = self.eqR_1D[min_R + 1 : max_R + 1]
+                Zvals = aa * Rvals + bb
+                fine_verts = np.array([Rvals, Zvals]).T
+                # add all intersections with the horizontal grid
+                min_Z = min(idxZ[i : i + 2])
+                max_Z = max(idxZ[i : i + 2])
+                Zvals = self.eqZ_1D[min_Z + 1 : max_Z + 1]
+                Rvals = (Zvals - bb) / aa
+                fine_verts = np.concatenate(
+                    (fine_verts, np.array([Rvals, Zvals]).T), axis=0
+                )
+
+            # add second vertex
+            fine_verts = np.concatenate((fine_verts, verts[i + 1 : i + 2]), axis=0)
+            # sort locally
+            fine_verts = fine_verts[
+                np.argsort(np.linalg.norm(fine_verts - verts[i + 1 : i + 2], axis=1))
+            ]
+
+            all_fine_verts.append(fine_verts)
+
+        fine_points = np.concatenate(all_fine_verts, axis=0)
+
+        # refined_ddiag = (self.dR**2 + self.dZ**2) ** 0.5 / refine
+        # fine_points = []
+        # for i in range(1, len(verts)):
+        #     dv = verts[i : i + 1] - verts[i - 1 : i]
+        #     ndv = np.linalg.norm(dv)
+        #     nn = np.round(ndv // refined_ddiag).astype(int)
+        #     if nn:
+        #         points = dv * np.arange(nn)[:, np.newaxis] / nn
+        #         points += verts[i - 1 : i]
+        #         fine_points.append(points)
+        # fine_points = np.concatenate(fine_points, axis=0)
+
+        # finds the grid vertex with coords just left-below each of the fine_points along the limiter
         Rvals = self.eqR[:, 0]
         Ridxs = np.sum(Rvals[np.newaxis, :] < fine_points[:, :1], axis=1) - 1
         Zvals = self.eqZ[0, :]
@@ -237,9 +305,18 @@ class Limiter_handler:
         self.grid_per_limiter_fine_point = np.concatenate(
             (Ridxs[:, np.newaxis], Zidxs[:, np.newaxis]), axis=-1
         )
+        # saves the mask of all gridpoints that are just left-below any limiter fine-point
+        self.mask_limiter_cells = np.zeros_like(self.eqR)
+        self.mask_limiter_cells[
+            self.grid_per_limiter_fine_point[:, 0],
+            self.grid_per_limiter_fine_point[:, 1],
+        ] = 1
+        self.mask_limiter_cells = self.mask_limiter_cells.astype(bool)
+
         self.limiter_mask_out = self.make_layer_mask(
             np.logical_not(self.mask_inside_limiter), 1
         )
+        self.offending_mask = np.zeros_like(self.eqR).astype(bool)
 
         self.fine_point_per_cell = {}
         self.fine_point_per_cell_R = {}
@@ -296,9 +373,12 @@ class Limiter_handler:
             # ker *= self.ker_signs
             vals = np.sum(ker * self.fine_point_per_cell_Z[id_R, id_Z], axis=-1)
             vals = np.sum(vals * self.fine_point_per_cell_R[id_R, id_Z], axis=-1)
+            vals /= self.dRdZ
+            idxs = self.fine_point_per_cell[id_R, id_Z]
         else:
             vals = []
-        return vals
+            idxs = []
+        return vals, idxs
 
     def interp_on_limiter_points(self, id_R, id_Z, psi):
         """Uses interp_on_limiter_points_cell to interpolate the flux function psi
@@ -327,12 +407,16 @@ class Limiter_handler:
             {id_R-1, id_R, id_R+1} X {id_Z-1, id_Z, id_Z+1}
         """
         vals = []
+        idxs = []
         for i in np.arange(-1, 2):
             for j in np.arange(-1, 2):
-                vals.append(self.interp_on_limiter_points_cell(id_R + i, id_Z + j, psi))
-        vals = np.concatenate(vals)
-        vals /= self.dRdZ
-        return vals
+                vals_, idxs_ = self.interp_on_limiter_points_cell(
+                    id_R + i, id_Z + j, psi
+                )
+                vals = np.concatenate((vals, vals_))
+                idxs = np.concatenate((idxs, idxs_))
+        # vals = np.concatenate(vals)
+        return vals, idxs
 
     def core_mask_limiter(
         self,
@@ -376,28 +460,56 @@ class Limiter_handler:
             Flag to identify if the plasma is in a diverted or limiter configuration.
 
         """
+        core_mask = core_mask.astype(float)
+        # identify the grid points just left-below of points on the limiter that need checking
+        offending_mask = (
+            core_mask[:-1, :-1]
+            + core_mask[1:, :-1]
+            + core_mask[:-1, 1:]
+            + core_mask[1:, 1:]
+        )
+        offending_mask = (offending_mask > 0) * (offending_mask < 4)
+        self.offending_mask[:-1, :-1] = np.copy(offending_mask)
+        self.offending_mask *= self.mask_limiter_cells
+        # self.offending_mask = self.offending_mask.astype(bool)
 
-        offending_mask = (core_mask * limiter_mask_out).astype(bool)
-        self.offending_mask = offending_mask
         self.flag_limiter = False
 
-        if np.any(offending_mask):
-            # psi_max_out = np.amax(psi[offending_mask])
-            # psi_max_in = np.amax(psi[(core_mask * limiter_mask_in).astype(bool)])
-            # psi_bndry = linear_coeff*psi_max_out + (1-linear_coeff)*psi_max_in
-            # core_mask = (psi > psi_bndry)*core_mask
+        offending_cells_id_R = self.eqRidx[self.offending_mask]
+        offending_cells_id_Z = self.eqZidx[self.offending_mask]
 
-            id_psi_max_out = np.unravel_index(
-                np.argmax(psi - (10**6) * (1 - offending_mask)), (self.nx, self.ny)
+        self.interpolated_on_limiter = []
+        for i in range(len(offending_cells_id_R)):
+            vals_, idxs_ = self.interp_on_limiter_points_cell(
+                offending_cells_id_R[i], offending_cells_id_Z[i], psi
             )
-            interpolated_on_limiter = self.interp_on_limiter_points(
-                id_psi_max_out[0], id_psi_max_out[1], psi
-            )
-            psi_on_limiter = np.amax(interpolated_on_limiter)
+            self.interpolated_on_limiter.append(vals_)
+
+        if len(self.interpolated_on_limiter):
+            self.interpolated_on_limiter = np.concatenate(self.interpolated_on_limiter)
+            psi_on_limiter = np.amax(self.interpolated_on_limiter)
             if psi_on_limiter > psi_bndry:
                 self.flag_limiter = True
                 psi_bndry = 1.0 * psi_on_limiter
                 core_mask = (psi > psi_bndry) * core_mask
+
+        # if np.any(offending_mask):
+        #     # psi_max_out = np.amax(psi[offending_mask])
+        #     # psi_max_in = np.amax(psi[(core_mask * limiter_mask_in).astype(bool)])
+        #     # psi_bndry = linear_coeff*psi_max_out + (1-linear_coeff)*psi_max_in
+        #     # core_mask = (psi > psi_bndry)*core_mask
+
+        #     id_psi_max_out = np.unravel_index(
+        #         np.argmax(psi - (10**6) * (1 - offending_mask)), (self.nx, self.ny)
+        #     )
+        #     self.interpolated_on_limiter, self.interpolated_idxs = self.interp_on_limiter_points(
+        #         id_psi_max_out[0], id_psi_max_out[1], psi
+        #     )
+        #     psi_on_limiter = np.amax(self.interpolated_on_limiter)
+        #     if psi_on_limiter > psi_bndry:
+        #         self.flag_limiter = True
+        #         psi_bndry = 1.0 * psi_on_limiter
+        #         core_mask = (psi > psi_bndry) * core_mask
 
         return psi_bndry, core_mask, self.flag_limiter
 

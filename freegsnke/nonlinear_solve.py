@@ -25,6 +25,7 @@ from copy import deepcopy
 import matplotlib.pyplot as plt
 import numpy as np
 from freegs4e import bilinear_interpolation
+from freegs4e.gradshafranov import GreensBr, GreensdBrdz
 from scipy.signal import convolve2d
 
 from . import nk_solver_H as nk_solver
@@ -46,6 +47,7 @@ class nl_solver:
         self,
         profiles,
         eq,
+        GSStaticSolver,
         custom_coil_resist=None,
         custom_self_ind=None,
         full_timestep=0.0001,
@@ -56,8 +58,8 @@ class nl_solver:
         blend_hatJ=0,
         max_mode_frequency=10**2.0,
         fix_n_vessel_modes=-1,
-        threshold_dIy_dI=0.2,
-        min_dIy_dI=0.1,
+        threshold_dIy_dI=0.025,
+        min_dIy_dI=0.01,
         mode_removal=True,
         linearize=True,
         dIydI=None,
@@ -65,6 +67,8 @@ class nl_solver:
         target_relative_tolerance_linearization=1e-8,
         target_dIy=1e-3,
         force_core_mask_linearization=False,
+        l2_reg=1e-6,
+        collinearity_reg=1e-6,
         verbose=False,
     ):
         """Initializes the time-evolution Object.
@@ -84,10 +88,15 @@ class nl_solver:
             It can be changed later by initializing a new set of initial conditions.
             Note however that, to change either the machine or limiter properties
             it will be necessary to instantiate a new nl_solver object.
-        max_mode_frequency : float
-            Threshold value used to include/exclude vessel normal modes.
-            Only modes with smaller characteristic frequencies (larger timescales) are retained.
-            If None, max_mode_frequency is set based on the input timestep: max_mode_frequency = 1/(5*full_timestep)
+        GSStaticSolver : FreeGSNKE static solver object
+        custom_coil_resist : np.array
+            1d array of resistance values for all machine conducting elements,
+            including both active coils and passive structures
+            If None, the values calculated by default in tokamak will be sourced and used.
+        custom_self_ind : np.array
+            2d matrix of mutual inductances between all pairs of machine conducting elements,
+            including both active coils and passive structures
+            If None, the values calculated by default in tokamak will be sourced and used.
         full_timestep : float, optional, by default .0001
             The stepper advances the dynamics by a time interval dt=full_timestep.
             Applies to both linear and non-linear stepper.
@@ -99,17 +108,25 @@ class nl_solver:
             Such sub_step is used to advance the circuit equations
             (under the assumption of constant applied voltage during the full_timestep).
             Note that this input is overridden by 'automatic_timestep' if the latter is not set to False.
+        automatic_timestep : (float, float) or False, optional, by default False
+            If not False, this overrides inputs full_timestep and max_internal_timestep:
+            the timescales of the linearised problem are used to set the size of the timestep.
+            The input eq and profiles are used to calculate the fastest growthrate, t_growthrate, henceforth,
+            full_timestep = automatic_timestep[0]*t_growthrate
+            max_internal_timestep = automatic_timestep[1]*full_timestep
         plasma_resistivity : float, optional, by default 1e-6
             Resistivity of the plasma. Plasma resistance values for each of the domain grid points are
-            2*np.pi*plasma_resistivity*eq.R/(dR*dZ)
-            where dR*dZ is the area of the domain element.
+            2*np.pi*plasma_resistivity*eq.R/(dR*dZ) where dR*dZ is the area of the domain element.
         plasma_norm_factor : float, optional, by default 1000
-            The plasma current is re-normalised by this factor,
-            to bring to a value more akin to those of the metal currents
+            The plasma current is re-normalised by this factor to bring to a value more akin to those of the metal currents.
         blend_hatJ : float, optional, by default 0
             optional coefficient which enables use a blended version of the normalised plasma current distribution
             when contracting the plasma lumped circuit eq. from the left. The blend combines the
             current distribution at time t with (a guess for) the one at time t+dt.
+        max_mode_frequency : float
+            Threshold value used to include/exclude vessel normal modes.
+            Only modes with smaller characteristic frequencies (larger timescales) are retained.
+            If None, max_mode_frequency is set based on the input timestep: max_mode_frequency = 1/(5*full_timestep)
         dIydI : np.array of size (np.sum(plasma_domain_mask), n_metal_modes+1), optional
             dIydI_(i,j) = d(Iy_i)/d(I_j)
             This is the jacobian of the plasma current distribution Iy with respect to all
@@ -136,22 +153,40 @@ class nl_solver:
             If -1, modes are selected based on max_mode_frequency, threshold_dIy_dI and min_dIy_dI.
             If a non-negative integer, the number of vessel modes is fixed accordingly. max_mode_frequency, threshold_dIy_dI and min_dIy_dI are not used.
         threshold_dIy_dI : float
-            Threshold value to drop vessel modes.
-            Modes that couple with the plasma more than min_dIy_dI than the strongest mode, are included.
+            Threshold value to drop vessel modes (number between 0 and 1).
+            Modes that couple with the plasma more than threshold_dIy_dI*strongest_mode, are included.
             This criterion is applied based on dIydI_noGS.
         min_dIy_dI : float
-            Threshold value to drop vessel modes.
-            Modes that couple with the plasma less than min_dIy_dI than the strongest mode, are dropped.
+            Threshold value to drop vessel modes (number between 0 and 1).
+            Modes that couple with the plasma less than min_dIy_dI*strongest_mode, are removed.
             This criterion is applied based on dIydI_noGS.
-        custom_coil_resist : np.array
-            1d array of resistance values for all machine conducting elements,
-            including both active coils and passive structures
-            If None, the values calculated by default in tokamak will be sourced and used.
-        custom_self_ind : np.array
-            2d matrix of mutual inductances between all pairs of machine conducting elements,
-            including both active coils and passive structures
-            If None, the values calculated by default in tokamak will be sourced and used.
+            Note this must be less than or equal to threshold_dIy_dI.
+        mode_removal : bool, optional, by default True
+            It True, vessel normal modes are dropped after dIydI is calculated
+            Modes that couple with the plasma less than min_dIy_dI than the strongest mode, are dropped.
+            This criterion is applied based on the actual dIydI, calculated on GS solutions.
+        linearize : bool, optional, by default True
+            Whether to set up the linearization of the evolutive problem
+        dIydI : np.array of size (np.sum(plasma_domain_mask), n_metal_modes+1), optional
+            dIydI_(i,j) = d(Iy_i)/d(I_j)
+            This is the jacobian of the plasma current distribution Iy with respect to all
+            independent metal currents (both active and vessel modes) and to the total plasma current
+            This is provided if known, otherwise calculated here at the linearization eq
+        target_relative_tolerance_linearization : float
+            Relative tolerance to solve the static GS problems to during the Jacobian calculation.
+        target_dIy : float
+            Target value for the norm of delta(I_y), on which the finite difference derivatives are calculated.
+        force_core_mask_linearization : bool
+            Whether finite difference calculations should all be based on plasmas with the
+            exact same core region or not.
+        l2_reg : float
+            Tychonoff regularization coeff used by the nonlinear solver
+        collinearity_reg : float
+            Tychonoff regularization coeff which further penalizes collinear terms used by the nonlinear solver
+        verbose : bool
+            Print interim calculation results to user.
         """
+        print("-----")
 
         # grid parameters
         self.nx = eq.nx
@@ -176,12 +211,25 @@ class nl_solver:
         self.limiter_handler = eq.limiter_handler
         self.plasma_domain_size = np.sum(self.limiter_handler.mask_inside_limiter)
 
+        # check threshold values
+        if fix_n_vessel_modes < 0:
+            if min_dIy_dI > threshold_dIy_dI:
+                raise ValueError(
+                    "Inputs require that 'min_dIy_dI' <= 'threshold_dIy_dI', please adjust parameters."
+                )
+
+        # check number of passives
+        if self.n_passive_coils < fix_n_vessel_modes:
+            print(
+                f"'fix_n_vessel_modes' ({fix_n_vessel_modes}) exceeds number of passive strucutres ({self.n_passive_coils}), setting 'fix_n_vessel_modes' to {self.n_passive_coils} "
+            )
+            fix_n_vessel_modes = self.n_passive_coils
+
         # check input eq and profiles are a GS solution
-        print("-----")
         print("Checking that the provided 'eq' and 'profiles' are a GS solution...")
 
-        # instantiating static GS solver on eq's domain
-        self.NK = NKGSsolver(eq)
+        # storing the static solver
+        self.NK = GSStaticSolver
         self.NK.forward_solve(
             eq,
             profiles,
@@ -261,81 +309,95 @@ class nl_solver:
         print("-----")
 
         print("Identifying mode selection criteria...")
-        # prepare ndIydI_no_GS for mode selection
-        self.build_dIydI_noGS(
-            force_core_mask_linearization,
-            self.starting_dI,
-            profiles.diverted_core_mask,
-            verbose,
-        )
-
-        # select modes according to the provided thresholds:
-        # include all modes that couple more than the threshold_dIy_dI
-        # with respect to the strongest coupling vessel mode
-        strongest_coupling_vessel_mode = max(self.ndIydI_no_GS[self.n_active_coils :])
-        if fix_n_vessel_modes >= 0:  # type(fix_n_vessel_modes) is int:
-            # select modes based on ndIydI_no_GS up to fix_n_modes exactly
-            print(
-                f"      'fix_n_vessel_modes' option selected --> passive structure modes that couple most to the strongest passive structure mode are being selected."
+        if self.n_passive_coils > 0:
+            # prepare ndIydI_no_GS for mode selection
+            self.build_dIydI_noGS(
+                force_core_mask_linearization,
+                self.starting_dI,
+                profiles.diverted_core_mask,
+                verbose,
             )
 
+            # select modes according to the provided thresholds:
+            # include all modes that couple more than the threshold_dIy_dI
+            # with respect to the strongest coupling vessel mode
             ordered_ndIydI_no_GS = np.sort(self.ndIydI_no_GS[self.n_active_coils :])
-            if fix_n_vessel_modes > 0:
-                threshold_value = ordered_ndIydI_no_GS[-fix_n_vessel_modes]
-            else:
-                threshold_value = (
-                    ordered_ndIydI_no_GS[-1] * 1.1
-                )  # scale up so no modes are selected
+            strongest_coupling_vessel_mode = ordered_ndIydI_no_GS[-1]
 
-            mode_coupling_mask_include = np.concatenate(
-                (
-                    [True] * self.n_active_coils,
-                    self.ndIydI_no_GS[self.n_active_coils :] >= threshold_value,
+            if fix_n_vessel_modes >= 0:
+                # select modes based on ndIydI_no_GS up to fix_n_modes exactly
+                print(
+                    f"      'fix_n_vessel_modes' option selected --> passive structure modes that couple most to the strongest passive structure mode are being selected."
                 )
-            )
-            mode_coupling_mask_exclude = np.concatenate(
-                (
-                    [True] * self.n_active_coils,
-                    self.ndIydI_no_GS[self.n_active_coils :] >= threshold_value,
+
+                if fix_n_vessel_modes > 0:
+                    threshold_value = ordered_ndIydI_no_GS[-fix_n_vessel_modes]
+                else:  # zero modes to be selected
+                    threshold_value = (
+                        strongest_coupling_vessel_mode * 1.1
+                    )  # scale up so no modes are selected
+
+                mode_coupling_mask_include = np.concatenate(
+                    (
+                        [True] * self.n_active_coils,
+                        self.ndIydI_no_GS[self.n_active_coils :] >= threshold_value,
+                    )
                 )
-            )
-            # the number of modes is being fixed:
+                mode_coupling_mask_exclude = np.concatenate(
+                    (
+                        [True] * self.n_active_coils,
+                        self.ndIydI_no_GS[self.n_active_coils :] >= threshold_value,
+                    )
+                )
+                # the number of modes is being fixed:
+                mode_removal = False
+            else:
+                print(
+                    f"      'threshold_dIy_dI', 'min_dIy_dI', and 'max_mode_frequency' options selected --> passive structure modes are selected according to these thresholds."
+                )
+                # select modes based on ndIydI_no_GS using values of threshold_dIy_dI
+                mode_coupling_mask_include = np.concatenate(
+                    (
+                        [True] * self.n_active_coils,
+                        self.ndIydI_no_GS[self.n_active_coils :]
+                        >= threshold_dIy_dI * strongest_coupling_vessel_mode,
+                    )
+                )
+                # exclude all modes that couple less than min_dIy_dI
+                mode_coupling_mask_exclude = np.concatenate(
+                    (
+                        [True] * self.n_active_coils,
+                        self.ndIydI_no_GS[self.n_active_coils :]
+                        >= min_dIy_dI * strongest_coupling_vessel_mode,
+                    )
+                )
+        else:
+            print("      no passive modes present!")
+
+            # only active coils selected
+            mode_coupling_mask_include = [True] * self.n_active_coils
+
+            # exclude all modes that couple less than min_dIy_dI
+            mode_coupling_mask_exclude = mode_coupling_mask_include
+
+            # set mode removal to false
             mode_removal = False
 
-        else:
-            print(
-                f"      'threshold_dIy_dI', 'min_dIy_dI', and 'max_mode_frequency' option selected --> passive structure modes are selected according to these thresholds."
-            )
-            # select modes based on ndIydI_no_GS using values of threshold_dIy_dI and min_dIy_dI
-            mode_coupling_mask_include = np.concatenate(
-                (
-                    [True] * self.n_active_coils,
-                    self.ndIydI_no_GS[self.n_active_coils :]
-                    >= threshold_dIy_dI * strongest_coupling_vessel_mode,
-                )
-            )
-            # exclude all modes that couple less than min_dIy_dI
-            mode_coupling_mask_exclude = np.concatenate(
-                (
-                    [True] * self.n_active_coils,
-                    self.ndIydI_no_GS[self.n_active_coils :]
-                    >= min_dIy_dI * strongest_coupling_vessel_mode,
-                )
-            )
+        print("-----")
 
+        print(f"Initial mode selection:")
         # enact the mode selection
         mode_coupling_masks = (
             mode_coupling_mask_include,
             mode_coupling_mask_exclude,
         )
-        print("-----")
 
-        print(f"Initial mode selection:")
         self.evol_metal_curr.initialize_for_eig(
             selected_modes_mask=None,
             mode_coupling_masks=mode_coupling_masks,
-            verbose=(fix_n_vessel_modes < 0),  # (type(fix_n_vessel_modes) is not int)
+            verbose=(fix_n_vessel_modes < 0),
         )
+
         if fix_n_vessel_modes >= 0:
             print(f"   Active coils")
             print(
@@ -347,7 +409,7 @@ class nl_solver:
                 f"   Total number of modes = {self.evol_metal_curr.n_independent_vars} ({self.n_active_coils} active coils + {fix_n_vessel_modes} passive structures)"
             )
             print(
-                f"      (Note: some additional modes may be removed after Jacobian calculation)"
+                f"      (Note: some additional modes may be removed after Jacobian calculation if 'mode_removal=True')"
             )
         print("-----")
 
@@ -399,6 +461,7 @@ class nl_solver:
         self.simplified_solver_J1 = simplified_solver_J1(
             eq=eq,
             Lambdam1=self.evol_metal_curr.Lambdam1,
+            P=self.evol_metal_curr.P,
             Pm1=self.evol_metal_curr.Pm1,
             Rm1=np.diag(self.evol_metal_curr.Rm1),
             Mey=self.evol_metal_curr.Mey_matrix,
@@ -428,10 +491,10 @@ class nl_solver:
         self.linearised_sol = linear_solver(
             eq=eq,
             Lambdam1=self.evol_metal_curr.Lambdam1,
+            P=self.evol_metal_curr.P,
             Pm1=self.evol_metal_curr.Pm1,
             Rm1=np.diag(self.evol_metal_curr.Rm1),
             Mey=self.evol_metal_curr.Mey_matrix,
-            # limiter_handler=self.limiter_handler,
             plasma_norm_factor=self.plasma_norm_factor,
             plasma_resistance_1d=self.plasma_resistance_1d,
             max_internal_timestep=self.max_internal_timestep,
@@ -440,11 +503,15 @@ class nl_solver:
 
         # sets up NK solver on the full grid, to be used when solving the
         # circuits equations as a problem in the plasma flux
-        self.psi_nk_solver = nk_solver.nksolver(self.nxny, verbose=True)
+        self.psi_nk_solver = nk_solver.nksolver(
+            self.nxny, l2_reg=l2_reg, collinearity_reg=collinearity_reg
+        )
 
         # sets up NK solver for the currents
         self.currents_nk_solver = nk_solver.nksolver(
-            self.extensive_currents_dim, verbose=True
+            self.extensive_currents_dim,
+            l2_reg=l2_reg,
+            collinearity_reg=collinearity_reg,
         )
 
         # counter for the step advancement of the dynamics
@@ -521,27 +588,50 @@ class nl_solver:
 
         # check if input equilibrium and associated linearization have an instability, and its timescale
         if automatic_timestep_flag + mode_removal + linearize:
-            print("Linear growth calculations:")
+            print("Stability paramters:")
             self.linearised_sol.calculate_linear_growth_rate()
+            self.linearised_sol.calculate_stability_margin()
+            self.calculate_Leuer_parameter()
+
             if len(self.linearised_sol.growth_rates):
-                # find stabiltiy margins and unstable modes
-                self.linearised_sol.calculate_stability_margin()
                 self.unstable_mode_deformations()
+                # deformable plasma metrics
+                print(f"   Deformable plasma metrics:")
                 print(f"      Growth rate = {self.linearised_sol.growth_rates} [1/s]")
                 print(
                     f"      Instability timescale = {self.linearised_sol.instability_timescale} [s]"
                 )
                 print(
-                    f"      Stability margin = {self.linearised_sol.stability_margin}"
+                    f"      Inductive stability margin = {self.linearised_sol.stability_margin}"
+                )
+
+                # rigid plasma metrics
+                print(f"   Rigid plasma metrics:")
+                print(
+                    f"      Leuer parameter (ratio of stabilsing to de-stabilising force gradients):"
+                )
+                print(
+                    f"          between all metals and all metals = {self.Leuer_metals_stab_over_metals_destab}"
+                )
+                print(
+                    f"          between all metals and active metals = {self.Leuer_metals_stab_over_active_destab}"
+                )
+                print(
+                    f"          between passive metals and active metals = {self.Leuer_passive_stab_over_active_destab}"
                 )
 
             else:
                 print(
                     f"      No unstable modes found: either plasma stable, or more likely, it is Alfven unstable (i.e. needs more stabilisation from coils and passives)."
                 )
-                print(
-                    f"      Try adding more coils or passive modes (by increasing 'max_mode_frequency' and/or reducing 'min_dIy_dI' or increasing 'fix_n_vessel_modes')."
-                )
+                if fix_n_vessel_modes >= 0:
+                    print(
+                        f"      Try adding more passive modes (by increasing 'fix_n_vessel_modes')."
+                    )
+                else:
+                    print(
+                        f"      Try adding more passive modes (by increasing 'max_mode_frequency' and/or 'threshold_dIy_dI' and/or reducing 'min_dIy_dI'."
+                    )
         print("-----")
 
         # if automatic_timestep, reset the timestep accordingly,
@@ -679,10 +769,10 @@ class nl_solver:
         self.simplified_solver_J1 = simplified_solver_J1(
             eq=eq,
             Lambdam1=self.evol_metal_curr.Lambdam1,
+            P=self.evol_metal_curr.P,
             Pm1=self.evol_metal_curr.Pm1,
             Rm1=np.diag(self.evol_metal_curr.Rm1),
             Mey=self.evol_metal_curr.Mey_matrix,
-            # limiter_handler=self.limiter_handler,
             plasma_norm_factor=self.plasma_norm_factor,
             plasma_resistance_1d=self.plasma_resistance_1d,
             full_timestep=self.dt_step,
@@ -691,10 +781,10 @@ class nl_solver:
         self.linearised_sol = linear_solver(
             eq=eq,
             Lambdam1=self.evol_metal_curr.Lambdam1,
+            P=self.evol_metal_curr.P,
             Pm1=self.evol_metal_curr.Pm1,
             Rm1=np.diag(self.evol_metal_curr.Rm1),
             Mey=self.evol_metal_curr.Mey_matrix,
-            # limiter_handler=self.limiter_handler,
             plasma_norm_factor=self.plasma_norm_factor,
             plasma_resistance_1d=self.plasma_resistance_1d,
             max_internal_timestep=self.max_internal_timestep,
@@ -1202,6 +1292,8 @@ class nl_solver:
                 )
 
                 self.dIydI = np.zeros((self.plasma_domain_size, self.n_metal_modes + 1))
+                self.psideltaI = np.zeros((self.n_metal_modes + 1, self.nx, self.ny))
+                self.ddIyddI = np.zeros(self.n_metal_modes + 1)
                 self.final_dI_record = np.zeros(self.n_metal_modes + 1)
 
                 for j in self.arange_currents:
@@ -1303,12 +1395,16 @@ class nl_solver:
                             "Final current shift=",
                             self.final_dI_record[j],
                         )
-                        print(
-                            "Final relative Iy change=",
-                            rel_ndIy,
-                            "; core_check=",
-                            core_check,
-                        )
+                        if force_core_mask_linearization:
+                            try:
+                                print(
+                                    "Final relative Iy change=",
+                                    rel_ndIy,
+                                    "; core_check=",
+                                    core_check,
+                                )
+                            except:
+                                print("failed printout!")
                         print(
                             "Initial residual=",
                             self.NK.initial_rel_residual,
@@ -1318,6 +1414,7 @@ class nl_solver:
                         print(" ")
 
                     self.dIydI[:, j] = np.copy(dIydIj)
+                    self.psideltaI[j] = np.copy(self.eq2.psi())
                     R0 = self.eq2.Rcurrent()
                     Z0 = self.eq2.Zcurrent()
                     self.dRZdI[0, j] = (R0 - self.R0) / self.final_dI_record[j]
@@ -1628,6 +1725,8 @@ class nl_solver:
         self.get_profiles_values(profiles)
 
         # set internal copy of the equilibrium and profile
+        # note that at this stage, the equilibrium may have vessel currents.
+        # These can not be reproduced exactly if modes are truncated.
         self.eq1 = deepcopy(eq)
         self.profiles1 = deepcopy(profiles)
         # The pair self.eq1 and self.profiles1 is the pair that is advanced at each timestep.
@@ -1640,15 +1739,20 @@ class nl_solver:
         self.build_current_vec(self.eq1, self.profiles1)
         self.current_at_last_linearization = np.copy(self.currents_vec)
 
-        # ensure internal equilibrium is a GS solution
+        # This has truncated the vessel currents, which needs to be mirrored in the equilibrium
+        # First, the modified currents are assigned
         self.assign_currents(self.currents_vec, profiles=self.profiles1, eq=self.eq1)
-        # self.NK.forward_solve(
-        #     self.eq1,
-        #     self.profiles1,
-        #     target_relative_tolerance=target_relative_tolerance_linearization,
-        # )
+        # Then the equilibrium is solved again to ensure it is the solution relevant to the truncated currents,
+        # and not to the full set of vessel currents!
+        self.NK.forward_solve(
+            self.eq1,
+            self.profiles1,
+            target_relative_tolerance=target_relative_tolerance_linearization,
+            suppress=True,
+        )
 
         # self.eq2 and self.profiles2 are used as auxiliary objects when solving for the dynamics
+        # They are used for all intermediate calculations, so
         # they should not be used to extract properties of the evolving equilibrium
         self.eq2 = deepcopy(self.eq1)
         self.profiles2 = deepcopy(self.profiles1)
@@ -2101,7 +2205,7 @@ class nl_solver:
         profiles_parameters=None,
         plasma_resistivity=None,
         target_relative_tol_currents=0.005,
-        target_relative_tol_GS=0.005,
+        target_relative_tol_GS=0.003,
         working_relative_tol_GS=0.001,
         target_relative_unexplained_residual=0.5,
         max_n_directions=3,
@@ -2479,3 +2583,122 @@ class nl_solver:
             self.eq2._profiles.jtor,
             shifted_current.reshape(self.nx, self.ny),
         )
+
+    def calculate_Leuer_parameter(self):
+        """
+        Calculate the Leuer stability parameter as defined in equation (6) of "Passive
+        vertical stability in tokamaks" (Leuer, 1989).
+        This is defined as the ratio of stabilising force gradients to de-stabilising force gradients
+        caused by the metals around the plasma.
+        Parameters
+        ----------
+        """
+
+        # calculate z derivative of mutual inductance matrix (between coils and plasma points)
+        M_prime_all_coils_plasma = self.M_coils_plasma(eq=self.eq1, greens=GreensBr)
+        M_prime_actives_plasma = M_prime_all_coils_plasma[0 : self.n_active_coils, :]
+        M_prime_passives_plasma = M_prime_all_coils_plasma[self.n_active_coils :, :]
+
+        # extract mutual inductances between metals
+        M_coils_coils = self.evol_metal_curr.coil_self_ind
+        M_actives_active = M_coils_coils[
+            0 : self.n_active_coils, 0 : self.n_active_coils
+        ]
+        M_passives_passives = M_coils_coils[
+            self.n_active_coils :, self.n_active_coils :
+        ]
+
+        # calculate second z derivative of mutual inductance matrix (between coils and plasma points)
+        M_prime_prime_all_coils_plasma = self.M_coils_plasma(
+            eq=self.eq1, greens=GreensdBrdz
+        )
+        M_prime_prime_actives_plasma = M_prime_prime_all_coils_plasma[
+            0 : self.n_active_coils, :
+        ]
+        M_prime_prime_passives_plasma = M_prime_prime_all_coils_plasma[
+            self.n_active_coils :, :
+        ]
+
+        # extract plasma current density vector and currents in the metals
+        I_all_coils = self.eq1.tokamak.getCurrentsVec()
+        I_actives = I_all_coils[0 : self.n_active_coils]
+        I_passives = I_all_coils[self.n_active_coils :]
+
+        # calculate stabilising force gradients created by actives, passives, and all metals
+        self.actives_stab_force = (
+            self.Iy @ M_prime_actives_plasma.T
+        ) @ np.linalg.solve(M_actives_active, M_prime_actives_plasma @ self.Iy)
+        self.passives_stab_force = (
+            self.Iy @ M_prime_passives_plasma.T
+        ) @ np.linalg.solve(M_passives_passives, M_prime_passives_plasma @ self.Iy)
+        self.all_coils_stab_force = (
+            self.Iy @ M_prime_all_coils_plasma.T
+        ) @ np.linalg.solve(M_coils_coils, M_prime_all_coils_plasma @ self.Iy)
+
+        # calculate de-stabilising force gradients created by actives, passives, and all metals
+        self.actives_destab_force = self.Iy @ (
+            M_prime_prime_actives_plasma.T @ I_actives
+        )
+        self.passives_destab_force = self.Iy @ (
+            M_prime_prime_passives_plasma.T @ I_passives
+        )
+        self.all_coils_destab_force = self.Iy @ (
+            M_prime_prime_all_coils_plasma.T @ I_all_coils
+        )
+
+        # use these to return the Leuer parameters in different cases
+        self.Leuer_passive_stab_over_active_destab = (
+            self.passives_stab_force / self.actives_destab_force
+        )
+        self.Leuer_metals_stab_over_active_destab = (
+            self.all_coils_stab_force / self.actives_destab_force
+        )
+        self.Leuer_metals_stab_over_metals_destab = (
+            self.all_coils_stab_force / self.all_coils_destab_force
+        )
+
+    def M_coils_plasma(
+        self,
+        eq,
+        greens,
+    ):
+        """
+        Calculates the (z derivative of the) matrix of mutual inductances between plasma grid points and
+        all metals around the tokamak.
+        Parameters
+        -------
+        eq : class
+            FreeGSNKE equilibrium Object
+        greens : function
+            Choose which Greens function to use: "GreensBr" for first derivative or "GreensdBrdz"
+            for second derivative.
+        Returns
+        -------
+        M : np.ndarray
+            Array of mutual inductances.
+        """
+
+        # plasma grid points (inside limiter)
+        plasma_pts = eq.limiter_handler.plasma_pts
+
+        # create mutual inductance matrix
+        M = np.zeros((len(eq.tokamak.coils_list), len(plasma_pts)))
+        for j, labelj in enumerate(eq.tokamak.coils_list):
+            greenm = greens(
+                plasma_pts[:, 0, np.newaxis],
+                plasma_pts[:, 1, np.newaxis],
+                eq.tokamak.coils_dict[labelj]["coords"][0][np.newaxis, :],
+                eq.tokamak.coils_dict[labelj]["coords"][1][np.newaxis, :],
+            )
+            greenm *= eq.tokamak.coils_dict[labelj]["polarity"][
+                np.newaxis, :
+            ]  # mulitply by polarity of filaments
+            greenm *= eq.tokamak.coils_dict[labelj]["multiplier"][
+                np.newaxis, :
+            ]  # mulitply by mulitplier of filaments
+            greenm *= eq.tokamak.coils_dict[labelj]["coords"][0][
+                np.newaxis, :
+            ]  # multiply by R co-ords
+            M[j] = np.sum(greenm, axis=-1)  # sum over filaments
+
+        return -2 * np.pi * M

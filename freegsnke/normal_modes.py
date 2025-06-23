@@ -59,27 +59,29 @@ class mode_decomposition:
         # 1. active coils
         # normal modes are not used for the active coils,
         # but they're calculated here for the check on negative eigenvalues below
-        mm1 = np.linalg.inv(
-            self.coil_self_ind[: self.n_active_coils, : self.n_active_coils]
-        )
         r12 = np.diag(self.coil_resist[: self.n_active_coils] ** 0.5)
-        w, v = np.linalg.eig(r12 @ mm1 @ r12)
+        mm = self.coil_self_ind[: self.n_active_coils, : self.n_active_coils]
+        w, v = np.linalg.eig(r12 @ np.linalg.solve(mm, r12))
         ordw = np.argsort(w)
         w_active = w[ordw]
 
         # 2. passive structures
-        r12 = np.diag(self.coil_resist[self.n_active_coils :] ** 0.5)
-        mm1 = np.linalg.inv(
-            self.coil_self_ind[self.n_active_coils :, self.n_active_coils :]
-        )
-        w, v = np.linalg.eig(r12 @ mm1 @ r12)
+        rm1 = np.diag(self.coil_resist[self.n_active_coils :] ** -1)
+        mm = self.coil_self_ind[self.n_active_coils :, self.n_active_coils :]
+        w, v = np.linalg.eig(rm1 @ mm)
+        # w as calculated here are timescales
+        # here we switch to frequencies
+        w = 1.0 / w
         ordw = np.argsort(w)
         self.w_passive = w[ordw]
-        Pmatrix_passive = ((v.T)[ordw]).T
+        Pmatrix_passive = v[:, ordw]
 
         # A sign convention for the sign of the normal modes is set
         # The way this is achieved is just a choice:
-        Pmatrix_passive /= np.sign(np.sum(Pmatrix_passive, axis=0, keepdims=True))
+        # Pmatrix_passive /= np.sign(np.sum(Pmatrix_passive, axis=0, keepdims=True))
+
+        # find inverse
+        # Pmatrix_passive_m1 = np.linalg.inv(Pmatrix_passive)
 
         if np.any(w_active < 0):
             print(
@@ -92,12 +94,25 @@ class mode_decomposition:
 
         # compose full
         self.Pmatrix = np.zeros((self.n_coils, self.n_coils))
-        # Pmatrix[:n_active_coils, :n_active_coils] = 1.0*Pmatrix_active
+        # self.Pmatrixm1 = np.zeros((self.n_coils, self.n_coils))
+        # set active
         self.Pmatrix[: self.n_active_coils, : self.n_active_coils] = np.eye(
             self.n_active_coils
         )
+        # self.Pmatrixm1[: self.n_active_coils, : self.n_active_coils] = np.eye(
+        #     self.n_active_coils
+        # )
+        # set passive
         self.Pmatrix[self.n_active_coils :, self.n_active_coils :] = (
             1.0 * Pmatrix_passive
+        )
+        # self.Pmatrixm1[self.n_active_coils :, self.n_active_coils :] = (
+        #     1.0 * Pmatrix_passive_m1
+        # )
+
+        # calculate the inverse
+        self.Pmatrix_inverse = np.linalg.solve(
+            self.Pmatrix.T @ self.Pmatrix, self.Pmatrix.T
         )
 
     def normal_modes_greens(self, eq_vgreen):
@@ -113,7 +128,9 @@ class mode_decomposition:
         """
 
         dgreen = np.sum(
-            eq_vgreen[:, np.newaxis, :, :] * self.Pmatrix[:, :, np.newaxis, np.newaxis],
-            axis=0,
+            eq_vgreen[np.newaxis, :, :, :]
+            * self.Pmatrix_inverse[:, :, np.newaxis, np.newaxis],
+            axis=1,
         )
+
         return dgreen

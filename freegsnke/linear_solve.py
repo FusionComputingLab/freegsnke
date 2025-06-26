@@ -284,11 +284,10 @@ class linear_solver:
         self.empty_U[: self.n_active_coils] = active_voltage_vec
         self.forcing[:-1] = np.dot(self.Pm1Rm1, self.empty_U)
         self.forcing[-1] = 0.0
-        print(self.forcing)
+
         # additional forcing due to the time derivative of profile parameters
         if self.forcing_pars_matrix is not None:
             self.forcing -= np.dot(self.forcing_pars_matrix, dtheta_dt)
-        print(self.forcing)
 
         Itpdt = self.solver.full_stepper(It, self.forcing)
 

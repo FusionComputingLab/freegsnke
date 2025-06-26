@@ -440,21 +440,33 @@ class nl_solver:
         # for setting profile parameters starting shifts (for Jacobians)
         if self.profiles_param is not None:
             # alpha_m
-            self.starting_dtheta[0] = (profiles.alpha_m + 1e-10) * 0.01
+            self.starting_dtheta[0] = max(profiles.alpha_m * 1e-2, 1e-2)
             # alpha_n
-            self.starting_dtheta[1] = (profiles.alpha_n + 1e-10) * 0.01
-            # paxis/betap/beta0
-            self.starting_dtheta[2] = (
-                getattr(profiles, self.profiles_param) + 1e-10
-            ) * 0.01
+            self.starting_dtheta[1] = max(profiles.alpha_n * 1e-2, 1e-2)
+            # paxis/betap/Beta0
+            if self.profiles_param == "paxis":
+                self.starting_dtheta[2] = max(
+                    getattr(profiles, self.profiles_param) * 1e-2, 1e1
+                )
+            elif self.profiles_param == "betap":
+                self.starting_dtheta[2] = max(
+                    getattr(profiles, self.profiles_param) * 1e-2, 1e-4
+                )
+            elif self.profiles_param == "Beta0":
+                self.starting_dtheta[2] = max(
+                    getattr(profiles, self.profiles_param) * 1e-2, 1e-4
+                )
 
-        else:  # lao
+        else:  # lao  ( try normalising all the coeffs wrt either alpha_0 or beta_0, also need to normalise the dtheta_dt term too)
+            # or perhaps normalise wrt pressure at centre )given all alphas and betas)
             # alpha coeffs
             n_alpha = len(profiles.alpha)
-            self.starting_dtheta[0:n_alpha] = (profiles.alpha + 1e-10) * 0.01
+            self.starting_dtheta[0:n_alpha] = max(
+                profiles.alpha * target_dIy, target_dIy
+            )
 
             # beta coeffs
-            self.starting_dtheta[n_alpha:] = (profiles.beta + 1e-10) * 0.01
+            self.starting_dtheta[n_alpha:] = max(profiles.beta * target_dIy, target_dIy)
 
         # This solves the system of circuit eqs based on an assumption
         # for the direction of the plasma current distribution at time t+dt
@@ -726,15 +738,15 @@ class nl_solver:
             else:
                 starting_dI[j] = 1.0 * self.final_dI_record[j]
 
-            if verbose:
-                print("mode", j, "; approved starting_dI=", starting_dI[j])
-                print(
-                    "approved relative dIy change=",
-                    rel_ndIy,
-                    "; core_check=",
-                    core_check,
-                )
-                print(" ")
+            # if verbose:
+            #     print("mode", j, "; approved starting_dI=", starting_dI[j])
+            #     print(
+            #         "approved relative dIy change=",
+            #         rel_ndIy,
+            #         "; core_check=",
+            #         core_check,
+            #     )
+            #     print(" ")
             self.dIydI_noGS[:, j] = dIydInoGS
             self.rel_ndIy[j] = rel_ndIy
             # self.final_dI_record[j] = starting_dI[j] * self.accepted_target_dIy[j] / rel_ndIy
@@ -871,6 +883,9 @@ class nl_solver:
                     self.profiles_param: getattr(profiles, self.profiles_param),
                 }
             )
+
+            # reset plasma flux map to original
+            self.eq2.plasma_psi = np.copy(self.eq1.plasma_psi)
             self.assign_currents_solve_GS(current_, rtol_NK)
             dIy_0[:, 0] = (
                 self.limiter_handler.Iy_from_jtor(self.profiles2.jtor) - self.Iy
@@ -895,6 +910,9 @@ class nl_solver:
                     self.profiles_param: getattr(profiles, self.profiles_param),
                 }
             )
+
+            # reset plasma flux map to original
+            self.eq2.plasma_psi = np.copy(self.eq1.plasma_psi)
             self.assign_currents_solve_GS(current_, rtol_NK)
             dIy_0[:, 1] = (
                 self.limiter_handler.Iy_from_jtor(self.profiles2.jtor) - self.Iy
@@ -911,25 +929,25 @@ class nl_solver:
                 print(f"  Initial relative Iy change = {rel_ndIy_0[1]}")
                 print(f"  Final delta parameter = {self.final_dtheta_record[1]}")
 
-            # vary paxis, betap or beta0
+            # vary paxis, betap or Beta0
             self.check_and_change_profiles(
                 profiles_parameters={
                     "alpha_m": profiles.alpha_m,
                     "alpha_n": profiles.alpha_n,
                     self.profiles_param: getattr(profiles, self.profiles_param)
-                    * (1 + starting_dtheta[2]),
+                    + starting_dtheta[2],
                 }
             )
+
+            # reset plasma flux map to original
+            self.eq2.plasma_psi = np.copy(self.eq1.plasma_psi)
             self.assign_currents_solve_GS(current_, rtol_NK)
             dIy_0[:, 2] = (
                 self.limiter_handler.Iy_from_jtor(self.profiles2.jtor) - self.Iy
             )
             rel_ndIy_0[2] = np.linalg.norm(dIy_0[:, 2]) / self.nIy
             self.final_dtheta_record[2] = (
-                starting_dtheta[2]
-                * getattr(profiles, self.profiles_param)
-                * target_dIy[2]
-                / rel_ndIy_0[2]
+                starting_dtheta[2] * target_dIy[2] / rel_ndIy_0[2]
             )
 
             if verbose:
@@ -938,6 +956,15 @@ class nl_solver:
                 print(f"  Initial delta parameter = {starting_dtheta[2]}")
                 print(f"  Initial relative Iy change = {rel_ndIy_0[2]}")
                 print(f"  Final delta parameter = {self.final_dtheta_record[2]}")
+
+            # reset profiles in profiles1 and profiles2 objects
+            self.check_and_change_profiles(
+                profiles_parameters={
+                    "alpha_m": profiles.alpha_m,
+                    "alpha_n": profiles.alpha_n,
+                    self.profiles_param: getattr(profiles, self.profiles_param),
+                }
+            )
 
         else:  # this is particular to the Lao profile coefficients (which there may be few or many of)
 
@@ -953,6 +980,9 @@ class nl_solver:
                         "beta": profiles.beta,
                     }
                 )
+
+                # reset plasma flux map to original
+                self.eq2.plasma_psi = np.copy(self.eq1.plasma_psi)
                 self.assign_currents_solve_GS(current_, rtol_NK)
                 dIy_0[:, i] = (
                     self.limiter_handler.Iy_from_jtor(self.profiles2.jtor) - self.Iy
@@ -981,6 +1011,9 @@ class nl_solver:
                         "beta": beta_shift,
                     }
                 )
+
+                # reset plasma flux map to original
+                self.eq2.plasma_psi = np.copy(self.eq1.plasma_psi)
                 self.assign_currents_solve_GS(current_, rtol_NK)
                 dIy_0[:, i + alpha_n] = (
                     self.limiter_handler.Iy_from_jtor(self.profiles2.jtor) - self.Iy
@@ -1003,6 +1036,14 @@ class nl_solver:
                         f"  Final delta parameter = {self.final_dtheta_record[i+alpha_n]}"
                     )
 
+                # reset profiles in profiles1 and profiles2 objects
+                self.check_and_change_profiles(
+                    profiles_parameters={
+                        "alpha": profiles.alpha,
+                        "beta": profiles.beta,
+                    }
+                )
+
         return dIy_0 / starting_dtheta, rel_ndIy_0
 
     def build_dIydtheta(self, profiles, rtol_NK, verbose=False):
@@ -1020,6 +1061,9 @@ class nl_solver:
 
         """
 
+        # the final perturbations to calc the Jacobian with
+        final_theta = 1.0 * self.final_dtheta_record
+
         current_ = np.copy(self.currents_vec)
 
         # storage
@@ -1032,7 +1076,7 @@ class nl_solver:
             # vary alpha_m
             self.check_and_change_profiles(
                 profiles_parameters={
-                    "alpha_m": profiles.alpha_m + self.final_dtheta_record[0],
+                    "alpha_m": profiles.alpha_m + final_theta[0],
                     "alpha_n": profiles.alpha_n,
                     self.profiles_param: getattr(profiles, self.profiles_param),
                 }
@@ -1041,8 +1085,8 @@ class nl_solver:
             self.eq2.plasma_psi = np.copy(self.eq1.plasma_psi)
             self.assign_currents_solve_GS(current_, rtol_NK)
             dIy_1 = self.limiter_handler.Iy_from_jtor(self.profiles2.jtor) - self.Iy
-            dIydtheta[:, 0] = dIy_1 / self.final_dtheta_record[0]
             rel_ndIy[0] = np.linalg.norm(dIy_1) / self.nIy
+            dIydtheta[:, 0] = dIy_1 / final_theta[0]
             if verbose:
                 print("")
                 print(f"Profile parameter: alpha_m:")
@@ -1055,7 +1099,7 @@ class nl_solver:
             self.check_and_change_profiles(
                 profiles_parameters={
                     "alpha_m": profiles.alpha_m,
-                    "alpha_n": profiles.alpha_n + self.final_dtheta_record[1],
+                    "alpha_n": profiles.alpha_n + final_theta[1],
                     self.profiles_param: getattr(profiles, self.profiles_param),
                 }
             )
@@ -1063,8 +1107,8 @@ class nl_solver:
             self.eq2.plasma_psi = np.copy(self.eq1.plasma_psi)
             self.assign_currents_solve_GS(current_, rtol_NK)
             dIy_1 = self.limiter_handler.Iy_from_jtor(self.profiles2.jtor) - self.Iy
-            dIydtheta[:, 1] = dIy_1 / self.final_dtheta_record[1]
             rel_ndIy[1] = np.linalg.norm(dIy_1) / self.nIy
+            dIydtheta[:, 1] = dIy_1 / final_theta[1]
             if verbose:
                 print("")
                 print(f"Profile parameter: alpha_n:")
@@ -1073,21 +1117,21 @@ class nl_solver:
                     f"  Initial vs. Final GS residual: {self.NK.initial_rel_residual} vs. {self.NK.relative_change}"
                 )
 
-            # vary paxis, betap or beta0
+            # vary paxis, betap or Beta0
             self.check_and_change_profiles(
                 profiles_parameters={
                     "alpha_m": profiles.alpha_m,
                     "alpha_n": profiles.alpha_n,
                     self.profiles_param: getattr(profiles, self.profiles_param)
-                    + self.final_dtheta_record[2],
+                    + final_theta[2],
                 }
             )
             # reset plasma flux map to original
             self.eq2.plasma_psi = np.copy(self.eq1.plasma_psi)
             self.assign_currents_solve_GS(current_, rtol_NK)
             dIy_1 = self.limiter_handler.Iy_from_jtor(self.profiles2.jtor) - self.Iy
-            dIydtheta[:, 2] = dIy_1 / self.final_dtheta_record[2]
             rel_ndIy[2] = np.linalg.norm(dIy_1) / self.nIy
+            dIydtheta[:, 2] = dIy_1 / final_theta[2]
             if verbose:
                 print("")
                 print(f"Profile parameter: {self.profiles_param}:")
@@ -1096,6 +1140,15 @@ class nl_solver:
                     f"  Initial vs. Final GS residual: {self.NK.initial_rel_residual} vs. {self.NK.relative_change}"
                 )
 
+            # reset profiles in profiles1 and profiles2 objects
+            self.check_and_change_profiles(
+                profiles_parameters={
+                    "alpha_m": profiles.alpha_m,
+                    "alpha_n": profiles.alpha_n,
+                    self.profiles_param: getattr(profiles, self.profiles_param),
+                }
+            )
+
         else:  # this is particular to the Lao profile coefficients (which there may be few or many of)
 
             # for each alpha coefficient
@@ -1103,7 +1156,7 @@ class nl_solver:
             alpha_base = profiles.alpha.copy()
             for i in range(0, n_alpha):
                 alpha_shift = alpha_base.copy()
-                alpha_shift[i] += self.final_dtheta_record[i]
+                alpha_shift[i] += final_theta[i]
                 self.check_and_change_profiles(
                     profiles_parameters={
                         "alpha": alpha_shift,
@@ -1114,8 +1167,8 @@ class nl_solver:
                 self.eq2.plasma_psi = np.copy(self.eq1.plasma_psi)
                 self.assign_currents_solve_GS(current_, rtol_NK)
                 dIy_1 = self.limiter_handler.Iy_from_jtor(self.profiles2.jtor) - self.Iy
-                dIydtheta[:, i] = dIy_1 / self.final_dtheta_record[i]
                 rel_ndIy[i] = np.linalg.norm(dIy_1) / self.nIy
+                dIydtheta[:, i] = dIy_1 / final_theta[i]
                 if verbose:
                     print("")
                     print(f"Profile parameter: alpha_{i}:")
@@ -1129,7 +1182,7 @@ class nl_solver:
             beta_base = profiles.beta.copy()
             for i in range(0, n_beta):
                 beta_shift = beta_base.copy()
-                beta_shift[i] += self.final_dtheta_record[i + n_alpha]
+                beta_shift[i] += final_theta[i + n_alpha]
                 self.check_and_change_profiles(
                     profiles_parameters={
                         "alpha": profiles.alpha,
@@ -1140,10 +1193,8 @@ class nl_solver:
                 self.eq2.plasma_psi = np.copy(self.eq1.plasma_psi)
                 self.assign_currents_solve_GS(current_, rtol_NK)
                 dIy_1 = self.limiter_handler.Iy_from_jtor(self.profiles2.jtor) - self.Iy
-                dIydtheta[:, i + n_alpha] = (
-                    dIy_1 / self.final_dtheta_record[i + n_alpha]
-                )
                 rel_ndIy[i + n_alpha] = np.linalg.norm(dIy_1) / self.nIy
+                dIydtheta[:, i + n_alpha] = dIy_1 / final_theta[i + n_alpha]
 
                 if verbose:
                     print("")
@@ -1152,6 +1203,14 @@ class nl_solver:
                     print(
                         f"  Initial vs. Final GS residual: {self.NK.initial_rel_residual} vs. {self.NK.relative_change}"
                     )
+
+            # reset profiles in profiles1 and profiles2 objects
+            self.check_and_change_profiles(
+                profiles_parameters={
+                    "alpha": profiles.alpha,
+                    "beta": profiles.beta,
+                }
+            )
 
         return dIydtheta, rel_ndIy
 
@@ -1252,7 +1311,9 @@ class nl_solver:
         force_core_mask_linearization,
         verbose,
     ):
-        """Builds the Jacobians d(Iy)/dI and d(Iy)/dtheta to set up the solver of the linearised problem.
+        """
+
+        Builds the Jacobians d(Iy)/dI and d(Iy)/dtheta to set up the solver of the linearised problem.
 
         Parameters
         ----------
@@ -1270,10 +1331,10 @@ class nl_solver:
             Forces the perturbed plasma core mask to remain the same as the original when calculating the dIydI Jacobian.
         """
 
-        if (dIydI is None) and (self.dIydI is None):
-            self.build_current_vec(eq, profiles)
-            self.Iy = self.limiter_handler.Iy_from_jtor(profiles.jtor).copy()
-            self.nIy = np.linalg.norm(self.Iy)
+        # if (dIydI is None) and (self.dIydI is None):
+        self.build_current_vec(eq, profiles)
+        self.Iy = self.limiter_handler.Iy_from_jtor(profiles.jtor).copy()
+        self.nIy = np.linalg.norm(self.Iy)
 
         self.R0 = eq.Rcurrent()
         self.Z0 = eq.Zcurrent()
@@ -1283,6 +1344,7 @@ class nl_solver:
         # this uses the variation to Jtor caused by the coil's contribution to the flux, ignoring the response of the plasma
 
         # build/update dIydI
+        # dIydI = 1
         if dIydI is None:
             if self.dIydI_ICs is None:
                 print(
@@ -1337,19 +1399,6 @@ class nl_solver:
                                 == 0
                             )
 
-                    if verbose:
-                        print("mode", j)
-                        print(
-                            "Initial delta_current=",
-                            self.starting_dI[j],
-                        )
-                        print(
-                            "Initial relative Iy change=",
-                            ndIy,
-                            "; core_check=",
-                            core_check,
-                        )
-
                     if (
                         np.abs(np.log10(self.final_dI_record[j] / self.starting_dI[j]))
                         > 0.5
@@ -1391,27 +1440,16 @@ class nl_solver:
                         self.final_dI_record[j] = 1.0 * self.starting_dI[j]
 
                     if verbose:
+                        print("")
+                        print(f"Mode: {j}")
+                        print(f"  Initial delta_current = {self.starting_dI[j]}")
+                        print(f"  Initial relative Iy change = {ndIy}")
+                        print(f"  Final delta_current = {self.final_dI_record[j]}")
+                        print("")
+                        print(f"  Final relative Iy change = {rel_ndIy}")
                         print(
-                            "Final current shift=",
-                            self.final_dI_record[j],
+                            f"  Initial vs. Final GS residual: {self.NK.initial_rel_residual} vs. {self.NK.relative_change}"
                         )
-                        if force_core_mask_linearization:
-                            try:
-                                print(
-                                    "Final relative Iy change=",
-                                    rel_ndIy,
-                                    "; core_check=",
-                                    core_check,
-                                )
-                            except:
-                                print("failed printout!")
-                        print(
-                            "Initial residual=",
-                            self.NK.initial_rel_residual,
-                            ". Final residual=",
-                            self.NK.relative_change,
-                        )
-                        print(" ")
 
                     self.dIydI[:, j] = np.copy(dIydIj)
                     self.psideltaI[j] = np.copy(self.eq2.psi())
@@ -1442,11 +1480,12 @@ class nl_solver:
                 self.dIydtheta = np.zeros(
                     (self.plasma_domain_size, self.n_profiles_parameters)
                 )
-                self.final_dtheta_record = np.zeros(self.n_profiles_parameters)
+
+                profiles_copy = deepcopy(profiles)
 
                 # prepare to build the Jacobian by finding appropriate step size
                 dIydtheta, ndIy = self.prepare_build_dIydtheta(
-                    profiles=profiles,
+                    profiles=profiles_copy,
                     rtol_NK=target_relative_tolerance_linearization,
                     target_dIy=self.approved_target_dtheta,
                     starting_dtheta=self.starting_dtheta,
@@ -1459,10 +1498,11 @@ class nl_solver:
                 ).any():
 
                     dIydtheta, rel_ndIy = self.build_dIydtheta(
-                        profiles=self.profiles1,
+                        profiles=profiles_copy,
                         rtol_NK=target_relative_tolerance_linearization,
-                        verbose=False,
+                        verbose=verbose,
                     )
+
                 else:
                     self.final_dtheta_record = 1.0 * self.starting_dtheta
 
@@ -1631,11 +1671,11 @@ class nl_solver:
             self.profiles_parameters = {
                 "alpha_m": profiles.alpha_m,
                 "alpha_n": profiles.alpha_n,
-                "beta0": profiles.beta0,
+                "Beta0": profiles.Beta0,
             }
-            self.profiles_param = "beta0"
+            self.profiles_param = "Beta0"
             self.profiles_parameters_vec = np.array(
-                [profiles.alpha_m, profiles.alpha_n, profiles.beta0]
+                [profiles.alpha_m, profiles.alpha_n, profiles.Beta0]
             )
         elif self.profiles_type == "Lao85":
             self.n_profiles_parameters = len(profiles.alpha) + len(profiles.beta)
@@ -2310,6 +2350,7 @@ class nl_solver:
         # retrieve the old profile parameter values
         self.get_profiles_values(self.profiles1)
         old_params = self.profiles_parameters_vec
+        # print(f"old_params = {old_params}")
 
         # check if profiles parameters are being evolved
         # and action the change where necessary
@@ -2320,11 +2361,12 @@ class nl_solver:
         # retrieve the new profile parameter values (if present)
         self.get_profiles_values(self.profiles1)
         new_params = self.profiles_parameters_vec
+        # print(f"new_params = {new_params}")
 
         # calculate change in profiles across timestep: (profiles(t+dt)-profiles(t))/dt
         # should be zero if no change
-        print(dtheta_dt)
         dtheta_dt = (new_params - old_params) / self.dt_step
+        # print(f"dtheta_dt = {dtheta_dt}")
 
         # check if plasma resistivity is being evolved
         # and action the change where necessary

@@ -250,30 +250,42 @@ class TargetScheduler:
         if targets is None:
             targets = self.retrieve_controlled_targets(time_stamp)
 
-        waveform_dict = self.ff_waves
+        # waveform_dict = self.ff_waves
+        #
+        ## V1 - asusmes ff waveform has units of target, not dTarget/dt
+        # grad_arr = np.zeros(len(targets))
+        # for i, target in enumerate(targets):
+        #     slope = np.diff(waveform_dict[target]["vals"]) / np.diff(
+        #         waveform_dict[target]["times"]
+        #     )
+        #     position = np.searchsorted(
+        #         waveform_dict[target]["times"][1:], time_stamp, side="right"
+        #     )
+        #     # print(f"position index {position}")
+        #     if time_stamp > waveform_dict[target]["times"][-1]:
+        #         print(
+        #             "time_stamp is greater than the last waveform time stamp "
+        #             f"for target {target}"
+        #         )
+        #         gradient = 0
+        #     else:
+        #         gradient = slope[position]
+        #         # print(f"slope at {time_stamp}: {slope[position]}")
 
-        grad_arr = np.zeros(len(targets))
-        for i, target in enumerate(targets):
-            slope = np.diff(waveform_dict[target]["vals"]) / np.diff(
-                waveform_dict[target]["times"]
-            )
-            position = np.searchsorted(
-                waveform_dict[target]["times"][1:], time_stamp, side="right"
-            )
-            # print(f"position index {position}")
-            if time_stamp > waveform_dict[target]["times"][-1]:
-                print(
-                    "time_stamp is greater than the last waveform time stamp "
-                    f"for target {target}"
+        #     grad_arr[i] = gradient
+
+        # return grad_arr
+
+        # VERSION 2 - Assume waveform is for the gradient itself dTarget/dt
+        ff_vals = np.array(
+            [
+                self.get_waveform_value(
+                    param_type="ff", time_stamp=time_stamp, param=targ
                 )
-                gradient = 0
-            else:
-                gradient = slope[position]
-                # print(f"slope at {time_stamp}: {slope[position]}")
-
-            grad_arr[i] = gradient
-
-        return grad_arr
+                for targ in targets
+            ]
+        )
+        return ff_vals
 
     # def retrieve_timeseries_param(self, param, time_stamp):
     def get_waveform_value(self, param_type, param, time_stamp):
@@ -369,13 +381,13 @@ class TargetScheduler:
         if time_pos is None:
             print(
                 "time requested is before first control parameter time, "
-                "returning None from retrieve_parameter()"
+                "returning None f"
             )
         else:
-            print("gains at time ", time_pos)
+            print("gains at time ", time_stamp)
             for target in targets:
                 print("target ", target)
-                blend = self.get_blends(time_stamp=time_pos, targets=[target])
+                blend = self.get_blends(time_stamp=time_stamp, targets=[target])
                 print("blend ", blend)
                 if blend == 0.0:
                     gains.append(0)

@@ -135,7 +135,7 @@ class TargetScheduler:
 
         return interpolation
 
-    def retrieve_controlled_targets(self, time_stamp):
+    def get_fb_controlled_targets(self, time_stamp):
         """
         Find the targets that are controlled at time time_stamp.
 
@@ -186,9 +186,10 @@ class TargetScheduler:
         """
         # get set of targets being controlled at this time
         if controlled_targets is None:
-            controlled_targets = self.retrieve_controlled_targets(time_stamp)
+            controlled_targets = self.get_fb_controlled_targets(time_stamp)
 
         if interpolate == True:
+            waveform_dict = self.fb_waves
             targets_required = np.array(
                 [
                     self.interpolate(time_stamp, waveform_dict[targ])
@@ -248,7 +249,7 @@ class TargetScheduler:
         gradient : np.array
         """
         if targets is None:
-            targets = self.retrieve_controlled_targets(time_stamp)
+            targets = self.get_fb_controlled_targets(time_stamp)
 
         waveform_dict = self.ff_waves
         #
@@ -351,17 +352,18 @@ class TargetScheduler:
             # Convert units
             try:
                 unit = waveform_dict[param]["units"]
+                # convert units : return everything in
+                if unit == "kA":  # convert kA to A
+                    requested_parameter *= 1000
+                elif unit == "ms":  # convert milliseconds to seconds
+                    requested_parameter /= 1000
+                elif unit == "cm":  # convert cm to m
+                    requested_parameter /= 100
+                elif unit == "mm":  # mm to m
+                    requested_parameter /= 1000
+                print("units converted from {unit} to standard (A, m, s)")
             except KeyError:
                 print("Warning - waveform doesn't have units key ")
-            # convert units : return everything in
-            if unit == "kA":  # convert kA to A
-                requested_parameter *= 1000
-            elif unit == "ms":  # convert milliseconds to seconds
-                requested_parameter /= 1000
-            elif unit == "cm":  # convert cm to m
-                requested_parameter /= 100
-            elif unit == "mm":  # mm to m
-                requested_parameter /= 1000
 
         return requested_parameter
 

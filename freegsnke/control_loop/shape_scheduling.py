@@ -127,6 +127,13 @@ class VirtualCircuitScheduler(VirtualCircuitProvider):
 
     #     # update other parts such as vc_index, input currents, profile pars etc
 
+    def get_vc_targets(self, time_stamp):
+        """get targets list from vc schedule"""
+        time_pos = max(
+            time for time in self.vc_schedule_full.keys() if time <= time_stamp
+        )
+        return self.vc_schedule_full[time_pos]["targets"]
+
     def get_vc(
         self,
         time_stamp: float,
@@ -346,7 +353,7 @@ class ShapeTargetScheduler(TargetScheduler):
             #         f" sequence at time {midpoint}"
             #     )
             #     # print("vc check at time", midpoint)
-            #     controlled_targs = self.retrieve_controlled_targets(time_stamp=midpoint)
+            #     controlled_targs = self.get_fb_controlled_targets(time_stamp=midpoint)
             #     vc_targs = self.vc_scheduler.get_vc(
             #         time_stamp=midpoint, targets=controlled_targs
             #     ).targets
@@ -414,8 +421,26 @@ class ShapeTargetScheduler(TargetScheduler):
                 eq is not None and profiles is not None and coils is not None
             ), "Need eq, profiles and coils to compute VC"
             print("Computing VC from emulator")
-            control_targs = self.retrieve_controlled_targets(time_stamp)
+            control_targs = self.get_fb_controlled_targets(time_stamp)
             vc = self.vc_scheduler_emu.build_vc(
                 eq, profiles, coils=coils, targets=control_targs
             )
         return vc
+
+
+def get_all_ctrl_targets(self, time_stamp: float) -> list[str]:
+    """get all controllable targets by getting the targets list from the VC schedule
+    (this is what is controllable in fb and ff)
+
+    Parameters
+    ----------
+    time_stamp : float
+        time stamp to get targets
+
+    Returns
+    -------
+    all_control_targs : list[str]
+        list of all targets to be controlled.
+    """
+    all_control_targs = self.vc_scheduler.get_vc_targets(time_stamp)
+    return

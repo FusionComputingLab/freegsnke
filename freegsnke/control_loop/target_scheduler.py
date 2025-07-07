@@ -368,7 +368,7 @@ class TargetScheduler:
             print("gains at time ", time_pos)
             for target in targets:
                 print("target ", target)
-                blend = self.get_blends(time_stamp=time_pos, targets=[target])
+                blend = self.get_blends(time_stamp=time_stamp, targets=[target])
                 print("blend ", blend)
                 if blend == 0.0:
                     gains.append(0)

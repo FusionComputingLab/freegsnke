@@ -16,9 +16,11 @@ class ControlSolenoid:
     Parameters
     ----------
     - waveform_dict : dict
-        dictionary containing target waveform.
+        dictionary containing ff, fb, blends, Ip waveforms.
     - schedule_dict : dict
-        dictionary containing target schedule.
+        dictionary containing plasma schedule.
+    - sol_vc_dict : dict
+        dictionary containing VC schedule for the solenoid
     - contr_params_dict : str
         dictionary containing control parameters sequence.
     - integral_term_0 : float
@@ -45,6 +47,7 @@ class ControlSolenoid:
         pi_state,
         integral_term_0=0,
         solenoid_name=None,
+        noise_model=None,
     ):
         """
         Initialises the ControlSolenoid class.
@@ -54,7 +57,6 @@ class ControlSolenoid:
         None
 
         """
-
         # Load the scheduler
         self.scheduler = SolenoidScheduler(
             waveform_dict, schedule_dict, sol_vc_dict, solenoid_name
@@ -65,9 +67,14 @@ class ControlSolenoid:
         # The accumulated error in the plasma category. Defaults to 0 if not
         # given.
         self.internal = integral_term_0
+        # self.lc_internal = integral_term_0
+        self.prev_ip_state = integral_term_0
 
         # testing
         self.pi_state = deepcopy(pi_state)
+
+        # self.noise_mean = noise_model['mean']
+        # self.noise_std = noise_model['std']
 
     def calculate_solenoid_delta(self,
                                  Kp,
@@ -75,7 +82,8 @@ class ControlSolenoid:
                                  dt,
                                  blend,
                                  Ip_req,
-                                 Ip_obs,
+                                 Ip_obs_tprev,
+                                 Ip_obs_t,
                                  Vloop_ff,
                                  sol_vc,
                                  pi_state,
@@ -118,18 +126,29 @@ class ControlSolenoid:
             dIsoldt stands for ΔIsol/Δt.
 
         """
+        # noise = np.random.normal(loc=self.noise_mean,
+        #                          scale=self.noise_std,
+        #                          size=1)[0]
 
+        dt_pi = 0.0001
         # Compute the required change for Ip
-        delta_Ip = Ip_req - Ip_obs
+        previous_int = self.internal
+        delta_Ip_tprev = Ip_req - Ip_obs_tprev
         # print(f"    The delta plasma current: {delta_Ip_gt}")
 
-        integral = self.internal + (delta_Ip_gt * dt) / 2  # Trapezoidal rule
+        # Trapezoidal rule
+        integral_tprev = self.internal + (delta_Ip_tprev * dt_pi) / 2
+        self.internal += delta_Ip_tprev * dt_pi
+        # dIsol_fb_tprev = Kp * delta_Ip_tprev + Ki * integral_tprev
+
+        delta_Ip_t = Ip_req - Ip_obs_t
+        integral_t = self.internal + (delta_Ip_t * dt_pi) / 2
+        # integral_t = self.internal + (delta_Ip_gt * dt) / 2
         # self.internal = pi_state
-        self.internal += delta_Ip_gt * dt
+        self.internal += delta_Ip_t * dt_pi
+        dIsol_fb_t = Kp * delta_Ip_t + Ki * integral_t
+        # dIsol_fb_t2 = Kp * delta_Ip_t2 + Ki * integral_t2
 
-        # print(f"    The pi_state: {self.internal}")
-
-        dIsol_fb = Kp * delta_Ip_gt + Ki * integral
         # print("{:<14.10f}".format(delta_Ip_gt),
         #       "{:<14.10f}".format(self.internal), end=' ')
         #       "{:<14.10f}".format(integral), end=' ')
@@ -144,7 +163,7 @@ class ControlSolenoid:
         if blend == 0:
             dIsoldt = - Vloop_ff * (1 / M_sp)
         elif blend == 1:
-            dIsoldt = dIsol_fb
+            dIsoldt = dIsol_fb_t
         else:
             raise ValueError(f"Blend should either 1 or 0, not {blend}.")
 
@@ -158,16 +177,18 @@ class ControlSolenoid:
 
         # testing
         results = {
-                   "delta_Ip": delta_Ip,
-                   "pIstate": self.internal,
-                   "Vloop_fb": dIsol_fb * (-M_sp),
+                   "delta_Ip_tprev": delta_Ip_tprev,
+                   "delta_Ip_t": delta_Ip_t,
+                   "blends": blend,
+                   "delta_internal": (self.internal - previous_int),
+                   "internal": self.internal,
+                   "Vloop_fb": dIsol_fb_t * (-M_sp),
                    "dIsoldt": dIsoldt,
                    "dI_dt": dI_dt[0],
-                   "blends": blend,
-                   "Kps": Kp,
-                   "Kis": Ki,
-                   "dts": dt
+                   "delta_pi_state": pi_state - self.prev_ip_state,
+                   "pi_state": pi_state,
                    }
+        self.prev_ip_state = pi_state
 
         # return dI_dt
         return results
@@ -185,7 +206,14 @@ class ControlSolenoid:
 
         return self.pi_state["vals"][idx]
 
-    def ip_control(self, ts, prev_ts, delta_Ip_gt, prev_delta_Ip_gt, Ip_obs=None, eq=None):
+    def ip_control(self,
+                   ts,
+                   prev_ts,
+                   delta_Ip_gt,
+                   prev_delta_Ip_gt,
+                   Ip_obs_tprev=None,
+                   Ip_obs_t=None,
+                   eq=None):
         """
         Execute all the steps in the pipeline for the control of the solenoid
         current, as prescribed by the PCS. This method is the API by design of
@@ -213,11 +241,12 @@ class ControlSolenoid:
            Trajectories for the active coil currents due to the control on the
            solenoid coil.
         """
-        if Ip_obs is None:
-            Ip_obs = self.scheduler.get_observed_current(ts, "Ip_obs", eq)
-            print(f"  Ip from equilibrium: {Ip_obs}")
+        if Ip_obs_t is None:
+            Ip_obs_t = self.scheduler.get_observed_current(ts, "Ip_obs", eq)
+            print(f"  Ip from equilibrium: {Ip_obs_t}")
         else:
-            print(f"User defined Ip_obs: {Ip_obs}")
+            pass
+            # print(f"User defined Ip_obs: {Ip_obs_t}")
 
         # Implement the plasma category. First, the relevant entities should be
         # retrieved from the scheduler
@@ -257,7 +286,8 @@ class ControlSolenoid:
             dt=(ts - prev_ts),
             blend=blend,
             Ip_req=Ip_req,
-            Ip_obs=Ip_obs,
+            Ip_obs_tprev=Ip_obs_tprev,
+            Ip_obs_t=Ip_obs_t,
             Vloop_ff=Vloop_req,
             sol_vc=self.scheduler.retrieve_vc(ts),
             pi_state=self.get_pistate(ts),

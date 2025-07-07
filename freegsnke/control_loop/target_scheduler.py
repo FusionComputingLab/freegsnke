@@ -55,30 +55,30 @@ class TargetScheduler:
         blend_targets = list(self.blends.keys())
 
         # check targets in schedule targets and waveform targets are the same set of targets.
-        for t, val in self.target_schedule_dict.items():
-            targs_in_sched = val["targets"]
-            # check if subset of targets in schedule are in targets in waveform
-            if not set(targs_in_sched).issubset(set(ff_targets)):
-                print(
-                    f"Scheduling error at time {t} - missing ff waves for targets requested"
-                )
-                raise ValueError(
-                    "Targets in schedule not a subset of targets in ff waveform"
-                )
-            elif not set(targs_in_sched).issubset(set(fb_targets)):
-                print(
-                    f"Scheduling error at time {t} - missing fb waves for targets requested"
-                )
-                raise ValueError(
-                    "Targets in schedule not a subset of targets in fb waveform"
-                )
-            elif not set(targs_in_sched).issubset(set(blend_targets)):
-                print(
-                    f"Scheduling error at time {t} - missing blends for targets requested"
-                )
-                raise ValueError(
-                    "Targets in schedule not a subset of targets in blend waveform"
-                )
+        # for t, val in self.target_schedule_dict.items():
+        #     targs_in_sched = val["targets"]
+        #     # check if subset of targets in schedule are in targets in waveform
+        #     if not set(targs_in_sched).issubset(set(ff_targets)):
+        #         print(
+        #             f"Scheduling error at time {t} - missing ff waves for targets requested"
+        #         )
+        #         raise ValueError(
+        #             "Targets in schedule not a subset of targets in ff waveform"
+        #         )
+        #     elif not set(targs_in_sched).issubset(set(fb_targets)):
+        #         print(
+        #             f"Scheduling error at time {t} - missing fb waves for targets requested"
+        #         )
+        #         raise ValueError(
+        #             "Targets in schedule not a subset of targets in fb waveform"
+        #         )
+        #     elif not set(targs_in_sched).issubset(set(blend_targets)):
+        #         print(
+        #             f"Scheduling error at time {t} - missing blends for targets requested"
+        #         )
+        #         raise ValueError(
+        #             "Targets in schedule not a subset of targets in blend waveform"
+        #         )
 
         #  OR popualte ff waves etc with targets from schedule
 
@@ -135,7 +135,7 @@ class TargetScheduler:
 
         return interpolation
 
-    def retrieve_controlled_targets(self, time_stamp):
+    def get_fb_controlled_targets(self, time_stamp):
         """
         Find the targets that are controlled at time time_stamp.
 
@@ -186,9 +186,10 @@ class TargetScheduler:
         """
         # get set of targets being controlled at this time
         if controlled_targets is None:
-            controlled_targets = self.retrieve_controlled_targets(time_stamp)
+            controlled_targets = self.get_fb_controlled_targets(time_stamp)
 
         if interpolate == True:
+            waveform_dict = self.fb_waves
             targets_required = np.array(
                 [
                     self.interpolate(time_stamp, waveform_dict[targ])
@@ -196,12 +197,19 @@ class TargetScheduler:
                 ]
             )
         else:
-            targets_required = np.array(
-                [
-                    self.get_waveform_value("fb", targ, time_stamp)
-                    for targ in controlled_targets
-                ]
-            )
+            targets_required = np.zeros(len(controlled_targets))
+            for i, targ in enumerate(controlled_targets):
+                targ_val = self.get_waveform_value("fb", targ, time_stamp)
+                if targ_val is not None:
+                    targets_required[i] = targ_val
+                else:
+                    print(f"No fb value for target {targ} at time {time_stamp}")
+            # targets_required = np.array(
+            #     [
+            #         self.get_waveform_value("fb", targ, time_stamp)
+            #         for targ in controlled_targets
+            #     ]
+            # )
 
         return targets_required
 
@@ -241,10 +249,11 @@ class TargetScheduler:
         gradient : np.array
         """
         if targets is None:
-            targets = self.retrieve_controlled_targets(time_stamp)
+            targets = self.get_fb_controlled_targets(time_stamp)
 
         waveform_dict = self.ff_waves
-
+        #
+        # V1 - asusmes ff waveform has units of target, not dTarget/dt
         grad_arr = np.zeros(len(targets))
         for i, target in enumerate(targets):
             slope = np.diff(waveform_dict[target]["vals"]) / np.diff(
@@ -267,6 +276,17 @@ class TargetScheduler:
             grad_arr[i] = gradient
 
         return grad_arr
+
+        # # VERSION 2 - Assume waveform is for the gradient itself dTarget/dt
+        # ff_vals = np.array(
+        #     [
+        #         self.get_waveform_value(
+        #             param_type="ff", time_stamp=time_stamp, param=targ
+        #         )
+        #         for targ in targets
+        #     ]
+        # )
+        # return ff_vals
 
     # def retrieve_timeseries_param(self, param, time_stamp):
     def get_waveform_value(self, param_type, param, time_stamp):
@@ -305,7 +325,7 @@ class TargetScheduler:
         else:
             # find time position
             arr = waveform_dict[param]["times"]
-            print(f"times arr at time {time_stamp} : {arr}")
+            print(f"waveform for target {param} at time {time_stamp} : {arr}")
             eps = 1e-8
             t_vals_temp = [time for time in arr if time <= time_stamp + eps]
             if len(t_vals_temp) == 0:
@@ -328,6 +348,22 @@ class TargetScheduler:
             else:
                 requested_parameter = waveform_dict[param]["vals"][pos]
             # print(requested_parameter)
+
+            # Convert units
+            try:
+                unit = waveform_dict[param]["units"]
+                # convert units : return everything in
+                if unit == "kA":  # convert kA to A
+                    requested_parameter *= 1000
+                elif unit == "ms":  # convert milliseconds to seconds
+                    requested_parameter /= 1000
+                elif unit == "cm":  # convert cm to m
+                    requested_parameter /= 100
+                elif unit == "mm":  # mm to m
+                    requested_parameter /= 1000
+                print("units converted from {unit} to standard (A, m, s)")
+            except KeyError:
+                print("Warning - waveform doesn't have units key ")
 
         return requested_parameter
 
@@ -362,10 +398,10 @@ class TargetScheduler:
         if time_pos is None:
             print(
                 "time requested is before first control parameter time, "
-                "returning None from retrieve_parameter()"
+                "returning None f"
             )
         else:
-            print("gains at time ", time_pos)
+            print("gains at time ", time_stamp)
             for target in targets:
                 print("target ", target)
                 blend = self.get_blends(time_stamp=time_stamp, targets=[target])
@@ -380,3 +416,26 @@ class TargetScheduler:
         gains_arr = np.array(gains)
         # print("gains array ---- ", gains_arr)
         return gains_arr, np.diag(gains_arr)
+
+    def get_damping(self, time_stamp):
+        """get damping factor (if present)
+
+        Parameters
+        ----------
+        time_stamp : float
+            time of retrieval
+
+        Returns
+        damp_factor : float
+            damping factor for the current phase
+        """
+        time_pos = max(
+            time for time in self.target_schedule_dict.keys() if time <= time_stamp
+        )
+        gain_dict = self.target_schedule_dict[time_pos]
+        if "Damping Factor" in gain_dict.keys():
+            return gain_dict["Damping Factor"]
+        else:
+            print("there is no damping factor : return 1")
+            # No damping corresponds to damp_factor = 1
+            return 1.0

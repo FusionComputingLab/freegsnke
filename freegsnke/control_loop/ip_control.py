@@ -150,19 +150,7 @@ class ControlSolenoid:
         # trajectories requests for the active coils.
         dI_dt = dIsoldt * sol_vc
 
-        # testing
-        results = {
-                   "delta_Ip_tprev": delta_Ip_tprev,
-                   "delta_Ip_t": delta_Ip_t,
-                   "blends": blend,
-                   "internal": self.internal,
-                   "Vloop_fb": dIsol_fb_t * (-M_sp),
-                   "dIsoldt": dIsoldt,
-                   "dI_dt": dI_dt[0],
-                   }
-
-        # return dI_dt
-        return results
+        return dI_dt
 
     def ip_control(self,
                    ts,

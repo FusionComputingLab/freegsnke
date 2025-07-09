@@ -534,8 +534,10 @@ class Jtor_universal:
         """
 
         unrefined_jtor = self.Jtor_unrefined(R, Z, psi, psi_bndry)
-        self.unrefined_jtor = 1.0 * unrefined_jtor
+        self.unrefined_jtor = np.copy(unrefined_jtor)
+        self.unrefined_djtordpsi = np.copy(self.dJtordpsi)
         self.pure_jtor = unrefined_jtor / self.L
+        self.pure_djtordpsi = self.dJtordpsi / self.L
         core_mask = 1.0 * self.limiter_core_mask
 
         if thresholds == None:
@@ -557,12 +559,20 @@ class Jtor_universal:
         refined_jtor = refined_jtor.reshape(
             -1, self.jtor_refiner.nnx, self.jtor_refiner.nny
         )
+        self.dJtordpsi = self.jtor_refiner.build_from_refined_jtor(
+            self.pure_djtordpsi,
+            self.dJtordpsi.reshape(-1),
+            self.jtor_refiner.nnx,
+            self.jtor_refiner.nny,
+        )
+
         self.jtor = self.jtor_refiner.build_from_refined_jtor(
             self.pure_jtor, refined_jtor
         )
         if self.Ip_logic:
             self.L = self.Ip / (np.sum(self.jtor) * self.dRdZ)
             self.jtor *= self.L
+            self.dJtordpsi *= self.L
 
         return self.jtor
 

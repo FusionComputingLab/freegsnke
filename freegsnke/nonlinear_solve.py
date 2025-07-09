@@ -1339,8 +1339,8 @@ class nl_solver:
         self.get_profiles_values(profiles)
 
         # set internal copy of the equilibrium and profile
-        # note that at this stage, the equilibrium may have vessel currents. 
-        # These can not be reproduced exactly if modes are truncated. 
+        # note that at this stage, the equilibrium may have vessel currents.
+        # These can not be reproduced exactly if modes are truncated.
         self.eq1 = deepcopy(eq)
         self.profiles1 = deepcopy(profiles)
         # The pair self.eq1 and self.profiles1 is the pair that is advanced at each timestep.
@@ -1356,7 +1356,7 @@ class nl_solver:
         # This has truncated the vessel currents, which needs to be mirrored in the equilibrium
         # First, the modified currents are assigned
         self.assign_currents(self.currents_vec, profiles=self.profiles1, eq=self.eq1)
-        # Then the equilibrium is solved again to ensure it is the solution relevant to the truncated currents, 
+        # Then the equilibrium is solved again to ensure it is the solution relevant to the truncated currents,
         # and not to the full set of vessel currents!
         self.NK.forward_solve(
             self.eq1,

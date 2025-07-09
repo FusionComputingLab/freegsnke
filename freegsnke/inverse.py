@@ -406,12 +406,16 @@ class Inverse_optimizer:
         delta_current = np.dot(mat, np.dot(self.A.T, self.b))
 
         return delta_current, np.linalg.norm(self.loss)
-    
-    def optimize_currents_grad(self, full_currents_vec, trial_plasma_psi, 
-                               isoflux_weight=1., 
-                               null_points_weight=1.,
-                               psi_vals_weight=1.,
-                               current_weight=1.):
+
+    def optimize_currents_grad(
+        self,
+        full_currents_vec,
+        trial_plasma_psi,
+        isoflux_weight=1.0,
+        null_points_weight=1.0,
+        psi_vals_weight=1.0,
+        current_weight=1.0,
+    ):
         """Solves the least square problem. Tikhonov regularization is applied.
 
         Parameters
@@ -434,16 +438,16 @@ class Inverse_optimizer:
         b_weighted = np.copy(self.b)
         idx = 0
         if self.isoflux_set is not None:
-            b_weighted[idx: idx+self.isoflux_dim] *= isoflux_weight
+            b_weighted[idx : idx + self.isoflux_dim] *= isoflux_weight
             idx += self.isoflux_dim
         if self.null_points is not None:
-            b_weighted[idx: idx+self.nullp_dim] *= null_points_weight
+            b_weighted[idx : idx + self.nullp_dim] *= null_points_weight
             idx += self.nullp_dim
         if self.psi_vals is not None:
-            b_weighted[idx: idx+self.psiv_dim] *= psi_vals_weight
+            b_weighted[idx : idx + self.psiv_dim] *= psi_vals_weight
             idx += self.psiv_dim
         if self.curr_vals is not None:
-            b_weighted[idx: idx+self.curr_dim] *= current_weight
+            b_weighted[idx : idx + self.curr_dim] *= current_weight
 
         grad = np.dot(self.A.T, b_weighted)
 

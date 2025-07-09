@@ -5,7 +5,8 @@ import numpy as np
 
 def calculate_voltage_pf(
     R,
-    inductances,
+    M_ff,
+    M_fb,
     coil_gains,
     approved_dI_dt,
     approved_I,
@@ -56,30 +57,32 @@ def calculate_voltage_pf(
           np.shape(approved_dI_dt), approved_dI_dt)
     print("measured I shape and values:,", np.shape(measured_I), measured_I)
 
-    corrected_I = coil_gains @ (approved_I - measured_I)
+    delta_I = approved_I - measured_I
+    corrected_I = coil_gains @ delta_I
     print("PF proportional current rate: \n", corrected_I)
 
-    v_ff = inductances @ approved_dI_dt
-    v_fb = inductances @ corrected_I
+    v_ff = M_ff @ approved_dI_dt
+    v_fb = M_fb @ corrected_I
     print(f"    The PF feedforward voltage: \n {v_ff}")
     print(f"    The PF feedback voltage: \n {v_fb}")
 
     # Compute the resistive voltage
-    v_res = measured_I * R
+    v_res = measured_I * R 
     print(f"    The resistive voltage: \n {v_res}")
 
     # Combine all the voltages into the output voltage
-    v_out = v_ff + v_fb + v_res
+    v_out = (v_ff + v_fb + v_res) * 1000
     print(f"    The full voltage: \n {v_out}")
 
-    # We omit pc (the last element of clips)
-    v_out_clipped_pos = np.minimum(v_out, clips[:-1])
-    v_out_clipped = np.maximum(v_out_clipped_pos, -clips[:-1])
+    # Apply the clips
+    v_out_clipped_pos = np.minimum(v_out, clips)
+    v_out_clipped = np.maximum(v_out_clipped_pos, - clips)
 
     if not np.allclose(v_out, v_out_clipped):
         print(f"    The full voltage clipped: \n {v_out_clipped}")
 
-    results = {"v_ff": v_ff,
+    results = {"delta_i": delta_I,
+               "v_ff": v_ff,
                "v_fb": v_fb,
                "v_res": v_res,
                "v_out": v_out,

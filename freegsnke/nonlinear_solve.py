@@ -1074,16 +1074,16 @@ class nl_solver:
                             "Final current shift=",
                             self.final_dI_record[j],
                         )
-                        if force_core_mask_linearization:
-                            try:
-                                print(
-                                    "Final relative Iy change=",
-                                    rel_ndIy,
-                                    "; core_check=",
-                                    core_check,
-                                )
-                            except:
-                                print("failed printout!")
+                        # if force_core_mask_linearization:
+                        try:
+                            print(
+                                "Final relative Iy change=",
+                                rel_ndIy,
+                                "; core_check=",
+                                core_check,
+                            )
+                        except:
+                            print("failed printout!")
                         print(
                             "Initial residual=",
                             self.NK.initial_rel_residual,

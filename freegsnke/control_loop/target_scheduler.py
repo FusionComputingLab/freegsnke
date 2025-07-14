@@ -32,12 +32,12 @@ class TargetScheduler:
 
         """
         # load schedule and create a list of times for it
-        self.target_schedule_dict = schedule_dict
-        schedule_times = sorted(list(self.target_schedule_dict.keys()))
+        self.target_gain_schedule_dict = schedule_dict
+        schedule_times = sorted(list(self.target_gain_schedule_dict.keys()))
 
         print("schedule times", schedule_times)
         # print("schedule dictionary")
-        # pprint(self.target_schedule_dict)
+        # pprint(self.target_gain_schedule_dict)
 
         # print("waveform dictionary")
         # pprint(waveform_dict)
@@ -55,7 +55,7 @@ class TargetScheduler:
         blend_targets = list(self.blends.keys())
 
         # check targets in schedule targets and waveform targets are the same set of targets.
-        # for t, val in self.target_schedule_dict.items():
+        # for t, val in self.target_gain_schedule_dict.items():
         #     targs_in_sched = val["targets"]
         #     # check if subset of targets in schedule are in targets in waveform
         #     if not set(targs_in_sched).issubset(set(ff_targets)):
@@ -87,7 +87,7 @@ class TargetScheduler:
         # # checks that ...
         # for time in schedule_times:
         #     # ### do this with set check...
-        #     targ_names = self.target_schedule_dict[time]
+        #     targ_names = self.target_gain_schedule_dict[time]
         #     for targ in targ_names:
         #         # check 1 : check if all targets in target schedule are in
         #         # target waveform
@@ -152,7 +152,7 @@ class TargetScheduler:
         """
 
         closest_key = max(
-            (key for key in self.target_schedule_dict if key <= time_stamp),
+            (key for key in self.target_gain_schedule_dict if key <= time_stamp),
             default=None,
         )
         # print(closest_key)
@@ -163,7 +163,7 @@ class TargetScheduler:
 
             return []
 
-        target_names = self.target_schedule_dict[closest_key]["targets"]
+        target_names = self.target_gain_schedule_dict[closest_key]["targets"]
 
         return target_names
 
@@ -392,7 +392,7 @@ class TargetScheduler:
         # dict format is {time : {target : tau, target_2 : tau_2, ...}}
         # more likely this if single set of gains for all time.
         time_pos = max(
-            time for time in self.target_schedule_dict.keys() if time <= time_stamp
+            time for time in self.target_gain_schedule_dict.keys() if time <= time_stamp
         )
 
         if time_pos is None:
@@ -411,7 +411,9 @@ class TargetScheduler:
                     print("blend is zero - FF only so set gain to zero")
                 else:
                     gains.append(
-                        self.target_schedule_dict[time_pos]["gains"][target][K_type]
+                        self.target_gain_schedule_dict[time_pos]["gains"][target][
+                            K_type
+                        ]
                     )
         gains_arr = np.array(gains)
         # print("gains array ---- ", gains_arr)
@@ -430,9 +432,9 @@ class TargetScheduler:
             damping factor for the current phase
         """
         time_pos = max(
-            time for time in self.target_schedule_dict.keys() if time <= time_stamp
+            time for time in self.target_gain_schedule_dict.keys() if time <= time_stamp
         )
-        gain_dict = self.target_schedule_dict[time_pos]
+        gain_dict = self.target_gain_schedule_dict[time_pos]
         if "Damping Factor" in gain_dict.keys():
             return gain_dict["Damping Factor"]
         else:

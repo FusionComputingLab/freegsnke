@@ -335,11 +335,11 @@ class ShapeTargetScheduler(TargetScheduler):
             # targets match at each midpiont.
             print("checking target schedule and vc sequence")
             print("vc schedule times ", self.vc_scheduler.vc_times_start)
-            print("target schedule times ", self.target_schedule_dict.keys())
+            print("target schedule times ", self.target_gain_schedule_dict.keys())
             change_times = np.sort(
                 np.concatenate(
                     (
-                        list(self.target_schedule_dict.keys()),
+                        list(self.target_gain_schedule_dict.keys()),
                         self.vc_scheduler.vc_times_start,
                     )
                 )

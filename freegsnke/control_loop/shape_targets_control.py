@@ -548,9 +548,9 @@ class ShapeController:
         targets : list[str]
             The targets to apply the virtual circuit to.
         target_deltas : np.array
-            The target deltas (rates) from shape/div category
+            The target deltas (rates) from shape/div category. Units m/s
         virtual_circuit : VirtualCircuit
-            The virtual circuit object to be applied to the target deltas.
+            The virtual circuit object to be applied to the target deltas. Units A/m
 
         Returns
         -------
@@ -581,57 +581,24 @@ class ShapeController:
             raise ValueError(
                 "The virtual circuit targets do not match the targets requested. Check the VC and Target sequence"
             )
-        # do matrix multiplication VC @ G @ delta
-        # delta_currents = virtual_circuit.VCs_matrix @ gained_target_deltas
+
         delta_currents = virtual_circuit.VCs_matrix @ target_deltas
         print("shape current deltas", delta_currents)
+        return delta_currents
 
-        # option 1 reorder currents, fill in zeros and multiply by inductance matrix
-        reshaped_currents = np.zeros(len(self.active_coils))
-        for i, coil in enumerate(virtual_circuit.coils):
-            # voltages_v1[i] = np.dot(inductance_matrix[self.coil_order_dictionary[coil],:], delta_currents[:])
-            # PCO patch until we sort this out
-            if coil == "pc":
-                continue
-            reshaped_currents[self.active_coil_order_dictionary[coil]] = delta_currents[
-                i
-            ]
-        print("reshaped currents")
-        print(reshaped_currents)
-
-        return reshaped_currents
-        # voltages_v1 = np.dot(self.inductance_full, reshaped_currents)
-
-        # print("------------- \n computing voltages \n -------------")
-        # print(
-        #     "voltages v1 : reorder currents, fill in zeros and multiply by full active coil inductance matrix"
-        # )
-        # print("voltages v1 : shape", voltages_v1.shape)
-        # print(voltages_v1)
-
-        # # option 2 reshape inductance matrix, multiply by currents and then fill in zeros
-        # print("doing option 2")
-        # print("delta currents", delta_currents)
-        # inductance_matrix_controlled = self.reshape_inductance(
-        #     coils=virtual_circuit.coils
-        # )
-        # voltages_v2_controlled = np.dot(inductance_matrix_controlled, delta_currents)
-        # # fill in zeros
-        # voltages_v2 = np.zeros(len(self.active_coils))
+        # # option 1 reorder currents, fill in zeros and multiply by inductance matrix
+        # reshaped_currents = np.zeros(len(self.active_coils))
         # for i, coil in enumerate(virtual_circuit.coils):
-        #     voltages_v2[self.coil_order_dictionary[coil]] = voltages_v2_controlled[i]
+        #     # PCO patch until we sort this out
+        #     if coil == "pc":
+        #         continue
+        #     reshaped_currents[self.active_coil_order_dictionary[coil]] = delta_currents[
+        #         i
+        #     ]
+        # print("reshaped currents")
+        # print(reshaped_currents)
 
-        # print(
-        #     "voltages v2 : reshaped inductance matrix, then fill in zeros in voltage vector"
-        # )
-        # print("voltages v2 : shape", voltages_v2.shape)
-        # print(voltages_v2)
-
-        # if we want to keep the latest voltages
-        # self.feedback_voltages_v1 = voltages_v1
-        # self.feedback_voltages_v2 = voltages_v2
-
-        # return voltages_v1, voltages_v2
+        # return reshaped_currents
 
     def apply_vc_2(
         self,

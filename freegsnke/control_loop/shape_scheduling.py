@@ -195,7 +195,7 @@ class VirtualCircuitScheduler(VirtualCircuitProvider):
                 mask = [targ_order_dict[targ] for targ in targets]
                 print("coil ordering mask ", mask)
                 # print("coil ordering mask ", mask)
-                vc_mat_reduced = virtual_circuit.VCs_matrix[:, mask]
+                vc_mat_reduced = deepcopy(virtual_circuit.VCs_matrix[:, mask])
                 # vc_mat_reduced = virtual_circuit.VCs_matrix[:, np.ix_(mask)]
                 targs_reduced = [
                     virtual_circuit.targets[i]

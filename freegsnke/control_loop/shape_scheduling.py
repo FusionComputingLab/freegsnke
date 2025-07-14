@@ -25,7 +25,7 @@ class VirtualCircuitScheduler(VirtualCircuitProvider):
 
     """
 
-    def __init__(self, vc_schedule_dict):
+    def __init__(self, vc_schedule_dict, vc_coil_order=None):
         """
         Initialise the class
 
@@ -45,6 +45,11 @@ class VirtualCircuitScheduler(VirtualCircuitProvider):
 
         # unpack vc_schedule_dict
         self.unpack_vc_schedule(vc_schedule_dict)
+        if vc_coil_order is None:
+            key0 = list(vc_schedule_dict.keys())[0]
+            print("key0 ", key0)
+            vc_coil_order = vc_schedule_dict[key0]["coil_order"]
+        self.vc_coil_order = vc_coil_order
 
     def unpack_vc_schedule(self, vcs_dict):
         """
@@ -60,7 +65,6 @@ class VirtualCircuitScheduler(VirtualCircuitProvider):
         self.vc_times_start = []  # times at which vcs are to be stopped using
         self.vc_objects = []  # list of virtual circuit ojbects
         self.phase_names = []  # list of phase names
-
         for key, item in vcs_dict.items():
             phase_name = item["phase_name"]
             time_start = item["time_start"]
@@ -213,6 +217,23 @@ class VirtualCircuitScheduler(VirtualCircuitProvider):
                 # virtual_circuit_copy.VCs_matrix = vc_mat_reduced
                 # virtual_circuit_copy.targets = targs_reduced
         return virtual_circuit_copy
+
+    def get_vc_2(self, time_stamp, target):
+        """
+        Alternative version of "get_vc" to work with vc's provided as a set of vc columns (rather than as matrix)
+
+        Inputs :
+        --------
+        time_stamp : float
+            time in simulation to get virtual circuit
+        target : name of vc needed
+        """
+        t_vc = max(
+            time for time in list(self.vc_schedule_full.keys()) if time <= time_stamp
+        )
+        vc_phase = self.vc_schedule_full[t_vc]
+        vc_col = vc_phase["vc_columns"][target]
+        return vc_col
 
     def _validate_observable_registry(
         self, observable_registry: ObservableRegistry

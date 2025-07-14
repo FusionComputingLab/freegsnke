@@ -125,15 +125,15 @@ class ShapeController:
         self.machine_coils = machine_parameters["coils"]
         self.machine_param_coil_order = machine_parameters["coil_order_dictionary"]
 
-        # reorder inductance matrix and coil resistances to match coil order
-        # ### ??? inducnace for active coils or control coils ???
-        # self.inductance_full = self.reshape_inductance(coils=self.active_coils)
-        # self.coil_resist = self.reorder_resistance(coils=self.active_coils)
-        self.inductance_full = self.reshape_inductance(coils=self.control_coils)
-        self.coil_resist = self.reorder_resistance(coils=self.control_coils)
-        # reduced inductance matrix for control coils
-        self.inductance_reduced = self.reshape_inductance(coils=self.control_coils)
-        # initialise the VCH object
+        # # reorder inductance matrix and coil resistances to match coil order
+        # # ### ??? inducnace for active coils or control coils ???
+        # # self.inductance_full = self.reshape_inductance(coils=self.active_coils)
+        # # self.coil_resist = self.reorder_resistance(coils=self.active_coils)
+        # self.inductance_full = self.reshape_inductance(coils=self.control_coils)
+        # self.coil_resist = self.reorder_resistance(coils=self.control_coils)
+        # # reduced inductance matrix for control coils
+        # self.inductance_reduced = self.reshape_inductance(coils=self.control_coils)
+        # # initialise the VCH object
 
         ## ?? add in pi state / integral term ??##
         # self.pi_state = pi_state
@@ -632,6 +632,26 @@ class ShapeController:
         # self.feedback_voltages_v2 = voltages_v2
 
         # return voltages_v1, voltages_v2
+
+    def apply_vc_2(
+        self,
+        time_stamp,
+        targets: list[str],
+        target_deltas: np.array,
+    ):
+        """Apply VC using the 'list of columns' format instead - for now just for testing"""
+        # currents_rates = np.zeros(len(self.control_coils))
+        currents_rates = np.zeros(
+            len(self.feedback_target_scheduler.vc_scheduler.vc_coil_order)
+        )
+        for i, target in enumerate(targets):
+            vc_col = self.feedback_target_scheduler.vc_scheduler.get_vc_2(
+                time_stamp, target
+            )
+            print(np.shape(vc_col))
+            print(np.shape(currents_rates))
+            currents_rates += target_deltas[i] * vc_col
+        return currents_rates
 
     def feedback_current_rate_timefunc(
         self,

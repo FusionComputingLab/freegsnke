@@ -298,6 +298,7 @@ class ShapeTargetScheduler(TargetScheduler):
         self,
         waveform_dict,
         schedule_dict,
+        controlled_targets_all,
         vc_scheduler: VirtualCircuitProvider,
         vc_flag="file",
     ):
@@ -321,7 +322,7 @@ class ShapeTargetScheduler(TargetScheduler):
         None
         """
 
-        super().__init__(waveform_dict, schedule_dict)
+        super().__init__(waveform_dict, schedule_dict, controlled_targets_all)
 
         self.vc_flag = vc_flag
         assert vc_scheduler is not None, "Please provide a vc schedule"

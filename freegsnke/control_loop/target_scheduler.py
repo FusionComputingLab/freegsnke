@@ -13,8 +13,9 @@ class TargetScheduler:
 
     def __init__(
         self,
-        waveform_dict,
-        schedule_dict,
+        waveform_dict: dict,
+        schedule_dict: dict,
+        controlled_targets_all: list,
     ):
         """
         Initialise the class
@@ -25,6 +26,8 @@ class TargetScheduler:
             dictionary containing target waveforms.
         schedule_dict : dict
             dictionary containing target schedule.
+        controlled_targets_all : list
+            list of all targets that will be available for control, either FB or FF.
 
         Returns
         -------
@@ -34,16 +37,11 @@ class TargetScheduler:
         # load schedule and create a list of times for it
         self.target_gain_schedule_dict = schedule_dict
         schedule_times = sorted(list(self.target_gain_schedule_dict.keys()))
+        self.control_targs_all = controlled_targets_all
 
         print("schedule times", schedule_times)
         # print("schedule dictionary")
         # pprint(self.target_gain_schedule_dict)
-
-        # print("waveform dictionary")
-        # pprint(waveform_dict)
-        # load target waveform
-        # target waveform  dict ~ {target_name : {"times":[time list],
-        #                                         "vals": [vals list] , }
 
         self.ff_waves = waveform_dict["ff"]
         self.fb_waves = waveform_dict["fb"]
@@ -52,8 +50,29 @@ class TargetScheduler:
         # check targets in schedule targets and waveform targets are the same set of targets.
         ff_targets = list(self.ff_waves.keys())
         fb_targets = list(self.fb_waves.keys())
-        blend_targets = list(self.blends.keys())
+        target_blends = list(self.blends.keys())
 
+        # Compatiblitly check - MUST provide all waveforms and gains for all targets.
+        # check waveforms
+        # if not set(ff_targets).issubset(set(controlled_targets_all)):
+        #     raise ValueError(
+        #         "Missing feedforward waveforms \n "
+        #         f"ff waveform targets {ff_targets} \n All targets {controlled_targets_all}"
+        #     )
+        # elif not set(fb_targets).issubset(set(controlled_targets_all)):
+        #     raise ValueError(
+        #         "Missing feedback waveforms\n "
+        #         f"ff waveform targets {fb_targets} \n All targets {controlled_targets_all}"
+        #     )
+        # if not set(target_blends).issubset(set(controlled_targets_all)):
+        #     raise ValueError(
+        #         "Missing blend waveforms\n "
+        #         f"ff waveform targets {target_blends} \n All targets {controlled_targets_all}"
+        #     )
+
+        # check gain schedule
+
+        ##### OLD - I THINK REDUNDANT ###
         # check targets in schedule targets and waveform targets are the same set of targets.
         # for t, val in self.target_gain_schedule_dict.items():
         #     targs_in_sched = val["targets"]
@@ -72,7 +91,7 @@ class TargetScheduler:
         #         raise ValueError(
         #             "Targets in schedule not a subset of targets in fb waveform"
         #         )
-        #     elif not set(targs_in_sched).issubset(set(blend_targets)):
+        #     elif not set(targs_in_sched).issubset(set(target_blends)):
         #         print(
         #             f"Scheduling error at time {t} - missing blends for targets requested"
         #         )
@@ -108,6 +127,10 @@ class TargetScheduler:
         #                     f"Range of defined values for Target {targ} not "
         #                     "compatible with schedule"
         #                 )
+
+    def get_all_targets(self):
+        """return list of all controllable targets"""
+        return self.control_targs_all
 
     def interpolate(self, time_stamp, waveform):
         """
@@ -188,17 +211,23 @@ class TargetScheduler:
         if controlled_targets is None:
             controlled_targets = self.get_fb_controlled_targets(time_stamp)
 
+        targets_required = np.zeros(len(self.control_targs_all))
+
         if interpolate == True:
             waveform_dict = self.fb_waves
-            targets_required = np.array(
-                [
-                    self.interpolate(time_stamp, waveform_dict[targ])
-                    for targ in controlled_targets
-                ]
-            )
+            for i, targ in enumerate(self.control_targs_all):
+                if targ in controlled_targets:
+                    targets_required[i] = self.interpolate(
+                        time_stamp, waveform_dict[targ]
+                    )
+            # targets_required = np.array(
+            #     [
+            #         self.interpolate(time_stamp, waveform_dict[targ])
+            #         for targ in controlled_targets
+            #     ]
+            # )
         else:
-            targets_required = np.zeros(len(controlled_targets))
-            for i, targ in enumerate(controlled_targets):
+            for i, targ in enumerate(self.control_targs_all):
                 targ_val = self.get_waveform_value("fb", targ, time_stamp)
                 if targ_val is not None:
                     targets_required[i] = targ_val
@@ -226,15 +255,19 @@ class TargetScheduler:
             blends : np.array
                 blends for the targets specified
         """
-
-        blends = [
-            self.get_waveform_value(
+        blends = np.zeros(len(self.control_targs_all))
+        for i, target in enumerate(self.control_targs_all):
+            blends[i] = self.get_waveform_value(
                 param_type="blends", param=target, time_stamp=time_stamp
             )
-            for target in targets
-        ]
+        # blends = [
+        #     self.get_waveform_value(
+        #         param_type="blends", param=target, time_stamp=time_stamp
+        #     )
+        #     for target in targets
+        # ]
 
-        return np.array(blends)
+        return blends
 
     def feed_forward_gradient(self, time_stamp, targets=None):
         """
@@ -249,31 +282,31 @@ class TargetScheduler:
         gradient : np.array
         """
         if targets is None:
-            targets = self.get_fb_controlled_targets(time_stamp)
-
+            targets = self.control_targs_all
         waveform_dict = self.ff_waves
         #
         # V1 - asusmes ff waveform has units of target, not dTarget/dt
-        grad_arr = np.zeros(len(targets))
-        for i, target in enumerate(targets):
-            slope = np.diff(waveform_dict[target]["vals"]) / np.diff(
-                waveform_dict[target]["times"]
-            )
-            position = np.searchsorted(
-                waveform_dict[target]["times"][1:], time_stamp, side="right"
-            )
-            # print(f"position index {position}")
-            if time_stamp > waveform_dict[target]["times"][-1]:
-                print(
-                    "time_stamp is greater than the last waveform time stamp "
-                    f"for target {target}"
+        grad_arr = np.zeros(len(self.control_targs_all))
+        for i, target in enumerate(self.control_targs_all):
+            if target in targets:
+                slope = np.diff(waveform_dict[target]["vals"]) / np.diff(
+                    waveform_dict[target]["times"]
                 )
-                gradient = 0
-            else:
-                gradient = slope[position]
-                # print(f"slope at {time_stamp}: {slope[position]}")
+                position = np.searchsorted(
+                    waveform_dict[target]["times"][1:], time_stamp, side="right"
+                )
+                # print(f"position index {position}")
+                if time_stamp > waveform_dict[target]["times"][-1]:
+                    print(
+                        "time_stamp is greater than the last waveform time stamp "
+                        f"for target {target}"
+                    )
+                    gradient = 0
+                else:
+                    gradient = slope[position]
+                    # print(f"slope at {time_stamp}: {slope[position]}")
 
-            grad_arr[i] = gradient
+                grad_arr[i] = gradient
 
         return grad_arr
 
@@ -305,6 +338,7 @@ class TargetScheduler:
         Returns
         -------
         requested_parameter : float
+            value of that parameter
         """
 
         if param_type == "ff":
@@ -371,7 +405,7 @@ class TargetScheduler:
         """
         Retrieves the shape gains for the target at time_stamp, given the target schedule.
         # Gains provided as time_periods - assume units of milliseconds (ms)
-        Gains provided as numbers
+        Gains provided as numbers with units 1/time (Not provided as tau in s or ms)
         Parameters
         ----------
         targets : list[str]
@@ -388,7 +422,7 @@ class TargetScheduler:
             print("--- loading plasma gains")
         else:
             print("--- loading shape gains")
-        gains = []
+        gains_arr = np.zeros(len(self.control_targs_all))
         # dict format is {time : {target : tau, target_2 : tau_2, ...}}
         # more likely this if single set of gains for all time.
         time_pos = max(
@@ -401,26 +435,34 @@ class TargetScheduler:
                 "returning None f"
             )
         else:
-            print("gains at time ", time_stamp)
-            for target in targets:
-                print("target ", target)
-                blend = self.get_blends(time_stamp=time_stamp, targets=[target])
-                print("blend ", blend)
-                if blend == 0.0:
-                    gains.append(0)
-                    print("blend is zero - FF only so set gain to zero")
-                else:
-                    gains.append(
-                        self.target_gain_schedule_dict[time_pos]["gains"][target][
-                            K_type
-                        ]
-                    )
-        gains_arr = np.array(gains)
+            for i, target in enumerate(self.control_targs_all):
+                if target in targets:
+                    gains_arr[i] = self.target_gain_schedule_dict[time_pos]["gains"][
+                        target
+                    ][K_type]
+
+            ### old version
+            # print("gains at time ", time_stamp)
+            # for target in targets:
+            #     print("target ", target)
+            #     blend = self.get_blends(time_stamp=time_stamp, targets=[target])
+            #     print("blend ", blend)
+            #     if blend == 0.0:
+            #         gains.append(0)
+            #         print("blend is zero - FF only so set gain to zero")
+            #     else:
+            #         gains.append(
+            #             self.target_gain_schedule_dict[time_pos]["gains"][target][
+            #                 K_type
+            #             ]
+            #         )
+        # gains_arr = np.array(gains)
         # print("gains array ---- ", gains_arr)
         return gains_arr, np.diag(gains_arr)
 
     def get_damping(self, time_stamp):
-        """get damping factor (if present)
+        """
+        Get damping factor (if present)
 
         Parameters
         ----------
@@ -429,7 +471,7 @@ class TargetScheduler:
 
         Returns
         damp_factor : float
-            damping factor for the current phase
+            damping factor for the current  P(ID) phase
         """
         time_pos = max(
             time for time in self.target_gain_schedule_dict.keys() if time <= time_stamp

@@ -457,16 +457,14 @@ class nl_solver:
                     getattr(profiles, self.profiles_param) * 1e-2, 1e-4
                 )
 
-        else:  # lao  ( try normalising all the coeffs wrt either alpha_0 or beta_0, also need to normalise the dtheta_dt term too)
-            # or perhaps normalise wrt pressure at centre )given all alphas and betas)
+        else:  # lao 
             # alpha coeffs
-            n_alpha = len(profiles.alpha)
-            self.starting_dtheta[0:n_alpha] = max(
-                profiles.alpha * target_dIy, target_dIy
-            )
+            self.starting_dtheta[0:self.n_profiles_parameters_alpha] = self.profiles_parameters_vec[self.profiles_alpha_indices] * 1e-3
+            self.starting_dtheta[0:self.n_profiles_parameters_alpha][ self.starting_dtheta[0:self.n_profiles_parameters_alpha] == 0] = 1e-3
 
             # beta coeffs
-            self.starting_dtheta[n_alpha:] = max(profiles.beta * target_dIy, target_dIy)
+            self.starting_dtheta[self.n_profiles_parameters_alpha:] = self.profiles_parameters_vec[self.profiles_beta_indices] * 1e-3
+            self.starting_dtheta[self.n_profiles_parameters_alpha:][ self.starting_dtheta[self.n_profiles_parameters_alpha:] == 0] = 1e-3
 
         # This solves the system of circuit eqs based on an assumption
         # for the direction of the plasma current distribution at time t+dt
@@ -1678,7 +1676,21 @@ class nl_solver:
                 [profiles.alpha_m, profiles.alpha_n, profiles.Beta0]
             )
         elif self.profiles_type == "Lao85":
-            self.n_profiles_parameters = len(profiles.alpha) + len(profiles.beta)
+            self.n_profiles_parameters_alpha = len(profiles.alpha)
+            self.n_profiles_parameters_beta = len(profiles.beta)
+            if profiles.alpha_logic:
+                self.n_profiles_parameters_alpha -= 1
+            if profiles.beta_logic:
+                self.n_profiles_parameters_beta -= 1
+            self.n_profiles_parameters = self.n_profiles_parameters_alpha + self.n_profiles_parameters_beta
+
+            self.profiles_alpha_indices = slice(0, self.n_profiles_parameters_alpha)
+            alpha_shift = 0
+            if profiles.alpha_logic:
+                alpha_shift += 1
+            
+            self.profiles_beta_indices = slice(self.n_profiles_parameters_alpha+alpha_shift, self.n_profiles_parameters_alpha+alpha_shift+self.n_profiles_parameters_beta)
+
             self.profiles_parameters = {"alpha": profiles.alpha, "beta": profiles.beta}
             self.profiles_param = None
             self.profiles_parameters_vec = np.concatenate(

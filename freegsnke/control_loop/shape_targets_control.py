@@ -539,6 +539,7 @@ class ShapeController:
         targets: list[str],
         target_deltas: np.array,
         virtual_circuit: VirtualCircuit,
+        reshape=False,
     ):
         """
         Apply the virtual circuit to the target deltas.
@@ -584,21 +585,25 @@ class ShapeController:
 
         delta_currents = virtual_circuit.VCs_matrix @ target_deltas
         print("shape current deltas", delta_currents)
-        return delta_currents
+        if reshape == False:
+            return delta_currents
 
-        # # option 1 reorder currents, fill in zeros and multiply by inductance matrix
-        # reshaped_currents = np.zeros(len(self.active_coils))
-        # for i, coil in enumerate(virtual_circuit.coils):
-        #     # PCO patch until we sort this out
-        #     if coil == "pc":
-        #         continue
-        #     reshaped_currents[self.active_coil_order_dictionary[coil]] = delta_currents[
-        #         i
-        #     ]
-        # print("reshaped currents")
-        # print(reshaped_currents)
+        elif reshape == True:
+            # option 1 reshape currents, fill in zeros and multiply by inductance matrix
+            print("reshaping current to match active coils order")
+            reshaped_currents = np.zeros(len(self.active_coils))
+            for i, coil in enumerate(virtual_circuit.coils):
+                # PCO patch until we sort this out
+                if coil == "pc":
+                    continue
+                reshaped_currents[self.active_coil_order_dictionary[coil]] = (
+                    1.0
+                    * delta_currents[
+                        i
+                    ]  # multiply by 1.0 to get around the pointer/reference feature of python.
+                )
 
-        # return reshaped_currents
+            return reshaped_currents
 
     def apply_vc_2(
         self,

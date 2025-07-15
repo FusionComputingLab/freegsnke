@@ -4,6 +4,7 @@ Module to control plasma current Ip during a tokamak shot.
 """
 
 import numpy as np
+
 from .target_scheduler import TargetScheduler
 
 
@@ -43,6 +44,9 @@ class ControlSolenoid:
         waveform_dict,
         schedule_dict,
         sol_vc_dict,
+        active_coils: list[str],
+        vc_coils: list[str],
+        controlled_targets_all: list[str] = ["Ip"],  ##check if its Ip or plasma1 etc.
         integral_term_0=0,
         solenoid_name=None,
     ):
@@ -56,26 +60,37 @@ class ControlSolenoid:
         """
         # Load the scheduler
         self.scheduler = SolenoidScheduler(
-            waveform_dict, schedule_dict, sol_vc_dict, solenoid_name
+            waveform_dict,
+            schedule_dict,
+            controlled_targets_all,
+            sol_vc_dict,
+            solenoid_name,
         )
 
         # The accumulated error in the plasma category. Defaults to 0 if not
         # given.
         self.internal = integral_term_0
+        self.active_coils = active_coils
+        self.active_coil_order_dictionary = {
+            coil: i for i, coil in enumerate(self.active_coils)
+        }
+        self.vc_coil_order = vc_coils
 
-    def calculate_solenoid_delta(self,
-                                 Kp,
-                                 Ki,
-                                 dt,
-                                 blend,
-                                 Ip_req,
-                                 Ip_obs_tprev,
-                                 Ip_obs_t,
-                                 Vloop_ff,
-                                 sol_vc,
-                                 M_sp=1.5801*1e-5 * 1e3,
-                                 dt_pi=0.0001
-                                 ):
+    def calculate_solenoid_delta(
+        self,
+        Kp,
+        Ki,
+        dt,
+        blend,
+        Ip_req,
+        Ip_obs_tprev,
+        Ip_obs_t,
+        Vloop_ff,
+        sol_vc,
+        M_sp=1.5801 * 1e-5 * 1e3,
+        dt_pi=0.0001,
+        reshape=False,
+    ):
         """
         Calculates the vector of current trajectories ΔI/Δt, as prescribed
         in the plasma category of the MAST-U PCS. The equations followed are:
@@ -118,6 +133,8 @@ class ControlSolenoid:
         - dt_pi : float
             Interval of time between two cycles of the PI controller. The
             default value is 0.0001
+        - reshape : bool
+            flag as to whether to reshape vector of currents. Defaults to False.
 
         Returns
         -------
@@ -148,16 +165,28 @@ class ControlSolenoid:
 
         # Apply dIsoldt to virtual circuit vector to get the current
         # trajectories requests for the active coils.
-        dI_dt = dIsoldt * sol_vc
+        # dI_dt = dIsoldt * sol_vc
+        dI_dt = sol_vc @ dIsoldt
+        if reshape == False:
+            return dI_dt
+        elif reshape == True:
+            # option 1 reshape currents, fill in zeros and multiply by inductance matrix
+            print("reshaping current to match active coils order")
+            reshaped_currents = np.zeros(len(self.active_coils))
+            for i, coil in enumerate(self.vc_coil_order):
+                # PCO patch until we sort this out
+                if coil == "pc":
+                    continue
+                reshaped_currents[self.active_coil_order_dictionary[coil]] = (
+                    1.0
+                    * dI_dt[
+                        i
+                    ]  # multiply by 1.0 to get around the pointer/reference feature of python.
+                )
 
-        return dI_dt
+            return reshaped_currents
 
-    def ip_control(self,
-                   ts,
-                   prev_ts,
-                   Ip_obs_tprev=None,
-                   Ip_obs_t=None,
-                   eq=None):
+    def ip_control(self, ts, prev_ts, Ip_obs_tprev=None, Ip_obs_t=None, eq=None):
         """
         Execute all the steps in the pipeline for the control of the solenoid
         current, as prescribed by the PCS. This method is the API by design of
@@ -190,14 +219,10 @@ class ControlSolenoid:
         """
 
         if Ip_obs_t is None:
-            Ip_obs_t = self.scheduler.get_observed_current(ts,
-                                                           "Ip_obs",
-                                                           eq)
+            Ip_obs_t = self.scheduler.get_observed_current(ts, "Ip_obs", eq)
             print(f"  Ip from equilibrium at {ts}: {Ip_obs_t}")
         if Ip_obs_tprev is None:
-            Ip_obs_tprev = self.scheduler.get_observed_current(prev_ts,
-                                                               "Ip_obs",
-                                                               eq)
+            Ip_obs_tprev = self.scheduler.get_observed_current(prev_ts, "Ip_obs", eq)
             print(f"  Ip from equilibrium at {prev_ts}: {Ip_obs_tprev}")
 
         # Implement the plasma category. First, the relevant entities should be
@@ -216,15 +241,13 @@ class ControlSolenoid:
             param_type="ff", param="plasma", time_stamp=ts
         )
 
-        gain_p, _ = self.scheduler.get_gains(
-                ["plasma"], time_stamp=ts, K_type="Kprop")
-        gain_int, _ = self.scheduler.get_gains(
-                ["plasma"], time_stamp=ts, K_type="Kint")
+        gain_p, _ = self.scheduler.get_gains(["plasma"], time_stamp=ts, K_type="Kprop")
+        gain_int, _ = self.scheduler.get_gains(["plasma"], time_stamp=ts, K_type="Kint")
 
         blend = self.scheduler.get_waveform_value(
             param_type="blends", param="plasma", time_stamp=ts
         )
-
+        sol_vc, vc_coil_order = self.scheduler.retrieve_vc(ts)
         dI_dt = self.calculate_solenoid_delta(
             Kp=gain_p[0],
             Ki=gain_int[0],
@@ -234,7 +257,7 @@ class ControlSolenoid:
             Ip_obs_tprev=Ip_obs_tprev,
             Ip_obs_t=Ip_obs_t,
             Vloop_ff=Vloop_req,
-            sol_vc=self.scheduler.retrieve_vc(ts),
+            sol_vc=sol_vc,
         )
 
         return dI_dt
@@ -266,7 +289,8 @@ class SolenoidScheduler(TargetScheduler):
         waveform_dict,
         schedule_dict,
         sol_vc_dict,
-        solenoid_name,
+        controlled_targets_all=["Ip"],
+        solenoid_name="Solenoid",
     ):
         """
         Initialise the Solenoid scheduler.
@@ -290,7 +314,7 @@ class SolenoidScheduler(TargetScheduler):
         """
 
         # Execute the parent __init__()
-        super().__init__(waveform_dict, schedule_dict)
+        super().__init__(waveform_dict, schedule_dict, controlled_targets_all)
 
         # Ip requested
         self.ips = waveform_dict["Ip"]
@@ -331,8 +355,9 @@ class SolenoidScheduler(TargetScheduler):
             return []
 
         sol_vc = self.vc_dict[closest_key]["vc"]
+        coil_order = self.vc_dict[closest_key]["coil_order"]
 
-        return np.array(sol_vc)
+        return np.array(sol_vc), coil_order
 
     def get_vloop_blends(self, time_stamp):
         """

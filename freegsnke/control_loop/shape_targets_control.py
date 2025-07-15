@@ -81,6 +81,7 @@ class ShapeController:
         active_coils: list[str],
         control_coils: list[str],
         machine_parameters,
+        prev_output: np.array | None = None,
         pi_state=None,
         integral_state=None,
     ):
@@ -95,10 +96,19 @@ class ShapeController:
                 list of profiles
             feedback_target_scheduler : TargetScheduler object
                 TargetScheduler object - contains targets and vc schedule for simulation.
-            coils : list[str]
-                list of coil names to be used for shape control, defaults to all active coils defined in get_active_coils.
+            active_coils : list[str]
+                list of all coil names to be used by simulation. Includes shaping and vertical control coils
+            control_coils : list[str]
+                list of coils used for shape control. These are used by emulators.
             machine_parameters : dict
                 dictionary containing full inductance matrix and coil resistances
+            prev_output : np.array
+                array of target rates (output of shapes category) at previous timestep.
+                If not provided it defaults to array of zeros, of size len(all_targets)
+            pi_state  : np.array
+                array of PI state for all controllable targets. Only used if Integral control active
+            integral_state : np.array
+                array of integral state for all controllable targets. only used in integral computation.
         """
         self.active_coils = active_coils
 
@@ -118,6 +128,13 @@ class ShapeController:
         # initialise a target scheduler object
         self.feedback_target_scheduler = feedback_target_scheduler
         print("target scheduler flag :", self.feedback_target_scheduler.vc_flag)
+
+        if prev_output is None:
+            self.prev_output = np.zeros(
+                len(feedback_target_scheduler.get_all_targets())
+            )
+        else:
+            self.prev_output = prev_output
 
         # set machine parameters (inductance and resistances for coils)
         self.inductance_full = machine_parameters["inductance_full"]
@@ -274,64 +291,16 @@ class ShapeController:
 
         return virtual_circuit
 
-    ### OLD REDUNDANT (i think) - doesn't include damping
-    def calculate_gained_target_deltas(
-        self,
-        targets,
-        targets_req,
-        targets_obs,
-        shape_prop_gain_matrix,
-    ):
-        """Calculate the target deltas between the required and observed targets
-
-        Parameters
-        ----------
-        targets : list
-            list of target names
-        shape_prop_gain_matrix : np.array() (2d array))
-            diagonal square matrix of target gains.
-        targets_req : array
-            array of required/desired target values for each shape target
-        targets_obs : array, Optional
-            array of target values for each shape target. If not provided, the observed targets are calculated from the equilibrium.
-
-
-        Returns
-        -------
-        target_deltas : array
-            array of target deltas
-        """
-
-        # check dimensions of target values
-        assert len(targets_req) == len(
-            targets_obs
-        ), "The target required and observed vectors are not the same length"
-
-        assert (
-            shape_prop_gain_matrix.shape[0]
-            == shape_prop_gain_matrix.shape[1]
-            == len(targets_req)
-        ), "The gain matrix is not the square or same size as the target vector"
-        # print("shape gain matrix", shape_prop_gain_matrix)
-
-        # shifts required
-        target_deltas = targets_req - targets_obs
-        gained_target_deltas = shape_prop_gain_matrix @ target_deltas
-        # print("targets names", targets)
-        # print("required target deltas", target_deltas)
-        # print("gained target deltas", gained_target_deltas)
-        return gained_target_deltas, target_deltas
-
     def calculate_proportional_target_deltas(
         self,
-        targets,
         targets_req,
         targets_obs,
         prev_err,
-        shape_prop_gain_matrix,
         damp_factor=1,
     ):
-        """Calculate the target deltas between the required and observed targets
+        """Calculate the target damped shape deltas.
+
+        output = (1-1/damping)*prev_err + 1/damping *
 
         Parameters
         ----------
@@ -342,41 +311,39 @@ class ShapeController:
         targets_req : array
             array of required/desired target values for each shape target
         targets_obs : array, Optional
-            array of target values for each shape target. If not provided, the observed targets are calculated from the equilibrium.
+            array of target values for each shape target.
 
 
         Returns
         -------
-        target_deltas : array
-            array of target deltas
+        targ_err_t : np.array
+            error term (damped) at current time. Has units of m
+        target_deltas : np.array
+            array of raw error term (T_required - T_observed). Has units of m.
         """
 
         # check dimensions of target values
         assert len(targets_req) == len(
             targets_obs
         ), "The target required and observed vectors are not the same length"
-
-        assert (
-            shape_prop_gain_matrix.shape[0]
-            == shape_prop_gain_matrix.shape[1]
-            == len(targets_req)
-        ), "The gain matrix is not the square or same size as the target vector"
-        # print("shape gain matrix", shape_prop_gain_matrix)
 
         # shifts required
         target_deltas = targets_req - targets_obs
         damp_deltas = target_deltas / damp_factor
 
-        # total damped target error
-        targ_err = (1 - 1 / damp_factor) * prev_err + damp_deltas
+        # total damped target error at current time
+        targ_err_t = (1 - 1 / damp_factor) * prev_err + damp_deltas
 
-        gained_target_deltas = shape_prop_gain_matrix @ targ_err
+        # update prev_output
+        self.prev_output = 1.0 * targ_err_t
+
+        # gained_target_deltas = shape_prop_gain_matrix @ targ_err_t
         # print("targets names", targets)
         # print("required target deltas", target_deltas)
         # print("gained target deltas", gained_target_deltas)
         return (
-            gained_target_deltas,
-            targ_err,
+            # gained_target_deltas,
+            targ_err_t,
             target_deltas,
         )
 
@@ -475,57 +442,44 @@ class ShapeController:
 
     def calculate_blended_target_deltas(
         self,
-        targets,
         proportional_deltas,
         targets_blends,
-        ff_deltas,
         shape_prop_gain_matrix,
+        ff_deltas,
         x_int=None,
-        coils=None,
+        integral_gains=None,
     ):
         """
-        Compute current given a set of target value shifts and vc matrix, at a given time.
+        Compute the blended combination of Feedforward and feedback shape rates.
 
-        Assigns attributes in place for feedback voltages, and returns them.
+        blended_rate = (1-blend)*FF_rate + blend * FB_rate_proportional + Integral rate
 
         Parameters
         ----------
-        targets_req : array
-            array function of target values for each control voltage at a given time
-
-        targets_obs : array
-            array function of target values for each control voltage at given  time
-            Defaults to None, in which case the targets are computed from the equilibrium.
-
-        targets : list
-            list of target names. Defaults to None, in which case the targets taken to be all active.
-
-        coils : list
-            list of coil names. Defaults to None, in which case the coils taken to be all active.
-
-        virtual_circuit : object
-            virtual circuit object. Defaults to None, in which case the virtual circuit is computed from the equilibrium.
-            with default currents of the Tokamak minus p6, and solenoid (these are determined differently)
-
-        shape_prop_gain_matrix : array
+        proportional_deltas : np.array
+            array of damped feedback deltas for all targets. Has units of m.
+        targets_blends : np.array
+            array of blends for all targets. must be same order as targets above.
+        shape_prop_gain_matrix : array(2dimensional)
             diagonal square matrix of target gains. Defaults to identity matrix
-
+        ff_deltas : np.array
+            array of gradients of the feedfoward waveforms.
+        x_int : np.array()
+            integral term for targets
+        integral_gains : np.array (2dimensional)
+            integral gains.
         Returns
         -------
-        feedback_voltages : array
-            feedback voltages
+        blended_target_deltas : np.array
+            array of blended ff and fb shape target rates. Has units of m/s.
         """
-        if coils is None:
-            print("coils being set to default active coils reduced")
-            coils = self.control_coils
+        assert (
+            shape_prop_gain_matrix.shape[0]
+            == shape_prop_gain_matrix.shape[1]
+            == len(proportional_deltas)
+        ), "The gain matrix is not the square or same size as the target vector"
+        # print("shape gain matrix", shape_prop_gain_matrix)
 
-        # compute the shape target deltas
-        # gained_target_deltas, _ = self.calculate_gained_target_deltas(
-        #     targets=targets,
-        #     targets_req=targets_req,
-        #     targets_obs=targets_obs,
-        #     shape_prop_gain_matrix=shape_prop_gain_matrix,
-        # )
         gained_target_deltas = shape_prop_gain_matrix @ proportional_deltas
 
         blended_target_deltas = (
@@ -620,8 +574,8 @@ class ShapeController:
             vc_col = self.feedback_target_scheduler.vc_scheduler.get_vc_2(
                 time_stamp, target
             )
-            print(np.shape(vc_col))
-            print(np.shape(currents_rates))
+            # print(np.shape(vc_col))
+            # print(np.shape(currents_rates))
             currents_rates += target_deltas[i] * vc_col
         return currents_rates
 
@@ -639,32 +593,30 @@ class ShapeController:
         ----------
         time_stamp : float
             time stamp of the target to be retrieved
+        target_obs : np.array
+            array of measured/observed target values.
         eq : object
-            equilibrium object
-
+            equilibrium object. optional - used to provide inputs to Emulators if vcs not from file
         profiles : object
-            profiles object
+            profiles object. optional - used to provide inputs to Emulators if vcs not from file
 
-        # shape_prop_gain_matrix : array
-        #     diagonal square matrix of target gains. Defaults to identity matrix
 
         Returns
         -------
         voltage_array : array
             feedback voltages
         """
-        controlled_targets = self.feedback_target_scheduler.get_fb_controlled_targets(
-            time_stamp
-        )
-        print("controlled targets are ", controlled_targets)
-        if controlled_targets == []:
-            print("no controlled targets at time ", time_stamp)
-            return np.zeros(len(self.active_coils))
+        controlled_targets = self.feedback_target_scheduler.get_all_targets()
 
+        # get proportional gains
         gains_arr, shape_prop_gain_matrix = self.feedback_target_scheduler.get_gains(
             targets=controlled_targets, time_stamp=time_stamp, K_type="Kprop"
         )
         print("shape target gains", shape_prop_gain_matrix)
+        # get integral gains
+        int_gains_arr, int_gains_matrix = self.feedback_target_scheduler.get_gains(
+            targets=controlled_targets, time_stamp=time_stamp, K_type="Kint"
+        )
         # get the virtual circuit object
         virtual_circuit = self.feedback_target_scheduler.get_vc(
             eq=eq,
@@ -688,31 +640,28 @@ class ShapeController:
         print("ff deltas", ff_deltas)
 
         # compute the proportional voltages
-
-        gained, prop_deltas, deltas = self.calculate_proportional_target_deltas(
-            targets=controlled_targets,
+        damped_deltas, deltas = self.calculate_proportional_target_deltas(
             targets_req=desired_target_values,
             targets_obs=target_obs,
-            prev_err=0,
-            shape_prop_gain_matrix=shape_prop_gain_matrix,
+            prev_err=self.prev_output,
             damp_factor=1,
         )
 
         shape_rate = self.calculate_blended_target_deltas(
-            targets=controlled_targets,
-            proportional_deltas=prop_deltas,
+            proportional_deltas=damped_deltas,
             targets_blends=fb_blends_arr,
-            ff_deltas=ff_deltas,
             shape_prop_gain_matrix=shape_prop_gain_matrix,
+            ff_deltas=ff_deltas,
         )
 
         current_rate = self.apply_shape_vc(
             targets=controlled_targets,
             target_deltas=shape_rate,
             virtual_circuit=virtual_circuit,
+            reshape=False,
         )
 
-        return current_rate
+        return shape_rate, current_rate
 
     def feedback_voltage_from_currents(self, current_rate, inductance_matrix=None):
         """

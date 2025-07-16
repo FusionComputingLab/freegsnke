@@ -81,7 +81,7 @@ class ShapeController:
         active_coils: list[str],
         control_coils: list[str],
         machine_parameters,
-        prev_output: np.array | None = None,
+        prev_output: np.array = None,
         pi_state=None,
         integral_state=None,
     ):
@@ -329,10 +329,9 @@ class ShapeController:
 
         # shifts required
         target_deltas = targets_req - targets_obs
-        damp_deltas = target_deltas / damp_factor
 
         # total damped target error at current time
-        targ_err_t = (1 - 1 / damp_factor) * prev_err + damp_deltas
+        targ_err_t = (1 - 1 / damp_factor) * prev_err + target_deltas / damp_factor
 
         # update prev_output
         self.prev_output = 1.0 * targ_err_t
@@ -606,16 +605,21 @@ class ShapeController:
         voltage_array : array
             feedback voltages
         """
-        controlled_targets = self.feedback_target_scheduler.get_all_targets()
+        controlled_targets_all = self.feedback_target_scheduler.get_all_targets()
+        controlled_targets_fb = (
+            self.feedback_target_scheduler.get_fb_controlled_targets(
+                time_stamp=time_stamp
+            )
+        )
 
         # get proportional gains
         gains_arr, shape_prop_gain_matrix = self.feedback_target_scheduler.get_gains(
-            targets=controlled_targets, time_stamp=time_stamp, K_type="Kprop"
+            targets=controlled_targets_fb, time_stamp=time_stamp, K_type="Kprop"
         )
         print("shape target gains", shape_prop_gain_matrix)
         # get integral gains
         int_gains_arr, int_gains_matrix = self.feedback_target_scheduler.get_gains(
-            targets=controlled_targets, time_stamp=time_stamp, K_type="Kint"
+            targets=controlled_targets_fb, time_stamp=time_stamp, K_type="Kint"
         )
         # get the virtual circuit object
         virtual_circuit = self.feedback_target_scheduler.get_vc(
@@ -623,7 +627,7 @@ class ShapeController:
             profiles=profiles,
             time_stamp=time_stamp,
             coils=self.control_coils,
-            targets=controlled_targets,
+            targets=controlled_targets_all,
         )
 
         desired_target_values = self.feedback_target_scheduler.desired_target_values_fb(
@@ -631,20 +635,21 @@ class ShapeController:
         )
 
         fb_blends_arr = self.feedback_target_scheduler.get_blends(
-            controlled_targets, time_stamp
+            time_stamp=time_stamp,
         )
         print("fb blends", fb_blends_arr)
         ff_deltas = self.feedback_target_scheduler.feed_forward_gradient(
-            time_stamp, targets=controlled_targets
+            time_stamp, targets=controlled_targets_all
         )
         print("ff deltas", ff_deltas)
 
         # compute the proportional voltages
+        damp_factor = self.feedback_target_scheduler.get_damping(time_stamp=time_stamp)
         damped_deltas, deltas = self.calculate_proportional_target_deltas(
             targets_req=desired_target_values,
             targets_obs=target_obs,
             prev_err=self.prev_output,
-            damp_factor=1,
+            damp_factor=damp_factor,
         )
 
         shape_rate = self.calculate_blended_target_deltas(
@@ -655,7 +660,7 @@ class ShapeController:
         )
 
         current_rate = self.apply_shape_vc(
-            targets=controlled_targets,
+            targets=controlled_targets_all,
             target_deltas=shape_rate,
             virtual_circuit=virtual_circuit,
             reshape=False,

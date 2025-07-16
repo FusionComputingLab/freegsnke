@@ -242,7 +242,7 @@ class TargetScheduler:
 
         return targets_required
 
-    def get_blends(self, targets, time_stamp):
+    def get_blends(self, time_stamp, targets=None):
         """get blend values for targets at time_stamp
 
         parameters
@@ -255,11 +255,17 @@ class TargetScheduler:
             blends : np.array
                 blends for the targets specified
         """
+        if targets is None:
+            targets = self.control_targs_all
+
         blends = np.zeros(len(self.control_targs_all))
         for i, target in enumerate(self.control_targs_all):
-            blends[i] = self.get_waveform_value(
-                param_type="blends", param=target, time_stamp=time_stamp
-            )
+            try:
+                blends[i] = self.get_waveform_value(
+                    param_type="blends", param=target, time_stamp=time_stamp
+                )
+            except:
+                print(f"warning - No blend for {target} : setting to zero")
         # blends = [
         #     self.get_waveform_value(
         #         param_type="blends", param=target, time_stamp=time_stamp
@@ -360,7 +366,7 @@ class TargetScheduler:
             # find time position
             arr = waveform_dict[param]["times"]
             print(f"waveform for target {param} at time {time_stamp} : {arr}")
-            eps = 1e-8
+            eps = 1e-9
             t_vals_temp = [time for time in arr if time <= time_stamp + eps]
             if len(t_vals_temp) == 0:
                 raise ValueError(
@@ -381,6 +387,7 @@ class TargetScheduler:
                 requested_parameter = None
             else:
                 requested_parameter = waveform_dict[param]["vals"][pos]
+                prev_value = waveform_dict[param]["vals"][pos - 1]
             # print(requested_parameter)
 
             # Convert units
@@ -398,7 +405,7 @@ class TargetScheduler:
                 print("units converted from {unit} to standard (A, m, s)")
             except KeyError:
                 print("Warning - waveform doesn't have units key ")
-
+        # return requested_parameter, prev_value
         return requested_parameter
 
     def get_gains(self, targets, time_stamp, K_type="Kprop"):

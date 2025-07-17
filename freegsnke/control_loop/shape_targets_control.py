@@ -291,35 +291,23 @@ class ShapeController:
 
         return virtual_circuit
 
-    def calculate_proportional_target_deltas(
+    def calculate_target_deltas(
         self,
         targets_req,
         targets_obs,
-        prev_err,
-        damp_factor=1,
     ):
-        """Calculate the target damped shape deltas.
+        """compute the the raw error term targ_required - targ_observed
 
-        output = (1-1/damping)*prev_err + 1/damping *
-
-        Parameters
-        ----------
-        targets : list
-            list of target names
-        shape_prop_gain_matrix : np.array() (2d array))
-            diagonal square matrix of target gains.
-        targets_req : array
-            array of required/desired target values for each shape target
-        targets_obs : array, Optional
-            array of target values for each shape target.
-
+        Inputs
+        ------
+        targets_req : np.array()
+            array of required target values
+        targets_obs : np.array()
+            array of observed/measured target values
 
         Returns
-        -------
-        targ_err_t : np.array
-            error term (damped) at current time. Has units of m
-        target_deltas : np.array
-            array of raw error term (T_required - T_observed). Has units of m.
+        target_deltas : np.array()
+            array of deltas
         """
 
         # check dimensions of target values
@@ -329,6 +317,35 @@ class ShapeController:
 
         # shifts required
         target_deltas = targets_req - targets_obs
+        return target_deltas
+
+    def calculate_damped_target_deltas(
+        self,
+        target_deltas,
+        prev_err,
+        damp_factor=1,
+    ):
+        """Calculate the target damped shape deltas.
+
+        output = (1-1/damping)*prev_err + 1/damping *
+
+        Parameters
+        ----------
+        target_deltas : np.array
+            array of the raw difference between observed and requried target
+        prev_err : np.array
+            array of damped target deltas at previous time step
+        damp_factor : float
+            damping factor used to compute damped deltas. defaults to 1 (no damping)
+
+
+        Returns
+        -------
+        targ_err_t : np.array
+            error term (damped) at current time. Has units of m
+        target_deltas : np.array
+            array of raw error term (T_required - T_observed). Has units of m.
+        """
 
         # total damped target error at current time
         targ_err_t = (1 - 1 / damp_factor) * prev_err + target_deltas / damp_factor
@@ -340,11 +357,7 @@ class ShapeController:
         # print("targets names", targets)
         # print("required target deltas", target_deltas)
         # print("gained target deltas", gained_target_deltas)
-        return (
-            # gained_target_deltas,
-            targ_err_t,
-            target_deltas,
-        )
+        return targ_err_t
 
     def calculate_integral_deltas(self, deltas, pi_state, dt, K_int_matrix, blends):
         """compute updated integral error term and PI state
@@ -645,9 +658,13 @@ class ShapeController:
 
         # compute the proportional voltages
         damp_factor = self.feedback_target_scheduler.get_damping(time_stamp=time_stamp)
-        damped_deltas, deltas = self.calculate_proportional_target_deltas(
+
+        targ_deltas = self.calculate_target_deltas(
             targets_req=desired_target_values,
             targets_obs=target_obs,
+        )
+        damped_deltas, deltas = self.calculate_proportional_target_deltas(
+            targ_deltas=targ_deltas,
             prev_err=self.prev_output,
             damp_factor=damp_factor,
         )

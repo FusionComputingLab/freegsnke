@@ -366,7 +366,7 @@ class TargetScheduler:
             # find time position
             arr = waveform_dict[param]["times"]
             print(f"waveform for target {param} at time {time_stamp} : {arr}")
-            eps = 1e-9
+            eps = 1e-8
             t_vals_temp = [time for time in arr if time <= time_stamp + eps]
             if len(t_vals_temp) == 0:
                 raise ValueError(
@@ -480,11 +480,14 @@ class TargetScheduler:
         damp_factor : float
             damping factor for the current  P(ID) phase
         """
+        print("GETTING DAMPING ")
         time_pos = max(
             time for time in self.target_gain_schedule_dict.keys() if time <= time_stamp
         )
-        gain_dict = self.target_gain_schedule_dict[time_pos]
+        gain_dict = self.target_gain_schedule_dict[time_pos]["gains"]
+        print(gain_dict)
         if "Damping Factor" in gain_dict.keys():
+            print("damping", gain_dict["Damping Factor"])
             return gain_dict["Damping Factor"]
         else:
             print("there is no damping factor : return 1")

@@ -397,6 +397,8 @@ class Inverse_optimizer:
         if type(l2_reg) == float:
             reg_matrix = l2_reg * np.eye(self.n_control_coils)
         else:
+            if len(l2_reg) != self.n_control_coils:
+                raise ValueError(f"Expected l2_reg to have length equal to number of coils being controlled ({self.n_control_coils}), but got {len(l2_reg)}.")
             reg_matrix = np.diag(l2_reg)
         mat = np.linalg.inv(np.matmul(self.A.T, self.A) + reg_matrix)
         delta_current = np.dot(mat, np.dot(self.A.T, self.b))

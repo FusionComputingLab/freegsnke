@@ -28,6 +28,7 @@ class TargetScheduler:
             dictionary containing target schedule.
         controlled_targets_all : list
             list of all targets that will be available for control, either FB or FF.
+            If controlling shape and divertor separately, this will need to include all shape and divertor targets in one list.
 
         Returns
         -------
@@ -40,8 +41,6 @@ class TargetScheduler:
         self.control_targs_all = controlled_targets_all
 
         print("schedule times", schedule_times)
-        # print("schedule dictionary")
-        # pprint(self.target_gain_schedule_dict)
 
         self.ff_waves = waveform_dict["ff"]
         self.fb_waves = waveform_dict["fb"]
@@ -141,8 +140,8 @@ class TargetScheduler:
         ---------
         - time_stamp : float (4 decimal places)
             Time stamp of the target to be retrieved.
-        - target : str
-            Target queried.
+        - waveform : dict
+            waveform dictionary for target of interest.
 
         Returns
         -------
@@ -201,6 +200,12 @@ class TargetScheduler:
         ----------
         time_stamp : float (4 decimal places)
             Time stamp of the target to be retrieved.
+        controlled_targets : list[str] (optional)
+            list of targets that wish to be controlled (subset of all targets).
+            If None, will be set to fb_controlled_targets
+        interpolate : bool (optional)
+            True/False as to whether to return interpolation between two points, or the point at closest previous time.
+            Defaults to False
 
         Returns
         -------
@@ -220,12 +225,7 @@ class TargetScheduler:
                     targets_required[i] = self.interpolate(
                         time_stamp, waveform_dict[targ]
                     )
-            # targets_required = np.array(
-            #     [
-            #         self.interpolate(time_stamp, waveform_dict[targ])
-            #         for targ in controlled_targets
-            #     ]
-            # )
+
         else:
             for i, targ in enumerate(self.control_targs_all):
                 targ_val = self.get_waveform_value("fb", targ, time_stamp)
@@ -233,25 +233,21 @@ class TargetScheduler:
                     targets_required[i] = targ_val
                 else:
                     print(f"No fb value for target {targ} at time {time_stamp}")
-            # targets_required = np.array(
-            #     [
-            #         self.get_waveform_value("fb", targ, time_stamp)
-            #         for targ in controlled_targets
-            #     ]
-            # )
 
         return targets_required
 
     def get_blends(self, time_stamp, targets=None):
         """get blend values for targets at time_stamp
 
-        parameters
-        targets : list[str]
-            list of targets to get gains for
+        Parameters
+        ----------
         time_stamp : float (4 decimal places)
             time stamp of the target to be retrieved
+        targets : list[str]
+            list of targets to get gains for
 
-        returns
+        Returns
+        -------
             blends : np.array
                 blends for the targets specified
         """
@@ -266,23 +262,20 @@ class TargetScheduler:
                 )
             except:
                 print(f"warning - No blend for {target} : setting to zero")
-        # blends = [
-        #     self.get_waveform_value(
-        #         param_type="blends", param=target, time_stamp=time_stamp
-        #     )
-        #     for target in targets
-        # ]
 
         return blends
 
     def feed_forward_gradient(self, time_stamp, targets=None):
         """
         Compute the feed forward gradient of the control voltages.
+        uses np.diff to compute gradient
 
         Parameters
         ----------
         time_stamp : float
             time stamp of the target to be retrieved
+        targets  : list[str] (optional)
+            list of targets to compute gradients of. Defaults to all if none provided.
         Returns
         -------
         gradient : np.array
@@ -290,8 +283,8 @@ class TargetScheduler:
         if targets is None:
             targets = self.control_targs_all
         waveform_dict = self.ff_waves
-        #
-        # V1 - asusmes ff waveform has units of target, not dTarget/dt
+
+        # initialise array of zeros for all control targets
         grad_arr = np.zeros(len(self.control_targs_all))
         for i, target in enumerate(self.control_targs_all):
             if target in targets:
@@ -316,17 +309,6 @@ class TargetScheduler:
 
         return grad_arr
 
-        # # VERSION 2 - Assume waveform is for the gradient itself dTarget/dt
-        # ff_vals = np.array(
-        #     [
-        #         self.get_waveform_value(
-        #             param_type="ff", time_stamp=time_stamp, param=targ
-        #         )
-        #         for targ in targets
-        #     ]
-        # )
-        # return ff_vals
-
     # def retrieve_timeseries_param(self, param, time_stamp):
     def get_waveform_value(self, param_type, param, time_stamp):
         """
@@ -336,10 +318,12 @@ class TargetScheduler:
 
         Parameters
         ----------
+        - param_type : str
+            type of parameter of interest. Choose "ff", "fb" or "blends" or "Ip".
+        - param : str
+            Control parameter requested - name of target. for which the above type is required.
         - time_stamp : float (4 decimal places)
             Time stamp of the target to be retrieved.
-        - param : str
-            Control parameter requested.
 
         Returns
         -------
@@ -409,34 +393,28 @@ class TargetScheduler:
         # return requested_parameter, prev_value
         return requested_parameter
 
-    def get_gains(self, targets, time_stamp, K_type="Kprop"):
+    def get_gains(self, time_stamp, targets=None, K_type="Kprop"):
         """
         Retrieves the shape gains for the target at time_stamp, given the target schedule.
         # Gains provided as time_periods - assume units of milliseconds (ms)
         Gains provided as numbers with units 1/time (Not provided as tau in s or ms)
         Parameters
         ----------
-        targets : list[str]
-            list of targets to get gains for
         time_stamp : float (4 decimal places)
             time stamp of the target to be retrieved
+        targets : list[str] (optional)
+            list of targets to get gains for. defaults to fb controlled targets if None provided
         Returns
         -------
         shape_gains : np.array
             shape gains
         """
-        # get set of targets being controlled at this time
-        # if targets[0] == "plasma":
-        #     print("--- loading plasma gains")
-        # else:
-        #     print("--- loading shape gains")
         gains_arr = np.zeros(len(self.control_targs_all))
-        # dict format is {time : {target : tau, target_2 : tau_2, ...}}
-        # more likely this if single set of gains for all time.
         time_pos = max(
             time for time in self.target_gain_schedule_dict.keys() if time <= time_stamp
         )
-
+        if targets is None:
+            targets = self.get_fb_controlled_targets(time_stamp=time_stamp)
         if time_pos is None:
             print(
                 "time requested is before first control parameter time, "
@@ -449,28 +427,13 @@ class TargetScheduler:
                         target
                     ][K_type]
 
-            ### old version
-            # print("gains at time ", time_stamp)
-            # for target in targets:
-            #     print("target ", target)
-            #     blend = self.get_blends(time_stamp=time_stamp, targets=[target])
-            #     print("blend ", blend)
-            #     if blend == 0.0:
-            #         gains.append(0)
-            #         print("blend is zero - FF only so set gain to zero")
-            #     else:
-            #         gains.append(
-            #             self.target_gain_schedule_dict[time_pos]["gains"][target][
-            #                 K_type
-            #             ]
-            #         )
-        # gains_arr = np.array(gains)
-        # print("gains array ---- ", gains_arr)
-        return gains_arr, np.diag(gains_arr)
+        # return gains_arr, np.diag(gains_arr)
+        return gains_arr
 
     def get_damping(self, time_stamp):
         """
         Get damping factor (if present)
+        Returns 1 if none provided, corresponding to no damping being applied.
 
         Parameters
         ----------
@@ -478,15 +441,14 @@ class TargetScheduler:
             time of retrieval
 
         Returns
+        -------
         damp_factor : float
             damping factor for the current  P(ID) phase
         """
-        # print("GETTING DAMPING ")
         time_pos = max(
             time for time in self.target_gain_schedule_dict.keys() if time <= time_stamp
         )
         gain_dict = self.target_gain_schedule_dict[time_pos]["gains"]
-        # print(gain_dict)
         if "Damping Factor" in gain_dict.keys():
             # print("damping", gain_dict["Damping Factor"])
             return gain_dict["Damping Factor"]

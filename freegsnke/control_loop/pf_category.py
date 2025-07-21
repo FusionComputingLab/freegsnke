@@ -4,6 +4,7 @@ Small module to implement the PF category of MAST-U control loops
 
 import numpy as np
 
+
 def pf_voltage_demands(
     R,
     M_FF,
@@ -20,8 +21,8 @@ def pf_voltage_demands(
 ):
     """
     Calculate the output voltage to apply on the coils, as prescribed in
-    the PF category of the PCS. 
-    
+    the PF category of the PCS.
+
     Parameters
     ----------
     R : numpy 1D array
@@ -34,38 +35,37 @@ def pf_voltage_demands(
         The vector of "coil gains" for the active coils (these are timescales in seconds).
     approved_dIdt: numpy 1D array
         Approved rate of change of the coil currents in the active coils (provided by the
-        "system" category of the control loops). Input in A. 
+        "system" category of the control loops). Input in A.
     approved_I : numpy 1D array
-        Approved coil currents in the active coils (provided by the "system" category of 
-        the control loops). Input in A. 
+        Approved coil currents in the active coils (provided by the "system" category of
+        the control loops). Input in A.
     measured_I : numpy 1D array
-        Measured coil currents (from experiment or simulation) in the active coils. Input in A. 
+        Measured coil currents (from experiment or simulation) in the active coils. Input in A.
     voltage_clips : numpy 1D array
         Final voltage requests are clipped if the they are outside +/- these values
-        for each of the active coils. Input in Volts. 
+        for each of the active coils. Input in Volts.
     slew_rates : numpy 1D array
-        Final voltage requests are clipped again if their derivatives (wrt previous timestep) are outside 
-        +/- these values for each of the active coils. Input in Volts/s. 
+        Final voltage requests are clipped again if their derivatives (wrt previous timestep) are outside
+        +/- these values for each of the active coils. Input in Volts/s.
     prev_voltages : numpy 1D array
-        Voltage demands from the previous time step in the active coils. Input in Volts.  
+        Voltage demands from the previous time step in the active coils. Input in Volts.
     dt : float
-        Time step between current and previous voltage demands. Input in seconds.   
+        Time step between current and previous voltage demands. Input in seconds.
     verbose : bool
         Print some output (True) or not (False).
 
     Returns
     -------
     numpy 1D array
-        Voltage to apply to each of the active coils. Units in Volts. 
+        Voltage to apply to each of the active coils. Units in Volts.
     numpy 1D array
         Difference in currents in the feedback term used to calculate the feedback voltage. Units in Amps.
     """
 
-    print("---")
-
     # resistive voltages
     v_res = measured_I * R
     if verbose:
+        print("---")
         print(f"    Resistive voltage = {v_res}")
 
     # FF voltages
@@ -86,17 +86,19 @@ def pf_voltage_demands(
 
     # final voltage demands (clipped)
     v_init_clipped_pos = np.minimum(v_init, voltage_clips)
-    v_clipped = np.maximum(v_init_clipped_pos, - voltage_clips)
+    v_clipped = np.maximum(v_init_clipped_pos, -voltage_clips)
     if verbose and not np.allclose(v_init, v_clipped):
         print(f"    Clipped voltage demand (according to `voltage_clips`) = {v_init}")
 
     # finally we apply the "slew rates", additive clipping of voltage rate of change
     delta_voltages = v_clipped - prev_voltages
-    max_delta = slew_rates*dt
+    max_delta = slew_rates * dt
     delta_clipped = np.clip(delta_voltages, -max_delta, max_delta)
     v_final = prev_voltages + delta_clipped
     if verbose and not np.allclose(v_final, v_clipped):
-        print(f"    Derivative clipped voltage demand (according to `slew_rates`) = {v_final}")
+        print(
+            f"    Derivative clipped voltage demand (according to `slew_rates`) = {v_final}"
+        )
 
     if verbose:
         print(f"FINAL VOLTAGE DEMANDS = {v_final}")

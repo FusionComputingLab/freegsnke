@@ -104,35 +104,10 @@ class VirtualCircuitScheduler(VirtualCircuitProvider):
         # convert times to numpy array
         self.vc_times_start = np.array(self.vc_times_start)
 
-    # ???? Do we need this???? Maybe delete this method.
-    # def add_vc_to_sequence(self, virtual_circuit, time_start, time_start):
-    #     """
-    #     Add virtual circuit to sequence.
-
-    #     Parameters
-    #     ----------
-    #     virtual_circuit : object
-    #         virtual circuit object
-    #     time_stamp : float
-    #         time stamp of the virtual circuit
-
-    #     Returns
-    #     -------
-    #     None
-    #         modifies object in place
-    #     """
-    #     print("adding vc to sequence")
-    #     self.vc_times_start.append(time_start)
-    #     self.vc_schedule.append(virtual_circuit)
-    #     # update vc time dictionary
-    #     self.vc_time_start_dict = {
-    #         time: ind for ind, time in enumerate(self.vc_times_stop)
-    #     }
-
-    #     # update other parts such as vc_index, input currents, profile pars etc
-
     def get_vc_targets(self, time_stamp):
-        """get targets list from vc schedule"""
+        """get targets list from vc schedule
+
+        Paramet"""
         time_pos = max(
             time for time in self.vc_schedule_full.keys() if time <= time_stamp
         )
@@ -160,22 +135,17 @@ class VirtualCircuitScheduler(VirtualCircuitProvider):
             virtual circuit object to be used by the control voltages class or None if
             no virtual circuit could be obtained or constructed.
         """
-        print("GETTING VC")
+
         # find time position corresponding to vc to be used.
         t_vc = max(time for time in self.vc_times_start if time <= time_stamp)
         # get index corresponding to the time position
         pos = np.where(self.vc_times_start == t_vc)[0][0]
-        print("vc position", pos)
 
         virtual_circuit = self.vc_objects[pos]
         if virtual_circuit is None:
             return None
-        print("vc object matrix", virtual_circuit.VCs_matrix)
+        # print("vc object matrix", virtual_circuit.VCs_matrix)
         if targets is not None:
-            print(f"checking targets and reorder if necessary - time{time_stamp}")
-            print("vc targets", virtual_circuit.targets)
-            print("VCs matrix", virtual_circuit.VCs_matrix)
-            print("requested targets", targets)
             # check that the target schedule is a subset of the vc sequence
             if not set(targets).issubset(set(virtual_circuit.targets)):
                 raise ValueError(
@@ -214,19 +184,22 @@ class VirtualCircuitScheduler(VirtualCircuitProvider):
                     VCs_matrix=vc_mat_reduced,
                     targets=targs_reduced,
                 )
-                # virtual_circuit_copy.VCs_matrix = vc_mat_reduced
-                # virtual_circuit_copy.targets = targs_reduced
         return virtual_circuit_copy
 
     def get_vc_2(self, time_stamp, target):
         """
         Alternative version of "get_vc" to work with vc's provided as a set of vc columns (rather than as matrix)
 
-        Inputs :
+        Parameters
         --------
         time_stamp : float
             time in simulation to get virtual circuit
         target : name of vc needed
+
+        Returns
+        -------
+        vc_col : np.array
+            numpy array of single column of VC matrix
         """
         t_vc = max(
             time for time in list(self.vc_schedule_full.keys()) if time <= time_stamp
@@ -331,13 +304,15 @@ class ShapeTargetScheduler(TargetScheduler):
         waveform_dict : dict
             dictionary containing target waveform
         schedule_dict : dict
-            dictionary containing target schedule
+            dictionary containing target feedback schedule (gains, damping, fb targets)
+        controlled_targs_all : list[str]
+            list of all controllable targets (FB and FF). This is ideally the same as the targets in VCscheduler.
+        vc_scheduler : object :VC_provider
+            A VC provider, instance of VirtualCircuitProvider - either from file, emu or rtvc
         vc_flag : str   (optional)
             flag to indicate whether to load virtual circuit from file or NN
             emulator (default = "file")
             options = ["file", "Emulator"]
-        vc_scheduler : object :VC provicer
-            A VC provider, instance of VirtualCircuitProvider - either from file, emu or rtvc
         Returns
         -------
         None
@@ -400,38 +375,32 @@ class ShapeTargetScheduler(TargetScheduler):
             self.vc_scheduler = vc_scheduler
             print("please run pre_run_emulators now")
 
-    # def get_shape_blends(self, targets, time_stamp):
-    #     """
-    #     Retrieves the blends for the target at time_stamp
-
-    #     Parameters
-    #     ----------
-    #     targets : list[str]
-    #     time_stamp : float
-    #         time stamp of the target to be retrieved
-
-    #     Returns
-    #     -------
-    #     blends : dict
-    #         dictionary of blends for the target at time_stamp
-    #     """
-    #     blend_arr = []
-    #     print("blend dict ", self.blends.keys())
-    #     for target in targets:
-    #         blend_arr.append(
-    #             self.get_waveform_value(
-    #                 param_dict=self.blends,
-    #                 param=target,
-    #                 time_stamp=time_stamp,
-    #             )
-    #         )
-    #     print("blends", blend_arr)
-    #     return np.array(blend_arr)
-
     def get_vc(self, time_stamp, eq=None, profiles=None, coils=None, targets=None):
         """
         Get VC object given time stamp.
         - load from file if provided or compute with emulator
+        All optional aguments only necessary if using Emulators to compute VC
+
+        Parameters
+        ----------
+        times_stamp : float
+            time at which VC is needed
+        eq : FreeGSNKE equilibrium object (optional)
+            equilibirum if doing dynamic simulation. provides input parameters for emulators
+            if emulators being used to provide VC's
+        profiles : FreeGSNKE profile object (optional)
+            profiles if doing dynamic simulation. Provides input parameters for emulators
+            if emulators being used to provide VC's
+        coils  : list[str] (optional)
+            list of coils to use for control. Provides coils to use when computing VC using emulators.
+        coils  : list[str] (optional)
+            list of coils to use for control. Provides coils to use when computing VC using emulators.
+
+        Returns
+        -------
+        vc : VirtualCircuit object
+            instance of FreeGSNKE virtual circuit object
+
         """
 
         if self.vc_flag == "file":
@@ -450,8 +419,9 @@ class ShapeTargetScheduler(TargetScheduler):
         return vc
 
 
-def get_all_ctrl_targets(self, time_stamp: float) -> list[str]:
-    """get all controllable targets by getting the targets list from the VC schedule
+def get_all_vc_ctrl_targets(self, time_stamp: float) -> list[str]:
+    """
+    Get all controllable targets by getting the targets list from the VC schedule
     (this is what is controllable in fb and ff)
 
     Parameters
@@ -461,8 +431,8 @@ def get_all_ctrl_targets(self, time_stamp: float) -> list[str]:
 
     Returns
     -------
-    all_control_targs : list[str]
+    all_vc_control_targs : list[str]
         list of all targets to be controlled.
     """
-    all_control_targs = self.vc_scheduler.get_vc_targets(time_stamp)
-    return
+    all_vc_control_targs = self.vc_scheduler.get_vc_targets(time_stamp)
+    return all_vc_control_targs

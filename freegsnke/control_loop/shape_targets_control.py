@@ -353,7 +353,7 @@ class ShapeController:
         # update prev_output
         self.prev_output = 1.0 * targ_err_t
 
-        # gained_target_deltas = shape_prop_gain_matrix @ targ_err_t
+        # gained_target_deltas = prop_shape_gains @ targ_err_t
         # print("targets names", targets)
         # print("required target deltas", target_deltas)
         # print("gained target deltas", gained_target_deltas)
@@ -456,7 +456,7 @@ class ShapeController:
         self,
         proportional_deltas,
         targets_blends,
-        shape_prop_gain_matrix,
+        prop_shape_gains,
         ff_deltas,
         x_int=None,
         integral_gains=None,
@@ -472,8 +472,8 @@ class ShapeController:
             array of damped feedback deltas for all targets. Has units of m.
         targets_blends : np.array
             array of blends for all targets. must be same order as targets above.
-        shape_prop_gain_matrix : array(2dimensional)
-            diagonal square matrix of target gains. Defaults to identity matrix
+        prop_shape_gains : array()
+            array of proportional shape gains
         ff_deltas : np.array
             array of gradients of the feedfoward waveforms.
         x_int : np.array()
@@ -485,17 +485,10 @@ class ShapeController:
         blended_target_deltas : np.array
             array of blended ff and fb shape target rates. Has units of m/s.
         """
-        assert (
-            shape_prop_gain_matrix.shape[0]
-            == shape_prop_gain_matrix.shape[1]
-            == len(proportional_deltas)
-        ), "The gain matrix is not the square or same size as the target vector"
-        # print("shape gain matrix", shape_prop_gain_matrix)
-
-        gained_target_deltas = shape_prop_gain_matrix @ proportional_deltas
 
         blended_target_deltas = (
-            targets_blends * gained_target_deltas + (1 - targets_blends) * ff_deltas
+            targets_blends * prop_shape_gains * proportional_deltas
+            + (1 - targets_blends) * ff_deltas
         )
 
         return blended_target_deltas
@@ -626,10 +619,10 @@ class ShapeController:
         )
 
         # get proportional gains
-        gains_arr, shape_prop_gain_matrix = self.feedback_target_scheduler.get_gains(
+        prop_gains_arr, prop_shape_gains_mat = self.feedback_target_scheduler.get_gains(
             targets=controlled_targets_fb, time_stamp=time_stamp, K_type="Kprop"
         )
-        print("shape target gains", shape_prop_gain_matrix)
+        print("shape target gains", prop_gains_arr)
         # get integral gains
         int_gains_arr, int_gains_matrix = self.feedback_target_scheduler.get_gains(
             targets=controlled_targets_fb, time_stamp=time_stamp, K_type="Kint"
@@ -672,7 +665,7 @@ class ShapeController:
         shape_rate = self.calculate_blended_target_deltas(
             proportional_deltas=damped_deltas,
             targets_blends=fb_blends_arr,
-            shape_prop_gain_matrix=shape_prop_gain_matrix,
+            prop_shape_gains=prop_gains_arr,
             ff_deltas=ff_deltas,
         )
 

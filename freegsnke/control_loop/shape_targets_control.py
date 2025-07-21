@@ -72,7 +72,7 @@ class ShapeController:
     reshape_inductance : retrieve inductance matrix from machine config, and select rows/columns
     calc_vc_from_eq : retrieve from file or compute a virtual circuit object from freegsnke or NN emulator.
     calculate_blended_target_deltas : compute feedback voltages from a virtual circuit object and a set of target shifts.
-    feedback_current_rate_timefunc : compute feedback voltages from a time provided by retrieving targets at given time from the target waveformr and computing with calculate_blended_target_deltas.
+    control_shape_rates : compute feedback voltages from a time provided by retrieving targets at given time from the target waveformr and computing with calculate_blended_target_deltas.
     """
 
     def __init__(
@@ -543,7 +543,7 @@ class ShapeController:
             )
 
         delta_currents = virtual_circuit.VCs_matrix @ target_deltas
-        print("shape current deltas", delta_currents)
+        # print("shape current deltas", delta_currents)
         if reshape == False:
             return delta_currents
 
@@ -584,7 +584,7 @@ class ShapeController:
             currents_rates += target_deltas[i] * vc_col
         return currents_rates
 
-    def feedback_current_rate_timefunc(
+    def control_shape_rates(
         self,
         time_stamp,
         target_obs,
@@ -627,23 +627,15 @@ class ShapeController:
         int_gains_arr, int_gains_matrix = self.feedback_target_scheduler.get_gains(
             targets=controlled_targets_fb, time_stamp=time_stamp, K_type="Kint"
         )
-        # get the virtual circuit object
-        virtual_circuit = self.feedback_target_scheduler.get_vc(
-            eq=eq,
-            profiles=profiles,
-            time_stamp=time_stamp,
-            coils=self.control_coils,
-            targets=controlled_targets_all,
-        )
 
         desired_target_values = self.feedback_target_scheduler.desired_target_values_fb(
             time_stamp
         )
 
-        fb_blends_arr = self.feedback_target_scheduler.get_blends(
+        blends_arr = self.feedback_target_scheduler.get_blends(
             time_stamp=time_stamp,
         )
-        print("fb blends", fb_blends_arr)
+        print("fb blends", blends_arr)
         ff_deltas = self.feedback_target_scheduler.feed_forward_gradient(
             time_stamp, targets=controlled_targets_all
         )
@@ -656,17 +648,43 @@ class ShapeController:
             targets_req=desired_target_values,
             targets_obs=target_obs,
         )
-        damped_deltas, deltas = self.calculate_proportional_target_deltas(
-            targ_deltas=targ_deltas,
+        damped_deltas = self.calculate_damped_target_deltas(
+            target_deltas=targ_deltas,
             prev_err=self.prev_output,
             damp_factor=damp_factor,
         )
 
         shape_rate = self.calculate_blended_target_deltas(
             proportional_deltas=damped_deltas,
-            targets_blends=fb_blends_arr,
+            targets_blends=blends_arr,
             prop_shape_gains=prop_gains_arr,
             ff_deltas=ff_deltas,
+        )
+
+        return shape_rate
+
+    def control_current_rates(
+        self,
+        time_stamp,
+        shape_rate,
+        eq=None,
+        profiles=None,
+    ):
+
+        controlled_targets_all = self.feedback_target_scheduler.get_all_targets()
+        controlled_targets_fb = (
+            self.feedback_target_scheduler.get_fb_controlled_targets(
+                time_stamp=time_stamp
+            )
+        )
+
+        # get the virtual circuit object
+        virtual_circuit = self.feedback_target_scheduler.get_vc(
+            eq=eq,
+            profiles=profiles,
+            time_stamp=time_stamp,
+            coils=self.control_coils,
+            targets=controlled_targets_all,
         )
 
         current_rate = self.apply_shape_vc(

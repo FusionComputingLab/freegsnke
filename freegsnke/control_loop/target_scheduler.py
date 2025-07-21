@@ -365,7 +365,7 @@ class TargetScheduler:
         else:
             # find time position
             arr = waveform_dict[param]["times"]
-            print(f"waveform for target {param} at time {time_stamp} : {arr}")
+            # print(f"waveform for target {param} at time {time_stamp} : {arr}")
             eps = 1e-8
             t_vals_temp = [time for time in arr if time <= time_stamp + eps]
             if len(t_vals_temp) == 0:
@@ -404,7 +404,8 @@ class TargetScheduler:
                     requested_parameter /= 1000
                 print("units converted from {unit} to standard (A, m, s)")
             except KeyError:
-                print("Warning - waveform doesn't have units key ")
+                pass
+                # print("Warning - waveform doesn't have units key ")
         # return requested_parameter, prev_value
         return requested_parameter
 
@@ -425,10 +426,10 @@ class TargetScheduler:
             shape gains
         """
         # get set of targets being controlled at this time
-        if targets[0] == "plasma":
-            print("--- loading plasma gains")
-        else:
-            print("--- loading shape gains")
+        # if targets[0] == "plasma":
+        #     print("--- loading plasma gains")
+        # else:
+        #     print("--- loading shape gains")
         gains_arr = np.zeros(len(self.control_targs_all))
         # dict format is {time : {target : tau, target_2 : tau_2, ...}}
         # more likely this if single set of gains for all time.
@@ -480,14 +481,14 @@ class TargetScheduler:
         damp_factor : float
             damping factor for the current  P(ID) phase
         """
-        print("GETTING DAMPING ")
+        # print("GETTING DAMPING ")
         time_pos = max(
             time for time in self.target_gain_schedule_dict.keys() if time <= time_stamp
         )
         gain_dict = self.target_gain_schedule_dict[time_pos]["gains"]
-        print(gain_dict)
+        # print(gain_dict)
         if "Damping Factor" in gain_dict.keys():
-            print("damping", gain_dict["Damping Factor"])
+            # print("damping", gain_dict["Damping Factor"])
             return gain_dict["Damping Factor"]
         else:
             print("there is no damping factor : return 1")

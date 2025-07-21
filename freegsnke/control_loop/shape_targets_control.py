@@ -90,25 +90,25 @@ class ShapeController:
 
         Parameters
         ----------
-            eq : equilibrium object
-                equilibrium object
-            profiles : list of profiles
-                list of profiles
-            feedback_target_scheduler : TargetScheduler object
-                TargetScheduler object - contains targets and vc schedule for simulation.
-            active_coils : list[str]
-                list of all coil names to be used by simulation. Includes shaping and vertical control coils
-            control_coils : list[str]
-                list of coils used for shape control. These are used by emulators.
-            machine_parameters : dict
-                dictionary containing full inductance matrix and coil resistances
-            prev_output : np.array
-                array of target rates (output of shapes category) at previous timestep.
-                If not provided it defaults to array of zeros, of size len(all_targets)
-            pi_state  : np.array
-                array of PI state for all controllable targets. Only used if Integral control active
-            integral_state : np.array
-                array of integral state for all controllable targets. only used in integral computation.
+        eq : equilibrium object
+            equilibrium object
+        profiles : list of profiles
+            list of profiles
+        feedback_target_scheduler : TargetScheduler object
+            TargetScheduler object - contains targets and vc schedule for simulation.
+        active_coils : list[str]
+            list of all coil names to be used by simulation. Includes shaping and vertical control coils
+        control_coils : list[str]
+            list of coils used for shape control. These are used by emulators.
+        machine_parameters : dict
+            dictionary containing full inductance matrix and coil resistances
+        prev_output : np.array
+            array of target rates (output of shapes category) at previous timestep.
+            If not provided it defaults to array of zeros, of size len(all_targets)
+        pi_state  : np.array
+            array of PI state for all controllable targets. Only used if Integral control active
+        integral_state : np.array
+            array of integral state for all controllable targets. only used in integral computation.
         """
         self.active_coils = active_coils
 
@@ -183,41 +183,14 @@ class ShapeController:
         )
         print("Initialised VCH in shape controller")
 
-    ### OLD blends function
-    # def get_shape_blends(self, targets, time_stamp):
-    #     """
-    #     Retrieves the blends for the target at time_stamp
-
-    #     Parameters
-    #     ----------
-    #     time_stamp : float
-    #         time stamp of the target to be retrieved
-
-    #     Returns
-    #     -------
-    #     blends : dict
-    #         dictionary of blends for the target at time_stamp
-    #     """
-    #     blend_arr = []
-    #     # replace this...
-    #     for target in targets:
-    #         interpolation = np.interp(
-    #             time_stamp,
-    #             self.feedback_target_scheduler.shape_blends[target]["times"],
-    #             self.feedback_target_scheduler.shape_blends[target]["vals"],
-    #         )
-    #         blend_arr.append(interpolation)
-    #     print(f"blends for {targets} at time {time_stamp}: {blend_arr}")
-    #     return np.array(blend_arr)
-
     def reshape_inductance(self, coils=None):
         """
         Select appropriate inductance rows and columns from inductance matrix, given set of coils in the VC.
 
         parameters
         ----------
-        coils : list[str]
-            list of coil names
+        coils : list[str] (optional)
+            list of coil names. If None provided, defaults to control_coils
 
         Returns
         -------
@@ -243,8 +216,22 @@ class ShapeController:
         return inductance_reduced
 
     def reorder_resistance(self, coils):
-        """reorder coil resistances to match coil order"""
+        """
+        Reorder coil resistances to match coil order
+
+        Parameters
+        ----------
+        coils : list[str]
+            ordering of coils to reorder restitance
+
+        Returns
+        -------
+        coil_resist
+            reorders in place the coil resistance array
+
+        """
         mask = [self.machine_param_coil_order[coil] for coil in coils]
+
         return self.coil_resist[np.ix_(mask)]
 
     ## this function will be replaced by instance of build virtual circuit class.
@@ -298,14 +285,15 @@ class ShapeController:
     ):
         """compute the the raw error term targ_required - targ_observed
 
-        Inputs
-        ------
+        Parameters
+        ----------
         targets_req : np.array()
             array of required target values
         targets_obs : np.array()
             array of observed/measured target values
 
         Returns
+        -------
         target_deltas : np.array()
             array of deltas
         """
@@ -353,13 +341,9 @@ class ShapeController:
         # update prev_output
         self.prev_output = 1.0 * targ_err_t
 
-        # gained_target_deltas = prop_shape_gains @ targ_err_t
-        # print("targets names", targets)
-        # print("required target deltas", target_deltas)
-        # print("gained target deltas", gained_target_deltas)
         return targ_err_t
 
-    def calculate_integral_deltas(self, deltas, pi_state, dt, K_int_matrix, blends):
+    def calculate_integral_deltas(self, deltas, pi_state, dt, K_int_arr, blends):
         """compute updated integral error term and PI state
 
         Parameters
@@ -370,6 +354,10 @@ class ShapeController:
             PI state at previous time step
         dt : float
             time interval
+        K_int_array : np.array
+            array of integral gains for all controlled targets
+        blends : np.array
+            blend array for all the controlled targets
 
         Returns
         -------
@@ -380,8 +368,8 @@ class ShapeController:
 
         """
         # ??? add in a pi state attribute to class ??
-        x_int = pi_state + 0.5 * K_int_matrix @ deltas * dt
-        pi_state_new = pi_state + blends * K_int_matrix @ deltas * dt
+        x_int = pi_state + 0.5 * K_int_arr @ deltas * dt
+        pi_state_new = pi_state + blends * K_int_arr @ deltas * dt
         return x_int, pi_state_new
 
     @staticmethod
@@ -478,8 +466,8 @@ class ShapeController:
             array of gradients of the feedfoward waveforms.
         x_int : np.array()
             integral term for targets
-        integral_gains : np.array (2dimensional)
-            integral gains.
+        integral_gains : np.array
+            integral gains array for all controlled targets
         Returns
         -------
         blended_target_deltas : np.array
@@ -511,6 +499,8 @@ class ShapeController:
             The target deltas (rates) from shape/div category. Units m/s
         virtual_circuit : VirtualCircuit
             The virtual circuit object to be applied to the target deltas. Units A/m
+        reshape : bool
+            flag as to whether to reshape the currents to the order provided active_coils
 
         Returns
         -------
@@ -530,8 +520,6 @@ class ShapeController:
             virtual_circuit = self.recompute_vc_from_sensitivity(
                 virtual_circuit, targets
             )
-            # print("VC targets now ", virtual_circuit.targets)
-            # print("coils now ", virtual_circuit.coils)
 
         else:
             # targets are not a subset of the VC targets - raise error
@@ -543,12 +531,12 @@ class ShapeController:
             )
 
         delta_currents = virtual_circuit.VCs_matrix @ target_deltas
-        # print("shape current deltas", delta_currents)
+
         if reshape == False:
+            # leave currents with the coil order associated with the VC scheduler
             return delta_currents
 
         elif reshape == True:
-            # option 1 reshape currents, fill in zeros and multiply by inductance matrix
             print("reshaping current to match active coils order")
             reshaped_currents = np.zeros(len(self.active_coils))
             for i, coil in enumerate(virtual_circuit.coils):
@@ -570,7 +558,25 @@ class ShapeController:
         targets: list[str],
         target_deltas: np.array,
     ):
-        """Apply VC using the 'list of columns' format instead - for now just for testing"""
+        """Apply VC using the 'list of columns' format instead - for now just for testing
+
+        Parameters
+        ----------
+        time_stamp : float
+            time stamp to retrieve VC
+        targets : list[str]
+            list of targets to apply VC's to
+        target_deltas : np.array
+            array of the gained/blended target deltas (units m/s) to apply vc to
+            length of delta array must match length of targets list.
+
+
+
+        Returns
+        -------
+        currents_rates : np.array
+            current rates (dI/dt)
+        """
         # currents_rates = np.zeros(len(self.control_coils))
         currents_rates = np.zeros(
             len(self.feedback_target_scheduler.vc_scheduler.vc_coil_order)
@@ -579,8 +585,6 @@ class ShapeController:
             vc_col = self.feedback_target_scheduler.vc_scheduler.get_vc_2(
                 time_stamp, target
             )
-            # print(np.shape(vc_col))
-            # print(np.shape(currents_rates))
             currents_rates += target_deltas[i] * vc_col
         return currents_rates
 
@@ -592,7 +596,7 @@ class ShapeController:
         profiles=None,
     ):
         """
-        Compute current given a set of target value shifts and vc matrix, at a time provided.
+        Compute shape rates given a set of target at a time provided.
 
         Parameters
         ----------
@@ -600,6 +604,7 @@ class ShapeController:
             time stamp of the target to be retrieved
         target_obs : np.array
             array of measured/observed target values.
+            Can come from file or from equilibrium in a simulation
         eq : object
             equilibrium object. optional - used to provide inputs to Emulators if vcs not from file
         profiles : object
@@ -619,41 +624,46 @@ class ShapeController:
         )
 
         # get proportional gains
-        prop_gains_arr, prop_shape_gains_mat = self.feedback_target_scheduler.get_gains(
+        prop_gains_arr = self.feedback_target_scheduler.get_gains(
             targets=controlled_targets_fb, time_stamp=time_stamp, K_type="Kprop"
         )
-        print("shape target gains", prop_gains_arr)
+
         # get integral gains
-        int_gains_arr, int_gains_matrix = self.feedback_target_scheduler.get_gains(
+        int_gains_arr = self.feedback_target_scheduler.get_gains(
             targets=controlled_targets_fb, time_stamp=time_stamp, K_type="Kint"
         )
-
+        # get reference desired target values for feedback control
         desired_target_values = self.feedback_target_scheduler.desired_target_values_fb(
             time_stamp
         )
 
+        # get blends array
         blends_arr = self.feedback_target_scheduler.get_blends(
             time_stamp=time_stamp,
         )
-        print("fb blends", blends_arr)
+
+        # get ff gradients
         ff_deltas = self.feedback_target_scheduler.feed_forward_gradient(
             time_stamp, targets=controlled_targets_all
         )
-        print("ff deltas", ff_deltas)
 
-        # compute the proportional voltages
+        # compute the proportional terms
         damp_factor = self.feedback_target_scheduler.get_damping(time_stamp=time_stamp)
 
+        # raw deltas
         targ_deltas = self.calculate_target_deltas(
             targets_req=desired_target_values,
             targets_obs=target_obs,
         )
+
+        # damped deltas (same as targ_deltas if no damping)
         damped_deltas = self.calculate_damped_target_deltas(
             target_deltas=targ_deltas,
             prev_err=self.prev_output,
             damp_factor=damp_factor,
         )
 
+        # compute the shape rates - apply blends and gains
         shape_rate = self.calculate_blended_target_deltas(
             proportional_deltas=damped_deltas,
             targets_blends=blends_arr,
@@ -664,12 +674,30 @@ class ShapeController:
         return shape_rate
 
     def control_current_rates(
-        self,
-        time_stamp,
-        shape_rate,
-        eq=None,
-        profiles=None,
+        self, time_stamp, shape_rate, eq=None, profiles=None, reshape=False
     ):
+        """
+        Compute current rate (dI/dt) by applying VC to shape rate
+
+        Parameters
+        ----------
+        time_stamp : float
+            time to compute current rates at
+        shape_rate : np.array
+            shape rates (output of control_shape_rates) function above.
+        eq : object
+            equilibrium object. optional - used to provide inputs to Emulators if vcs not from file
+        profiles : object
+            profiles object. optional - used to provide inputs to Emulators if vcs not from file
+        reshape : bool (optoinal)
+            flag associaed with apply_vc. Reorder the output currents to active coils or not. Defaults to no reshaping.
+
+
+        Returns
+        -------
+        current_rates : np.array
+            current rate array (dI/dt), with coil order
+        """
 
         controlled_targets_all = self.feedback_target_scheduler.get_all_targets()
         controlled_targets_fb = (
@@ -691,7 +719,7 @@ class ShapeController:
             targets=controlled_targets_all,
             target_deltas=shape_rate,
             virtual_circuit=virtual_circuit,
-            reshape=False,
+            reshape=reshape,
         )
 
         return shape_rate, current_rate
@@ -704,9 +732,3 @@ class ShapeController:
             inductance_matrix = self.inductance_full
 
         return np.dot(inductance_matrix, current_rate)
-
-
-### TESTING ###
-# if __name__ == "__main__":
-
-#     pass

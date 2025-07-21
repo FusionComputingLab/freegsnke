@@ -457,14 +457,22 @@ class nl_solver:
                     getattr(profiles, self.profiles_param) * 1e-2, 1e-4
                 )
 
-        else:  # lao 
+        else:  # lao
             # alpha coeffs
-            self.starting_dtheta[0:self.n_profiles_parameters_alpha] = self.profiles_parameters_vec[self.profiles_alpha_indices] * 1e-3
-            self.starting_dtheta[0:self.n_profiles_parameters_alpha][ self.starting_dtheta[0:self.n_profiles_parameters_alpha] == 0] = 1e-3
+            self.starting_dtheta[0 : self.n_profiles_parameters_alpha] = (
+                self.profiles_parameters_vec[self.profiles_alpha_indices] * 1e-3
+            )
+            self.starting_dtheta[0 : self.n_profiles_parameters_alpha][
+                self.starting_dtheta[0 : self.n_profiles_parameters_alpha] == 0
+            ] = 1e-3
 
             # beta coeffs
-            self.starting_dtheta[self.n_profiles_parameters_alpha:] = self.profiles_parameters_vec[self.profiles_beta_indices] * 1e-3
-            self.starting_dtheta[self.n_profiles_parameters_alpha:][ self.starting_dtheta[self.n_profiles_parameters_alpha:] == 0] = 1e-3
+            self.starting_dtheta[self.n_profiles_parameters_alpha :] = (
+                self.profiles_parameters_vec[self.profiles_beta_indices] * 1e-3
+            )
+            self.starting_dtheta[self.n_profiles_parameters_alpha :][
+                self.starting_dtheta[self.n_profiles_parameters_alpha :] == 0
+            ] = 1e-3
 
         # This solves the system of circuit eqs based on an assumption
         # for the direction of the plasma current distribution at time t+dt
@@ -968,10 +976,14 @@ class nl_solver:
 
             # for each alpha coefficient
             alpha_base = profiles.alpha.copy()
-            alpha_n = len(profiles.alpha)
-            for i in range(0, alpha_n):
+            for i in range(0, self.n_profiles_parameters_alpha):
                 alpha_shift = alpha_base.copy()
-                alpha_shift[i] += starting_dtheta[i]
+                alpha_shift[i] += starting_dtheta[i]  # perturb the term
+                if profiles.alpha_logic:
+                    alpha_shift[-1] -= starting_dtheta[
+                        i
+                    ]  # final alpha term needs perturbing too
+
                 self.check_and_change_profiles(
                     profiles_parameters={
                         "alpha": alpha_shift,
@@ -999,10 +1011,15 @@ class nl_solver:
 
             # for each beta coefficient
             beta_base = profiles.beta.copy()
-            beta_n = len(profiles.beta)
-            for i in range(0, beta_n):
+            for i in range(0, self.n_profiles_parameters_beta):
                 beta_shift = beta_base.copy()
-                beta_shift[i] += starting_dtheta[i + alpha_n]
+                beta_shift[i] += starting_dtheta[
+                    i + self.n_profiles_parameters_alpha
+                ]  # perturb the term required
+                if profiles.beta_logic:
+                    beta_shift[-1] -= starting_dtheta[
+                        i + self.n_profiles_parameters_alpha
+                    ]  # final beta term needs perturbing too
                 self.check_and_change_profiles(
                     profiles_parameters={
                         "alpha": profiles.alpha,
@@ -1013,25 +1030,30 @@ class nl_solver:
                 # reset plasma flux map to original
                 self.eq2.plasma_psi = np.copy(self.eq1.plasma_psi)
                 self.assign_currents_solve_GS(current_, rtol_NK)
-                dIy_0[:, i + alpha_n] = (
+                dIy_0[:, i + self.n_profiles_parameters_alpha] = (
                     self.limiter_handler.Iy_from_jtor(self.profiles2.jtor) - self.Iy
                 )
-                rel_ndIy_0[i + alpha_n] = (
-                    np.linalg.norm(dIy_0[:, i + alpha_n]) / self.nIy
+                rel_ndIy_0[i + self.n_profiles_parameters_alpha] = (
+                    np.linalg.norm(dIy_0[:, i + self.n_profiles_parameters_alpha])
+                    / self.nIy
                 )
-                self.final_dtheta_record[i + alpha_n] = (
-                    starting_dtheta[i + alpha_n]
+                self.final_dtheta_record[i + self.n_profiles_parameters_alpha] = (
+                    starting_dtheta[i + self.n_profiles_parameters_alpha]
                     * target_dIy[i]
-                    / rel_ndIy_0[i + alpha_n]
+                    / rel_ndIy_0[i + self.n_profiles_parameters_alpha]
                 )
 
                 if verbose:
                     print("")
                     print(f"Profile parameter: beta_{i}:")
-                    print(f"  Initial delta parameter = {starting_dtheta[i+alpha_n]}")
-                    print(f"  Initial relative Iy change = {rel_ndIy_0[i+alpha_n]}")
                     print(
-                        f"  Final delta parameter = {self.final_dtheta_record[i+alpha_n]}"
+                        f"  Initial delta parameter = {starting_dtheta[i+self.n_profiles_parameters_alpha]}"
+                    )
+                    print(
+                        f"  Initial relative Iy change = {rel_ndIy_0[i+self.n_profiles_parameters_alpha]}"
+                    )
+                    print(
+                        f"  Final delta parameter = {self.final_dtheta_record[i+self.n_profiles_parameters_alpha]}"
                     )
 
                 # reset profiles in profiles1 and profiles2 objects
@@ -1150,11 +1172,16 @@ class nl_solver:
         else:  # this is particular to the Lao profile coefficients (which there may be few or many of)
 
             # for each alpha coefficient
-            n_alpha = len(profiles.alpha)
+
             alpha_base = profiles.alpha.copy()
-            for i in range(0, n_alpha):
+            for i in range(0, self.n_profiles_parameters_alpha):
                 alpha_shift = alpha_base.copy()
-                alpha_shift[i] += final_theta[i]
+                alpha_shift[i] += final_theta[i]  # perturb the term
+                if profiles.alpha_logic:
+                    alpha_shift[-1] -= final_theta[
+                        i
+                    ]  # final alpha term needs perturbing too
+
                 self.check_and_change_profiles(
                     profiles_parameters={
                         "alpha": alpha_shift,
@@ -1176,11 +1203,16 @@ class nl_solver:
                     )
 
             # for each beta coefficient
-            n_beta = len(profiles.beta)
             beta_base = profiles.beta.copy()
-            for i in range(0, n_beta):
+            for i in range(0, self.n_profiles_parameters_beta):
                 beta_shift = beta_base.copy()
-                beta_shift[i] += final_theta[i + n_alpha]
+                beta_shift[i] += final_theta[
+                    i + self.n_profiles_parameters_alpha
+                ]  # perturb the term required
+                if profiles.beta_logic:
+                    beta_shift[-1] -= final_theta[
+                        i + self.n_profiles_parameters_alpha
+                    ]  # final beta term needs perturbing too
                 self.check_and_change_profiles(
                     profiles_parameters={
                         "alpha": profiles.alpha,
@@ -1191,13 +1223,19 @@ class nl_solver:
                 self.eq2.plasma_psi = np.copy(self.eq1.plasma_psi)
                 self.assign_currents_solve_GS(current_, rtol_NK)
                 dIy_1 = self.limiter_handler.Iy_from_jtor(self.profiles2.jtor) - self.Iy
-                rel_ndIy[i + n_alpha] = np.linalg.norm(dIy_1) / self.nIy
-                dIydtheta[:, i + n_alpha] = dIy_1 / final_theta[i + n_alpha]
+                rel_ndIy[i + self.n_profiles_parameters_alpha] = (
+                    np.linalg.norm(dIy_1) / self.nIy
+                )
+                dIydtheta[:, i + self.n_profiles_parameters_alpha] = (
+                    dIy_1 / final_theta[i + self.n_profiles_parameters_alpha]
+                )
 
                 if verbose:
                     print("")
                     print(f"Profile parameter: beta_{i}:")
-                    print(f"  Final relative Iy change = {rel_ndIy[i+n_alpha]}")
+                    print(
+                        f"  Final relative Iy change = {rel_ndIy[i+self.n_profiles_parameters_alpha]}"
+                    )
                     print(
                         f"  Initial vs. Final GS residual: {self.NK.initial_rel_residual} vs. {self.NK.relative_change}"
                     )
@@ -1682,14 +1720,21 @@ class nl_solver:
                 self.n_profiles_parameters_alpha -= 1
             if profiles.beta_logic:
                 self.n_profiles_parameters_beta -= 1
-            self.n_profiles_parameters = self.n_profiles_parameters_alpha + self.n_profiles_parameters_beta
+            self.n_profiles_parameters = (
+                self.n_profiles_parameters_alpha + self.n_profiles_parameters_beta
+            )
 
             self.profiles_alpha_indices = slice(0, self.n_profiles_parameters_alpha)
             alpha_shift = 0
             if profiles.alpha_logic:
                 alpha_shift += 1
-            
-            self.profiles_beta_indices = slice(self.n_profiles_parameters_alpha+alpha_shift, self.n_profiles_parameters_alpha+alpha_shift+self.n_profiles_parameters_beta)
+
+            self.profiles_beta_indices = slice(
+                self.n_profiles_parameters_alpha + alpha_shift,
+                self.n_profiles_parameters_alpha
+                + alpha_shift
+                + self.n_profiles_parameters_beta,
+            )
 
             self.profiles_parameters = {"alpha": profiles.alpha, "beta": profiles.beta}
             self.profiles_param = None
@@ -2246,9 +2291,9 @@ class nl_solver:
             for par in profiles_parameters:
                 setattr(self.profiles1, par, profiles_parameters[par])
                 setattr(self.profiles2, par, profiles_parameters[par])
-                if self.profiles_type == "Lao85":
-                    self.profiles1.initialize_profile()
-                    self.profiles2.initialize_profile()
+            if self.profiles_type == "Lao85":
+                self.profiles1.initialize_profile()
+                self.profiles2.initialize_profile()
             self.profiles_change_flag = 1
 
     def nlstepper(
@@ -2362,7 +2407,6 @@ class nl_solver:
         # retrieve the old profile parameter values
         self.get_profiles_values(self.profiles1)
         old_params = self.profiles_parameters_vec
-        # print(f"old_params = {old_params}")
 
         # check if profiles parameters are being evolved
         # and action the change where necessary
@@ -2373,12 +2417,20 @@ class nl_solver:
         # retrieve the new profile parameter values (if present)
         self.get_profiles_values(self.profiles1)
         new_params = self.profiles_parameters_vec
-        # print(f"new_params = {new_params}")
 
         # calculate change in profiles across timestep: (profiles(t+dt)-profiles(t))/dt
         # should be zero if no change
-        dtheta_dt = (new_params - old_params) / self.dt_step
-        # print(f"dtheta_dt = {dtheta_dt}")
+        if self.profiles_type == "Lao85":
+            old_alphas = old_params[self.profiles_alpha_indices]
+            old_betas = old_params[self.profiles_beta_indices]
+            new_alphas = new_params[self.profiles_alpha_indices]
+            new_betas = new_params[self.profiles_beta_indices]
+            dtheta_dt = (
+                np.concatenate((new_alphas, new_betas))
+                - np.concatenate((old_alphas, old_betas))
+            ) / self.dt_step
+        else:
+            dtheta_dt = (new_params - old_params) / self.dt_step
 
         # check if plasma resistivity is being evolved
         # and action the change where necessary

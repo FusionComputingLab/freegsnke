@@ -4,7 +4,65 @@ Module to implement the PF category of MAST-U control loops.
 
 import numpy as np
 
+from .target_scheduler import TargetScheduler
 
+
+class PFController(TargetScheduler):
+    """
+    class to impliment the PF coil control
+
+    """
+
+    def __init__(self, coil_schedule, machine_parameters):
+
+        super().__init__(
+            self,
+            waveform_dict={},
+            schedule_dict=coil_schedule,
+        )
+
+        # machine parameters - inductances,resitances,
+        self.M_FF = machine_parameters["M_FF"]
+        self.M_FB = machine_parameters["M_FB"]
+        self.R = machine_parameters["R"]
+        self.coil_order = machine_parameters["coil_order"]
+
+    # overwrite get gains method
+    def get_gains(self, time_stamp):
+        """
+        Get coil gains. Provided as time scales tau (s or ms) and gain = 1/tau.
+
+
+        Parameters
+        ----------
+        time_stamp : float
+
+        Returns
+        gains_arr : np.ndarray
+            array of coil gains"""
+        # get time of schedule phase
+        time_pos = max(
+            time for time in self.target_gain_schedule_dict.keys() if time <= time_stamp
+        )
+        gains_dict = self.target_gain_schedule_dict[time_pos]["coil_gains"]
+        gains_arr = np.zeros(len(self.coil_order))
+        # check units for gains
+        if "units" in gains_dict.keys():
+            if gains_dict["units"] == "ms":
+                scale_factor = 1e-3  # convert ms to s
+
+        for i, coil in enumerate(self.coil_order):
+            if coil in gains_dict.keys():
+                tau = gains_dict[coil] * scale_factor  # convert ms to seconds
+                gains_arr[i] = 1 / tau
+            else:
+                print(f"No gains provided for coil {coil} - setting to zero")
+                gains_arr[i] = 0
+
+        return gains_arr
+
+
+# will move this inside the class
 def pf_voltage_demands(
     R,
     M_FF,

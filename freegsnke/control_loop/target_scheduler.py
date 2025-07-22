@@ -131,7 +131,11 @@ class TargetScheduler:
         """return list of all controllable targets"""
         return self.control_targs_all
 
-    def interpolate(self, time_stamp, waveform):
+    def interpolate(
+        self,
+        time_stamp: float,
+        waveform: dict,
+    ):
         """
         Interpolate the target value at time_stamp, from the information in
         target_waveform_dict.
@@ -157,7 +161,10 @@ class TargetScheduler:
 
         return interpolation
 
-    def get_fb_controlled_targets(self, time_stamp):
+    def get_fb_controlled_targets(
+        self,
+        time_stamp: float,
+    ):
         """
         Find the targets that are controlled at time time_stamp.
 
@@ -190,7 +197,10 @@ class TargetScheduler:
         return target_names
 
     def desired_target_values_fb(
-        self, time_stamp, controlled_targets=None, interpolate=False
+        self,
+        time_stamp: float,
+        controlled_targets: list[str] = None,
+        interpolate: bool = False,
     ):
         """
         Retrieve values for desired control targets as linear interpolation
@@ -236,7 +246,11 @@ class TargetScheduler:
 
         return targets_required
 
-    def get_blends(self, time_stamp, targets=None):
+    def get_blends(
+        self,
+        time_stamp: float,
+        targets: list[str] = None,
+    ):
         """get blend values for targets at time_stamp
 
         Parameters
@@ -265,7 +279,11 @@ class TargetScheduler:
 
         return blends
 
-    def feed_forward_gradient(self, time_stamp, targets=None):
+    def feed_forward_gradient(
+        self,
+        time_stamp: float,
+        targets: list[str] = None,
+    ):
         """
         Compute the feed forward gradient of the control voltages.
         uses np.diff to compute gradient
@@ -310,7 +328,12 @@ class TargetScheduler:
         return grad_arr
 
     # def retrieve_timeseries_param(self, param, time_stamp):
-    def get_waveform_value(self, param_type, param, time_stamp):
+    def get_waveform_value(
+        self,
+        param_type: str,
+        param: str,
+        time_stamp: float,
+    ):
         """
         Retrieves the value of the queried control parameter at time_stamp.
 
@@ -393,7 +416,12 @@ class TargetScheduler:
         # return requested_parameter, prev_value
         return requested_parameter
 
-    def get_gains(self, time_stamp, targets=None, K_type="Kprop"):
+    def get_gains(
+        self,
+        time_stamp: float,
+        targets: list[str] = None,
+        K_type: str = "Kprop",
+    ):
         """
         Retrieves the shape gains for the target at time_stamp, given the target schedule.
         # Gains provided as time_periods - assume units of milliseconds (ms)
@@ -430,7 +458,10 @@ class TargetScheduler:
         # return gains_arr, np.diag(gains_arr)
         return gains_arr
 
-    def get_damping(self, time_stamp):
+    def get_damping(
+        self,
+        time_stamp: float,
+    ):
         """
         Get damping factor (if present)
         Returns 1 if none provided, corresponding to no damping being applied.

@@ -25,7 +25,11 @@ class VirtualCircuitScheduler(VirtualCircuitProvider):
 
     """
 
-    def __init__(self, vc_schedule_dict, vc_coil_order=None):
+    def __init__(
+        self,
+        vc_schedule_dict: dict,
+        vc_coil_order: list[str] = None,
+    ):
         """
         Initialise the class
 
@@ -51,7 +55,7 @@ class VirtualCircuitScheduler(VirtualCircuitProvider):
             vc_coil_order = vc_schedule_dict[key0]["coil_order"]
         self.vc_coil_order = vc_coil_order
 
-    def unpack_vc_schedule(self, vcs_dict):
+    def unpack_vc_schedule(self, vcs_dict: dict):
         """
         Load the virtual circuit matrix, shape matrix, coils and targets from a
         dictionary, and save a list of VC objects and assocated data as class attributes.
@@ -186,7 +190,11 @@ class VirtualCircuitScheduler(VirtualCircuitProvider):
                 )
         return virtual_circuit_copy
 
-    def get_vc_2(self, time_stamp, target):
+    def get_vc_2(
+        self,
+        time_stamp: float,
+        target: str,
+    ):
         """
         Alternative version of "get_vc" to work with vc's provided as a set of vc columns (rather than as matrix)
 
@@ -375,7 +383,14 @@ class ShapeTargetScheduler(TargetScheduler):
             self.vc_scheduler = vc_scheduler
             print("please run pre_run_emulators now")
 
-    def get_vc(self, time_stamp, eq=None, profiles=None, coils=None, targets=None):
+    def get_vc(
+        self,
+        time_stamp: float,
+        eq=None,
+        profiles=None,
+        coils: list[str] = None,
+        targets: list[str] = None,
+    ):
         """
         Get VC object given time stamp.
         - load from file if provided or compute with emulator

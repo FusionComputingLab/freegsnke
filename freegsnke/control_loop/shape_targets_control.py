@@ -80,7 +80,7 @@ class ShapeController:
         feedback_target_scheduler: ShapeTargetScheduler,
         active_coils: list[str],
         control_coils: list[str],
-        machine_parameters,
+        machine_parameters: dict,
         prev_output: np.array = None,
         pi_state=None,
         integral_state=None,
@@ -160,7 +160,11 @@ class ShapeController:
         print("control coils", self.control_coils)
         print("Now please initialise the VCH object with .initialise_VCH(stepping)")
 
-    def initialise_VCH(self, stepping, target_relative_tolerance=1e-7):
+    def initialise_VCH(
+        self,
+        stepping,
+        target_relative_tolerance: float = 1e-7,
+    ):
         """initialise the VCH object as class attribute.
         This must be done after the class is initialised and before first call to calculate_blended_target_deltas
 
@@ -215,7 +219,10 @@ class ShapeController:
 
         return inductance_reduced
 
-    def reorder_resistance(self, coils):
+    def reorder_resistance(
+        self,
+        coils: list[str],
+    ):
         """
         Reorder coil resistances to match coil order
 
@@ -235,7 +242,13 @@ class ShapeController:
         return self.coil_resist[np.ix_(mask)]
 
     ## this function will be replaced by instance of build virtual circuit class.
-    def calc_vc_from_eq(self, targets, eq, profiles, coils=None):
+    def calc_vc_from_eq(
+        self,
+        targets: list[str],
+        eq,
+        profiles,
+        coils=None,
+    ):
         """
         Compute a VC using freegsnke VirtualCircuitHandling.
 
@@ -280,8 +293,8 @@ class ShapeController:
 
     def calculate_target_deltas(
         self,
-        targets_req,
-        targets_obs,
+        targets_req: np.ndarray,
+        targets_obs: np.ndarray,
     ):
         """compute the the raw error term targ_required - targ_observed
 
@@ -309,8 +322,8 @@ class ShapeController:
 
     def calculate_damped_target_deltas(
         self,
-        target_deltas,
-        prev_err,
+        target_deltas: np.ndarray,
+        prev_err: np.ndarray,
         damp_factor=1,
     ):
         """Calculate the target damped shape deltas.
@@ -343,7 +356,14 @@ class ShapeController:
 
         return targ_err_t
 
-    def calculate_integral_deltas(self, deltas, pi_state, dt, K_int_arr, blends):
+    def calculate_integral_deltas(
+        self,
+        deltas: np.ndarray,
+        pi_state: np.ndarray,
+        dt: float,
+        K_int_arr: np.ndarray,
+        blends: np.ndarray,
+    ):
         """compute updated integral error term and PI state
 
         Parameters
@@ -373,7 +393,10 @@ class ShapeController:
         return x_int, pi_state_new
 
     @staticmethod
-    def recompute_vc_from_sensitivity(virtual_circuit, targets):
+    def recompute_vc_from_sensitivity(
+        virtual_circuit: VirtualCircuit,
+        targets: list[str],
+    ):
         """
         Recompute a virtual circuit from the sensitivity matrix, using the targets provided.
 
@@ -442,10 +465,10 @@ class ShapeController:
 
     def calculate_blended_target_deltas(
         self,
-        proportional_deltas,
-        targets_blends,
-        prop_shape_gains,
-        ff_deltas,
+        proportional_deltas: np.ndarray,
+        targets_blends: np.ndarray,
+        prop_shape_gains: np.ndarray,
+        ff_deltas: np.ndarray,
         x_int=None,
         integral_gains=None,
     ):
@@ -484,9 +507,9 @@ class ShapeController:
     def apply_shape_vc(
         self,
         targets: list[str],
-        target_deltas: np.array,
+        target_deltas: np.ndarray,
         virtual_circuit: VirtualCircuit,
-        reshape=False,
+        reshape: bool = False,
     ):
         """
         Apply the virtual circuit to the target deltas.
@@ -554,9 +577,9 @@ class ShapeController:
 
     def apply_vc_2(
         self,
-        time_stamp,
+        time_stamp: float,
         targets: list[str],
-        target_deltas: np.array,
+        target_deltas: np.ndarray,
     ):
         """Apply VC using the 'list of columns' format instead - for now just for testing
 
@@ -590,8 +613,8 @@ class ShapeController:
 
     def control_shape_rates(
         self,
-        time_stamp,
-        target_obs,
+        time_stamp: float,
+        target_obs: np.ndarray,
         eq=None,
         profiles=None,
     ):
@@ -674,7 +697,12 @@ class ShapeController:
         return shape_rate
 
     def control_current_rates(
-        self, time_stamp, shape_rate, eq=None, profiles=None, reshape=False
+        self,
+        time_stamp: float,
+        shape_rate: np.ndarray,
+        eq=None,
+        profiles=None,
+        reshape: bool = False,
     ):
         """
         Compute current rate (dI/dt) by applying VC to shape rate

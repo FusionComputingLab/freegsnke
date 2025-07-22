@@ -1,5 +1,5 @@
 """
-Small module to implement the PF category of MAST-U control loops
+Module to implement the PF category of MAST-U control loops.
 """
 
 import numpy as np

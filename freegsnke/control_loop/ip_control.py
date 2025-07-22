@@ -1,10 +1,9 @@
 """
-Module to control plasma current Ip during a tokamak shot.
+Module to implement the plasma category of MAST-U control loops.
 
 """
 
 import numpy as np
-
 from .target_scheduler import TargetScheduler
 
 

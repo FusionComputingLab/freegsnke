@@ -4,6 +4,7 @@ Module to implement the plasma category of MAST-U control loops.
 """
 
 import numpy as np
+
 from .target_scheduler import TargetScheduler
 
 
@@ -216,14 +217,6 @@ class ControlSolenoid:
            solenoid coil.
 
         """
-
-        if Ip_obs_t is None:
-            Ip_obs_t = self.scheduler.get_observed_current(ts, "Ip_obs", eq)
-            print(f"  Ip from equilibrium at {ts}: {Ip_obs_t}")
-        if Ip_obs_tprev is None:
-            Ip_obs_tprev = self.scheduler.get_observed_current(prev_ts, "Ip_obs", eq)
-            print(f"  Ip from equilibrium at {prev_ts}: {Ip_obs_tprev}")
-
         # Implement the plasma category. First, the relevant entities should be
         # retrieved from the scheduler
         Ip_req = self.scheduler.get_waveform_value(

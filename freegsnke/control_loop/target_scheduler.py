@@ -52,80 +52,48 @@ class TargetScheduler:
         target_blends = list(self.blends.keys())
 
         # Compatiblitly check - MUST provide all waveforms and gains for all targets.
+        # Print warning or raise error ??
+
         # check waveforms
-        # if not set(ff_targets).issubset(set(controlled_targets_all)):
-        #     raise ValueError(
-        #         "Missing feedforward waveforms \n "
-        #         f"ff waveform targets {ff_targets} \n All targets {controlled_targets_all}"
-        #     )
-        # elif not set(fb_targets).issubset(set(controlled_targets_all)):
-        #     raise ValueError(
-        #         "Missing feedback waveforms\n "
-        #         f"ff waveform targets {fb_targets} \n All targets {controlled_targets_all}"
-        #     )
-        # if not set(target_blends).issubset(set(controlled_targets_all)):
-        #     raise ValueError(
-        #         "Missing blend waveforms\n "
-        #         f"ff waveform targets {target_blends} \n All targets {controlled_targets_all}"
-        #     )
+        if not set(ff_targets).issubset(set(controlled_targets_all)):
+            print(
+                "Warning : there are feedforward waveforms missing. These will be assumed to be zero "
+            )
+            print(ff_targets)
+            print(self.control_targs_all)
+            # raise ValueError(
+            #     "Missing feedforward waveforms \n "
+            #     f"ff waveform targets {ff_targets} \n All targets {controlled_targets_all}"
+            # )
+        elif not set(fb_targets).issubset(set(controlled_targets_all)):
+            print(
+                "Warning : there are feedback waveforms missing. These will be assumed to be zero "
+            )
+            print(ff_targets)
+            print(self.control_targs_all)
+            # raise ValueError(
+            #     "Missing feedback waveforms\n "
+            #     f"ff waveform targets {fb_targets} \n All targets {controlled_targets_all}"
+            # )
+        if not set(target_blends).issubset(set(controlled_targets_all)):
+            print(
+                "Warning : there are blend waveforms missing. These will be assumed to be zero "
+            )
+            print(ff_targets)
+            print(self.control_targs_all)
+            # raise ValueError(
+            #     "Missing blend waveforms\n "
+            #     f"ff waveform targets {target_blends} \n All targets {controlled_targets_all}"
+            # )
 
-        # check gain schedule
-
-        ##### OLD - I THINK REDUNDANT ###
-        # check targets in schedule targets and waveform targets are the same set of targets.
-        # for t, val in self.target_gain_schedule_dict.items():
-        #     targs_in_sched = val["targets"]
-        #     # check if subset of targets in schedule are in targets in waveform
-        #     if not set(targs_in_sched).issubset(set(ff_targets)):
-        #         print(
-        #             f"Scheduling error at time {t} - missing ff waves for targets requested"
-        #         )
-        #         raise ValueError(
-        #             "Targets in schedule not a subset of targets in ff waveform"
-        #         )
-        #     elif not set(targs_in_sched).issubset(set(fb_targets)):
-        #         print(
-        #             f"Scheduling error at time {t} - missing fb waves for targets requested"
-        #         )
-        #         raise ValueError(
-        #             "Targets in schedule not a subset of targets in fb waveform"
-        #         )
-        #     elif not set(targs_in_sched).issubset(set(target_blends)):
-        #         print(
-        #             f"Scheduling error at time {t} - missing blends for targets requested"
-        #         )
-        #         raise ValueError(
-        #             "Targets in schedule not a subset of targets in blend waveform"
-        #         )
-
-        #  OR popualte ff waves etc with targets from schedule
-
-        #### TODO MODIFY this check to be more robust
-        # check compatibility of target schedule and target waveform
-        # # checks that ...
-        # for time in schedule_times:
-        #     # ### do this with set check...
-        #     targ_names = self.target_gain_schedule_dict[time]
-        #     for targ in targ_names:
-        #         # check 1 : check if all targets in target schedule are in
-        #         # target waveform
-        #         if targ not in self.target_waveform_dict.keys():
-        #             raise ValueError(
-        #                 f"Target {targ} is in schedule but is not defined in"
-        #                 "target waveform"
-        #             )
-        #         # check 2 : check if targets in each interval lie within time
-        #         # ranges of target waveform
-        #         if len(self.target_waveform_dict[targ]["times"]) > 1:
-        #             time_start = self.target_waveform_dict[targ]["times"][0]
-        #             time_end = self.target_waveform_dict[targ]["times"][-1]
-        #             if time_start > time or time_end < time:
-        #                 print(f"time range for {targ}: ({time_start}, {time_end})")
-        #                 print(f"target schedule time: {time}")
-        #                 raise ValueError(
-        #                     f"Range of defined values for Target {targ} not "
-        #                     "compatible with schedule"
-        #                 )
+        # check gains
+        for t_sch in schedule_times:
+            gains_dict = self.target_gain_schedule_dict["gains"]
+            if not set(gains_dict.keys()).issubset(self.control_targs_all):
+                print(
+                    f"Warning : There are missing gains at time {t_sch}. These will be assumed to be zero "
+                )
+                # possibly raise error instead.
 
     def get_all_targets(self):
         """return list of all controllable targets"""

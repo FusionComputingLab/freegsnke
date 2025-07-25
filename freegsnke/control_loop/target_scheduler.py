@@ -1,4 +1,5 @@
 import pickle
+from copy import deepcopy
 from pprint import pprint
 
 import numpy as np
@@ -6,9 +7,18 @@ import numpy as np
 
 class TargetScheduler:
     """
-    Generic target scheduler, used for scheduling shape targets and plasma
-    current.
+    Generic Scheduling class used for control scheduling in all control categories.
+    This provides a description, and associated methods for retrieval, of the various control parameters (described below).
+    Quantities that 'vary with time' are provided as waveforms - dictionary of time series' (arrays for times and corresponding values)
+    Quantities that are fixed throughout a certain 'phase' are provided as a 'schedule' - a dictionary with phase start times as keys and the
+    parameter values as corresponding items.
 
+
+    Naming conventions :
+    - ff : FeedForward. Waveforms to be used for feedforward control
+    - fb : FeedBack - waveforms to be used for P(I) feedback control.
+    - blends  - values in range (0,1) to control mixing ratio of ff and fb.
+              - blend = 1 corresponds to fb only, and blend = 0 corresponds to ff only.
     """
 
     def __init__(
@@ -37,14 +47,18 @@ class TargetScheduler:
         """
         # load schedule and create a list of times for it
         self.target_gain_schedule_dict = schedule_dict
-        schedule_times = sorted(list(self.target_gain_schedule_dict.keys()))
+        self.schedule_times = sorted(list(self.target_gain_schedule_dict.keys()))
         self.control_targs_all = controlled_targets_all
 
-        print("schedule times", schedule_times)
+        print("schedule times", self.schedule_times)
 
-        self.ff_waves = waveform_dict["ff"]
-        self.fb_waves = waveform_dict["fb"]
-        self.blends = waveform_dict["blends"]
+        self.ff_waves = self.convert_waveform_units(waveform_dict["ff"])
+        self.fb_waves = self.convert_waveform_units(waveform_dict["fb"])
+        self.blends = self.convert_waveform_units(waveform_dict["blends"])
+
+        print("before after waveforms")
+        pprint(waveform_dict["ff"])
+        pprint(self.ff_waves)
 
         # check targets in schedule targets and waveform targets are the same set of targets.
         ff_targets = list(self.ff_waves.keys())
@@ -53,7 +67,6 @@ class TargetScheduler:
 
         # Compatiblitly check - MUST provide all waveforms and gains for all targets.
         # Print warning or raise error ??
-
         # check waveforms
         if not set(ff_targets).issubset(set(controlled_targets_all)):
             print(
@@ -86,18 +99,133 @@ class TargetScheduler:
             #     f"ff waveform targets {target_blends} \n All targets {controlled_targets_all}"
             # )
 
-        # check gains
-        for t_sch in schedule_times:
-            gains_dict = self.target_gain_schedule_dict["gains"]
-            if not set(gains_dict.keys()).issubset(self.control_targs_all):
-                print(
-                    f"Warning : There are missing gains at time {t_sch}. These will be assumed to be zero "
-                )
-                # possibly raise error instead.
+        print("Input schedule")
+        pprint(self.target_gain_schedule_dict)
+        # Build gain vectors now
+        Kprop_arr_schedule = {}
+        damping_schedule = {}
+        Kint_arr_schedule = {}
+        for time in self.schedule_times:
+            Kprop_arr = np.zeros(len(self.control_targs_all))
+            Kint_arr = np.zeros(len(self.control_targs_all))
+
+            for i, targ in enumerate(self.control_targs_all):
+                if targ in self.target_gain_schedule_dict[time]["targets"]:
+                    Kprop_arr[i] = self.target_gain_schedule_dict[time]["gains"][targ][
+                        "Kprop"
+                    ]
+                    Kint_arr[i] = self.target_gain_schedule_dict[time]["gains"][targ][
+                        "Kint"
+                    ]
+            Kprop_arr_schedule[time] = Kprop_arr
+            Kint_arr_schedule[time] = Kint_arr
+            if "Damping Factor" in self.target_gain_schedule_dict[time].keys():
+                damping_schedule[time] = self.target_gain_schedule_dict
+            else:
+                damping_schedule[time] = 1  # damping is 1 if not present
+
+        self.Kprop_schedule = Kprop_arr_schedule
+        self.Kint_schedule = Kint_arr_schedule
+        self.damping_schedule = damping_schedule
+        print(f"Scheduled quantities for {self.control_targs_all}")
+        print("proportional gains")
+        pprint(Kprop_arr_schedule)
+        print("Integral gains")
+        pprint(Kint_arr_schedule)
+        print("Damping ")
+        pprint(damping_schedule)
 
     def get_all_targets(self):
         """return list of all controllable targets"""
         return self.control_targs_all
+
+    def convert_waveform_units(self, waveform_dict):
+        """convert units of any waveform into standard units : (A, m, s)
+
+        Parameters
+        ----------
+        waveform : dict
+            waveform dictionary: {quantity :  {times : [], vals : [], untis : ""},...}
+
+        Return
+        ------
+        waveform_new : dict
+            updated waveform
+        """
+        # Convert units
+        waveform_dict_new = deepcopy(waveform_dict)
+        for key, waveform in waveform_dict_new.items():
+            waveform_new = deepcopy(waveform)
+            try:
+                unit = waveform["units"]
+                # convert units : return everything in
+                if unit == "kA":  # convert kA to A
+                    waveform_new["vals"] *= 1000
+                    waveform_new["units"] = "A"
+                elif unit == "ms":  # convert milliseconds to seconds
+                    waveform_new["vals"] /= 1000
+                    waveform_new["units"] = "s"
+                elif unit == "cm":  # convert cm to m
+                    waveform_new["vals"] /= 100
+                    waveform_new["units"] = "m"
+                elif unit == "mm":  # mm to m
+                    waveform_new["vals"] /= 1000
+                    waveform_new["units"] = "m"
+                # print(f"units converted from {unit} to standard (A, m, s)")
+            except KeyError:
+                # print("Warning - waveform doesn't have units key ")
+                pass
+        print("Waveforms converted to standard units")
+        return waveform_dict_new
+
+    def get_schedule_time(self, time_stamp):
+        """get start time for the phase in which time_stamp occurs.
+
+        Parameters
+        ----------
+        time_stamp : float
+            time of interest
+
+        Returns
+        -------
+        time_sch : float
+            start time in schedule of phase containing timestamp
+        """
+
+        time_pos = max(time for time in self.schedule_times if time <= time_stamp)
+
+        return time_pos
+
+    def get_scheduled_params(
+        self,
+        param_type: str,
+        time_stamp: float,
+    ):
+        """Retrieve pre built quantity from schedule - gains array or damping
+
+        Parameters
+        ----------
+        param_type : str
+            type of parameter of interest. Options are "Kprop", "K_int" and "damping"
+        time_stamp : float
+            time stamp at which the param type is required
+
+        Returns
+        -------
+        param_values : np.ndarray | float
+            numpy array of gains or float of damping factor.
+
+        """
+
+        if param_type == "Kprop":
+            time_pos = self.get_schedule_time(time_stamp=time_stamp)
+            return self.Kprop_schedule[time_pos]
+        if param_type == "Kint":
+            time_pos = self.get_schedule_time(time_stamp=time_stamp)
+            return self.Kint_schedule[time_pos]
+        if param_type == "damping":
+            time_pos = self.get_schedule_time(time_stamp=time_stamp)
+            return self.damping_schedule[time_pos]
 
     def interpolate(
         self,
@@ -365,66 +493,64 @@ class TargetScheduler:
                 prev_value = waveform_dict[param]["vals"][pos - 1]
             # print(requested_parameter)
 
-            # Convert units
-            try:
-                unit = waveform_dict[param]["units"]
-                # convert units : return everything in
-                if unit == "kA":  # convert kA to A
-                    requested_parameter *= 1000
-                elif unit == "ms":  # convert milliseconds to seconds
-                    requested_parameter /= 1000
-                elif unit == "cm":  # convert cm to m
-                    requested_parameter /= 100
-                elif unit == "mm":  # mm to m
-                    requested_parameter /= 1000
-                print("units converted from {unit} to standard (A, m, s)")
-            except KeyError:
-                pass
-                # print("Warning - waveform doesn't have units key ")
         # return requested_parameter, prev_value
         return requested_parameter
 
-    def get_gains(
-        self,
-        time_stamp: float,
-        targets: list[str] = None,
-        K_type: str = "Kprop",
-    ):
+    # def get_gains(
+    #     self,
+    #     time_stamp: float,
+    #     targets: list[str] = None,
+    #     K_type: str = "Kprop",
+    # ):
+    #     """
+    #     Retrieves the shape gains for the target at time_stamp, given the target schedule.
+    #     # Gains provided as time_periods - assume units of milliseconds (ms)
+    #     Gains provided as numbers with units 1/time (Not provided as tau in s or ms)
+    #     Parameters
+    #     ----------
+    #     time_stamp : float (4 decimal places)
+    #         time stamp of the target to be retrieved
+    #     targets : list[str] (optional)
+    #         list of targets to get gains for. defaults to fb controlled targets if None provided
+    #     Returns
+    #     -------
+    #     shape_gains : np.array
+    #         shape gains
+    #     """
+    #     gains_arr = np.zeros(len(self.control_targs_all))
+    #     time_pos = max(time for time in self.schedule_times if time <= time_stamp)
+    #     if targets is None:
+    #         targets = self.get_fb_controlled_targets(time_stamp=time_stamp)
+    #     if time_pos is None:
+    #         print(
+    #             "time requested is before first control parameter time, "
+    #             "returning None f"
+    #         )
+    #     else:
+    #         for i, target in enumerate(self.control_targs_all):
+    #             if target in targets:
+    #                 gains_arr[i] = self.target_gain_schedule_dict[time_pos]["gains"][
+    #                     target
+    #                 ][K_type]
+
+    #     return gains_arr
+
+    def get_gains(self, time_stamp, Ktype="Kprop"):
         """
         Retrieves the shape gains for the target at time_stamp, given the target schedule.
-        # Gains provided as time_periods - assume units of milliseconds (ms)
         Gains provided as numbers with units 1/time (Not provided as tau in s or ms)
+
         Parameters
         ----------
-        time_stamp : float (4 decimal places)
-            time stamp of the target to be retrieved
-        targets : list[str] (optional)
-            list of targets to get gains for. defaults to fb controlled targets if None provided
+        time_stamp : float
+            time stamp at which gains are required
+
         Returns
         -------
-        shape_gains : np.array
-            shape gains
+        gains_arr : np.ndarray
+            numpy array of gains for all controlled targets
         """
-        gains_arr = np.zeros(len(self.control_targs_all))
-        time_pos = max(
-            time for time in self.target_gain_schedule_dict.keys() if time <= time_stamp
-        )
-        if targets is None:
-            targets = self.get_fb_controlled_targets(time_stamp=time_stamp)
-        if time_pos is None:
-            print(
-                "time requested is before first control parameter time, "
-                "returning None f"
-            )
-        else:
-            for i, target in enumerate(self.control_targs_all):
-                if target in targets:
-                    gains_arr[i] = self.target_gain_schedule_dict[time_pos]["gains"][
-                        target
-                    ][K_type]
-
-        # return gains_arr, np.diag(gains_arr)
-        return gains_arr
+        return self.get_scheduled_params(time_stamp=time_stamp, param_type=Ktype)
 
     def get_damping(
         self,
@@ -444,14 +570,33 @@ class TargetScheduler:
         damp_factor : float
             damping factor for the current  P(ID) phase
         """
-        time_pos = max(
-            time for time in self.target_gain_schedule_dict.keys() if time <= time_stamp
-        )
-        gain_dict = self.target_gain_schedule_dict[time_pos]["gains"]
-        if "Damping Factor" in gain_dict.keys():
-            # print("damping", gain_dict["Damping Factor"])
-            return gain_dict["Damping Factor"]
-        else:
-            print("there is no damping factor : return 1")
-            # No damping corresponds to damp_factor = 1
-            return 1.0
+
+        return self.get_scheduled_params(time_stamp=time_stamp, param_type="damping")
+
+    # def get_damping(
+    #     self,
+    #     time_stamp: float,
+    # ):
+    #     """
+    #     Get damping factor (if present)
+    #     Returns 1 if none provided, corresponding to no damping being applied.
+
+    #     Parameters
+    #     ----------
+    #     time_stamp : float
+    #         time of retrieval
+
+    #     Returns
+    #     -------
+    #     damp_factor : float
+    #         damping factor for the current  P(ID) phase
+    #     """
+    #     time_pos = max(time for time in self.schedule_times if time <= time_stamp)
+    #     gain_dict = self.target_gain_schedule_dict[time_pos]["gains"]
+    #     if "Damping Factor" in gain_dict.keys():
+    #         # print("damping", gain_dict["Damping Factor"])
+    #         return gain_dict["Damping Factor"]
+    #     else:
+    #         print("there is no damping factor : return 1")
+    #         # No damping corresponds to damp_factor = 1
+    #         return 1.0

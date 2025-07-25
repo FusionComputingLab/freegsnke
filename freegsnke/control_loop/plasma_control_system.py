@@ -117,7 +117,7 @@ class PlasmaControlSystem:
         1) compute current rates from plasma, shape and divertor controllers
         This applies plasma/shape/divertor and circuits category calculations in one step.
         2) combine the current rates and apply systems category clipping to get approved currents/rates
-        3) apply PF category and mutiply by inductances to obtain voltages
+        3) apply PF category and multiply by inductances to obtain voltages
 
 
         """
@@ -188,6 +188,33 @@ class Simulator:
         """
         self.stepping = stepping
         self.controller = pcs_controller
+
+    def initialise_VCH(
+        self,
+        stepping,
+        target_relative_tolerance: float = 1e-7,
+    ):
+        """initialise the VCH object as class attribute.
+        This must be done after the class is initialised and before first call to calculate_blended_target_deltas
+
+
+        Inputs
+        ------
+        stepping : object
+            stepping object, to provide solver information
+        target_relative_tolerance : float
+            target relative tolerance
+
+        Returns
+        -------
+        None
+            Modifies the class attribute self.VCH
+        """
+        self.VCH = vc.VirtualCircuitHandling()
+        self.VCH.define_solver(
+            stepping.NK, target_relative_tolerance=target_relative_tolerance
+        )
+        print("Initialised VCH in shape controller")
 
     def get_observed_from_eqi(
         self,

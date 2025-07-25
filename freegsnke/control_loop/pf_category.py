@@ -61,6 +61,87 @@ class PFController(TargetScheduler):
 
         return gains_arr
 
+    def initialise_VCH(
+        self,
+        stepping,
+        target_relative_tolerance: float = 1e-7,
+    ):
+        """initialise the VCH object as class attribute.
+        This must be done after the class is initialised and before first call to calculate_blended_target_deltas
+
+
+        Inputs
+        ------
+        stepping : object
+            stepping object, to provide solver information
+        target_relative_tolerance : float
+            target relative tolerance
+
+        Returns
+        -------
+        None
+            Modifies the class attribute self.VCH
+        """
+        self.VCH = vc.VirtualCircuitHandling()
+        self.VCH.define_solver(
+            stepping.NK, target_relative_tolerance=target_relative_tolerance
+        )
+        print("Initialised VCH in shape controller")
+
+    def reshape_inductance(self, coils=None):
+        """
+        Select appropriate inductance rows and columns from inductance matrix, given set of coils in the VC.
+
+        parameters
+        ----------
+        coils : list[str] (optional)
+            list of coil names. If None provided, defaults to control_coils
+
+        Returns
+        -------
+        inductance_reduced : np.array
+            inductance matrix of reduced set of coils. Also updates inductance matrix attribute
+
+
+        """
+        if coils is None:  # use default of all active coils from tokamak
+            print(
+                "Inductance matrix for default of default reduced set of active coils"
+            )
+            coils = self.control_coils
+        else:  # use coils provided and select apropriate part of inductance matrix
+            print(f"Inductance matrix for coils provided {coils}")
+            pass
+
+        # create mask for selecting part of inductance matrix
+        mask = [self.machine_param_coil_order[coil] for coil in coils]
+        print("coil ordering mask ", mask)
+        inductance_reduced = self.inductance_full[np.ix_(mask, mask)]
+
+        return inductance_reduced
+
+    def reorder_resistance(
+        self,
+        coils: list[str],
+    ):
+        """
+        Reorder coil resistances to match coil order
+
+        Parameters
+        ----------
+        coils : list[str]
+            ordering of coils to reorder restitance
+
+        Returns
+        -------
+        coil_resist
+            reorders in place the coil resistance array
+
+        """
+        mask = [self.machine_param_coil_order[coil] for coil in coils]
+
+        return self.coil_resist[np.ix_(mask)]
+
 
 # will move this inside the class
 def pf_voltage_demands(

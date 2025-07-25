@@ -80,8 +80,8 @@ class ShapeController:
         feedback_target_scheduler: ShapeTargetScheduler,
         active_coils: list[str],
         control_coils: list[str],
-        machine_parameters: dict,
-        prev_output: np.array = None,
+        machine_parameters: dict,  # move to PF cat
+        prev_output: np.array = None,  # move out of init
         pi_state=None,
         integral_state=None,
     ):
@@ -160,6 +160,7 @@ class ShapeController:
         print("control coils", self.control_coils)
         print("Now please initialise the VCH object with .initialise_VCH(stepping)")
 
+    #  TODO move from here to simulation class / code
     def initialise_VCH(
         self,
         stepping,
@@ -392,6 +393,7 @@ class ShapeController:
         pi_state_new = pi_state + blends * K_int_arr @ deltas * dt
         return x_int, pi_state_new
 
+    ### THIS CAN PROBABLY BE REMOVED ###
     @staticmethod
     def recompute_vc_from_sensitivity(
         virtual_circuit: VirtualCircuit,
@@ -620,6 +622,8 @@ class ShapeController:
     ):
         """
         Compute shape rates given a set of target at a time provided.
+        1) retrieve necessary parameters from the schedulers
+        2) apply methods to compute all intermediate quantities (shape deltas, damped deltas, blended deltas)
 
         Parameters
         ----------
@@ -699,7 +703,8 @@ class ShapeController:
     def control_current_rates(
         self,
         time_stamp: float,
-        shape_rate: np.ndarray,
+        target_obs: np.ndarray,
+        # shape_rate: np.ndarray,
         eq=None,
         profiles=None,
         reshape: bool = False,
@@ -732,6 +737,11 @@ class ShapeController:
             self.feedback_target_scheduler.get_fb_controlled_targets(
                 time_stamp=time_stamp
             )
+        )
+
+        shape_rate = self.control_shape_rates(
+            time_stamp=time_stamp,
+            target_obs=target_obs,
         )
 
         # get the virtual circuit object

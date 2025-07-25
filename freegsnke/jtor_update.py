@@ -845,3 +845,32 @@ class TensionSpline(freegs4e.jtor.TensionSpline, Jtor_universal):
             ffp_values_2,
             ffp_sigma,
         ]
+
+class GeneralPprimeFFprime(freegs4e.jtor.GeneralPprimeFFprime, Jtor_universal):
+    """FreeGSNKE profile class adapting the FreeGS4E object with the same name,
+    with a few modifications, to:
+    - retain memory of critical point calculation;
+    - deal with limiter plasma configurations
+    """
+
+    def __init__(self, eq, *args, **kwargs):
+        """Instantiates the object.
+
+        Parameters
+        ----------
+        eq : FreeGSNKE Equilibrium object
+            Specifies the domain properties
+        """
+
+        freegs4e.jtor.GeneralPprimeFFprime.__init__(self, *args, **kwargs)
+        Jtor_universal.__init__(self)
+
+        self.profile_parameter = []
+        self.set_masks(eq=eq)
+
+    def assign_profile_parameter(
+        self,
+    ):
+        """Assigns to the profile object new values for the profile parameters"""
+
+        self.profile_parameter = []

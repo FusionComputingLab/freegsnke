@@ -52,22 +52,16 @@ class TargetScheduler:
 
         print("schedule times", self.schedule_times)
 
-        self.ff_waves = self.convert_waveform_units(waveform_dict["ff"])
-        self.fb_waves = self.convert_waveform_units(waveform_dict["fb"])
-        self.blends = self.convert_waveform_units(waveform_dict["blends"])
+        self.ff_waves = self.convert_waveform_dictionary(waveform_dict["ff"])
+        self.fb_waves = self.convert_waveform_dictionary(waveform_dict["fb"])
+        self.blends = self.convert_waveform_dictionary(waveform_dict["blends"])
 
-        print("before after waveforms")
-        pprint(waveform_dict["ff"])
-        pprint(self.ff_waves)
-
+        # Compatiblitly check - MUST provide all waveforms and gains for all targets.
         # check targets in schedule targets and waveform targets are the same set of targets.
         ff_targets = list(self.ff_waves.keys())
         fb_targets = list(self.fb_waves.keys())
         target_blends = list(self.blends.keys())
-
-        # Compatiblitly check - MUST provide all waveforms and gains for all targets.
         # Print warning or raise error ??
-        # check waveforms
         if not set(ff_targets).issubset(set(controlled_targets_all)):
             print(
                 "Warning : there are feedforward waveforms missing. These will be assumed to be zero "
@@ -139,8 +133,46 @@ class TargetScheduler:
         """return list of all controllable targets"""
         return self.control_targs_all
 
-    def convert_waveform_units(self, waveform_dict):
+    def convert_units_single_waveform(self, waveform: dict):
+        """convert units of any single waveform into standard units : (A, m, s)
+        This could be of use when reading in measured data.
+
+        Parameters
+        ----------
+        waveform : dict
+            waveform dictionary:  {times : [], vals : [], untis : ""}
+
+        Return
+        ------
+        waveform_new : dict
+            updated waveform
+        """
+        waveform_new = deepcopy(waveform)
+        try:
+            unit = waveform["units"]
+            # convert units : return everything in
+            if unit == "kA":  # convert kA to A
+                waveform_new["vals"] *= 1000
+                waveform_new["units"] = "A"
+            elif unit == "ms":  # convert milliseconds to seconds
+                waveform_new["vals"] /= 1000
+                waveform_new["units"] = "s"
+            elif unit == "cm":  # convert cm to m
+                waveform_new["vals"] /= 100
+                waveform_new["units"] = "m"
+            elif unit == "mm":  # mm to m
+                waveform_new["vals"] /= 1000
+                waveform_new["units"] = "m"
+            # print(f"units converted from {unit} to standard (A, m, s)")
+        except KeyError:
+            # print("Warning - waveform doesn't have units key ")
+            pass
+
+        return waveform_new
+
+    def convert_waveform_dictionary(self, waveform_dict: dict):
         """convert units of any waveform into standard units : (A, m, s)
+        This will convert a set of waveforms such as all ff waveforms in one go
 
         Parameters
         ----------
@@ -150,36 +182,19 @@ class TargetScheduler:
         Return
         ------
         waveform_new : dict
-            updated waveform
+            updated dictionary of waveforms
         """
         # Convert units
         waveform_dict_new = deepcopy(waveform_dict)
         for key, waveform in waveform_dict_new.items():
-            waveform_new = deepcopy(waveform)
-            try:
-                unit = waveform["units"]
-                # convert units : return everything in
-                if unit == "kA":  # convert kA to A
-                    waveform_new["vals"] *= 1000
-                    waveform_new["units"] = "A"
-                elif unit == "ms":  # convert milliseconds to seconds
-                    waveform_new["vals"] /= 1000
-                    waveform_new["units"] = "s"
-                elif unit == "cm":  # convert cm to m
-                    waveform_new["vals"] /= 100
-                    waveform_new["units"] = "m"
-                elif unit == "mm":  # mm to m
-                    waveform_new["vals"] /= 1000
-                    waveform_new["units"] = "m"
-                # print(f"units converted from {unit} to standard (A, m, s)")
-            except KeyError:
-                # print("Warning - waveform doesn't have units key ")
-                pass
+            waveform = self.convert_units_single_waveform(waveform=waveform)
+
         print("Waveforms converted to standard units")
         return waveform_dict_new
 
     def get_schedule_time(self, time_stamp):
-        """get start time for the phase in which time_stamp occurs.
+        """
+        Get phase start time for the phase in which time_stamp occurs.
 
         Parameters
         ----------

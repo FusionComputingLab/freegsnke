@@ -846,6 +846,7 @@ class TensionSpline(freegs4e.jtor.TensionSpline, Jtor_universal):
             ffp_sigma,
         ]
 
+
 class GeneralPprimeFFprime(freegs4e.jtor.GeneralPprimeFFprime, Jtor_universal):
     """FreeGSNKE profile class adapting the FreeGS4E object with the same name,
     with a few modifications, to:

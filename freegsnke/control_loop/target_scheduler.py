@@ -46,8 +46,8 @@ class TargetScheduler:
 
         """
         # load schedule and create a list of times for it
-        self.target_gain_schedule_dict = schedule_dict
-        self.schedule_times = sorted(list(self.target_gain_schedule_dict.keys()))
+        self.schedule_dict = schedule_dict
+        self.schedule_times = sorted(list(self.schedule_dict.keys()))
         self.control_targs_all = controlled_targets_all
 
         print("schedule times", self.schedule_times)
@@ -94,7 +94,7 @@ class TargetScheduler:
             # )
 
         print("Input schedule")
-        pprint(self.target_gain_schedule_dict)
+        pprint(self.schedule_dict)
         # Build gain vectors now
         Kprop_arr_schedule = {}
         damping_schedule = {}
@@ -104,17 +104,13 @@ class TargetScheduler:
             Kint_arr = np.zeros(len(self.control_targs_all))
 
             for i, targ in enumerate(self.control_targs_all):
-                if targ in self.target_gain_schedule_dict[time]["targets"]:
-                    Kprop_arr[i] = self.target_gain_schedule_dict[time]["gains"][targ][
-                        "Kprop"
-                    ]
-                    Kint_arr[i] = self.target_gain_schedule_dict[time]["gains"][targ][
-                        "Kint"
-                    ]
+                if targ in self.schedule_dict[time]["targets"]:
+                    Kprop_arr[i] = self.schedule_dict[time]["gains"][targ]["Kprop"]
+                    Kint_arr[i] = self.schedule_dict[time]["gains"][targ]["Kint"]
             Kprop_arr_schedule[time] = Kprop_arr
             Kint_arr_schedule[time] = Kint_arr
-            if "Damping Factor" in self.target_gain_schedule_dict[time].keys():
-                damping_schedule[time] = self.target_gain_schedule_dict
+            if "Damping Factor" in self.schedule_dict[time].keys():
+                damping_schedule[time] = self.schedule_dict
             else:
                 damping_schedule[time] = 1  # damping is 1 if not present
 
@@ -292,7 +288,7 @@ class TargetScheduler:
         """
 
         closest_key = max(
-            (key for key in self.target_gain_schedule_dict if key <= time_stamp),
+            (key for key in self.schedule_dict if key <= time_stamp),
             default=None,
         )
         # print(closest_key)
@@ -303,7 +299,7 @@ class TargetScheduler:
 
             return []
 
-        target_names = self.target_gain_schedule_dict[closest_key]["targets"]
+        target_names = self.schedule_dict[closest_key]["targets"]
 
         return target_names
 
@@ -544,7 +540,7 @@ class TargetScheduler:
     #     else:
     #         for i, target in enumerate(self.control_targs_all):
     #             if target in targets:
-    #                 gains_arr[i] = self.target_gain_schedule_dict[time_pos]["gains"][
+    #                 gains_arr[i] = self.schedule_dict[time_pos]["gains"][
     #                     target
     #                 ][K_type]
 
@@ -607,7 +603,7 @@ class TargetScheduler:
     #         damping factor for the current  P(ID) phase
     #     """
     #     time_pos = max(time for time in self.schedule_times if time <= time_stamp)
-    #     gain_dict = self.target_gain_schedule_dict[time_pos]["gains"]
+    #     gain_dict = self.schedule_dict[time_pos]["gains"]
     #     if "Damping Factor" in gain_dict.keys():
     #         # print("damping", gain_dict["Damping Factor"])
     #         return gain_dict["Damping Factor"]

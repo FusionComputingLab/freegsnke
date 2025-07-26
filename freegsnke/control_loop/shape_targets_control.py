@@ -65,7 +65,7 @@ class ShapeController:
     active_coil_order_dictionary : dictionary mapping coil names to their order in the list of active coils
     inductance_full : full inductance matrix for all active coils
     VCH (virtual circuit handling class)
-    feedback_target_scheduler (target scheduler class)
+    target_scheduler (target scheduler class)
 
 
     Methods :
@@ -77,7 +77,7 @@ class ShapeController:
 
     def __init__(
         self,
-        feedback_target_scheduler: ShapeTargetScheduler,
+        target_scheduler: ShapeTargetScheduler,
         active_coils: list[str],
         control_coils: list[str],
         machine_parameters: dict,  # move to PF cat
@@ -94,7 +94,7 @@ class ShapeController:
             equilibrium object
         profiles : list of profiles
             list of profiles
-        feedback_target_scheduler : TargetScheduler object
+        target_scheduler : TargetScheduler object
             TargetScheduler object - contains targets and vc schedule for simulation.
         active_coils : list[str]
             list of all coil names to be used by simulation. Includes shaping and vertical control coils
@@ -126,13 +126,11 @@ class ShapeController:
             self.control_coils = control_coils
 
         # initialise a target scheduler object
-        self.feedback_target_scheduler = feedback_target_scheduler
-        print("target scheduler flag :", self.feedback_target_scheduler.vc_flag)
+        self.target_scheduler = target_scheduler
+        print("target scheduler flag :", self.target_scheduler.vc_flag)
 
         if prev_output is None:
-            self.prev_output = np.zeros(
-                len(feedback_target_scheduler.get_all_targets())
-            )
+            self.prev_output = np.zeros(len(target_scheduler.get_all_targets()))
         else:
             self.prev_output = prev_output
 
@@ -416,9 +414,8 @@ class ShapeController:
 
     def apply_shape_vc(
         self,
-        targets: list[str],
         target_deltas: np.ndarray,
-        virtual_circuit: VirtualCircuit,
+        vc_matrix: np.ndarray,
         reshape: bool = False,
     ):
         """
@@ -441,29 +438,7 @@ class ShapeController:
             The coil current rates after being applied to the virtual circuit.
         """
 
-        if targets == virtual_circuit.targets:
-            # targets match - do nothing and use VC provided
-            pass
-
-        elif set(targets).issubset(set(virtual_circuit.targets)):
-            # targets are a subset of the VC targets - recompute VC from sensitivity
-            print(
-                "targets are a subset of the VC targets - recomputing VC from sensitivity"
-            )
-            virtual_circuit = self.recompute_vc_from_sensitivity(
-                virtual_circuit, targets
-            )
-
-        else:
-            # targets are not a subset of the VC targets - raise error
-            print("targets are not a subset of the VC targets - raising error")
-            print("targets", targets)
-            print("VC targets", virtual_circuit.targets)
-            raise ValueError(
-                "The virtual circuit targets do not match the targets requested. Check the VC and Target sequence"
-            )
-
-        delta_currents = virtual_circuit.VCs_matrix @ target_deltas
+        delta_currents = vc_matrix @ target_deltas
 
         if reshape == False:
             # leave currents with the coil order associated with the VC scheduler
@@ -472,10 +447,9 @@ class ShapeController:
         elif reshape == True:
             print("reshaping current to match active coils order")
             reshaped_currents = np.zeros(len(self.active_coils))
-            for i, coil in enumerate(virtual_circuit.coils):
-                # PCO patch until we sort this out
-                if coil == "pc":
-                    continue
+            for i, coil in enumerate(
+                self.control_coils
+            ):  # this should be the order of coils in vc
                 reshaped_currents[self.active_coil_order_dictionary[coil]] = (
                     1.0
                     * delta_currents[
@@ -511,13 +485,9 @@ class ShapeController:
             current rates (dI/dt)
         """
         # currents_rates = np.zeros(len(self.control_coils))
-        currents_rates = np.zeros(
-            len(self.feedback_target_scheduler.vc_scheduler.vc_coil_order)
-        )
+        currents_rates = np.zeros(len(self.target_scheduler.vc_scheduler.vc_coil_order))
         for i, target in enumerate(targets):
-            vc_col = self.feedback_target_scheduler.vc_scheduler.get_vc_2(
-                time_stamp, target
-            )
+            vc_col = self.target_scheduler.vc_scheduler.get_vc_2(time_stamp, target)
             currents_rates += target_deltas[i] * vc_col
         return currents_rates
 
@@ -551,39 +521,37 @@ class ShapeController:
         voltage_array : array
             feedback voltages
         """
-        controlled_targets_all = self.feedback_target_scheduler.get_all_targets()
-        controlled_targets_fb = (
-            self.feedback_target_scheduler.get_fb_controlled_targets(
-                time_stamp=time_stamp
-            )
+        controlled_targets_all = self.target_scheduler.get_all_targets()
+        controlled_targets_fb = self.target_scheduler.get_fb_controlled_targets(
+            time_stamp=time_stamp
         )
 
         # get proportional gains
-        prop_gains_arr = self.feedback_target_scheduler.get_gains(
+        prop_gains_arr = self.target_scheduler.get_gains(
             time_stamp=time_stamp, K_type="Kprop"
         )
 
         # get integral gains
-        int_gains_arr = self.feedback_target_scheduler.get_gains(
+        int_gains_arr = self.target_scheduler.get_gains(
             time_stamp=time_stamp, K_type="Kint"
         )
         # get reference desired target values for feedback control
-        desired_target_values = self.feedback_target_scheduler.desired_target_values_fb(
+        desired_target_values = self.target_scheduler.desired_target_values_fb(
             time_stamp
         )
 
         # get blends array
-        blends_arr = self.feedback_target_scheduler.get_blends(
+        blends_arr = self.target_scheduler.get_blends(
             time_stamp=time_stamp,
         )
 
         # get ff gradients
-        ff_deltas = self.feedback_target_scheduler.feed_forward_gradient(
+        ff_deltas = self.target_scheduler.feed_forward_gradient(
             time_stamp, targets=controlled_targets_all
         )
 
         # compute the proportional terms
-        damp_factor = self.feedback_target_scheduler.get_damping(time_stamp=time_stamp)
+        damp_factor = self.target_scheduler.get_damping(time_stamp=time_stamp)
 
         # raw deltas
         targ_deltas = self.calculate_target_deltas(
@@ -640,11 +608,9 @@ class ShapeController:
             current rate array (dI/dt), with coil order
         """
 
-        controlled_targets_all = self.feedback_target_scheduler.get_all_targets()
-        controlled_targets_fb = (
-            self.feedback_target_scheduler.get_fb_controlled_targets(
-                time_stamp=time_stamp
-            )
+        controlled_targets_all = self.target_scheduler.get_all_targets()
+        controlled_targets_fb = self.target_scheduler.get_fb_controlled_targets(
+            time_stamp=time_stamp
         )
 
         shape_rate = self.control_shape_rates(
@@ -653,18 +619,11 @@ class ShapeController:
         )
 
         # get the virtual circuit object
-        virtual_circuit = self.feedback_target_scheduler.get_vc(
-            eq=eq,
-            profiles=profiles,
-            time_stamp=time_stamp,
-            coils=self.control_coils,
-            targets=controlled_targets_all,
-        )
+        vc_matrix = self.target_scheduler.get_vc(time_stamp=time_stamp)
 
         current_rate = self.apply_shape_vc(
-            targets=controlled_targets_all,
             target_deltas=shape_rate,
-            virtual_circuit=virtual_circuit,
+            vc_matrix=vc_matrix,
             reshape=reshape,
         )
 

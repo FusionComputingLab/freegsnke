@@ -542,7 +542,7 @@ class TargetScheduler:
 
     #     return gains_arr
 
-    def get_gains(self, time_stamp, Ktype="Kprop"):
+    def get_gains(self, time_stamp, K_type="Kprop"):
         """
         Retrieves the shape gains for the target at time_stamp, given the target schedule.
         Gains provided as numbers with units 1/time (Not provided as tau in s or ms)
@@ -557,7 +557,7 @@ class TargetScheduler:
         gains_arr : np.ndarray
             numpy array of gains for all controlled targets
         """
-        return self.get_scheduled_params(time_stamp=time_stamp, param_type=Ktype)
+        return self.get_scheduled_params(time_stamp=time_stamp, param_type=K_type)
 
     def get_damping(
         self,

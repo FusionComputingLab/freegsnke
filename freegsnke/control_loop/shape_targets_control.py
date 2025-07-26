@@ -142,16 +142,6 @@ class ShapeController:
         self.machine_coils = machine_parameters["coils"]
         self.machine_param_coil_order = machine_parameters["coil_order_dictionary"]
 
-        # # reorder inductance matrix and coil resistances to match coil order
-        # # ### ??? inducnace for active coils or control coils ???
-        # # self.inductance_full = self.reshape_inductance(coils=self.active_coils)
-        # # self.coil_resist = self.reorder_resistance(coils=self.active_coils)
-        # self.inductance_full = self.reshape_inductance(coils=self.control_coils)
-        # self.coil_resist = self.reorder_resistance(coils=self.control_coils)
-        # # reduced inductance matrix for control coils
-        # self.inductance_reduced = self.reshape_inductance(coils=self.control_coils)
-        # # initialise the VCH object
-
         ## ?? add in pi state / integral term ??##
         # self.pi_state = pi_state
         # self.x_int = deepcopy(pi_state)
@@ -159,88 +149,6 @@ class ShapeController:
         print("all active", self.active_coils)
         print("control coils", self.control_coils)
         print("Now please initialise the VCH object with .initialise_VCH(stepping)")
-
-    #  TODO move from here to simulation class / code
-    def initialise_VCH(
-        self,
-        stepping,
-        target_relative_tolerance: float = 1e-7,
-    ):
-        """initialise the VCH object as class attribute.
-        This must be done after the class is initialised and before first call to calculate_blended_target_deltas
-
-
-        Inputs
-        ------
-        stepping : object
-            stepping object, to provide solver information
-        target_relative_tolerance : float
-            target relative tolerance
-
-        Returns
-        -------
-        None
-            Modifies the class attribute self.VCH
-        """
-        self.VCH = vc.VirtualCircuitHandling()
-        self.VCH.define_solver(
-            stepping.NK, target_relative_tolerance=target_relative_tolerance
-        )
-        print("Initialised VCH in shape controller")
-
-    def reshape_inductance(self, coils=None):
-        """
-        Select appropriate inductance rows and columns from inductance matrix, given set of coils in the VC.
-
-        parameters
-        ----------
-        coils : list[str] (optional)
-            list of coil names. If None provided, defaults to control_coils
-
-        Returns
-        -------
-        inductance_reduced : np.array
-            inductance matrix of reduced set of coils. Also updates inductance matrix attribute
-
-
-        """
-        if coils is None:  # use default of all active coils from tokamak
-            print(
-                "Inductance matrix for default of default reduced set of active coils"
-            )
-            coils = self.control_coils
-        else:  # use coils provided and select apropriate part of inductance matrix
-            print(f"Inductance matrix for coils provided {coils}")
-            pass
-
-        # create mask for selecting part of inductance matrix
-        mask = [self.machine_param_coil_order[coil] for coil in coils]
-        print("coil ordering mask ", mask)
-        inductance_reduced = self.inductance_full[np.ix_(mask, mask)]
-
-        return inductance_reduced
-
-    def reorder_resistance(
-        self,
-        coils: list[str],
-    ):
-        """
-        Reorder coil resistances to match coil order
-
-        Parameters
-        ----------
-        coils : list[str]
-            ordering of coils to reorder restitance
-
-        Returns
-        -------
-        coil_resist
-            reorders in place the coil resistance array
-
-        """
-        mask = [self.machine_param_coil_order[coil] for coil in coils]
-
-        return self.coil_resist[np.ix_(mask)]
 
     ## this function will be replaced by instance of build virtual circuit class.
     def calc_vc_from_eq(
@@ -652,12 +560,12 @@ class ShapeController:
 
         # get proportional gains
         prop_gains_arr = self.feedback_target_scheduler.get_gains(
-            targets=controlled_targets_fb, time_stamp=time_stamp, K_type="Kprop"
+            time_stamp=time_stamp, K_type="Kprop"
         )
 
         # get integral gains
         int_gains_arr = self.feedback_target_scheduler.get_gains(
-            targets=controlled_targets_fb, time_stamp=time_stamp, K_type="Kint"
+            time_stamp=time_stamp, K_type="Kint"
         )
         # get reference desired target values for feedback control
         desired_target_values = self.feedback_target_scheduler.desired_target_values_fb(

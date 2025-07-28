@@ -148,56 +148,6 @@ class ShapeController:
         print("control coils", self.control_coils)
         print("Now please initialise the VCH object with .initialise_VCH(stepping)")
 
-    ## this function will be replaced by instance of build virtual circuit class.
-    def calc_vc_from_eq(
-        self,
-        targets: list[str],
-        eq,
-        profiles,
-        coils=None,
-    ):
-        """
-        Compute a VC using freegsnke VirtualCircuitHandling.
-
-        Parameters
-        ----------
-        eq : object
-            equilibrium object
-
-        profiles : object
-            profiles object
-
-        targets : list[str]
-            list of targets
-
-        coils : list[str]
-            list of coils (optional)
-
-
-        Returns
-        -------
-        virtual_circuit : object
-            virtual circuit object
-        """
-
-        # if targets and coils are provided, update targets/coils attributes
-        if coils is None:
-            coils = self.control_coils
-
-        print("building virtual circuit from freegsnke")
-        self.VCH.calculate_VC(
-            eq,
-            profiles,
-            coils=coils,
-            targets=targets,
-            targets_options=None,
-        )
-
-        # get the virtual circuit object
-        virtual_circuit = self.VCH.latest_VC
-
-        return virtual_circuit
-
     def calculate_target_deltas(
         self,
         targets_req: np.ndarray,
@@ -536,9 +486,7 @@ class ShapeController:
             time_stamp=time_stamp, K_type="Kint"
         )
         # get reference desired target values for feedback control
-        desired_target_values = self.target_scheduler.desired_target_values_fb(
-            time_stamp
-        )
+        desired_target_values = self.target_scheduler.get_target_ref_vals(time_stamp)
 
         # get blends array
         blends_arr = self.target_scheduler.get_blends(
@@ -546,7 +494,7 @@ class ShapeController:
         )
 
         # get ff gradients
-        ff_deltas = self.target_scheduler.feed_forward_gradient(
+        ff_deltas = self.target_scheduler.waveform_gradient(
             time_stamp, targets=controlled_targets_all
         )
 

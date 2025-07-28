@@ -262,3 +262,40 @@ class Simulator:
         # solve for new equilibrium
         # compute new plasma shape targets/currents
         pass
+
+
+def get_inductance_resistance(self, stepping):
+    """get inductance matrix and coil resistances from stepping object (Freegsnke)
+
+    Inputs :
+    --------
+    stepping : object
+        stepping object
+
+    Returns
+    -------
+    inductance_full : np.array
+        full inductance matrix in freegsnke for all active coils
+
+    coil_resist : np.array
+        coil resistances in freegsnke for all active coils
+    """
+
+    # assign equi and profiles objects
+    # self.stepping = stepping
+    n_active_coils = stepping.n_active_coils  # could also be eq.tokamak.n_active_coils
+    print("number active coils", n_active_coils)
+    tok = stepping.eq1.tokamak
+    active_coils = tok.coils_list[:n_active_coils]
+
+    inductance_full = tok.coil_self_ind[: len(active_coils), : len(active_coils)]
+    coil_resist = tok.coil_resist[: len(active_coils)]
+    print("Inductances and resistances retrieved for all active coils :", active_coils)
+    coil_order_dictionary = {coil: i for i, coil in enumerate(active_coils)}
+
+    return {
+        "inductance_full": inductance_full,
+        "coil_resist": coil_resist,
+        "coils": active_coils,
+        "coil_order_dictionary": coil_order_dictionary,
+    }

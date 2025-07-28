@@ -322,37 +322,6 @@ class VirtualCircuitScheduler(VirtualCircuitProvider, TargetScheduler):
         return True
 
 
-# TODO Maybe this should be moved to a different class.
-# either simulation class (where stepping will be provided)
-# or move to the VC provider in freegsnke-emu (I think more likely this)
-def pre_run_emulators(vcg, stepping, targets, coils):
-    """pre run emulators on given equilibrium and set of targets/coils for speed up later
-        Run this after init.
-
-    Inputs :
-    --------
-    vcg : object
-        virtual circuit generator object (from freegsnke emu)
-    stepping : object
-        stepping object
-    targets : list[str]
-        list of targets to be used for shape control
-    coils : list[str]
-        list of coils to be used for shape control
-
-    Returns
-    -------
-    None
-    """
-
-    vcg.build_vc(
-        eq=stepping.eq1,
-        profiles=stepping.profiles1,
-        targets=targets,
-        coils=coils,
-    )
-
-
 class ShapeTargetScheduler(TargetScheduler):
     """
     Class to build a target sequences from file, and store the sequence of

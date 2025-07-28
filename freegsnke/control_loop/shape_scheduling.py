@@ -70,7 +70,6 @@ class VirtualCircuitScheduler(VirtualCircuitProvider, TargetScheduler):
         print("building vc's")
         vc_schedule = {}
         for time, vc_dict in self.vc_schedule_full.items():
-            print(time, vc_dict)
             # configuration from inputed dictionary
             vc_mat_full = vc_dict["vc_matrix"]
             coil_order_old = vc_dict["coils"]
@@ -88,11 +87,14 @@ class VirtualCircuitScheduler(VirtualCircuitProvider, TargetScheduler):
 
             if target_order_old == [] or target_order_old is None:
                 # no vc provided - assign matrix of zeros
+                print("no targets provided - will set vc's to zero")
                 vc_matrix = vc_mat_temp
             else:
                 # fill columns of matrix
+                print(f"creating vc matrix for {target_order}")
                 for i, targ in enumerate(target_order):
                     targ_index_full = target_order_old.index(targ)
+                    # print(f"targ {targ} moves from colum {targ_index_full} to {i}")
                     vc_mat_temp[:, i] = vc_mat_full[:, targ_index_full]
 
             # reorder rows (keeps same order if coil_order wasn't provided)
@@ -406,7 +408,7 @@ class ShapeTargetScheduler(TargetScheduler):
         self.vc_scheduler = vc_scheduler
 
         if vc_flag == "file":
-            # create vc schedule with resahped vcs
+            # create vc schedule with reshaped vcs
             self.vc_scheduler.build_reshaped_schedule(
                 coil_order=control_coils, target_order=controlled_targets_all
             )

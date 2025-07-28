@@ -374,9 +374,7 @@ class ShapeController:
         )
 
         # get ff gradients
-        ff_deltas = self.target_scheduler.waveform_gradient(
-            time_stamp, targets=controlled_targets_all
-        )
+        ff_deltas = self.target_scheduler.waveform_gradient(time_stamp, wave_type="ff")
 
         # compute the proportional terms
         damp_factor = self.target_scheduler.get_damping(time_stamp=time_stamp)

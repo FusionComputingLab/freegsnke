@@ -15,64 +15,25 @@ from ..virtual_circuits import VirtualCircuit
 from .shape_scheduling import ShapeTargetScheduler
 
 
-def get_inductance_resistance(stepping):
-    """get inductance matrix and coil resistances from stepping object (Freegsnke)
-
-    Inputs :
-    --------
-    stepping : object
-        stepping object
-
-    Returns
-    -------
-    inductance_full : np.array
-        full inductance matrix in freegsnke for all active coils
-
-    coil_resist : np.array
-        coil resistances in freegsnke for all active coils
-    """
-
-    # assign equi and profiles objects
-    # self.stepping = stepping
-    n_active_coils = stepping.n_active_coils  # could also be eq.tokamak.n_active_coils
-    print("number active coils", n_active_coils)
-    tok = stepping.eq1.tokamak
-    active_coils = tok.coils_list[:n_active_coils]
-
-    inductance_full = tok.coil_self_ind[: len(active_coils), : len(active_coils)]
-    coil_resist = tok.coil_resist[: len(active_coils)]
-    print("Inductances and resistances retrieved for all active coils :", active_coils)
-    coil_order_dictionary = {coil: i for i, coil in enumerate(active_coils)}
-
-    return {
-        "inductance_full": inductance_full,
-        "coil_resist": coil_resist,
-        "coils": active_coils,
-        "coil_order_dictionary": coil_order_dictionary,
-    }
-
-
 class ShapeController:
     """
     Class to implement control voltages from virtual circuit, and given a set of observed target values, and a set of requested target values.
 
     Attributes :
     ------------
-    eq : eq object
-    profiles : profiles object
     active_coils : list of all active coils
-    coils : list of coils to be used in controller
+    control_coils : list of coils to be used in controller
     active_coil_order_dictionary : dictionary mapping coil names to their order in the list of active coils
-    inductance_full : full inductance matrix for all active coils
-    VCH (virtual circuit handling class)
-    target_scheduler (target scheduler class)
-
+    target_scheduler : ShapeTargetScheduler object to provide the control parameters and values at requested times.
 
     Methods :
-    reshape_inductance : retrieve inductance matrix from machine config, and select rows/columns
-    calc_vc_from_eq : retrieve from file or compute a virtual circuit object from freegsnke or NN emulator.
-    calculate_blended_target_deltas : compute feedback voltages from a virtual circuit object and a set of target shifts.
-    control_shape_rates : compute feedback voltages from a time provided by retrieving targets at given time from the target waveformr and computing with calculate_blended_target_deltas.
+    ---------
+    calculate_target_deltas : computes difference target_reference - target_observed
+    calculate_damped_target_detlas : applies damping to the target deltas
+    calculate_blended_target_deltas : compute blended deltas - combines feedback deltas(above) with gains, and feedforward deltas.
+    control_shape_rates : compute all above given an input time_stamp.
+    apply_shape_vc : multiplies the shape target rates by virtual circuit
+    control_current_rates : compute shape rates and multiply by vc to return current rates.
     """
 
     def __init__(
@@ -80,7 +41,6 @@ class ShapeController:
         target_scheduler: ShapeTargetScheduler,
         active_coils: list[str],
         control_coils: list[str],
-        machine_parameters: dict,  # move to PF cat
         prev_output: np.array = None,  # move out of init
         pi_state=None,
         integral_state=None,
@@ -90,18 +50,12 @@ class ShapeController:
 
         Parameters
         ----------
-        eq : equilibrium object
-            equilibrium object
-        profiles : list of profiles
-            list of profiles
         target_scheduler : TargetScheduler object
             TargetScheduler object - contains targets and vc schedule for simulation.
         active_coils : list[str]
             list of all coil names to be used by simulation. Includes shaping and vertical control coils
         control_coils : list[str]
             list of coils used for shape control. These are used by emulators.
-        machine_parameters : dict
-            dictionary containing full inductance matrix and coil resistances
         prev_output : np.array
             array of target rates (output of shapes category) at previous timestep.
             If not provided it defaults to array of zeros, of size len(all_targets)
@@ -134,12 +88,6 @@ class ShapeController:
         else:
             self.prev_output = prev_output
 
-        # set machine parameters (inductance and resistances for coils)
-        self.inductance_full = machine_parameters["inductance_full"]
-        self.coil_resist = machine_parameters["coil_resist"]
-        self.machine_coils = machine_parameters["coils"]
-        self.machine_param_coil_order = machine_parameters["coil_order_dictionary"]
-
         ## ?? add in pi state / integral term ??##
         # self.pi_state = pi_state
         # self.x_int = deepcopy(pi_state)
@@ -153,7 +101,8 @@ class ShapeController:
         targets_req: np.ndarray,
         targets_obs: np.ndarray,
     ):
-        """compute the the raw error term targ_required - targ_observed
+        """
+        Compute the the raw error term targ_required - targ_observed
 
         Parameters
         ----------
@@ -183,7 +132,8 @@ class ShapeController:
         prev_err: np.ndarray,
         damp_factor=1,
     ):
-        """Calculate the target damped shape deltas.
+        """
+        Calculate the target damped shape deltas.
 
         output = (1-1/damping)*prev_err + 1/damping *
 
@@ -221,7 +171,8 @@ class ShapeController:
         K_int_arr: np.ndarray,
         blends: np.ndarray,
     ):
-        """compute updated integral error term and PI state
+        """
+        Compute updated integral error term and PI state
 
         Parameters
         ----------
@@ -248,78 +199,6 @@ class ShapeController:
         x_int = pi_state + 0.5 * K_int_arr @ deltas * dt
         pi_state_new = pi_state + blends * K_int_arr @ deltas * dt
         return x_int, pi_state_new
-
-    ### THIS CAN PROBABLY BE REMOVED ###
-    @staticmethod
-    def recompute_vc_from_sensitivity(
-        virtual_circuit: VirtualCircuit,
-        targets: list[str],
-    ):
-        """
-        Recompute a virtual circuit from the sensitivity matrix, using the targets provided.
-
-        Parameters
-        ----------
-        virtual_circuit : object
-            virtual circuit object
-
-        targets : list[str]
-            list of target names
-
-        Returns
-        -------
-        virtual_circuit : object
-            virtual circuit object
-        """
-        # get the sensitivity matrix, and select columns corresponding to the targets
-        sensitivity_matrix = virtual_circuit.shape_matrix
-        vc_targ_order_dict = dict(
-            zip(virtual_circuit.targets, np.arange(len(virtual_circuit.targets)))
-        )
-        vc_coil_order_dict = dict(
-            zip(virtual_circuit.coils, np.arange(len(virtual_circuit.coils)))
-        )
-
-        # if virtual_circuit.coils != self.control_coils:
-        #     print(
-        #         "Warning : the virtual circuit provided does not match the control coils"
-        #     )
-        #     # raise error or shrink the vc to the control coils?????
-        #     control_coils_indices = np.array(
-        #         [vc_coil_order_dict[coil] for coil in self.control_coils]
-        #     )
-
-        sens_reduced = sensitivity_matrix[
-            np.array([vc_targ_order_dict[targ] for targ in targets]),
-        ]
-        vc_mat_reduced = np.linalg.pinv(sens_reduced)
-
-        targs_reduced = [
-            virtual_circuit.targets[i]
-            for i in np.array([vc_targ_order_dict[targ] for targ in targets])
-        ]
-        # targ_values = np.array(
-        #     [
-        #         # virtual_circuit.targets_val[i]
-        #         targets_obs[i]
-        #         for i in np.array([vc_targ_order_dict[targ] for targ in targets])
-        #     ]
-        # )
-
-        virtualcircuit = vc.VirtualCircuit(
-            name="recomputed_vc",
-            eq=virtual_circuit.eq,
-            profiles=virtual_circuit.profiles,
-            shape_matrix=sens_reduced,
-            VCs_matrix=vc_mat_reduced,
-            targets=targs_reduced,
-            targets_val=None,
-            non_standard_targets=None,
-            targets_options=None,
-            coils=virtual_circuit.coils,
-        )
-
-        return virtualcircuit
 
     def calculate_blended_target_deltas(
         self,
@@ -415,7 +294,8 @@ class ShapeController:
         targets: list[str],
         target_deltas: np.ndarray,
     ):
-        """Apply VC using the 'list of columns' format instead - for now just for testing
+        """
+        Apply VC using the 'list of columns' format instead - for now just for testing
 
         Parameters
         ----------
@@ -576,12 +456,3 @@ class ShapeController:
         )
 
         return shape_rate, current_rate
-
-    def feedback_voltage_from_currents(self, current_rate, inductance_matrix=None):
-        """
-        compute feedback voltage from current rate of change vector
-        """
-        if inductance_matrix is None:
-            inductance_matrix = self.inductance_full
-
-        return np.dot(inductance_matrix, current_rate)

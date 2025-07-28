@@ -45,8 +45,10 @@ class SolenoidController:
         schedule_dict,
         sol_vc_dict,
         active_coils: list[str],
-        vc_coils: list[str],
-        controlled_targets_all: list[str] = ["Ip"],  ##check if its Ip or plasma1 etc.
+        control_coils: list[str],
+        controlled_targets_all: list[str] = [
+            "plasma"
+        ],  ##check if its Ip or plasma1 etc.
         integral_term_0=0,
         solenoid_name=None,
     ):
@@ -60,11 +62,11 @@ class SolenoidController:
         """
         # Load the scheduler
         self.scheduler = SolenoidScheduler(
-            waveform_dict,
-            schedule_dict,
-            controlled_targets_all,
-            sol_vc_dict,
-            solenoid_name,
+            waveform_dict=waveform_dict,
+            schedule_dict=schedule_dict,
+            controlled_targets_all=controlled_targets_all,
+            sol_vc_dict=sol_vc_dict,
+            solenoid_name=solenoid_name,
         )
 
         # The accumulated error in the plasma category. Defaults to 0 if not
@@ -74,7 +76,7 @@ class SolenoidController:
         self.active_coil_order_dictionary = {
             coil: i for i, coil in enumerate(self.active_coils)
         }
-        self.vc_coil_order = vc_coils
+        self.vc_coil_order = control_coils
 
     def calculate_solenoid_delta(
         self,
@@ -219,9 +221,10 @@ class SolenoidController:
         """
         # Implement the plasma category. First, the relevant entities should be
         # retrieved from the scheduler
-        Ip_req = self.scheduler.get_waveform_value(
-            param_type="Ip", param="plasma", time_stamp=ts
-        )
+        # Ip_req = self.scheduler.get_waveform_value(
+        #     param_type="Ip", param="plasma", time_stamp=ts
+        # )
+        Ip_req = self.scheduler.get_wave_values(time_stamp=ts, wave_type="Ip")[0]
 
         if not Ip_req:
             print(f"  The plasma current is not controlled at t: {ts}")
@@ -229,17 +232,24 @@ class SolenoidController:
             dI_dt = np.zeros_like(self.scheduler.vc_dict)
             return dI_dt
 
-        Vloop_req = self.scheduler.get_waveform_value(
-            param_type="ff", param="plasma", time_stamp=ts
-        )
+        # Vloop_req = self.scheduler.get_waveform_value(
+        #     param_type="ff", param="plasma", time_stamp=ts
+        # )
+        Vloop_req = self.scheduler.get_wave_values(time_stamp=ts, wave_type="ff")
 
-        gain_p, _ = self.scheduler.get_gains(["plasma"], time_stamp=ts, K_type="Kprop")
-        gain_int, _ = self.scheduler.get_gains(["plasma"], time_stamp=ts, K_type="Kint")
+        # gain_p, _ = self.scheduler.get_gains(["plasma"], time_stamp=ts, K_type="Kprop")
+        # gain_int, _ = self.scheduler.get_gains(["plasma"], time_stamp=ts, K_type="Kint")
+        gain_p = self.scheduler.get_gains(time_stamp=ts, K_type="Kprop")
+        gain_int = self.scheduler.get_gains(time_stamp=ts, K_type="Kint")
 
-        blend = self.scheduler.get_waveform_value(
-            param_type="blends", param="plasma", time_stamp=ts
-        )
-        sol_vc, vc_coil_order = self.scheduler.retrieve_vc(ts)
+        # blend = self.scheduler.get_waveform_value(
+        #     param_type="blends", param="plasma", time_stamp=ts
+        # )
+        blend = self.scheduler.get_blends(time_stamp=ts)[0]
+
+        # sol_vc, vc_coil_order = self.scheduler.get_vc(ts)
+        sol_vc = self.scheduler.get_vc(ts)
+
         dI_dt = self.calculate_solenoid_delta(
             Kp=gain_p[0],
             Ki=gain_int[0],
@@ -323,7 +333,7 @@ class SolenoidScheduler(TargetScheduler):
         # Load the control parameters into a dictionary
         self.vc_dict = sol_vc_dict
 
-    def retrieve_vc(self, time_stamp):
+    def get_vc(self, time_stamp):
         """
         Patch-job method to give access to the solenoid VC. The `vc` object is
         assigned to the `vc` class attribute.
@@ -334,32 +344,8 @@ class SolenoidScheduler(TargetScheduler):
             The solenoid virtual circuit.
 
         """
-        closest_key = max(
-            (key for key in self.vc_dict if key <= time_stamp),
-            default=None,
-        )
-        # print(closest_key)
-        if closest_key is None:
-            print(
-                "time requested is before first target schedule time - return empty list"
-            )
+        time_pos = self.get_schedule_time(time_stamp=time_stamp)
+        sol_vc = self.vc_dict[time_pos]["vc"]
+        # coil_order = self.vc_dict[time_pos]["coil_order"]
 
-            return []
-
-        sol_vc = self.vc_dict[closest_key]["vc"]
-        coil_order = self.vc_dict[closest_key]["coil_order"]
-
-        return np.array(sol_vc), coil_order
-
-    def get_vloop_blends(self, time_stamp):
-        """
-        Retrieves the vloop blends for the target at time_stamp, given the target schedule.
-
-        """
-        # get set of targets being controlled at this time
-        print("--- loading  gains")
-        gains = []
-        # dict format is {time : {target : tau, target_2 : tau_2, ...}}
-        # more likely this if single set of gains for all time.
-        blend = self.get_blends(time_stamp=time_stamp, target="Vloop")
-        return blend
+        return np.array(sol_vc)  # coil_order

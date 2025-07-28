@@ -1,8 +1,11 @@
 import pickle
+import time
 from copy import deepcopy
 from pprint import pprint
 
 import numpy as np
+from scipy.interpolate import InterpolatedUnivariateSpline as spline
+from scipy.interpolate import interp1d
 
 
 class TargetScheduler:
@@ -93,44 +96,14 @@ class TargetScheduler:
             #     f"ff waveform targets {target_blends} \n All targets {controlled_targets_all}"
             # )
 
-        print("Input schedule")
-        pprint(self.schedule_dict_raw)
-        # Build gain vectors now
-        Kprop_arr_schedule = {}
-        damping_schedule = {}
-        Kint_arr_schedule = {}
-        for time in self.schedule_times:
-            Kprop_arr = np.zeros(len(self.control_targs_all))
-            Kint_arr = np.zeros(len(self.control_targs_all))
+            # construct gain vector schedule
+            self.build_gain_schedule()
 
-            for i, targ in enumerate(self.control_targs_all):
-                if targ in self.schedule_dict_raw[time]["targets"]:
-                    Kprop_arr[i] = self.schedule_dict_raw[time]["gains"][targ]["Kprop"]
-                    Kint_arr[i] = self.schedule_dict_raw[time]["gains"][targ]["Kint"]
-            Kprop_arr_schedule[time] = Kprop_arr
-            Kint_arr_schedule[time] = Kint_arr
-            if "Damping Factor" in self.schedule_dict_raw[time].keys():
-                damping_schedule[time] = self.schedule_dict_raw
-            else:
-                damping_schedule[time] = 1  # damping is 1 if not present
+            # construct interpolators
+            self.build_interpolators_linear()  # used for linear interp and first order deriv
+            self.build_interpolators_flat()  # usef for flat/constant interpolation
 
-        self.schedule = {
-            "Kprop": Kprop_arr_schedule,
-            "Kint": Kint_arr_schedule,
-            "damping": damping_schedule,
-        }
-        print(f"Scheduled quantities for {self.control_targs_all}")
-        print("proportional gains")
-        pprint(Kprop_arr_schedule)
-        print("Integral gains")
-        pprint(Kint_arr_schedule)
-        print("Damping ")
-        pprint(damping_schedule)
-
-    def get_all_targets(self):
-        """return list of all controllable targets"""
-        return self.control_targs_all
-
+    ### Methods to be called in init ###
     def convert_units_single_waveform(self, waveform: dict):
         """convert units of any single waveform into standard units : (A, m, s)
         This could be of use when reading in measured data.
@@ -190,6 +163,161 @@ class TargetScheduler:
         print("Waveforms converted to standard units")
         return waveform_dict_new
 
+    def build_gain_schedule(self):
+        """
+        Construct gain vectors for control_targs_all
+        Builds numpy array of all gains in the correct order and stores in a dictionary
+        """
+
+        print("Input schedule")
+        pprint(self.schedule_dict_raw)
+        # Build gain vectors now
+        Kprop_arr_schedule = {}
+        damping_schedule = {}
+        Kint_arr_schedule = {}
+        for time in self.schedule_times:
+            Kprop_arr = np.zeros(len(self.control_targs_all))
+            Kint_arr = np.zeros(len(self.control_targs_all))
+
+            for i, targ in enumerate(self.control_targs_all):
+                if targ in self.schedule_dict_raw[time]["targets"]:
+                    Kprop_arr[i] = self.schedule_dict_raw[time]["gains"][targ]["Kprop"]
+                    Kint_arr[i] = self.schedule_dict_raw[time]["gains"][targ]["Kint"]
+            Kprop_arr_schedule[time] = Kprop_arr
+            Kint_arr_schedule[time] = Kint_arr
+            if "Damping Factor" in self.schedule_dict_raw[time].keys():
+                damping_schedule[time] = self.schedule_dict_raw
+            else:
+                damping_schedule[time] = 1  # damping is 1 if not present
+
+        self.schedule = {
+            "Kprop": Kprop_arr_schedule,
+            "Kint": Kint_arr_schedule,
+            "damping": damping_schedule,
+        }
+        print(f"Scheduled quantities for {self.control_targs_all}")
+        print("proportional gains")
+        pprint(Kprop_arr_schedule)
+        print("Integral gains")
+        pprint(Kint_arr_schedule)
+        print("Damping ")
+        pprint(damping_schedule)
+
+    def build_interpolators_linear(
+        self,
+    ):
+        """
+        Construct interpolators for all waveforms using linear and constant interpolation
+        Can be used to yield linear interpolation or linear derivatives.
+
+        """
+
+        ff_interpolators = {}
+        fb_interpolators = {}
+        blend_interpolators = {}
+        for target, wave in self.fb_waves.items():
+            fb_interpolators[target] = spline(wave["times"], wave["vals"], k=1)
+        for target, wave in self.blends.items():
+            blend_interpolators[target] = spline(wave["times"], wave["vals"], k=1)
+        for target, wave in self.ff_waves.items():
+            ff_interpolators[target] = spline(wave["times"], wave["vals"], k=1)
+
+        self.interpolators_linear = {
+            "ff": ff_interpolators,
+            "fb": fb_interpolators,
+            "blends": blend_interpolators,
+        }
+        print("Linear interpolators bulit")
+
+    def build_interpolators_flat(self):
+        """Construct flat zero order interpolation objects"""
+
+        ff_interpolators = {}
+        fb_interpolators = {}
+        blend_interpolators = {}
+        for target, wave in self.fb_waves.items():
+            fb_interpolators[target] = interp1d(
+                wave["times"], wave["vals"], kind="previous", bounds_error=False
+            )
+        for target, wave in self.blends.items():
+            blend_interpolators[target] = interp1d(
+                wave["times"], wave["vals"], kind="previous", bounds_error=False
+            )
+        for target, wave in self.blends.items():
+            blend_interpolators[target] = interp1d(
+                wave["times"], wave["vals"], kind="previous", bounds_error=False
+            )
+
+        self.interpolators_flat = {
+            "ff": ff_interpolators,
+            "fb": fb_interpolators,
+            "blends": blend_interpolators,
+        }
+
+    def waveform_gradient(self, time_stamp: float, wave_type: str):
+        """
+        Compute gradients of all targets and return array of derivatives for all controlled targets.
+        Uses linear spline interpolators.
+
+        Parameters
+        ----------
+        time_stamp : float
+            time at which to compute gradients
+        type : str
+            type of waveform to evaluate.
+            Options are any categories in interpolators_linear ('ff','fb','blends')
+
+        Returns :
+        grads : np.ndarray
+            numpy array of gradients
+        """
+        interpolators = self.interpolators_linear[wave_type]
+        grads = np.array(
+            [
+                interpolators[target].derivative()(time_stamp)
+                for target in self.control_targs_all
+            ]
+        )
+        return grads
+
+    def get_wave_values(
+        self,
+        time_stamp: float,
+        wave_type: str,
+        interp_k: str = "linear",
+    ):
+        """compute values at given time
+
+        Parameters
+        ----------
+        time_stamp : float
+            time at which wave values are required
+        wave_type : str
+            type of waveform inside interpolators (ff, fb, blends)
+        interp_k : str  (optional)
+            interpolation tiype - linear or constant, defaults to linear
+
+        Returns
+        -------
+        wave_vals : np.ndarray
+            numpy array of interpolated values
+        """
+        if interp_k == "linear":
+            interpolators = self.interpolators_linear[wave_type]
+        if interp_k == "flat" or "constant":
+            interpolators = self.interpolators_flat[wave_type]
+
+        wave_vals = np.array(
+            [interpolators[target](time_stamp) for target in self.control_targs_all]
+        )
+
+        return wave_vals
+
+    def get_all_targets(self):
+        """return list of all controllable targets"""
+        return self.control_targs_all
+
+    ### Methods to be used by class
     def get_schedule_time(self, time_stamp):
         """
         Get phase start time for the phase in which time_stamp occurs.

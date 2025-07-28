@@ -55,15 +55,22 @@ class TargetScheduler:
 
         print("schedule times", self.schedule_times)
 
-        self.ff_waves = self.convert_waveform_dictionary(waveform_dict["ff"])
-        self.fb_waves = self.convert_waveform_dictionary(waveform_dict["fb"])
-        self.blends = self.convert_waveform_dictionary(waveform_dict["blends"])
+        # check that "ff" "fb" and "blends" are present in waveforms
+        # if not all(key in schedule_dict.keys() for key in ["ff", "fb", "blends"]):
+        #     raise KeyError(
+        #         "There are waveforms missing. Must include ff, fb and blends"
+        #     )
+        # create dict of rescaled waveforms
+        self.waves_all = {
+            wave_type: self.convert_waveform_dictionary(waveform_dict=wave_dict)
+            for wave_type, wave_dict in waveform_dict.items()
+        }
 
         # Compatiblitly check - MUST provide all waveforms and gains for all targets.
         # check targets in schedule targets and waveform targets are the same set of targets.
-        ff_targets = list(self.ff_waves.keys())
-        fb_targets = list(self.fb_waves.keys())
-        target_blends = list(self.blends.keys())
+        ff_targets = list(waveform_dict["ff"].keys())
+        fb_targets = list(waveform_dict["fb"].keys())
+        target_blends = list(waveform_dict["blends"].keys())
         # Print warning or raise error ??
         if not set(ff_targets).issubset(set(controlled_targets_all)):
             print(
@@ -96,12 +103,12 @@ class TargetScheduler:
             #     f"ff waveform targets {target_blends} \n All targets {controlled_targets_all}"
             # )
 
-            # construct gain vector schedule
-            self.build_gain_schedule()
+        # construct gain vector schedule
+        self.build_gain_schedule()
 
-            # construct interpolators
-            self.build_interpolators_linear()  # used for linear interp and first order deriv
-            self.build_interpolators_flat()  # usef for flat/constant interpolation
+        # construct interpolators
+        self.build_interpolators_linear()  # used for linear interp and first order deriv
+        self.build_interpolators_flat()  # usef for flat/constant interpolation
 
     ### Methods to be called in init ###
     def convert_units_single_waveform(self, waveform: dict):
@@ -211,48 +218,27 @@ class TargetScheduler:
         Can be used to yield linear interpolation or linear derivatives.
 
         """
+        self.interpolators_linear = {}
+        for category, waveforms in self.waves_all.items():
+            cat_interpolators = {}
+            for target, wave in waveforms.items():
+                cat_interpolators[target] = spline(wave["times"], wave["vals"], k=1)
+            self.interpolators_linear[category] = cat_interpolators
 
-        ff_interpolators = {}
-        fb_interpolators = {}
-        blend_interpolators = {}
-        for target, wave in self.fb_waves.items():
-            fb_interpolators[target] = spline(wave["times"], wave["vals"], k=1)
-        for target, wave in self.blends.items():
-            blend_interpolators[target] = spline(wave["times"], wave["vals"], k=1)
-        for target, wave in self.ff_waves.items():
-            ff_interpolators[target] = spline(wave["times"], wave["vals"], k=1)
-
-        self.interpolators_linear = {
-            "ff": ff_interpolators,
-            "fb": fb_interpolators,
-            "blends": blend_interpolators,
-        }
-        print("Linear interpolators bulit")
+        print("Linear interpolators built")
 
     def build_interpolators_flat(self):
-        """Construct flat zero order interpolation objects"""
+        """Construct flat zero order interpolation objects and save as class attribute"""
 
-        ff_interpolators = {}
-        fb_interpolators = {}
-        blend_interpolators = {}
-        for target, wave in self.fb_waves.items():
-            fb_interpolators[target] = interp1d(
-                wave["times"], wave["vals"], kind="previous", bounds_error=False
-            )
-        for target, wave in self.blends.items():
-            blend_interpolators[target] = interp1d(
-                wave["times"], wave["vals"], kind="previous", bounds_error=False
-            )
-        for target, wave in self.blends.items():
-            blend_interpolators[target] = interp1d(
-                wave["times"], wave["vals"], kind="previous", bounds_error=False
-            )
-
-        self.interpolators_flat = {
-            "ff": ff_interpolators,
-            "fb": fb_interpolators,
-            "blends": blend_interpolators,
-        }
+        self.interpolators_flat = {}
+        for category, waveforms in self.waves_all.items():
+            cat_interpolators = {}
+            for target, wave in waveforms.items():
+                cat_interpolators[target] = interp1d(
+                    wave["times"], wave["vals"], kind="previous", bounds_error=False
+                )
+            self.interpolators_flat[category] = cat_interpolators
+        print("flat interpolators built")
 
     ###############################
     ### Methods to be used by class
@@ -555,7 +541,7 @@ class TargetScheduler:
         targets_required = np.zeros(len(self.control_targs_all))
 
         if interpolate == True:
-            waveform_dict = self.fb_waves
+            waveform_dict = self.waves_all["fb"]
             for i, targ in enumerate(self.control_targs_all):
                 # if targ in controlled_targets:
                 targets_required[i] = self.interpolate(time_stamp, waveform_dict[targ])
@@ -623,7 +609,7 @@ class TargetScheduler:
         """
         if targets is None:
             targets = self.control_targs_all
-        waveform_dict = self.ff_waves
+        waveform_dict = self.waves_all["ff"]
 
         # initialise array of zeros for all control targets
         grad_arr = np.zeros(len(self.control_targs_all))
@@ -676,14 +662,7 @@ class TargetScheduler:
             value of that parameter
         """
 
-        if param_type == "ff":
-            waveform_dict = self.ff_waves
-        elif param_type == "fb":
-            waveform_dict = self.fb_waves
-        elif param_type == "blends":
-            waveform_dict = self.blends
-        elif param_type == "Ip":
-            waveform_dict = self.ips
+        waveform_dict = self.waves_all[param_type]
 
         if param not in waveform_dict.keys():
             print(

@@ -11,21 +11,73 @@ class PFController(TargetScheduler):
     """
     class to impliment the PF coil control
 
+    Attributes:
+    -----------
+    inductance_full : full inductance matrix for all active coils
+
+    Methods:
+    --------
+    reshape_inductance : retrieve inductance matrix from machine config, and select rows/columns
+
+    machine_parameters : dict
+            dictionary containing full  matrix and coil resistances
     """
 
-    def __init__(self, coil_schedule, machine_parameters):
+    def __init__(
+        self,
+        coil_schedule: dict,
+        coil_order: list[str],
+        machine_parameters: dict,
+    ):
 
-        super().__init__(
-            self,
-            waveform_dict={},
-            schedule_dict=coil_schedule,
-        )
-
+        self.coil_schedule = coil_schedule
+        self.coil_order = coil_order
+        self.schedule_times = sorted(list(coil_schedule.keys()))
         # machine parameters - inductances,resitances,
-        self.M_FF = machine_parameters["M_FF"]
-        self.M_FB = machine_parameters["M_FB"]
-        self.R = machine_parameters["R"]
-        self.coil_order = machine_parameters["coil_order"]
+        # self.M_FF = machine_parameters["M_FF"]
+        # self.M_FB = machine_parameters["M_FB"]
+        # self.R = machine_parameters["R"]
+        # self.coil_order = machine_parameters["coil_order"]
+
+        # # set machine parameters (inductance and resistances for coils)
+        # self.inductance_full = machine_parameters["inductance_full"]
+        # self.coil_resist = machine_parameters["coil_resist"]
+        # self.machine_coils = machine_parameters["coils"]
+        # self.machine_param_coil_order = machine_parameters["coil_order_dictionary"]
+
+        # # reorder inductance matrix and coil resistances to match coil order
+        # # ### ??? inducnace for active coils or control coils ???
+        # # self.inductance_full = self.reshape_inductance(coils=self.active_coils)
+        # # self.coil_resist = self.reorder_resistance(coils=self.active_coils)
+        # self.inductance_full = self.reshape_inductance(coils=self.control_coils)
+        # self.coil_resist = self.reorder_resistance(coils=self.control_coils)
+        # # reduced inductance matrix for control coils
+        # self.inductance_reduced = self.reshape_inductance(coils=self.control_coils)
+        # # initialise the VCH object
+
+        # Build coil gains array schedule.
+        gain_schedule = {}
+        for time in self.coil_schedule.keys():
+            gains_arr = np.zeros(len(self.coil_order))
+            gains_dict = self.coil_schedule[time]
+            if "units" in gains_dict.keys():
+                if gains_dict["units"] == "ms":
+                    scale_factor = 1e-3  # convert ms to s
+                    print("converting milliseconds to seconds")
+            else:
+                scale_factor = 1
+            for i, coil in enumerate(self.coil_order):
+                if coil in gains_dict["gains"].keys():
+                    tau = (
+                        gains_dict["gains"][coil] * scale_factor
+                    )  # convert ms to seconds
+                    gains_arr[i] = 1 / tau
+                else:
+                    print(f"No gains provided for coil {coil} - setting to zero")
+                    gains_arr[i] = 0
+            gain_schedule[time] = gains_arr
+
+        self.schedule = {"coil_gains": gain_schedule}
 
     # overwrite get gains method
     def get_gains(self, time_stamp):
@@ -40,53 +92,7 @@ class PFController(TargetScheduler):
         Returns
         gains_arr : np.ndarray
             array of coil gains"""
-        # get time of schedule phase
-        time_pos = max(
-            time for time in self.target_gain_schedule_dict.keys() if time <= time_stamp
-        )
-        gains_dict = self.target_gain_schedule_dict[time_pos]["coil_gains"]
-        gains_arr = np.zeros(len(self.coil_order))
-        # check units for gains
-        if "units" in gains_dict.keys():
-            if gains_dict["units"] == "ms":
-                scale_factor = 1e-3  # convert ms to s
-
-        for i, coil in enumerate(self.coil_order):
-            if coil in gains_dict.keys():
-                tau = gains_dict[coil] * scale_factor  # convert ms to seconds
-                gains_arr[i] = 1 / tau
-            else:
-                print(f"No gains provided for coil {coil} - setting to zero")
-                gains_arr[i] = 0
-
-        return gains_arr
-
-    def initialise_VCH(
-        self,
-        stepping,
-        target_relative_tolerance: float = 1e-7,
-    ):
-        """initialise the VCH object as class attribute.
-        This must be done after the class is initialised and before first call to calculate_blended_target_deltas
-
-
-        Inputs
-        ------
-        stepping : object
-            stepping object, to provide solver information
-        target_relative_tolerance : float
-            target relative tolerance
-
-        Returns
-        -------
-        None
-            Modifies the class attribute self.VCH
-        """
-        self.VCH = vc.VirtualCircuitHandling()
-        self.VCH.define_solver(
-            stepping.NK, target_relative_tolerance=target_relative_tolerance
-        )
-        print("Initialised VCH in shape controller")
+        return self.get_scheduled_params(time_stamp=time_stamp, param_type="coil_gains")
 
     def reshape_inductance(self, coils=None):
         """

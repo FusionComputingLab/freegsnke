@@ -15,7 +15,7 @@ import numpy as np
 from matplotlib import pyplot as plt
 from matplotlib.ticker import FormatStrFormatter
 
-from .ip_control import ControlSolenoid
+from .ip_control import SolenoidController
 from .pf_category import pf_voltage_demands
 from .shape_scheduling import ShapeTargetScheduler
 from .shape_targets_control import ShapeController
@@ -30,7 +30,7 @@ class PlasmaControlSystem:
 
     Attributes :
     ------------
-    ip_controller : ControlSolenoid
+    ip_controller : SolenoidController
         An object that controls the plasma current. Contains schedules and waveforms.
     shape_controller : ShapeController
         An object that controls the shape currents. Contains schedules and waveforms.
@@ -54,7 +54,7 @@ class PlasmaControlSystem:
 
     def __init__(
         self,
-        ip_controller: ControlSolenoid,
+        ip_controller: SolenoidController,
         shape_controller: ShapeController,
         divertor_controller: ShapeController,
         vertical_controller,

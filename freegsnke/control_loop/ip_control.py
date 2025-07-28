@@ -8,7 +8,7 @@ import numpy as np
 from .target_scheduler import TargetScheduler
 
 
-class ControlSolenoid:
+class SolenoidController:
     """
     Class to control the solenoid voltage applied on the solenoid to steer the
     plasma current.
@@ -51,7 +51,7 @@ class ControlSolenoid:
         solenoid_name=None,
     ):
         """
-        Initialises the ControlSolenoid class.
+        Initialises the SolenoidController class.
 
         Returns
         -------

@@ -11,12 +11,13 @@ The notebooks are displayed statically on the following pages, but running them 
 .. toctree::
     :maxdepth: 1
     
-    ../notebooks/example0 - build_tokamak_machine
-    ../notebooks/example1 - static_inverse_solve_MASTU
-    ../notebooks/example2 - static_forward_solve_MASTU.ipynb
-    ../notebooks/example3 - extracting_equilibrium_quantites
-    ../notebooks/example4 - using_magnetic_probes
-    ../notebooks/example5 - evolutive_forward_solve
-    ../notebooks/example7 - static_inverse_solve_SPARC
-    ../notebooks/example8 - static_inverse_solve_ITER
-    ../notebooks/example9 - virtual_circuits_MASTU
+    ../notebooks/example00 - build_tokamak_machine
+    ../notebooks/example01 - static_inverse_solve_MASTU
+    ../notebooks/example02 - static_forward_solve_MASTU.ipynb
+    ../notebooks/example03 - extracting_equilibrium_quantites
+    ../notebooks/example04 - using_magnetic_probes
+    ../notebooks/example05 - evolutive_forward_solve
+    ../notebooks/example07 - static_inverse_solve_SPARC
+    ../notebooks/example08 - static_inverse_solve_ITER
+    ../notebooks/example09 - virtual_circuits_MASTU
+    ../notebooks/example10 - growth_rates

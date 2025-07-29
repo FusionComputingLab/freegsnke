@@ -62,7 +62,7 @@ class TargetScheduler:
         #     )
         # create dict of rescaled waveforms
         self.waves_all = {
-            wave_type: self.convert_waveform_dictionary(waveform_dict=wave_dict)
+            wave_type: self._convert_waveform_dictionary(waveform_dict=wave_dict)
             for wave_type, wave_dict in waveform_dict.items()
         }
 
@@ -104,14 +104,14 @@ class TargetScheduler:
             # )
 
         # construct gain vector schedule
-        self.build_gain_schedule()
+        self._build_gain_schedule()
 
         # construct interpolators
-        self.build_interpolators_linear()  # used for linear interp and first order deriv
-        self.build_interpolators_flat()  # usef for flat/constant interpolation
+        self._build_interpolators_linear()  # used for linear interp and first order deriv
+        self._build_interpolators_flat()  # usef for flat/constant interpolation
 
     ### Methods to be called in init ###
-    def convert_units_single_waveform(self, waveform: dict):
+    def _convert_units_single_waveform(self, waveform: dict):
         """convert units of any single waveform into standard units : (A, m, s)
         This could be of use when reading in measured data.
 
@@ -148,7 +148,7 @@ class TargetScheduler:
 
         return waveform_new
 
-    def convert_waveform_dictionary(self, waveform_dict: dict):
+    def _convert_waveform_dictionary(self, waveform_dict: dict):
         """convert units of any waveform into standard units : (A, m, s)
         This will convert a set of waveforms such as all ff waveforms in one go
 
@@ -170,7 +170,7 @@ class TargetScheduler:
         print("Waveforms converted to standard units")
         return waveform_dict_new
 
-    def build_gain_schedule(self):
+    def _build_gain_schedule(self):
         """
         Construct gain vectors for control_targs_all
         Builds numpy array of all gains in the correct order and stores in a dictionary
@@ -210,7 +210,7 @@ class TargetScheduler:
         print("Damping ")
         pprint(damping_schedule)
 
-    def build_interpolators_linear(
+    def _build_interpolators_linear(
         self,
     ):
         """
@@ -227,7 +227,7 @@ class TargetScheduler:
 
         print("Linear interpolators built")
 
-    def build_interpolators_flat(self):
+    def _build_interpolators_flat(self):
         """Construct flat zero order interpolation objects and save as class attribute"""
 
         self.interpolators_flat = {}

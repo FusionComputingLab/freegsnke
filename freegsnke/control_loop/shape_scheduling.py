@@ -50,7 +50,7 @@ class VirtualCircuitScheduler(VirtualCircuitProvider, TargetScheduler):
         #     coil_order=vc_coil_order, target_order=control_targs_all
         # )
 
-    def build_reshaped_schedule(self, coil_order, target_order):
+    def _build_reshaped_schedule(self, coil_order, target_order):
         """
         Create matrices of the correct shape and order appropriate for the control schedule.
         This should be called inside the ShapeTargetScheduler class, as that is where the row
@@ -339,10 +339,10 @@ class ShapeTargetScheduler(TargetScheduler):
 
     def __init__(
         self,
-        waveform_dict,
-        schedule_dict,
+        waveform_dict: dict,
+        schedule_dict: dict,
         vc_scheduler: VirtualCircuitProvider,
-        controlled_targets_all,
+        controlled_targets_all: list[str],
         control_coils=None,
         vc_flag="file",
     ):
@@ -378,7 +378,7 @@ class ShapeTargetScheduler(TargetScheduler):
 
         if vc_flag == "file":
             # create vc schedule with reshaped vcs
-            self.vc_scheduler.build_reshaped_schedule(
+            self.vc_scheduler._build_reshaped_schedule(
                 coil_order=control_coils, target_order=controlled_targets_all
             )
 

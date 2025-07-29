@@ -20,9 +20,7 @@ along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 import freegs4e
-import matplotlib.pyplot as plt
 import numpy as np
-from freegs4e import critical
 from freegs4e.gradshafranov import mu0
 from matplotlib.path import Path
 from scipy.ndimage import maximum_filter

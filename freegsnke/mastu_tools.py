@@ -2007,7 +2007,7 @@ def smooth_data(
     n_data_points=None,
 ):
     """
-    Finds the average of the `data' vector values between [t_start, t_end]. Requires knowledge
+    Finds the median of the `data' vector values between [t_start, t_end]. Requires knowledge
     of the time interval the data is recorded over [t_data_start, t_data_end].
 
     Parameters
@@ -2028,7 +2028,7 @@ def smooth_data(
     Returns
     -------
     float
-        Returns average of `data' vector values between [t_start, t_end].
+        Returns median of `data' vector values between [t_start, t_end].
     """
 
     # extract number of data points

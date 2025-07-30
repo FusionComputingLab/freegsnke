@@ -16,7 +16,7 @@ from matplotlib import pyplot as plt
 from matplotlib.ticker import FormatStrFormatter
 
 from .ip_control import SolenoidController
-from .pf_category import pf_voltage_demands
+from .pf_category import PFController, pf_voltage_demands
 from .shape_scheduling import ShapeTargetScheduler
 from .shape_targets_control import ShapeController
 from .system_category import system_approved_currents
@@ -58,7 +58,7 @@ class PlasmaControlSystem:
         shape_controller: ShapeController,
         divertor_controller: ShapeController,
         vertical_controller,
-        pf_schedule: TargetScheduler,
+        pf_controller: PFController,
         active_coils: list[str],
         shaping_coils: list[str],
         vertical_coils: list[str],
@@ -70,7 +70,7 @@ class PlasmaControlSystem:
         self.shape_controller = shape_controller
         self.divertor_controller = divertor_controller
         self.vertical_controller = vertical_controller
-        self.pf_schedule = pf_schedule
+        self.pf_controller = pf_controller
         self.active_coils = active_coils
         self.shaping_coils = shaping_coils
         self.vertical_coils = vertical_coils
@@ -80,10 +80,29 @@ class PlasmaControlSystem:
         print("vertical coils", self.vertical_coils)
 
         # TODO
-        # Run consistency checks for controllers (coils labelling across controllers etc.)
+        # Run consistency checks for controllers (coils labelling across controllers (shape, div, vc, plas) etc.)
         # maybe use load_setup_from_files to create controllers
         # figure out storage/retrieval of various parametesr
         # figure out storage of integral/pi states etc. (and any other 'previous timestep' quantities)
+
+        # TODO
+        # Alternative option - build controllers inside (rather than providing as inputs), and then can specify targets/coil orders
+        # Rough schematic sketch below in "alternative_init"
+
+    def alternative_init(
+        self,
+        schedule_dictioaries_all,
+        waveform_dictionaries_all,
+        control_targs_shape,
+        control_targs_plas,
+        active_coils_all,
+        shaping_coils,
+        vertical_coils,
+    ):
+        # separate schedules into relevent parts (ip, shape, div, pf, etc.)
+
+        # construct all schedulers and controllers (using same inputs for coil orderings etc.)
+        pass
 
     def load_setup_from_files(self, uda_file, pcs_file):
         """
@@ -128,13 +147,22 @@ class PlasmaControlSystem:
             # other_args
         )
 
-        shape_current_rate = self.shape_controller.control_shape_rates(
+        shape_current_rate = self.shape_controller.control_current_rates(
             time_stamp=time_stamp,
             target_obs=measured_shapes,
             # other args,
         )
 
-        total_current_rate = ip_current_rate + shape_current_rate
+        # add divertor here if its done separetly to shape (can put all shape/div targets into one controller if you want)
+        divertor_current_rate = self.divertor_controller.control_current_rates(
+            time_stamp=time_stamp,
+            target_obs=measured_shapes,
+            # other args,
+        )
+
+        total_current_rate = (
+            ip_current_rate + shape_current_rate + divertor_current_rate
+        )
 
         # 2) SYSYTEMS :  apply current clipping and coil pertubations (S)
         approved_current_rates = system_approved_currents(
@@ -263,39 +291,43 @@ class Simulator:
         # compute new plasma shape targets/currents
         pass
 
+    def get_fgs_inductance_resistance(self, stepping):
+        """
+        get inductance matrix and coil resistances from stepping object (Freegsnke)
 
-def get_inductance_resistance(self, stepping):
-    """get inductance matrix and coil resistances from stepping object (Freegsnke)
+        Inputs :
+        --------
+        stepping : object
+            stepping object
 
-    Inputs :
-    --------
-    stepping : object
-        stepping object
+        Returns
+        -------
+        inductance_full : np.array
+            full inductance matrix in freegsnke for all active coils
 
-    Returns
-    -------
-    inductance_full : np.array
-        full inductance matrix in freegsnke for all active coils
+        coil_resist : np.array
+            coil resistances in freegsnke for all active coils
+        """
 
-    coil_resist : np.array
-        coil resistances in freegsnke for all active coils
-    """
+        # assign equi and profiles objects
+        # self.stepping = stepping
+        n_active_coils = (
+            stepping.n_active_coils
+        )  # could also be eq.tokamak.n_active_coils
+        print("number active coils", n_active_coils)
+        tok = stepping.eq1.tokamak
+        active_coils = tok.coils_list[:n_active_coils]
 
-    # assign equi and profiles objects
-    # self.stepping = stepping
-    n_active_coils = stepping.n_active_coils  # could also be eq.tokamak.n_active_coils
-    print("number active coils", n_active_coils)
-    tok = stepping.eq1.tokamak
-    active_coils = tok.coils_list[:n_active_coils]
+        inductance_full = tok.coil_self_ind[: len(active_coils), : len(active_coils)]
+        coil_resist = tok.coil_resist[: len(active_coils)]
+        print(
+            "Inductances and resistances retrieved for all active coils :", active_coils
+        )
+        coil_order_dictionary = {coil: i for i, coil in enumerate(active_coils)}
 
-    inductance_full = tok.coil_self_ind[: len(active_coils), : len(active_coils)]
-    coil_resist = tok.coil_resist[: len(active_coils)]
-    print("Inductances and resistances retrieved for all active coils :", active_coils)
-    coil_order_dictionary = {coil: i for i, coil in enumerate(active_coils)}
-
-    return {
-        "inductance_full": inductance_full,
-        "coil_resist": coil_resist,
-        "coils": active_coils,
-        "coil_order_dictionary": coil_order_dictionary,
-    }
+        return {
+            "inductance_full": inductance_full,
+            "coil_resist": coil_resist,
+            "coils": active_coils,
+            "coil_order_dictionary": coil_order_dictionary,
+        }

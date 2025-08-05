@@ -1,82 +1,39 @@
 """
-Module to implement the plasma category of MAST-U control loops.
+Module to implement plasma control in FreeGSNKE control loops. 
 
 """
 
 import numpy as np
+from useful_functions import interpolate_spline, interpolate_step
 
-from .target_scheduler import TargetScheduler
-
-
-class SolenoidController:
+class PlasmaController:
     """
-    Class to control the solenoid voltage applied on the solenoid to steer the
-    plasma current.
+    ADD DESCRIP.
 
     Parameters
     ----------
-    - waveform_dict : dict
-        dictionary containing ff, fb, blends, Ip waveforms.
-    - schedule_dict : dict
-        dictionary containing plasma schedule.
-    - sol_vc_dict : dict
-        dictionary containing VC schedule for the solenoid
-    - contr_params_dict : str
-        dictionary containing control parameters sequence.
-    - integral_term_0 : float
-        Value of the integral term at the beginning of the control.
-    - solenoid_name : str
-        A string to denote the solenoid current ("Solenoid", "P1", etc).
-        Defaults to "Solenoid" if not given.
+
 
     Attributes
     ----------
-    - scheduler : TargetScheduler
-        An object that store information of the controlled target Ip and other
-        control parameters: the plasma and solenoid gain, Vloop_ff, and blend.
-    - vc : numpy 1D array
-        The solenoid virtual circuit.
 
     """
 
     def __init__(
         self,
-        waveform_dict,
-        schedule_dict,
-        sol_vc_dict,
-        active_coils: list[str],
-        control_coils: list[str],
-        controlled_targets_all: list[str] = [
-            "plasma"
-        ],  ##check if its Ip or plasma1 etc.
-        integral_term_0=0,
-        solenoid_name=None,
+        plasma_data,
     ):
-        """
-        Initialises the SolenoidController class.
 
-        Returns
-        -------
-        None
+        # create an internal copy of the data
+        self.data = plasma_data
 
-        """
-        # Load the scheduler
-        self.scheduler = SolenoidScheduler(
-            waveform_dict=waveform_dict,
-            schedule_dict=schedule_dict,
-            controlled_targets_all=controlled_targets_all,
-            sol_vc_dict=sol_vc_dict,
-            solenoid_name=solenoid_name,
-        )
-
-        # The accumulated error in the plasma category. Defaults to 0 if not
-        # given.
-        self.internal = integral_term_0
-        self.active_coils = active_coils
-        self.active_coil_order_dictionary = {
-            coil: i for i, coil in enumerate(self.active_coils)
-        }
-        self.vc_coil_order = control_coils
+        # interpolate what needs to be interpolated
+        self.ip_fb = self.interpolate_spline(data=self.data["ip_fb"])
+        self.ip_blend = self.interpolate_spline(data=self.data["ip_blend"])
+        self.vloop_ff = self.interpolate_spline(data=self.data["vloop_ff"])
+        self.k_prop = self.interpolate_step(data=self.data["k_prop"])
+        self.k_int = self.interpolate_step(data=self.data["k_int"])
+        self.M_solenoid = self.interpolate_step(data=self.data["M_solenoid"])
 
     def calculate_solenoid_delta(
         self,
@@ -265,87 +222,87 @@ class SolenoidController:
         return dI_dt
 
 
-class SolenoidScheduler(TargetScheduler):
-    """
-    Child class of TargetScheduler specified for the solenoid. It stores the
-    times series information of the plasma current, the blend factor, the
-    plasma and the solenoid gains and the feedforward loop voltage.
+# class SolenoidScheduler(TargetScheduler):
+#     """
+#     Child class of TargetScheduler specified for the solenoid. It stores the
+#     times series information of the plasma current, the blend factor, the
+#     plasma and the solenoid gains and the feedforward loop voltage.
 
-    Attributes
-    ----------
-    - All those of TargetScheduler.
-    - control_params : dictionary
-        A dictionary that contains the times series information of the control
-        parameters: plasma and solenoid gains, blend and feedforward loop
-        voltage.
+#     Attributes
+#     ----------
+#     - All those of TargetScheduler.
+#     - control_params : dictionary
+#         A dictionary that contains the times series information of the control
+#         parameters: plasma and solenoid gains, blend and feedforward loop
+#         voltage.
 
-    Methods
-    -------
-    - retrieve_parameter : Retrieves the value of the queried control parameter
-    at time_stamp.
+#     Methods
+#     -------
+#     - retrieve_parameter : Retrieves the value of the queried control parameter
+#     at time_stamp.
 
-    """
+#     """
 
-    def __init__(
-        self,
-        waveform_dict,
-        schedule_dict,
-        sol_vc_dict,
-        controlled_targets_all=["Ip"],
-        solenoid_name="Solenoid",
-    ):
-        """
-        Initialise the Solenoid scheduler.
+#     def __init__(
+#         self,
+#         waveform_dict,
+#         schedule_dict,
+#         sol_vc_dict,
+#         controlled_targets_all=["Ip"],
+#         solenoid_name="Solenoid",
+#     ):
+#         """
+#         Initialise the Solenoid scheduler.
 
-        Arguments
-        ---------
-        - waveform_dict : dict
-            dictionary containing target waveform.
-        - schedule_dict : dict
-            dictionary containing target schedule.
-        - sol_vc_dict : dict
-            dictionary containing the virtual circuit sequence.
-        - solenoid_name : str
-            A string to denote the solenoid current ("Solenoid", "P1", etc).
-            Defaults to "Solenoid" if not given.
+#         Arguments
+#         ---------
+#         - waveform_dict : dict
+#             dictionary containing target waveform.
+#         - schedule_dict : dict
+#             dictionary containing target schedule.
+#         - sol_vc_dict : dict
+#             dictionary containing the virtual circuit sequence.
+#         - solenoid_name : str
+#             A string to denote the solenoid current ("Solenoid", "P1", etc).
+#             Defaults to "Solenoid" if not given.
 
-        Returns
-        -------
-        None
+#         Returns
+#         -------
+#         None
 
-        """
+#         """
 
-        # Execute the parent __init__()
-        super().__init__(waveform_dict, schedule_dict, controlled_targets_all)
+#         # Execute the parent __init__()
+#         super().__init__(waveform_dict, schedule_dict, controlled_targets_all)
 
-        # Ip requested
-        self.ips = waveform_dict["Ip"]
+#         # Ip requested
+#         self.ips = waveform_dict["Ip"]
 
-        if solenoid_name is None:
-            print(
-                "A name for the solenoid is not provided, using 'Solenoid' "
-                "as label for the solenoid current."
-            )
-            self.solenoid_name = "Solenoid"
-        else:
-            self.solenoid_name = solenoid_name
+#         if solenoid_name is None:
+#             print(
+#                 "A name for the solenoid is not provided, using 'Solenoid' "
+#                 "as label for the solenoid current."
+#             )
+#             self.solenoid_name = "Solenoid"
+#         else:
+#             self.solenoid_name = solenoid_name
 
-        # Load the control parameters into a dictionary
-        self.vc_dict = sol_vc_dict
+#         # Load the control parameters into a dictionary
+#         self.vc_dict = sol_vc_dict
 
-    def get_vc(self, time_stamp):
-        """
-        Patch-job method to give access to the solenoid VC. The `vc` object is
-        assigned to the `vc` class attribute.
+#     def get_vc(self, time_stamp):
+#         """
+#         Patch-job method to give access to the solenoid VC. The `vc` object is
+#         assigned to the `vc` class attribute.
 
-        Returns
-        -------
-        numpy 1D array
-            The solenoid virtual circuit.
+#         Returns
+#         -------
+#         numpy 1D array
+#             The solenoid virtual circuit.
 
-        """
-        time_pos = self.get_schedule_time(time_stamp=time_stamp)
-        sol_vc = self.vc_dict[time_pos]["vc"]
-        # coil_order = self.vc_dict[time_pos]["coil_order"]
+#         """
+#         time_pos = self.get_schedule_time(time_stamp=time_stamp)
+#         sol_vc = self.vc_dict[time_pos]["vc"]
+#         # coil_order = self.vc_dict[time_pos]["coil_order"]
 
-        return np.array(sol_vc)  # coil_order
+#         return np.array(sol_vc)  # coil_order

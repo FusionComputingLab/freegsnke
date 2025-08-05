@@ -1,33 +1,25 @@
-"""Plasma Control System
-
-Bring together all the elements of PCS in the final PF and systems categories.
-
+"""
+Module to implement a Plasma Control System (PCS) in FreeGSNKE. 
 
 """
 
-import time
-from copy import deepcopy
-from pprint import pprint
-from sys import float_info
-
 # imports
 import numpy as np
-from matplotlib import pyplot as plt
-from matplotlib.ticker import FormatStrFormatter
-
-from .ip_control import SolenoidController
-from .pf_category import PFController, pf_voltage_demands
-from .shape_scheduling import ShapeTargetScheduler
-from .shape_targets_control import ShapeController
-from .system_category import system_approved_currents
-from .target_scheduler import TargetScheduler
-from .vertical_control import vertical_controller
+from copy import deepcopy
+from .plasma_category import PlasmaController
+# from .pf_category import PFController, pf_voltage_demands
+# from .shape_scheduling import ShapeTargetScheduler
+# from .shape_targets_control import ShapeController
+# from .system_category import system_approved_currents
+# from .target_scheduler import TargetScheduler
+# from .vertical_control import vertical_controller
 
 
 class PlasmaControlSystem:
     """
-    Class to implement control voltages from virtual circuit, and given a set of observed target values, and a set of requested target values.
-
+    
+    ADD DESCRIP.
+    
     Attributes :
     ------------
     ip_controller : SolenoidController
@@ -51,78 +43,100 @@ class PlasmaControlSystem:
     Methods :
     ---------
     """
-
     def __init__(
         self,
-        ip_controller: SolenoidController,
-        shape_controller: ShapeController,
-        divertor_controller: ShapeController,
-        vertical_controller,
-        pf_controller: PFController,
-        active_coils: list[str],
-        shaping_coils: list[str],
-        vertical_coils: list[str],
-        machine_parameters: dict,
+        plasma_data,
+        shape_data,
+        circuits_data,
+        systems_data,
+        pf_data,
+        active_coils,
+        ctrl_coils,
+        solenoid_coils,
+        vertical_coils,
     ):
 
-        # assign controllers
-        self.ip_controller = ip_controller
-        self.shape_controller = shape_controller
-        self.divertor_controller = divertor_controller
-        self.vertical_controller = vertical_controller
-        self.pf_controller = pf_controller
+        # # store data dictionaries --> not sure we need to save this here
+        # self.plasma_data = plasma_data
+        # self.shape_data = shape_data
+        # self.circuits_data = circuits_data
+        # self.systems_data = systems_data
+        # self.pf_data = pf_data
+
+        # coil lists 
         self.active_coils = active_coils
-        self.shaping_coils = shaping_coils
+        self.ctrl_coils = ctrl_coils
+        self.solenoid_coils = solenoid_coils
         self.vertical_coils = vertical_coils
-        print("plasma control system initialised")
-        print("all active", self.active_coils)
-        print("shaping coils", self.shaping_coils)
-        print("vertical coils", self.vertical_coils)
+
+        # TODO consistency checks --> need to check all the minimum required inputs are present before initialisation
+        self.check_data_entry(data=plasma_data, key="ip_fb", label="plasma")
+        self.check_data_entry(data=plasma_data, key="vloop_ff", label="plasma")
+
+        # TODO consistency checks --> need to check coils stuff
+
+
+        # assign data to the individual controllers
+        self.PlasmaController = PlasmaController(
+            plasma_data=plasma_data,
+        )
+
+        # self.ShapeController = ShapeController(
+        #     fefe
+        # )
+
+        # self.CircuitsController = CircuitsController(
+        #     fefe
+        # )
+
+        # self.SystemsController = SystemsController(
+        #     fefe
+        # )
+
+        # self.PfController = PfController(
+        #     fefe
+        # )
+
 
         # TODO
-        # Run consistency checks for controllers (coils labelling across controllers (shape, div, vc, plas) etc.)
-        # maybe use load_setup_from_files to create controllers
         # figure out storage/retrieval of various parametesr
         # figure out storage of integral/pi states etc. (and any other 'previous timestep' quantities)
 
-        # TODO
-        # Alternative option - build controllers inside (rather than providing as inputs), and then can specify targets/coil orders
-        # Rough schematic sketch below in "alternative_init"
-
-    def alternative_init(
+    def check_data_entry(
         self,
-        schedule_dictioaries_all,
-        waveform_dictionaries_all,
-        control_targs_shape,
-        control_targs_plas,
-        active_coils_all,
-        shaping_coils,
-        vertical_coils,
-    ):
-        # separate schedules into relevent parts (ip, shape, div, pf, etc.)
-
-        # construct all schedulers and controllers (using same inputs for coil orderings etc.)
-        pass
-
-    def load_setup_from_files(self, uda_file, pcs_file):
+        data, 
+        key, 
+        label
+        ):
         """
-        Load data from files and create schedulers, controllers etc.
+        Check required 'times' and 'vals' fields are present in 'data[key]' dictionary. 
 
-        NB This currently is set to use the formats used for testing. Will update later
+        Parameters
+        ----------
+        data: dict
+            Dictionary of input data. 
+        key : str
+            Key value for the dictionary. 
+        label : str
+            Label describing which data dictionary is being checked.
 
-        # load files and create schedule/waveofrm dictionaries.
-        #  NB this will be removed once input files in the correct format are provided
+        Returns
+        -------
+        None
 
-        Modify class - assign attributes
         """
 
-        # load dictionaries from file
+        if key not in data:
+            raise ValueError(f"Missing key: '{key}' in {label} data dictionary.")
 
-        # construct schedulers
+        if not isinstance(data[key], dict):
+            raise ValueError(f"Expected '{key}' to be a dictionary in {label} data dictionary.")
 
-        # construct controllers
+        if "times" not in data[key]:
+            raise ValueError(f"Missing key: 'times' in  {label} data dictionary (data['{key}']).")
 
-        pass
+        if "vals" not in data[key]:
+            raise ValueError(f"Missing key: 'vals' in  {label} data dictionary (data['{key}']).")
 
     def compute_control_voltage(
         self,
@@ -195,7 +209,7 @@ class PlasmaControlSystem:
         vertical_voltage = self.compute_vertical_voltage()
 
         return control_voltages + vertical_voltage
-
+    
 
 class Simulator:
     """Simulator class to interface PCS control with dynamic solving in freegsnke"""
@@ -331,3 +345,4 @@ class Simulator:
             "coils": active_coils,
             "coil_order_dictionary": coil_order_dictionary,
         }
+

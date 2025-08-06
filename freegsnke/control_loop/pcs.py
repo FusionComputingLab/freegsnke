@@ -230,24 +230,24 @@ class PlasmaControlSystem:
 
         return V_approved, ip_hist, T_err, T_hist, I_approved
 
-    def compute_vertical_voltage(self, time_stamp, other_args):
-        """
-        Apply vertical control to the vertical coils
+    # def compute_vertical_voltage(self, time_stamp, other_args):
+    #     """
+    #     Apply vertical control to the vertical coils
 
-        """
-        # apply vertical controller to get voltages for
-        pass
+    #     """
+    #     # apply vertical controller to get voltages for
+    #     pass
 
-    def compute_voltages_all(self, time_stamp):
+    # def compute_voltages_all(self, time_stamp):
 
-        # shaping voltage,
-        # vertical voltage
-        # combine these two
+    #     # shaping voltage,
+    #     # vertical voltage
+    #     # combine these two
 
-        control_voltages = self.compute_control_voltage()
-        vertical_voltage = self.compute_vertical_voltage()
+    #     control_voltages = self.compute_control_voltage()
+    #     vertical_voltage = self.compute_vertical_voltage()
 
-        return control_voltages + vertical_voltage
+    #     return control_voltages + vertical_voltage
 
 
 class Simulator:

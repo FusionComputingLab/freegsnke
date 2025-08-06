@@ -1,251 +1,165 @@
 """
-Module to implement the PF category of MAST-U control loops.
+Module to implement PF control in FreeGSNKE control loops. 
+
 """
 
 import numpy as np
 
-from .target_scheduler import TargetScheduler
+from freegsnke.control_loop.useful_functions import interpolate_spline, interpolate_step
 
 
-class PFController(TargetScheduler):
+class PFController:
     """
-    class to impliment the PF coil control
+    ADD DESCRIP.
 
-    Attributes:
-    -----------
-    inductance_full : full inductance matrix for all active coils
+    Parameters
+    ----------
 
-    Methods:
-    --------
-    reshape_inductance : retrieve inductance matrix from machine config, and select rows/columns
 
-    machine_parameters : dict
-            dictionary containing full  matrix and coil resistances
+    Attributes
+    ----------
+
     """
 
     def __init__(
         self,
-        coil_schedule: dict,
-        coil_order: list[str],
-        machine_parameters: dict,
+        data,
     ):
 
-        self.coil_schedule = coil_schedule
-        self.coil_order = coil_order
-        self.schedule_times = sorted(list(coil_schedule.keys()))
-        # machine parameters - inductances,resitances,
-        # self.M_FF = machine_parameters["M_FF"]
-        # self.M_FB = machine_parameters["M_FB"]
-        # self.R = machine_parameters["R"]
-        # self.coil_order = machine_parameters["coil_order"]
+        # create an internal copy of the data
+        self.data = data
 
-        # # set machine parameters (inductance and resistances for coils)
-        # self.inductance_full = machine_parameters["inductance_full"]
-        # self.coil_resist = machine_parameters["coil_resist"]
-        # self.machine_coils = machine_parameters["coils"]
-        # self.machine_param_coil_order = machine_parameters["coil_order_dictionary"]
+        # create a dictionary to store the spline functions
+        self.interpolants = {}
 
-        # # reorder inductance matrix and coil resistances to match coil order
-        # # ### ??? inducnace for active coils or control coils ???
-        # # self.inductance_full = self.reshape_inductance(coils=self.active_coils)
-        # # self.coil_resist = self.reorder_resistance(coils=self.active_coils)
-        # self.inductance_full = self.reshape_inductance(coils=self.control_coils)
-        # self.coil_resist = self.reorder_resistance(coils=self.control_coils)
-        # # reduced inductance matrix for control coils
-        # self.inductance_reduced = self.reshape_inductance(coils=self.control_coils)
-        # # initialise the VCH object
+        # interpolate the input data
+        for key in self.data.keys():
+            if key not in ["coil_order"]:
+                self.interpolants[key] = interpolate_step(self.data[key])
 
-        # Build coil gains array schedule.
-        gain_schedule = {}
-        for time in self.coil_schedule.keys():
-            gains_arr = np.zeros(len(self.coil_order))
-            gains_dict = self.coil_schedule[time]
-            if "units" in gains_dict.keys():
-                if gains_dict["units"] == "ms":
-                    scale_factor = 1e-3  # convert ms to s
-                    print("converting milliseconds to seconds")
-            else:
-                scale_factor = 1
-            for i, coil in enumerate(self.coil_order):
-                if coil in gains_dict["gains"].keys():
-                    tau = (
-                        gains_dict["gains"][coil] * scale_factor
-                    )  # convert ms to seconds
-                    gains_arr[i] = 1 / tau
-                else:
-                    print(f"No gains provided for coil {coil} - setting to zero")
-                    gains_arr[i] = 0
-            gain_schedule[time] = gains_arr
-
-        self.schedule = {"coil_gains": gain_schedule}
-
-    # overwrite get gains method
-    def get_gains(self, time_stamp):
-        """
-        Get coil gains. Provided as time scales tau (s or ms) and gain = 1/tau.
-
-
-        Parameters
-        ----------
-        time_stamp : float
-
-        Returns
-        gains_arr : np.ndarray
-            array of coil gains"""
-        return self.get_scheduled_params(time_stamp=time_stamp, param_type="coil_gains")
-
-    def reshape_inductance(self, coils=None):
-        """
-        Select appropriate inductance rows and columns from inductance matrix, given set of coils in the VC.
-
-        parameters
-        ----------
-        coils : list[str] (optional)
-            list of coil names. If None provided, defaults to control_coils
-
-        Returns
-        -------
-        inductance_reduced : np.array
-            inductance matrix of reduced set of coils. Also updates inductance matrix attribute
-
-
-        """
-        if coils is None:  # use default of all active coils from tokamak
-            print(
-                "Inductance matrix for default of default reduced set of active coils"
-            )
-            coils = self.control_coils
-        else:  # use coils provided and select apropriate part of inductance matrix
-            print(f"Inductance matrix for coils provided {coils}")
-            pass
-
-        # create mask for selecting part of inductance matrix
-        mask = [self.machine_param_coil_order[coil] for coil in coils]
-        print("coil ordering mask ", mask)
-        inductance_reduced = self.inductance_full[np.ix_(mask, mask)]
-
-        return inductance_reduced
-
-    def reorder_resistance(
+    # will move this inside the class
+    def run_control(
         self,
-        coils: list[str],
+        t,
+        dt,
+        I_meas,
+        I_approved,
+        dI_dt_approved,
+        V_approved_prev,
+        verbose=False,
     ):
         """
-        Reorder coil resistances to match coil order
+        FIX.
+
+        Calculate the output voltage to apply on the coils, as prescribed in
+        the PF category of the PCS.
 
         Parameters
         ----------
-        coils : list[str]
-            ordering of coils to reorder restitance
+        approved_dIdt: numpy 1D array
+            Approved rate of change of the coil currents in the active coils (provided by the
+            "system" category of the control loops). Input in A.
+        approved_I : numpy 1D array
+            Approved coil currents in the active coils (provided by the "system" category of
+            the control loops). Input in A.
+        I_meas : numpy 1D array
+            Measured coil currents (from experiment or simulation) in the active coils. Input in A.
+
+        V_approved_prev : numpy 1D array
+            Voltage demands from the previous time step in the active coils. Input in Volts.
+        dt : float
+            Time step between current and previous voltage demands. Input in seconds.
+        verbose : bool
+            Print some output (True) or not (False).
 
         Returns
         -------
-        coil_resist
-            reorders in place the coil resistance array
-
+        numpy 1D array
+            Voltage to apply to each of the active coils. Units in Volts.
+        numpy 1D array
+            Difference in currents in the feedback term used to calculate the feedback voltage. Units in Amps.
         """
-        mask = [self.machine_param_coil_order[coil] for coil in coils]
 
-        return self.coil_resist[np.ix_(mask)]
+        # extract interpolated data
+        R = self.interpolants["R_matrix"](t)
+        M_FF = self.interpolants["M_FF_matrix"](t)
+        M_FB = self.interpolants["M_FB_matrix"](t)
+        coil_gains = self.interpolants["coil_gains"](t)
+        voltage_clips = self.interpolants["coil_voltage_lims"](t)
+        slew_rates = self.interpolants["coil_voltage_slew_lims"](t)
 
+        # resistive voltages
+        v_res = R @ I_meas
+        if verbose:
+            print("---")
+            print(f"    Resistive voltage = {v_res}")
 
-# will move this inside the class
-def pf_voltage_demands(
-    R,
-    M_FF,
-    M_FB,
-    coil_gains,
-    approved_dIdt,
-    approved_I,
-    measured_I,
-    voltage_clips,
-    slew_rates,
-    prev_voltages,
-    dt,
-    verbose=False,
-):
-    """
-    Calculate the output voltage to apply on the coils, as prescribed in
-    the PF category of the PCS.
+        # FF voltages
+        v_FF = M_FF @ dI_dt_approved
+        if verbose:
+            print(f"    Feedforward voltage = {v_FF}")
 
-    Parameters
-    ----------
-    R : numpy 1D array
-        The vector of resistances for the active coils.
-    M_FF : numpy 2D array
-        The feedforward inductance matrix of the active coils.
-    M_FB : numpy 2D array
-        The feedback inductance matrix of the active coils.
-    coil_gains : numpy 1D array
-        The vector of "coil gains" for the active coils (these are timescales in seconds).
-    approved_dIdt: numpy 1D array
-        Approved rate of change of the coil currents in the active coils (provided by the
-        "system" category of the control loops). Input in A.
-    approved_I : numpy 1D array
-        Approved coil currents in the active coils (provided by the "system" category of
-        the control loops). Input in A.
-    measured_I : numpy 1D array
-        Measured coil currents (from experiment or simulation) in the active coils. Input in A.
-    voltage_clips : numpy 1D array
-        Final voltage requests are clipped if the they are outside +/- these values
-        for each of the active coils. Input in Volts.
-    slew_rates : numpy 1D array
-        Final voltage requests are clipped again if their derivatives (wrt previous timestep) are outside
-        +/- these values for each of the active coils. Input in Volts/s.
-    prev_voltages : numpy 1D array
-        Voltage demands from the previous time step in the active coils. Input in Volts.
-    dt : float
-        Time step between current and previous voltage demands. Input in seconds.
-    verbose : bool
-        Print some output (True) or not (False).
+        # FB voltages
+        delta_I = I_approved - I_meas
+        v_FB = M_FB @ (delta_I / coil_gains)
+        if verbose:
+            print(f"    Feedback voltage = {v_FB}")
 
-    Returns
-    -------
-    numpy 1D array
-        Voltage to apply to each of the active coils. Units in Volts.
-    numpy 1D array
-        Difference in currents in the feedback term used to calculate the feedback voltage. Units in Amps.
-    """
+        # initial voltage demands (pre-clipping)
+        v_init = v_res + v_FF + v_FB
+        if verbose:
+            print(f"    Pre-clipping voltage demand (sum of above) = {v_init}")
 
-    # resistive voltages
-    v_res = measured_I * R
-    if verbose:
-        print("---")
-        print(f"    Resistive voltage = {v_res}")
+        # final voltage demands (clipped)
+        v_init_clipped_pos = np.minimum(v_init, voltage_clips)
+        v_clipped = np.maximum(v_init_clipped_pos, -voltage_clips)
+        if verbose and not np.allclose(v_init, v_clipped):
+            print(
+                f"    Clipped voltage demand (according to `voltage_clips`) = {v_init}"
+            )
 
-    # FF voltages
-    v_FF = M_FF @ approved_dIdt
-    if verbose:
-        print(f"    Feedforward voltage = {v_FF}")
+        # finally we apply the "slew rates", additive clipping of voltage rate of change
+        delta_voltages = v_clipped - V_approved_prev
+        max_delta = slew_rates * dt
+        delta_clipped = np.clip(delta_voltages, -max_delta, max_delta)
+        V_approved = V_approved_prev + delta_clipped
+        if verbose and not np.allclose(V_approved, v_clipped):
+            print(
+                f"    Derivative clipped voltage demand (according to `slew_rates`) = {V_approved}"
+            )
 
-    # FB voltages
-    delta_I = approved_I - measured_I
-    v_FB = M_FB @ (delta_I / coil_gains)
-    if verbose:
-        print(f"    Feedback voltage = {v_FB}")
+        if verbose:
+            print(f"FINAL VOLTAGE DEMANDS = {V_approved}")
 
-    # initial voltage demands (pre-clipping)
-    v_init = v_res + v_FF + v_FB
-    if verbose:
-        print(f"    Pre-clipping voltage demand (sum of above) = {v_init}")
+        return V_approved
 
-    # final voltage demands (clipped)
-    v_init_clipped_pos = np.minimum(v_init, voltage_clips)
-    v_clipped = np.maximum(v_init_clipped_pos, -voltage_clips)
-    if verbose and not np.allclose(v_init, v_clipped):
-        print(f"    Clipped voltage demand (according to `voltage_clips`) = {v_init}")
+    def extract_values(
+        self,
+        t,
+        targets,
+        derivative=False,
+    ):
+        """
+        Evaluate and extract interpolated values at a given time for specified targets.
 
-    # finally we apply the "slew rates", additive clipping of voltage rate of change
-    delta_voltages = v_clipped - prev_voltages
-    max_delta = slew_rates * dt
-    delta_clipped = np.clip(delta_voltages, -max_delta, max_delta)
-    v_final = prev_voltages + delta_clipped
-    if verbose and not np.allclose(v_final, v_clipped):
-        print(
-            f"    Derivative clipped voltage demand (according to `slew_rates`) = {v_final}"
-        )
+        Parameters
+        ----------
+        t : float
+            The time at which to evaluate the interpolants.
+        targets : list of str
+            A list of target names corresponding to keys in `self.interpolants`.
+        derivative : bool
+            If True, evaluates the first derivative of the interpolated function.
 
-    if verbose:
-        print(f"FINAL VOLTAGE DEMANDS = {v_final}")
+        Returns
+        -------
+        np.ndarray
+            An array of interpolated values evaluated at time `t`, one for each target.
+        """
 
-    return v_final, delta_I
+        if derivative:
+            return np.array(
+                [self.interpolants[target].derivative()(t) for target in targets]
+            )
+        else:
+            return np.array([self.interpolants[target](t) for target in targets])

@@ -4,12 +4,12 @@ Module full of functions required by the PCS in FreeGSNKE.
 """
 
 import numpy as np
-from scipy.interpolate import interp1d, UnivariateSpline
+from scipy.interpolate import UnivariateSpline, interp1d
+
 
 def interpolate_step(
-    self,
     data,
-    ):
+):
     """
     Creates a step-wise interpolator for time-series data using 'previous' value interpolation.
 
@@ -28,27 +28,25 @@ def interpolate_step(
         For t > max(times), returns the last value.
     """
 
-    times = np.array(data['times'])
-    vals = np.stack(data['vals'])
+    times = np.array(data["times"])
+    vals = np.stack(data["vals"])
 
     # build interpolator
     f_interp = interp1d(
         times,
         vals,
-        kind='previous',
+        kind="previous",
         axis=0,
         bounds_error=False,
-        fill_value=(vals[0], vals[-1])  # extrapolate for first and last values
+        fill_value=(vals[0], vals[-1]),  # extrapolate for first and last values
     )
 
     return f_interp
 
-def interpolate_spline(
-    self, 
-    data
-    ):
+
+def interpolate_spline(data):
     """
-    Creates a spline interpolator for time-series data in 'data'. 
+    Creates a spline interpolator for time-series data in 'data'.
 
     Parameters
     ----------
@@ -65,8 +63,8 @@ def interpolate_spline(
         For t > max(times), returns the last value.
     """
 
-    times = np.array(data['times'])
-    vals = np.array(data['vals'])
+    times = np.array(data["times"])
+    vals = np.array(data["vals"])
 
     # build interpolator
     f_interp = UnivariateSpline(

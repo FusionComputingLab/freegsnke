@@ -75,11 +75,10 @@ class SystemsController:
         """
 
         # extract coil current perturbations
-        I_pert = self.extract_values(t=t, targets=self.ctrl_coils, derivative=False)
-        dI_pert_dt = self.extract_values(t=t, targets=self.ctrl_coils, derivative=True)
+        dI_pert_dt = self.extract_values(t=t, targets=self.ctrl_coils)
 
         # add perturbations
-        I_perturbed = I_unapproved + I_pert
+        I_perturbed = I_unapproved + dI_pert_dt * dt
         dI_dt_perturbed = dI_dt_unapproved + dI_pert_dt
 
         # extract coil current limits and ramp rate limits
@@ -114,7 +113,6 @@ class SystemsController:
         self,
         t,
         targets,
-        derivative=False,
     ):
         """
         Evaluate and extract interpolated values at a given time for specified targets.
@@ -125,8 +123,6 @@ class SystemsController:
             The time at which to evaluate the interpolants.
         targets : list of str
             A list of target names corresponding to keys in `self.interpolants`.
-        derivative : bool
-            If True, evaluates the first derivative of the interpolated function.
 
         Returns
         -------
@@ -134,9 +130,4 @@ class SystemsController:
             An array of interpolated values evaluated at time `t`, one for each target.
         """
 
-        if derivative:
-            return np.array(
-                [self.interpolants[target].derivative()(t) for target in targets]
-            )
-        else:
-            return np.array([self.interpolants[target](t) for target in targets])
+        return np.array([self.interpolants[target](t) for target in targets])

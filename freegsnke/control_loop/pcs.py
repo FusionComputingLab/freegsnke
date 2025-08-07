@@ -14,10 +14,6 @@ from .shape_category import ShapeController
 from .systems_category import SystemsController
 from .virtual_circuits_category import VirtualCircuitsController
 
-# from .pf_category import PFController, pf_voltage_demands
-# from .shape_scheduling import ShapeTargetScheduler
-# from .shape_targets_control import ShapeController
-# from .system_category import system_approved_currents
 # from .target_scheduler import TargetScheduler
 # from .vertical_control import vertical_controller
 
@@ -29,22 +25,6 @@ class PlasmaControlSystem:
 
     Attributes :
     ------------
-    ip_controller : SolenoidController
-        An object that controls the plasma current. Contains schedules and waveforms.
-    shape_controller : ShapeController
-        An object that controls the shape currents. Contains schedules and waveforms.
-    divertor_controller : ShapeController
-        An object that controls the divertor currents. Contains schedules and waveforms.
-    vertical_controller : vertical_controller
-        An object that controls the vertical position of the plasma.
-    active_coils : list of all active coils
-        A list of all active coils - used for shape, ip and vertical control.
-    shaping_coils : list
-        A list of control used for shape control. These correspond to coils in VC's.
-    vertical_coils : list
-        A list of coils used for vertical control.
-    pf_schedule : dict
-        A dictionary of coil gains.
 
 
     Methods :
@@ -66,13 +46,6 @@ class PlasmaControlSystem:
         plasma_target,
     ):
 
-        # # store data dictionaries --> not sure we need to save this here
-        # self.plasma_data = plasma_data
-        # self.shape_data = shape_data
-        # self.circuits_data = circuits_data
-        # self.systems_data = systems_data
-        # self.pf_data = pf_data
-
         # coil lists
         self.active_coils = active_coils
         self.ctrl_coils = ctrl_coils
@@ -84,10 +57,11 @@ class PlasmaControlSystem:
         self.plasma_target = plasma_target
 
         # TODO consistency checks --> need to check all the minimum required inputs are present before initialisation
-        self.check_data_entry(data=plasma_data, key="ip_fb", label="plasma")
-        self.check_data_entry(data=plasma_data, key="vloop_ff", label="plasma")
+        # TODO I think these can probably go in each controller individually rather than here
+        # self.check_data_entry(data=plasma_data, key="ip_fb", label="plasma")
+        # self.check_data_entry(data=plasma_data, key="vloop_ff", label="plasma")
 
-        # TODO consistency checks --> need to check coils stuff
+        # TODO consistency checks --> need to check coils stuff?
 
         # initialise controllers and assign data to them
         self.PlasmaController = PlasmaController(

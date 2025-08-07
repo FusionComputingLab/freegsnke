@@ -87,6 +87,7 @@ class PFController:
         coil_gains = self.interpolants["coil_gains"](t)
         voltage_clips = self.interpolants["coil_voltage_lims"](t)
         slew_rates = self.interpolants["coil_voltage_slew_lims"](t)
+        voltage_signs = self.interpolants["coil_voltage_signs"](t)
 
         # resistive voltages
         v_res = R @ I_meas
@@ -119,10 +120,10 @@ class PFController:
             )
 
         # finally we apply the "slew rates", additive clipping of voltage rate of change
-        delta_voltages = v_clipped - V_approved_prev
+        delta_voltages = v_clipped - V_approved_prev * voltage_signs
         max_delta = slew_rates * dt
         delta_clipped = np.clip(delta_voltages, -max_delta, max_delta)
-        V_approved = V_approved_prev + delta_clipped
+        V_approved = V_approved_prev * voltage_signs + delta_clipped
         if verbose and not np.allclose(V_approved, v_clipped):
             print(
                 f"    Derivative clipped voltage demand (according to `slew_rates`) = {V_approved}"
@@ -137,7 +138,6 @@ class PFController:
         self,
         t,
         targets,
-        derivative=False,
     ):
         """
         Evaluate and extract interpolated values at a given time for specified targets.
@@ -148,8 +148,6 @@ class PFController:
             The time at which to evaluate the interpolants.
         targets : list of str
             A list of target names corresponding to keys in `self.interpolants`.
-        derivative : bool
-            If True, evaluates the first derivative of the interpolated function.
 
         Returns
         -------
@@ -157,9 +155,4 @@ class PFController:
             An array of interpolated values evaluated at time `t`, one for each target.
         """
 
-        if derivative:
-            return np.array(
-                [self.interpolants[target].derivative()(t) for target in targets]
-            )
-        else:
-            return np.array([self.interpolants[target](t) for target in targets])
+        return np.array([self.interpolants[target](t) for target in targets])

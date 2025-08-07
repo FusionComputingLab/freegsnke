@@ -37,7 +37,6 @@ class PFController:
             if key not in ["coil_order"]:
                 self.interpolants[key] = interpolate_step(self.data[key])
 
-    # will move this inside the class
     def run_control(
         self,
         t,
@@ -49,37 +48,34 @@ class PFController:
         verbose=False,
     ):
         """
-        FIX.
+        Compute the coil voltage demands for the current control loop step.
 
-        Calculate the output voltage to apply on the coils, as prescribed in
-        the PF category of the PCS.
+        This method implements a control loop with resistive, feedforward (FF),
+        and feedback (FB) voltage components, applies voltage limits and slew rate
+        constraints, and returns the final approved voltage demands.
 
         Parameters
         ----------
-        approved_dIdt: numpy 1D array
-            Approved rate of change of the coil currents in the active coils (provided by the
-            "system" category of the control loops). Input in A.
-        approved_I : numpy 1D array
-            Approved coil currents in the active coils (provided by the "system" category of
-            the control loops). Input in A.
-        I_meas : numpy 1D array
-            Measured coil currents (from experiment or simulation) in the active coils. Input in A.
-
-        V_approved_prev : numpy 1D array
-            Voltage demands from the previous time step in the active coils. Input in Volts.
+        t : float
+            Current time (used to interpolate time-dependent system matrices).
         dt : float
-            Time step between current and previous voltage demands. Input in seconds.
-        verbose : bool
-            Print some output (True) or not (False).
+            Time step between the current and previous voltage demands, in seconds.
+        I_meas : np.ndarray
+            Measured coil currents at time `t`, in Amps.
+        I_approved : np.ndarray
+            Approved coil currents (from system controller), in Amps.
+        dI_dt_approved : np.ndarray
+            Approved rate of change of coil currents (from system controller), in Amps/sec.
+        V_approved_prev : np.ndarray
+            Previously approved coil voltage demands, in Volts.
+        verbose : bool, optional
+            If True, print detailed diagnostic output.
 
         Returns
         -------
-        numpy 1D array
-            Voltage to apply to each of the active coils. Units in Volts.
-        numpy 1D array
-            Difference in currents in the feedback term used to calculate the feedback voltage. Units in Amps.
+        V_approved : np.ndarray
+            Final voltage demand to apply to the active coils, in Volts.
         """
-
         # extract interpolated data
         R = self.interpolants["R_matrix"](t)
         M_FF = self.interpolants["M_FF_matrix"](t)
@@ -93,6 +89,7 @@ class PFController:
         v_res = R @ I_meas
         if verbose:
             print("---")
+            print(f"Time = {t}")
             print(f"    Resistive voltage = {v_res}")
 
         # FF voltages
@@ -102,7 +99,7 @@ class PFController:
 
         # FB voltages
         delta_I = I_approved - I_meas
-        v_FB = M_FB @ (delta_I / coil_gains)
+        v_FB = M_FB @ (delta_I / np.array())
         if verbose:
             print(f"    Feedback voltage = {v_FB}")
 
@@ -111,19 +108,18 @@ class PFController:
         if verbose:
             print(f"    Pre-clipping voltage demand (sum of above) = {v_init}")
 
-        # final voltage demands (clipped)
-        v_init_clipped_pos = np.minimum(v_init, voltage_clips)
-        v_clipped = np.maximum(v_init_clipped_pos, -voltage_clips)
+        # clip voltage to max/min allowed
+        v_clipped = np.clip(v_init, -voltage_clips, voltage_clips)
         if verbose and not np.allclose(v_init, v_clipped):
             print(
-                f"    Clipped voltage demand (according to `voltage_clips`) = {v_init}"
+                f"    Clipped voltage demand (according to `voltage_clips`) = {v_clipped}"
             )
 
-        # finally we apply the "slew rates", additive clipping of voltage rate of change
-        delta_voltages = v_clipped - V_approved_prev * voltage_signs
+        # apply slew rate constraints
+        delta_voltages = v_clipped - (V_approved_prev * voltage_signs)
         max_delta = slew_rates * dt
         delta_clipped = np.clip(delta_voltages, -max_delta, max_delta)
-        V_approved = V_approved_prev * voltage_signs + delta_clipped
+        V_approved = (V_approved_prev * voltage_signs) + delta_clipped
         if verbose and not np.allclose(V_approved, v_clipped):
             print(
                 f"    Derivative clipped voltage demand (according to `slew_rates`) = {V_approved}"

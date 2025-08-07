@@ -70,6 +70,7 @@ def interpolate_spline(data):
     f_interp = UnivariateSpline(
         times,
         vals,
+        k=1,
         s=0,
         ext=3,
     )

@@ -3,6 +3,7 @@ Module to implement plasma control in FreeGSNKE control loops.
 
 """
 
+# imports
 import numpy as np
 
 from freegsnke.control_loop.useful_functions import interpolate_spline, interpolate_step
@@ -37,7 +38,7 @@ class PlasmaController:
             self.interpolants[key] = {}
             if key in ["ip_fb", "ip_blend", "vloop_ff"]:
                 self.interpolants[key] = interpolate_spline(self.data[key])
-            else:
+            elif key in ["k_prop", "k_int", "M_solenoid"]:
                 self.interpolants[key] = interpolate_step(self.data[key])
 
     def run_control(
@@ -78,23 +79,22 @@ class PlasmaController:
 
         # proportional term
         ip_err = self.interpolants["ip_fb"](t) - ip_meas
+        k_prop = self.interpolants["k_prop"](t)
+        k_int = self.interpolants["k_int"](t)
+        blend = self.interpolants["ip_blend"](t)
+        vloop_ff = self.interpolants["vloop_ff"](t)
+        M_solenoid = self.interpolants["M_solenoid"](t)
 
         # integral term
-        ip_int = ip_hist_prev + 0.5 * ip_err * dt
+        ip_int = ip_hist_prev + (0.5 * ip_err * dt)
 
         # update ip_hist
-        ip_hist = ip_hist_prev + ip_err * dt
+        ip_hist = ip_hist_prev + (ip_err * dt)
 
         # FB term
-        ip_fb = (
-            self.interpolants["k_prop"](t) * ip_err
-            + self.interpolants["k_int"](t) * ip_int
-        )
+        ip_fb = (k_prop * ip_err) + (k_int * ip_int)
 
         # time deriv of plasma current request
-        blend = self.interpolants["ip_blend"](t)
-        dip_dt = blend * ip_fb + (1 - blend) * (
-            self.interpolants["vloop_ff"](t) / self.interpolants["M_solenoid"](t)
-        )
+        dip_dt = (blend * ip_fb) + ((1 - blend) * (vloop_ff / M_solenoid))
 
         return dip_dt, ip_hist

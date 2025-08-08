@@ -75,7 +75,7 @@ class VirtualCircuitsController:
         dI_dt_unapproved = np.concatenate((dT_dt, [dip_dt])) @ V
 
         # unapproved coil currents (by simple Euler integration)
-        I_unapproved = I_approved_prev + dI_dt_unapproved * dt
+        I_unapproved = I_approved_prev + (dI_dt_unapproved * dt)
 
         return I_unapproved, dI_dt_unapproved
 

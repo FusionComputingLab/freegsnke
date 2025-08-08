@@ -37,18 +37,14 @@ class ShapeController:
         self.interpolants = {}
 
         # interpolate the input data
-        waveforms = ["ff", "fb", "blend", "k_prop", "k_int", "damping"]
+        waveforms_spline = ["ff", "fb", "blend"]
+        waveforms_step = ["k_prop", "k_int", "damping"]
         for key in self.ctrl_targets:
             self.interpolants[key] = {}
-            for wave in waveforms:
-                if wave in ["ff", "fb", "blend"]:
-                    self.interpolants[key][wave] = interpolate_spline(
-                        self.data[key][wave]
-                    )
-                else:
-                    self.interpolants[key][wave] = interpolate_step(
-                        self.data[key][wave]
-                    )
+            for wave in waveforms_spline:
+                self.interpolants[key][wave] = interpolate_spline(self.data[key][wave])
+            for wave in waveforms_step:
+                self.interpolants[key][wave] = interpolate_step(self.data[key][wave])
 
     def run_control(
         self,
@@ -59,30 +55,38 @@ class ShapeController:
         T_hist_prev,
     ):
         """
-        NEED TO UPDATE.
-
+        Runs the shape control PI loop with blending between feedforward and feedback.
 
         Parameters
         ----------
-        - Kp : float
-            Proportional term used in the Vloop_fb computation.
-
+        t : float
+            Current time (s).
+        dt : float
+            Time step (s).
+        T_meas : np.ndarray
+            Measured shape targets.
+        T_err_prev : np.ndarray
+            Previous filtered error signal.
+        T_hist_prev : np.ndarray
+            Previous integral (history) term.
 
         Returns
         -------
-        - dI_dt : 1D numpy array
-            Array of delta currents requests that will be part of the input of
-            Circuits category.
-
+        dT_dt : np.ndarray
+            Derivative of target requests (to be passed to circuit solver).
+        T_err : np.ndarray
+            Filtered error term at current time.
+        T_hist : np.ndarray
+            Updated integral term for next step.
         """
 
         # extract data
         T_fb = self.extract_values(t=t, targets=self.ctrl_targets, key="fb")
-        T_ff = self.extract_values(t=t, targets=self.ctrl_targets, key="ff")
+        T_ff = self.extract_values(t=t, targets=self.ctrl_targets, key="ff", deriv=True)
         T_blend = self.extract_values(t=t, targets=self.ctrl_targets, key="blend")
         k_prop = self.extract_values(t=t, targets=self.ctrl_targets, key="k_prop")
         k_int = self.extract_values(t=t, targets=self.ctrl_targets, key="k_int")
-        alpha_inv = 1 / self.extract_values(
+        alpha_inv = 1.0 / self.extract_values(
             t=t, targets=self.ctrl_targets, key="damping"
         )
 
@@ -90,16 +94,16 @@ class ShapeController:
         T_err = (1 - alpha_inv) * T_err_prev + alpha_inv * (T_fb - T_meas)
 
         # integral term
-        T_int = T_hist_prev + 0.5 * T_err * dt
+        T_int = T_hist_prev + (0.5 * T_err * dt)
 
         # update hist
-        T_hist = T_hist_prev + T_err * dt
+        T_hist = T_hist_prev + (T_err * dt)
 
         # FB term
-        T_fb = k_prop * T_err + k_int * T_int
+        T_FB = (k_prop * T_err) + (k_int * T_int)
 
         # time deriv of shape target requests
-        dT_dt = T_blend * T_fb + (1 - T_blend) * T_ff
+        dT_dt = (T_blend * T_FB) + ((1.0 - T_blend) * T_ff)
 
         return dT_dt, T_err, T_hist
 
@@ -108,6 +112,7 @@ class ShapeController:
         t,
         targets,
         key,
+        deriv=False,
     ):
         """
         Evaluate and extract interpolated values at a given time for specified targets.
@@ -120,6 +125,8 @@ class ShapeController:
             A list of target names corresponding to keys in `self.interpolants`.
         key : str
             The dictionary key (e.g., 'fb') used to select the interpolation function for each target.
+        deriv : bool
+            Returns first derivative of the interpolant if True.
 
         Returns
         -------
@@ -127,4 +134,9 @@ class ShapeController:
             An array of interpolated values evaluated at time `t`, one for each target.
         """
 
-        return np.array([self.interpolants[target][key](t) for target in targets])
+        if deriv:
+            return np.array(
+                [self.interpolants[target][key].derivative()(t) for target in targets]
+            )
+        else:
+            return np.array([self.interpolants[target][key](t) for target in targets])

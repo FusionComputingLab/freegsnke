@@ -38,7 +38,9 @@ class SystemsController:
 
         # interpolate the input data
         for key in self.ctrl_coils:
-            self.interpolants[key] = interpolate_spline(self.data[key])
+            self.interpolants[key + "_pert"] = interpolate_spline(
+                self.data[key + "_pert"]
+            )
         for key in [
             "min_coil_curr_lims",
             "max_coil_curr_lims",
@@ -75,7 +77,7 @@ class SystemsController:
         """
 
         # extract coil current perturbations
-        dI_pert_dt = self.extract_values(t=t, targets=self.ctrl_coils)
+        dI_pert_dt = self.extract_values(t=t, targets=self.ctrl_coils, deriv=True)
 
         # add perturbations
         I_perturbed = I_unapproved + dI_pert_dt * dt
@@ -113,6 +115,7 @@ class SystemsController:
         self,
         t,
         targets,
+        deriv=False,
     ):
         """
         Evaluate and extract interpolated values at a given time for specified targets.
@@ -123,6 +126,8 @@ class SystemsController:
             The time at which to evaluate the interpolants.
         targets : list of str
             A list of target names corresponding to keys in `self.interpolants`.
+        deriv : bool
+            Returns first derivative of the interpolant if True.
 
         Returns
         -------
@@ -130,4 +135,14 @@ class SystemsController:
             An array of interpolated values evaluated at time `t`, one for each target.
         """
 
-        return np.array([self.interpolants[target](t) for target in targets])
+        if deriv:
+            return np.array(
+                [
+                    self.interpolants[target + "_pert"].derivative(n=1)(t)
+                    for target in targets
+                ]
+            )
+        else:
+            return np.array(
+                [self.interpolants[target + "_pert"](t) for target in targets]
+            )

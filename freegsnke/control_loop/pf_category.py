@@ -86,7 +86,7 @@ class PFController:
         voltage_signs = self.interpolants["coil_voltage_signs"](t)
 
         # resistive voltages
-        v_res = R @ I_meas
+        v_res = R * I_meas
         if verbose:
             print("---")
             print(f"Time = {t}")
@@ -99,7 +99,7 @@ class PFController:
 
         # FB voltages
         delta_I = I_approved - I_meas
-        v_FB = M_FB @ (delta_I / np.array())
+        v_FB = M_FB @ (delta_I / coil_gains)
         if verbose:
             print(f"    Feedback voltage = {v_FB}")
 

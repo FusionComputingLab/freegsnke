@@ -70,9 +70,9 @@ def interpolate_spline(data):
     f_interp = UnivariateSpline(
         times,
         vals,
-        k=1,
-        s=0,
-        ext=3,
+        k=1,  # order (linear)
+        s=0,  # interpolates points exactly
+        ext=3,  # extrapolates to boundary points
     )
 
     return f_interp

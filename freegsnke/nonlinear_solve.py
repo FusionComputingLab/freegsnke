@@ -687,31 +687,7 @@ class nl_solver:
             self.ndIydI_no_GS[j] = rel_ndIy * self.nIy / starting_dI[j]
         self.starting_dI = 1.0 * starting_dI
 
-    def remove_modes(self, eq, selected_modes_mask):
-        """It actions the removal of the unselected normal modes.
-        Given a setup with a set of normal modes and a resulting size of the vector self.currents_vec,
-        modes that are not selected in the input mask are removed and the circuit equations updated accordingly.
-        The dimensionality of the vector self.currents_vec is reduced.
-
-        Parameters
-        ----------
-        eq : class
-            FreeGSNKE equilibrium object.
-        selected_modes_mask : np.array of bool values,
-            shape(selected_modes_mask) = shape(self.currents_vec) at the time of calling the function
-            indexes corresponding to True are kept, indexes corresponding to False are dropped
-        """
-
-        self.evol_metal_curr.initialize_for_eig(selected_modes_mask)
-        self.n_metal_modes = self.evol_metal_curr.n_independent_vars
-        self.extensive_currents_dim = self.n_metal_modes + 1
-        self.arange_currents = np.arange(self.n_metal_modes + 1)
-        self.currents_vec = np.zeros(self.extensive_currents_dim)
-        self.circuit_eq_residual = np.zeros(self.extensive_currents_dim)
-        self.currents_nk_solver = nk_solver.nksolver(self.extensive_currents_dim)
-
-        # self.evol_plasma_curr.reset_modes(P=self.evol_metal_curr.P)
-
+    def set_solvers(self,):
         self.simplified_solver_J1 = simplified_solver_J1(
             eq=eq,
             Lambdam1=self.evol_metal_curr.Lambdam1,
@@ -741,7 +717,36 @@ class nl_solver:
             dIydI=self.dIydI, hatIy0=self.blended_hatIy, Myy_hatIy0=self.Myy_hatIy0
         )
 
+
+    def remove_modes(self, eq, selected_modes_mask):
+        """It actions the removal of the unselected normal modes.
+        Given a setup with a set of normal modes and a resulting size of the vector self.currents_vec,
+        modes that are not selected in the input mask are removed and the circuit equations updated accordingly.
+        The dimensionality of the vector self.currents_vec is reduced.
+
+        Parameters
+        ----------
+        eq : class
+            FreeGSNKE equilibrium object.
+        selected_modes_mask : np.array of bool values,
+            shape(selected_modes_mask) = shape(self.currents_vec) at the time of calling the function
+            indexes corresponding to True are kept, indexes corresponding to False are dropped
+        """
+
+        self.evol_metal_curr.initialize_for_eig(selected_modes_mask)
+        self.n_metal_modes = self.evol_metal_curr.n_independent_vars
+        self.extensive_currents_dim = self.n_metal_modes + 1
+        self.arange_currents = np.arange(self.n_metal_modes + 1)
+        self.currents_vec = np.zeros(self.extensive_currents_dim)
+        self.circuit_eq_residual = np.zeros(self.extensive_currents_dim)
+        self.currents_nk_solver = nk_solver.nksolver(self.extensive_currents_dim)
+
         self.build_current_vec(self.eq1, self.profiles1)
+
+        self.set_solvers()
+
+        
+        
 
     def set_linear_solution(self, active_voltage_vec, d_profiles_pars_dt=None):
         """Uses the solver of the linearised problem to set up an initial guess for the nonlinear solver
@@ -1866,6 +1871,17 @@ class nl_solver:
                     self.profiles2.initialize_profile()
             self.profiles_change_flag = 1
 
+    def check_and_change_active_coil_resistances(self, active_coil_resistances):
+        if active_coil_resistances is None:
+            return
+        else:
+            if np.equal(active_coil_resistances, self.evol_metal_curr.active_coil_resistances):
+                return
+            else:
+                self.evol_metal_curr.reset_active_coil_resistances(active_coil_resistances=active_coil_resistances)
+                self.set_solvers()
+                
+
     def nlstepper(
         self,
         active_voltage_vec,
@@ -1887,6 +1903,7 @@ class nl_solver:
         verbose=0,
         linear_only=False,
         max_solving_iterations=50,
+        custom_active_coil_resistances=None,
     ):
         """This is the main stepper function.
         If linear_only = True, this advances the linearised dynamic problem.
@@ -1978,6 +1995,10 @@ class nl_solver:
         # and action the change where necessary
         self.check_and_change_profiles(
             profiles_parameters=profiles_parameters,
+        )
+
+        self.check_and_change_active_coil_resistances(
+            active_coil_resistances=custom_active_coil_resistances
         )
 
         # check if plasma resistivity is being evolved

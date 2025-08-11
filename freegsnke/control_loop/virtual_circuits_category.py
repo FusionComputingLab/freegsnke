@@ -5,7 +5,11 @@ Module to implement virtual circuits control in FreeGSNKE control loops.
 
 import numpy as np
 
-from freegsnke.control_loop.useful_functions import interpolate_spline, interpolate_step
+from freegsnke.control_loop.useful_functions import (
+    check_data_entry,
+    interpolate_spline,
+    interpolate_step,
+)
 
 
 class VirtualCircuitsController:
@@ -28,18 +32,26 @@ class VirtualCircuitsController:
         plasma_target,
     ):
 
-        # create an internal copy of the data
-        self.data = data
-
         # targets list
         self.ctrl_targets = ctrl_targets
         self.plasma_target = plasma_target
+
+        # check correct data is input and in correct format
+        keys_to_spline = []
+        keys_to_step = self.ctrl_targets + self.plasma_target
+        for key in keys_to_spline + keys_to_step:
+            check_data_entry(
+                data=data, key=key, controller_name="VirtualCircuitsController"
+            )
+
+        # create an internal copy of the data
+        self.data = data
 
         # create a dictionary to store the spline functions
         self.interpolants = {}
 
         # interpolate the input data
-        for key in self.ctrl_targets + self.plasma_target:
+        for key in keys_to_step:
             self.interpolants[key] = interpolate_step(self.data[key])
 
     def run_control(

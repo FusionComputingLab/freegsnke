@@ -5,7 +5,11 @@ Module to implement shape control in FreeGSNKE control loops.
 
 import numpy as np
 
-from freegsnke.control_loop.useful_functions import interpolate_spline, interpolate_step
+from freegsnke.control_loop.useful_functions import (
+    check_data_entry,
+    interpolate_spline,
+    interpolate_step,
+)
 
 
 class ShapeController:
@@ -27,23 +31,35 @@ class ShapeController:
         ctrl_targets,
     ):
 
-        # create an internal copy of the data
-        self.data = data
-
         # targets list
         self.ctrl_targets = ctrl_targets
+
+        # check correct data is input and in correct format
+        keys_to_spline = ["ff", "fb", "blend"]
+        keys_to_step = ["k_prop", "k_int", "damping"]
+        for targ in self.ctrl_targets:
+            if targ not in data:
+                raise ValueError(
+                    f"{ShapeController}: Key '{targ}' not found in 'data'. "
+                    f"Please include waveforms {keys_to_spline+keys_to_step} for '{targ}'."
+                )
+                for key in keys_to_spline + keys_to_step:
+                    check_data_entry(
+                        data=data[targ], key=key, controller_name="ShapeController"
+                    )
+
+        # create an internal copy of the data
+        self.data = data
 
         # create a dictionary to store the spline functions
         self.interpolants = {}
 
         # interpolate the input data
-        waveforms_spline = ["ff", "fb", "blend"]
-        waveforms_step = ["k_prop", "k_int", "damping"]
         for key in self.ctrl_targets:
             self.interpolants[key] = {}
-            for wave in waveforms_spline:
+            for wave in keys_to_spline:
                 self.interpolants[key][wave] = interpolate_spline(self.data[key][wave])
-            for wave in waveforms_step:
+            for wave in keys_to_step:
                 self.interpolants[key][wave] = interpolate_step(self.data[key][wave])
 
     def run_control(
@@ -103,7 +119,7 @@ class ShapeController:
         T_FB = (k_prop * T_err) + (k_int * T_int)
 
         # time deriv of shape target requests
-        dT_dt = (T_blend * T_FB) + ((1.0 - T_blend) * T_ff)
+        dT_dt = ((T_blend * T_FB) + ((1.0 - T_blend) * T_ff)).squeeze()
 
         return dT_dt, T_err, T_hist
 

@@ -76,3 +76,61 @@ def interpolate_spline(data):
     )
 
     return f_interp
+
+
+def check_data_entry(
+    data: dict,
+    key: str,
+    controller_name: str,
+) -> bool:
+    """
+    Validate that a specified sub-dictionary contains 'times' and 'vals' keys
+    of equal length.
+
+    Parameters
+    ----------
+    data : dict
+        A dictionary where each value is expected to be a sub-dictionary
+        containing at least 'times' and 'vals'.
+    key : str
+        The key in `data` corresponding to the sub-dictionary to validate.
+    controller_name : str
+        A string corresponding to which controller is being checked.
+
+    Returns
+    -------
+    bool
+        True if the checks pass.
+
+    Raises
+    ------
+    ValueError
+        If the specified key is missing from `data`, if 'times' or 'vals'
+        is missing from the sub-dictionary, or if 'times' and 'vals'
+        are not the same length.
+    """
+
+    # key not found
+    if key not in data:
+        raise ValueError(
+            f"{controller_name}: Key '{key}' not found in 'data'. "
+            f"Please include {{'times': [], 'vals': []}} for '{key}'."
+        )
+
+    subdict = data[key]
+
+    # key found, check for times and values
+    for required_key in ["times", "vals"]:
+        if required_key not in subdict:
+            raise ValueError(
+                f"{controller_name}: Missing '{required_key}' in data['{key}']."
+            )
+
+    # times and vals found, check equal lengths
+    times_len = len(subdict["times"])
+    vals_len = len(subdict["vals"])
+    if times_len != vals_len:
+        raise ValueError(
+            f"{controller_name}: Length mismatch in data['{key}']: "
+            f"'times' has length {times_len}, 'vals' has length {vals_len}. "
+        )

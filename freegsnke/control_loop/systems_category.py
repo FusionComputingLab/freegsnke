@@ -5,7 +5,11 @@ Module to implement systems control in FreeGSNKE control loops.
 
 import numpy as np
 
-from freegsnke.control_loop.useful_functions import interpolate_spline, interpolate_step
+from freegsnke.control_loop.useful_functions import (
+    check_data_entry,
+    interpolate_spline,
+    interpolate_step,
+)
 
 
 class SystemsController:
@@ -27,25 +31,29 @@ class SystemsController:
         ctrl_coils,
     ):
 
-        # create an internal copy of the data
-        self.data = data
-
         # coils list
         self.ctrl_coils = ctrl_coils
+
+        # check correct data is input and in correct format
+        keys_to_spline = [coil + "_pert" for coil in self.ctrl_coils]
+        keys_to_step = [
+            "min_coil_curr_lims",
+            "max_coil_curr_lims",
+            "max_coil_curr_ramp_lims",
+        ]
+        for key in keys_to_spline + keys_to_step:
+            check_data_entry(data=data, key=key, controller_name="SystemsController")
+
+        # create an internal copy of the data
+        self.data = data
 
         # create a dictionary to store the spline functions
         self.interpolants = {}
 
         # interpolate the input data
-        for key in self.ctrl_coils:
-            self.interpolants[key + "_pert"] = interpolate_spline(
-                self.data[key + "_pert"]
-            )
-        for key in [
-            "min_coil_curr_lims",
-            "max_coil_curr_lims",
-            "max_coil_curr_ramp_lims",
-        ]:
+        for key in keys_to_spline:
+            self.interpolants[key] = interpolate_spline(self.data[key])
+        for key in keys_to_step:
             self.interpolants[key] = interpolate_step(self.data[key])
 
     def run_control(self, t, dt, I_unapproved, dI_dt_unapproved, verbose=False):

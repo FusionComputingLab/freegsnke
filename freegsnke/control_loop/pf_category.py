@@ -5,7 +5,11 @@ Module to implement PF control in FreeGSNKE control loops.
 
 import numpy as np
 
-from freegsnke.control_loop.useful_functions import interpolate_spline, interpolate_step
+from freegsnke.control_loop.useful_functions import (
+    check_data_entry,
+    interpolate_spline,
+    interpolate_step,
+)
 
 
 class PFController:
@@ -26,6 +30,20 @@ class PFController:
         data,
     ):
 
+        # check correct data is input and in correct format
+        keys_to_spline = []
+        keys_to_step = [
+            "R_matrix",
+            "M_FF_matrix",
+            "M_FB_matrix",
+            "coil_gains",
+            "coil_voltage_signs",
+            "coil_voltage_lims",
+            "coil_voltage_slew_lims",
+        ]
+        for key in keys_to_spline + keys_to_step:
+            check_data_entry(data=data, key=key, controller_name="PFController")
+
         # create an internal copy of the data
         self.data = data
 
@@ -33,9 +51,8 @@ class PFController:
         self.interpolants = {}
 
         # interpolate the input data
-        for key in self.data.keys():
-            if key not in ["coil_order"]:
-                self.interpolants[key] = interpolate_step(self.data[key])
+        for key in keys_to_step:
+            self.interpolants[key] = interpolate_step(self.data[key])
 
     def run_control(
         self,

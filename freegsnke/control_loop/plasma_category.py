@@ -6,7 +6,11 @@ Module to implement plasma control in FreeGSNKE control loops.
 # imports
 import numpy as np
 
-from freegsnke.control_loop.useful_functions import interpolate_spline, interpolate_step
+from freegsnke.control_loop.useful_functions import (
+    check_data_entry,
+    interpolate_spline,
+    interpolate_step,
+)
 
 
 class PlasmaController:
@@ -27,6 +31,12 @@ class PlasmaController:
         data,
     ):
 
+        # check correct data is input and in correct format
+        keys_to_spline = ["ip_fb", "ip_blend", "vloop_ff"]
+        keys_to_step = ["k_prop", "k_int", "M_solenoid"]
+        for key in keys_to_spline + keys_to_step:
+            check_data_entry(data=data, key=key, controller_name="PlasmaController")
+
         # create an internal copy of the data
         self.data = data
 
@@ -36,9 +46,9 @@ class PlasmaController:
         # interpolate the input data
         for key in self.data.keys():
             self.interpolants[key] = {}
-            if key in ["ip_fb", "ip_blend", "vloop_ff"]:
+            if key in keys_to_spline:
                 self.interpolants[key] = interpolate_spline(self.data[key])
-            elif key in ["k_prop", "k_int", "M_solenoid"]:
+            elif key in keys_to_step:
                 self.interpolants[key] = interpolate_step(self.data[key])
 
     def run_control(

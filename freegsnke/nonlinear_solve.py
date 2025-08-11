@@ -411,7 +411,7 @@ class nl_solver:
         # This solves the system of circuit eqs based on an assumption
         # for the direction of the plasma current distribution at time t+dt
         self.simplified_solver_J1 = simplified_solver_J1(
-            eq=eq,
+            coil_numbers=(self.n_active_coils, self.n_coils),
             Lambdam1=self.evol_metal_curr.Lambdam1,
             P=self.evol_metal_curr.P,
             Pm1=self.evol_metal_curr.Pm1,
@@ -441,7 +441,7 @@ class nl_solver:
 
         # Handles the linearised dynamic problem
         self.linearised_sol = linear_solver(
-            eq=eq,
+            coil_numbers=(self.n_active_coils, self.n_coils),
             Lambdam1=self.evol_metal_curr.Lambdam1,
             P=self.evol_metal_curr.P,
             Pm1=self.evol_metal_curr.Pm1,
@@ -689,7 +689,7 @@ class nl_solver:
 
     def set_solvers(self,):
         self.simplified_solver_J1 = simplified_solver_J1(
-            eq=eq,
+            coil_numbers=(self.n_active_coils, self.n_coils),
             Lambdam1=self.evol_metal_curr.Lambdam1,
             P=self.evol_metal_curr.P,
             Pm1=self.evol_metal_curr.Pm1,
@@ -701,7 +701,7 @@ class nl_solver:
         )
 
         self.linearised_sol = linear_solver(
-            eq=eq,
+            coil_numbers=(self.n_active_coils, self.n_coils),
             Lambdam1=self.evol_metal_curr.Lambdam1,
             P=self.evol_metal_curr.P,
             Pm1=self.evol_metal_curr.Pm1,
@@ -1875,11 +1875,14 @@ class nl_solver:
         if active_coil_resistances is None:
             return
         else:
-            if np.equal(active_coil_resistances, self.evol_metal_curr.active_coil_resistances):
+            if np.array_equal(active_coil_resistances, self.evol_metal_curr.active_coil_resistances):
+                print('no change needed')
                 return
             else:
-                self.evol_metal_curr.reset_active_coil_resistances(active_coil_resistances=active_coil_resistances)
+                print('resistance change needed')
+                self.evol_metal_curr.reset_active_coil_resistances(active_coil_resistances)
                 self.set_solvers()
+                print(self.evol_metal_curr.coil_resist)
                 
 
     def nlstepper(

@@ -99,7 +99,7 @@ class metal_currents:
 
         self.Rm1 = 1.0 / self.coil_resist
         # self.R = np.copy(self.coil_resist)
-        self.active_coil_resistances = np.copy(self.coil_resist[:self.n_active_coils])
+        self.active_coil_resistances = np.copy(self.coil_resist[: self.n_active_coils])
 
         # prepare inductance data
         if coil_self_ind is not None:
@@ -141,7 +141,9 @@ class metal_currents:
         # Dummy voltage vector
         self.empty_U = np.zeros(self.n_coils)
 
-    def build_rm1l(self, ):
+    def build_rm1l(
+        self,
+    ):
         # active + passive
         self.rm1l_non_symm = np.diag(self.coil_resist**-1.0) @ self.coil_self_ind
 
@@ -268,9 +270,11 @@ class metal_currents:
             self.forcing_term = self.forcing_term_eig_no_plasma
 
     def reset_active_coil_resistances(self, active_coil_resistances):
-        self.coil_resist = np.concatenate((active_coil_resistances, self.coil_resist[self.n_active_coils:]))
-        self.active_coil_resistances = np.copy(self.coil_resist[:self.n_active_coils])
-        self.Rm1 = 1/self.coil_resist
+        self.coil_resist = np.concatenate(
+            (active_coil_resistances, self.coil_resist[self.n_active_coils :])
+        )
+        self.active_coil_resistances = np.copy(self.coil_resist[: self.n_active_coils])
+        self.Rm1 = 1 / self.coil_resist
         self.build_rm1l()
         self.Lambdam1 = self.Pm1 @ (self.rm1l_non_symm @ self.P)
 

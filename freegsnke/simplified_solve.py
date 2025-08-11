@@ -46,7 +46,6 @@ class simplified_solver_J1:
         plasma_norm_factor,
         plasma_resistance_1d,
         full_timestep=0.0001,
-        
     ):
         """Initialises the solver for the extensive currents.
 

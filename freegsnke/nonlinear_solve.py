@@ -687,7 +687,9 @@ class nl_solver:
             self.ndIydI_no_GS[j] = rel_ndIy * self.nIy / starting_dI[j]
         self.starting_dI = 1.0 * starting_dI
 
-    def set_solvers(self,):
+    def set_solvers(
+        self,
+    ):
         self.simplified_solver_J1 = simplified_solver_J1(
             coil_numbers=(self.n_active_coils, self.n_coils),
             Lambdam1=self.evol_metal_curr.Lambdam1,
@@ -717,7 +719,6 @@ class nl_solver:
             dIydI=self.dIydI, hatIy0=self.blended_hatIy, Myy_hatIy0=self.Myy_hatIy0
         )
 
-
     def remove_modes(self, eq, selected_modes_mask):
         """It actions the removal of the unselected normal modes.
         Given a setup with a set of normal modes and a resulting size of the vector self.currents_vec,
@@ -744,9 +745,6 @@ class nl_solver:
         self.build_current_vec(self.eq1, self.profiles1)
 
         self.set_solvers()
-
-        
-        
 
     def set_linear_solution(self, active_voltage_vec, d_profiles_pars_dt=None):
         """Uses the solver of the linearised problem to set up an initial guess for the nonlinear solver
@@ -1875,15 +1873,18 @@ class nl_solver:
         if active_coil_resistances is None:
             return
         else:
-            if np.array_equal(active_coil_resistances, self.evol_metal_curr.active_coil_resistances):
-                print('no change needed')
+            if np.array_equal(
+                active_coil_resistances, self.evol_metal_curr.active_coil_resistances
+            ):
+                print("no change needed")
                 return
             else:
-                print('resistance change needed')
-                self.evol_metal_curr.reset_active_coil_resistances(active_coil_resistances)
+                print("resistance change needed")
+                self.evol_metal_curr.reset_active_coil_resistances(
+                    active_coil_resistances
+                )
                 self.set_solvers()
                 print(self.evol_metal_curr.coil_resist)
-                
 
     def nlstepper(
         self,

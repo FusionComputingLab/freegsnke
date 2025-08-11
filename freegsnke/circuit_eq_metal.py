@@ -269,7 +269,8 @@ class metal_currents:
 
     def reset_active_coil_resistances(self, active_coil_resistances):
         self.coil_resist = np.concatenate((active_coil_resistances, self.coil_resist[self.n_active_coils:]))
-        self.Rm1 = 1/self.active_coil_resistances
+        self.active_coil_resistances = np.copy(self.coil_resist[:self.n_active_coils])
+        self.Rm1 = 1/self.coil_resist
         self.build_rm1l()
         self.Lambdam1 = self.Pm1 @ (self.rm1l_non_symm @ self.P)
 

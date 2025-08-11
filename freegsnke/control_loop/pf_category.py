@@ -87,46 +87,25 @@ class PFController:
 
         # resistive voltages
         v_res = R * I_meas
-        if verbose:
-            print("---")
-            print(f"Time = {t}")
-            print(f"    Resistive voltage = {v_res}")
 
         # FF voltages
         v_FF = M_FF @ dI_dt_approved
-        if verbose:
-            print(f"    Feedforward voltage = {v_FF}")
 
         # FB voltages
         delta_I = I_approved - I_meas
         v_FB = M_FB @ (delta_I / coil_gains)
-        if verbose:
-            print(f"    Feedback voltage = {v_FB}")
 
         # initial voltage demands (pre-clipping)
         v_init = v_res + v_FF + v_FB
-        if verbose:
-            print(f"    Pre-clipping voltage demand (sum of above) = {v_init}")
 
         # clip voltage to max/min allowed
         v_clipped = np.clip(v_init, -voltage_clips, voltage_clips)
-        if verbose and not np.allclose(v_init, v_clipped):
-            print(
-                f"    Clipped voltage demand (according to `voltage_clips`) = {v_clipped}"
-            )
 
         # apply slew rate constraints
-        delta_voltages = v_clipped - (V_approved_prev * voltage_signs)
+        delta_voltages = v_clipped - (V_approved_prev * 1.0)
         max_delta = slew_rates * dt
         delta_clipped = np.clip(delta_voltages, -max_delta, max_delta)
-        V_approved = (V_approved_prev * voltage_signs) + delta_clipped
-        if verbose and not np.allclose(V_approved, v_clipped):
-            print(
-                f"    Derivative clipped voltage demand (according to `slew_rates`) = {V_approved}"
-            )
-
-        if verbose:
-            print(f"FINAL VOLTAGE DEMANDS = {V_approved}")
+        V_approved = (V_approved_prev * 1.0) + delta_clipped
 
         return V_approved
 

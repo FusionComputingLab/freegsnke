@@ -36,7 +36,8 @@ class simplified_solver_J1:
 
     def __init__(
         self,
-        eq,
+        # eq,
+        coil_numbers,
         Lambdam1,
         P,
         Pm1,
@@ -45,6 +46,7 @@ class simplified_solver_J1:
         plasma_norm_factor,
         plasma_resistance_1d,
         full_timestep=0.0001,
+        
     ):
         """Initialises the solver for the extensive currents.
 
@@ -102,8 +104,7 @@ class simplified_solver_J1:
         self.Pm1Rm1Mey = np.matmul(self.Pm1Rm1, Mey)
         self.MyeP = np.matmul(Mey.T, P).T
 
-        self.n_active_coils = eq.tokamak.n_active_coils
-        self.n_coils = eq.tokamak.n_coils
+        self.n_active_coils, self.n_coils = coil_numbers
 
         self.plasma_resistance_1d = plasma_resistance_1d
 

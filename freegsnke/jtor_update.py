@@ -22,6 +22,9 @@ along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 import freegs4e
 import numpy as np
 from freegs4e.gradshafranov import mu0
+from matplotlib.path import Path
+from scipy.ndimage import maximum_filter
+from skimage import measure
 
 from . import jtor_refinement
 from . import switch_profile as swp
@@ -44,9 +47,24 @@ class Jtor_universal:
         eq : FreeGSNKE Equilibrium object
             Specifies the domain properties
         """
-        self.dRdZ = (eq.R_1D[1] - eq.R_1D[0]) * (eq.Z_1D[1] - eq.Z_1D[0])
+        self.dR = eq.R_1D[1] - eq.R_1D[0]
+        self.dZ = eq.Z_1D[1] - eq.Z_1D[0]
+        self.dR_dZ = np.array([self.dR, self.dZ])
+        self.R0Z0 = np.array([eq.R_1D[0], eq.Z_1D[0]])
+        self.dRdZ = self.dR * self.dZ
+        self.grid_points = np.concatenate(
+            (eq.R[:, :, np.newaxis], eq.Z[:, :, np.newaxis]), axis=-1
+        )
+        self.nx, self.ny = np.shape(eq.R)
+        self.eqRidx = np.tile(np.arange(self.nx)[:, np.newaxis], (1, self.ny))
+        self.eqZidx = np.tile(np.arange(self.ny)[:, np.newaxis], (1, self.nx)).T
+        self.idx_grid_points = np.concatenate(
+            (self.eqRidx[:, :, np.newaxis], self.eqZidx[:, :, np.newaxis]), axis=-1
+        ).reshape(-1, 2)
 
-        self.core_mask_limiter = eq.limiter_handler.core_mask_limiter
+        self.limiter_handler = eq.limiter_handler
+
+        # self.core_mask_limiter = eq.limiter_handler.core_mask_limiter
 
         self.mask_inside_limiter = eq.limiter_handler.mask_inside_limiter
 
@@ -100,6 +118,275 @@ class Jtor_universal:
         """
         self.refinement_thresholds = thresholds
 
+    # def all_open(self, contours):
+    #     checks = []
+    #     for contour in contours:
+    #         checks.append(
+    #             np.any(
+    #                 [
+    #                     np.any(contour[:, 0] <= 1),
+    #                     np.any(contour[:, 0] >= self.nx - 2),
+    #                     np.any(contour[:, 1] <= 1),
+    #                     np.any(contour[:, 1] >= self.ny - 2),
+    #                 ]
+    #             )
+    #         )
+    #     return np.all(checks), checks
+
+    def diverted_critical(
+        self,
+        R,
+        Z,
+        psi,
+        psi_bndry=None,
+        mask_outside_limiter=None,
+        rel_tolerance_xpt=1e-10,
+        starting_dx=0.05,
+    ):
+        """
+        Replaces Jtor_part1 when that fails. Implements a new algorithm to define the LCFS.
+        This is considerably more time consuming, but essential when the default routines in
+        critical fail, as for example when the Xpt is not correctly identified.
+
+
+        Parameters
+        ----------
+        R : np.ndarray
+            Radial coordinates of the grid points.
+        Z : np.ndarray
+            Vertical coordinates of the grid points.
+        psi : np.ndarray
+            Total poloidal field flux at each grid point [Webers/2pi].
+        psi_bndry : float, optional
+            Value of the poloidal field flux at the boundary of the plasma (last closed
+            flux surface).
+        mask_outside_limiter : np.ndarray
+            Mask of points outside the limiter, if any.
+
+        Returns
+        -------
+        np.array
+            Each row represents an O-point of the form [R, Z, ψ(R,Z)] [m, m, Webers/2pi].
+        np.array
+            Each row represents an X-point of the form [R, Z, ψ(R,Z)] [m, m, Webers/2pi].
+        np.bool
+            An array, the same shape as the computational grid, indicating the locations
+            at which the core plasma resides (True) and where it does not (False).
+        float
+            Value of the poloidal field flux at the boundary of the plasma (last closed
+            flux surface).
+        """
+
+        # prepare psi_map to use
+        psi_map = np.copy(psi)
+        self.psi_map = psi_map
+        min_psi = np.amin(psi_map)
+        psi_map[:, 0] = psi_map[0, :] = psi_map[-1, :] = psi_map[:, -1] = min_psi
+        del_psi = np.amax(psi_map) - min_psi
+        psi_map /= del_psi
+
+        # find all the local maxima
+        maxima_psi_mask = (maximum_filter(psi_map, size=3)) == psi_map
+        # select those inside the limiter region
+        maxima_psi_mask_in = maxima_psi_mask * self.mask_inside_limiter
+        if np.sum(maxima_psi_mask_in) < 1:
+            raise ValueError(
+                "No O-point in the limiter region. Guess psi_plasma is likely inappropriate."
+            )
+
+        # identify the location of the local maximum inside the limiter
+        valid_max_psi = np.amax(psi_map[maxima_psi_mask_in])
+        mask = psi_map * maxima_psi_mask_in == valid_max_psi
+        idx_valid_max = np.array([self.eqRidx[mask][0], self.eqZidx[mask][0]])
+
+        # select the local maxima outside the limiter region
+        maxima_psi_mask_out = maxima_psi_mask * mask_outside_limiter
+        # include the edges of the map to the excluded region
+        maxima_psi_mask_out[1, :] = maxima_psi_mask_out[:, 1] = maxima_psi_mask_out[
+            -1, :
+        ] = maxima_psi_mask_out[:, -1] = True
+        maxima_psi_mask_out = maxima_psi_mask_out.astype(bool)
+        idx_excluded_max = np.array(
+            [self.eqRidx[maxima_psi_mask_out], self.eqZidx[maxima_psi_mask_out]]
+        ).T
+
+        # start root finding for the xpoint flux value
+        increment = -starting_dx
+        desired_check_larger = True
+        current_psi_level = valid_max_psi + increment
+        self.record_xpt = [valid_max_psi, current_psi_level]
+
+        while abs(increment) > rel_tolerance_xpt or desired_check_larger == False:
+            # design regions
+            all_regions = measure.find_contours(psi_map, current_psi_level)
+            # sort them by distance to the valid maximum
+            mean_dist = [
+                np.linalg.norm(np.mean(region, axis=0) - idx_valid_max)
+                for region in all_regions
+            ]
+            regions_order = np.argsort(mean_dist)
+            # identify the region containing the valid local maximum
+            region_found = False
+            idx = -1
+            while region_found == False:
+                idx += 1
+                path = Path(all_regions[regions_order[idx]])
+                region_found = path.contains_point(idx_valid_max)
+            # check if any excluded points have been included
+            check_larger = np.any(path.contains_points(idx_excluded_max.astype(float)))
+            if check_larger == desired_check_larger:
+                # invert sign and decrease size
+                desired_check_larger = np.logical_not(desired_check_larger)
+                increment *= -0.5
+            # else:
+            # keep exploring in the same direction
+            # so no action needed
+            current_psi_level += increment
+            self.record_xpt.append(current_psi_level)
+
+        # build opt, xpt and diverted core mask accordingly
+        self.lcfs = all_regions[regions_order[idx]][:-1]
+        self.lcfs = self.lcfs * self.dR_dZ[np.newaxis] + self.R0Z0[np.newaxis]
+        # build xpt
+        psi_bndry = current_psi_level * del_psi
+        dist = np.linalg.norm(
+            self.lcfs[:, np.newaxis] - self.lcfs[np.newaxis, :], axis=-1
+        ) + 10 * np.eye(len(self.lcfs))
+        mask = dist == np.amin(dist)
+        xpt_coords = (
+            np.mean(self.lcfs[np.any(mask, axis=0)], axis=0) * self.dR_dZ + self.R0Z0
+        )
+        xpt = np.concatenate((xpt_coords, [psi_bndry]))[np.newaxis]
+        # build opt
+        opt = np.concatenate(
+            (idx_valid_max * self.dR_dZ + self.R0Z0, [valid_max_psi * del_psi])
+        )[np.newaxis]
+        # build diverted_core_mask
+        diverted_core_mask = path.contains_points(self.idx_grid_points).reshape(
+            (self.nx, self.ny)
+        )
+
+        return opt, xpt, diverted_core_mask, psi_bndry
+
+    def diverted_critical_complete(
+        self,
+        R,
+        Z,
+        psi,
+        psi_bndry=None,
+        mask_outside_limiter=None,
+        rel_tolerance_xpt=1e-4,
+        starting_dx=0.05,
+    ):
+
+        try:
+            opt, xpt, diverted_core_mask, psi_bndry = self.Jtor_part1(
+                R, Z, psi, psi_bndry, mask_outside_limiter
+            )
+        except:
+            opt, xpt, diverted_core_mask, psi_bndry = self.diverted_critical(
+                R,
+                Z,
+                psi,
+                psi_bndry,
+                mask_outside_limiter,
+                rel_tolerance_xpt,
+                starting_dx,
+            )
+
+        return opt, xpt, diverted_core_mask, psi_bndry
+
+    # def diverted_critical_old(self, R, Z, psi, psi_bndry=None, mask_outside_limiter=None, xpt_tol=1e-4):
+    #     # this
+
+    #     # find O- and X-points of equilibrium
+    #     opt, xpt = critical.fastcrit(
+    #         R, Z, psi, self.mask_inside_limiter, #self.Ip
+    #     )
+    #     len_xpt = len(xpt)
+    #     len_opt = len(opt)
+
+    #     # find core plasma mask (using user-defined psi_bndry)
+    #     if psi_bndry is not None:
+    #         diverted_core_mask = critical.inside_mask(
+    #             R, Z, psi, opt, xpt, mask_outside_limiter, psi_bndry
+    #         )
+
+    #     elif len_xpt:
+    #         del_psi = np.max(psi)-np.min(psi)
+    #         # order xpt according to psi
+    #         xpt = xpt[np.argsort(xpt[:,2])]
+    #         i = -1
+    #         xpt_found = False
+    #         while xpt_found==False and i<len_xpt-1:
+    #             i += 1
+    #             # cs = plt.contour(R, Z, psi, levels=[xpt[i,2]-xpt_tol*del_psi, xpt[i,2]+xpt_tol*del_psi])
+    #             # all_coords = cs.allsegs
+    #             all_coords = [measure.find_contours(psi, xpt[i,2] - xpt_tol*del_psi),
+    #                           measure.find_contours(psi, xpt[i,2] + xpt_tol*del_psi)]
+    #             open_close = [self.all_open(all_coords[0]), self.all_open(all_coords[1])]
+    #             # check that lines are open for fluxes 'belox' the xpoint and closed 'above'
+    #             xpt_found = (open_close[0][0]==True) and (open_close[1][0]==False)
+    #             if xpt_found:
+    #                 # check that the closed region has overlap with the limiter region
+    #                 # use countour to find diverted mask
+    #                 candidate_lcfs = all_coords[1][np.arange(len(all_coords[1]))[np.logical_not(open_close[1][1])][0]]
+    #                 # normalize spatial coordinates
+    #                 candidate_lcfs *= self.dR_dZ
+    #                 candidate_lcfs += self.R0Z0
+    #                 LCFS = Path(candidate_lcfs)
+    #                 candidate_diverted_core_mask = LCFS.contains_points(self.grid_points.reshape(-1, 2)).reshape(np.shape(R))
+    #                 candidate_diverted_core_mask *= self.mask_inside_limiter
+    #                 xpt_found = np.any(candidate_diverted_core_mask)
+
+    #         if xpt_found:
+    #             # use point with highest psi as opt
+    #             psi_in_core = psi[candidate_diverted_core_mask]
+    #             psi_max = max(psi_in_core)
+    #             opt_idx = np.arange(len(psi_in_core))[psi_in_core==psi_max]
+    #             new_opt = [[(R[candidate_diverted_core_mask])[opt_idx[0]],
+    #                         (Z[candidate_diverted_core_mask])[opt_idx[0]],
+    #                         psi_max]]
+    #             # update opt list accordingly
+    #             if len_opt:
+    #                 # check if already in the list
+    #                 dist = np.abs(opt - new_opt)
+    #                 check_opt = (dist[:,0] < self.dR) * (dist[:,1] < self.dZ)
+    #                 if np.any(check_opt):
+    #                     # bring to first position
+    #                     opt_idx = np.arange(len_opt)[check_opt][0]
+    #                     aux = np.copy(opt[0])
+    #                     opt[0] = np.copy(opt[opt_idx])
+    #                     opt[opt_idx] = np.copy(aux)
+    #                 else:
+    #                     # add to the list
+    #                     opt = np.concatenate((new_opt, opt), axis=0)
+    #             else:
+    #                 # add to list
+    #                 opt = np.concatenate((new_opt, opt), axis=0)
+    #             # set xpt-related quantities
+    #             psi_bndry = xpt[i,2]
+    #             self.lcfs = 1.0*candidate_lcfs
+    #             # put xpt[i] to first position
+    #             aux = np.copy(xpt[0])
+    #             xpt[0] = np.copy(xpt[i])
+    #             xpt[i] = np.copy(aux)
+    #             # refine edge to recover any pixels lost due to the xpt_tol
+    #             diverted_core_mask = self.limiter_handler.broaden_mask(candidate_diverted_core_mask, layer_size=1)
+    #             diverted_core_mask *= (psi > psi_bndry)
+
+    #         else:
+    #             # no useful xpt found
+    #             psi_bndry = psi[0, 0]
+    #             diverted_core_mask = None
+
+    #     else:
+    #         # No X-points
+    #         psi_bndry = psi[0, 0]
+    #         diverted_core_mask = None
+
+    #     return opt, xpt, diverted_core_mask, psi_bndry
+
     def Jtor_build(
         self,
         Jtor_part1,
@@ -141,14 +428,14 @@ class Jtor_universal:
             Same size as psi.
         """
 
-        opt, xpt, diverted_core_mask, diverted_psi_bndry = Jtor_part1(
+        opt, xpt, diverted_core_mask, self.diverted_psi_bndry = Jtor_part1(
             R, Z, psi, psi_bndry, mask_outside_limiter
         )
 
         if diverted_core_mask is None:
             # print('no xpt')
             psi_bndry, limiter_core_mask, flag_limiter = (
-                diverted_psi_bndry,
+                self.diverted_psi_bndry,
                 None,
                 False,
             )
@@ -158,13 +445,15 @@ class Jtor_universal:
         else:
             psi_bndry, limiter_core_mask, flag_limiter = core_mask_limiter(
                 psi,
-                diverted_psi_bndry,
-                diverted_core_mask,
+                self.diverted_psi_bndry,
+                diverted_core_mask * self.mask_inside_limiter,
                 limiter_mask_out,
             )
             if np.sum(limiter_core_mask * self.mask_inside_limiter) == 0:
                 limiter_core_mask = diverted_core_mask * self.mask_inside_limiter
-                psi_bndry = 1.0 * diverted_psi_bndry
+                psi_bndry = 1.0 * self.diverted_psi_bndry
+
+        self.inputs = [opt[0][2], psi_bndry, limiter_core_mask]
 
         jtor = Jtor_part2(R, Z, psi, opt[0][2], psi_bndry, limiter_core_mask)
         return (
@@ -205,10 +494,11 @@ class Jtor_universal:
             self.limiter_core_mask,
             self.flag_limiter,
         ) = self.Jtor_build(
-            self.Jtor_part1,
+            self.diverted_critical_complete,
+            # self.Jtor_part1,
             self.Jtor_part2,
-            # self.limiter_handler.core_mask_limiter,
-            self.core_mask_limiter,
+            self.limiter_handler.core_mask_limiter,
+            # self.core_mask_limiter,
             R,
             Z,
             psi,
@@ -242,8 +532,10 @@ class Jtor_universal:
         """
 
         unrefined_jtor = self.Jtor_unrefined(R, Z, psi, psi_bndry)
-        self.unrefined_jtor = 1.0 * unrefined_jtor
+        self.unrefined_jtor = np.copy(unrefined_jtor)
+        self.unrefined_djtordpsi = np.copy(self.dJtordpsi)
         self.pure_jtor = unrefined_jtor / self.L
+        self.pure_djtordpsi = self.dJtordpsi / self.L
         core_mask = 1.0 * self.limiter_core_mask
 
         if thresholds == None:
@@ -265,12 +557,20 @@ class Jtor_universal:
         refined_jtor = refined_jtor.reshape(
             -1, self.jtor_refiner.nnx, self.jtor_refiner.nny
         )
+        self.dJtordpsi = self.jtor_refiner.build_from_refined_jtor(
+            self.pure_djtordpsi,
+            self.dJtordpsi.reshape(-1),
+            self.jtor_refiner.nnx,
+            self.jtor_refiner.nny,
+        )
+
         self.jtor = self.jtor_refiner.build_from_refined_jtor(
             self.pure_jtor, refined_jtor
         )
         if self.Ip_logic:
             self.L = self.Ip / (np.sum(self.jtor) * self.dRdZ)
             self.jtor *= self.L
+            self.dJtordpsi *= self.L
 
         return self.jtor
 

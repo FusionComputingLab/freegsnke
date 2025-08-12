@@ -26,6 +26,7 @@ from copy import deepcopy
 import freegs4e
 import matplotlib.pyplot as plt
 import numpy as np
+import scipy as sp
 from freegs4e.gradshafranov import Greens
 
 from . import nk_solver_H as nk_solver
@@ -44,7 +45,12 @@ class NKGSsolver:
     The non-linear solvers are called using the 'forward_solve', 'inverse_solve' or generic 'solve' methods.
     """
 
-    def __init__(self, eq):
+    def __init__(
+        self,
+        eq,
+        l2_reg=1e-6,
+        collinearity_reg=1e-6,
+    ):
         """Instantiates the solver object.
         Based on the domain grid of the input equilibrium object, it prepares
         - the linear solver 'self.linear_GS_solver'
@@ -59,6 +65,10 @@ class NKGSsolver:
              use the grid domain set at instantiation time. Re-instantiation
              is necessary in order to change the propertes of either grid or
              domain.
+        l2_reg : float
+            Tychonoff regularization coeff used by the nonlinear solver
+        collinearity_reg : float
+            Tychonoff regularization coeff which further penalizes collinear terms used by the nonlinear solver
 
         """
 
@@ -83,7 +93,11 @@ class NKGSsolver:
         dZ = Z[0, 1] - Z[0, 0]
         self.dRdZ = dR * dZ
 
-        self.nksolver = nk_solver.nksolver(problem_dimension=self.nx * self.ny)
+        self.nksolver = nk_solver.nksolver(
+            problem_dimension=self.nx * self.ny,
+            l2_reg=l2_reg,
+            collinearity_reg=collinearity_reg,
+        )
 
         # linear solver for del*Psi=RHS with fixed RHS
         self.linear_GS_solver = freegs4e.multigrid.createVcycle(
@@ -384,6 +398,9 @@ class NKGSsolver:
         self.relative_change = 1.0 * rel_change
         self.norm_rel_change = [norm_rel_change]
 
+        self.best_relative_change = 1.0 * rel_change
+        self.best_psi = trial_plasma_psi
+
         args = [self.tokamak_psi, profiles]
 
         starting_direction = np.copy(res0)
@@ -488,6 +505,10 @@ class NKGSsolver:
                     # clip_quantiles=clip_quantiles,
                 )
                 update = 1.0 * self.nksolver.dx
+                log.append(
+                    f"...number of Krylov vectors used =  {len(self.nksolver.coeffs)}"
+                )
+
             if force_up_down_symmetric:
                 log.append("Forcing up-dpwn symmetry of the plasma.")
                 update = update.reshape(self.shape)
@@ -580,6 +601,11 @@ class NKGSsolver:
                 norm_rel_change = self.relative_norm_residual(res0, trial_plasma_psi)
                 rel_change, del_psi = self.relative_del_residual(res0, trial_plasma_psi)
 
+                # compare to best on record
+                if rel_change < self.best_relative_change:
+                    self.best_relative_change = 1.0 * rel_change
+                    self.best_psi = np.copy(trial_plasma_psi)
+
             self.relative_change = 1.0 * rel_change
             self.norm_rel_change.append(norm_rel_change)
             log.append(f"...relative error =  {rel_change:.2e}")
@@ -594,6 +620,15 @@ class NKGSsolver:
             iterations += 1
 
         # update eq with new solution
+        # compare to best on record
+        if self.best_relative_change < rel_change:
+            self.relative_change = 1.0 * self.best_relative_change
+            trial_plasma_psi = np.copy(self.best_psi)
+            profiles.Jtor(
+                self.R,
+                self.Z,
+                (self.tokamak_psi + trial_plasma_psi).reshape(self.nx, self.ny),
+            )
         eq.plasma_psi = trial_plasma_psi.reshape(self.nx, self.ny).copy()
 
         self.port_critical(eq=eq, profiles=profiles)

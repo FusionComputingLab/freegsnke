@@ -68,6 +68,7 @@ class PlasmaControlSystem:
 
         self.VirtualCircuitsController = VirtualCircuitsController(
             data=circuits_data,
+            ctrl_coils=self.ctrl_coils,
             ctrl_targets=self.ctrl_targets,
             plasma_target=self.plasma_target,
         )

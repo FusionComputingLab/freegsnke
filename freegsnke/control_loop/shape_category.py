@@ -36,7 +36,7 @@ class ShapeController:
         self.ctrl_targets = ctrl_targets
 
         # check correct data is input and in correct format
-        self.keys_to_spline = ["ff", "fb", "blend"]
+        self.keys_to_spline = ["ff", "ref", "blend"]
         self.keys_to_step = ["k_prop", "k_int", "damping"]
         for targ in self.ctrl_targets:
             if targ not in data:
@@ -98,7 +98,7 @@ class ShapeController:
         """
 
         # extract data
-        T_fb = self.extract_values(t=t, targets=self.ctrl_targets, key="fb")
+        T_ref = self.extract_values(t=t, targets=self.ctrl_targets, key="ref")
         T_ff = self.extract_values(t=t, targets=self.ctrl_targets, key="ff", deriv=True)
         T_blend = self.extract_values(t=t, targets=self.ctrl_targets, key="blend")
         k_prop = self.extract_values(t=t, targets=self.ctrl_targets, key="k_prop")
@@ -108,7 +108,7 @@ class ShapeController:
         )
 
         # proportional term
-        T_err = (1 - alpha_inv) * T_err_prev + alpha_inv * (T_fb - T_meas)
+        T_err = (1 - alpha_inv) * T_err_prev + alpha_inv * (T_ref - T_meas)
 
         # integral term
         T_int = T_hist_prev + (0.5 * T_err * dt)
@@ -117,10 +117,10 @@ class ShapeController:
         T_hist = T_hist_prev + (T_err * dt)
 
         # FB term
-        T_FB = (k_prop * T_err) + (k_int * T_int)
+        T_fb = (k_prop * T_err) + (k_int * T_int)
 
         # time deriv of shape target requests
-        dT_dt = ((T_blend * T_FB) + ((1.0 - T_blend) * T_ff)).squeeze()
+        dT_dt = ((T_blend * T_fb) + ((1.0 - T_blend) * T_ff)).squeeze()
 
         return dT_dt, T_err, T_hist
 
@@ -141,7 +141,7 @@ class ShapeController:
         targets : list of str
             A list of target names corresponding to keys in `self.interpolants`.
         key : str
-            The dictionary key (e.g., 'fb') used to select the interpolation function for each target.
+            The dictionary key (e.g., 'ref') used to select the interpolation function for each target.
         deriv : bool
             Returns first derivative of the interpolant if True.
 
@@ -207,7 +207,7 @@ class ShapeController:
             )
             ax.grid(True, linestyle="--", alpha=0.6)
 
-            if key in ["fb", "ff"]:
+            if key in ["ref", "ff"]:
                 ax.set_ylabel(rf"{key} [$m$]")
             elif key == "k_prop":
                 ax.set_ylabel(rf"{key} [$1/s$]")

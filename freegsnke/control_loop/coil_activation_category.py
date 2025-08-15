@@ -1,5 +1,5 @@
 """
-Module to implement plasma control in FreeGSNKE control loops. 
+Module to implement coil activation times in FreeGSNKE control loops. 
 
 """
 
@@ -13,7 +13,7 @@ from freegsnke.control_loop.useful_functions import (
 )
 
 
-class PlasmaController:
+class CoilActivationController:
     """
     ADD DESCRIP.
 
@@ -29,13 +29,19 @@ class PlasmaController:
     def __init__(
         self,
         data,
+        active_coils,
     ):
 
+        # coils list
+        self.active_coils = active_coils
+
         # check correct data is input and in correct format
-        self.keys_to_spline = ["ip_ref", "ip_blend", "vloop_ff"]
-        self.keys_to_step = ["k_prop", "k_int", "M_solenoid"]
+        self.keys_to_spline = []
+        self.keys_to_step = [coil + "_activation" for coil in self.active_coils]
         for key in self.keys_to_spline + self.keys_to_step:
-            check_data_entry(data=data, key=key, controller_name="PlasmaController")
+            check_data_entry(
+                data=data, key=key, controller_name="CoilActivationController"
+            )
 
         # create an internal copy of the data
         self.data = data
@@ -51,63 +57,49 @@ class PlasmaController:
             elif key in self.keys_to_step:
                 self.interpolants[key] = interpolate_step(self.data[key])
 
-    def run_control(
-        self,
-        t,
-        dt,
-        ip_meas,
-        ip_hist_prev,
-    ):
-        """
-        NEED TO UPDATE.
-        Calculates the vector of current trajectories ΔI/Δt, as prescribed
-        in the plasma category of the MAST-U PCS. The equations followed are:
+    # def run_control(
+    #     self,
+    #     t,
+    #     dt,
+    #     zip_meas,
+    #     zipv_meas,
+    # ):
+    #     """
+    #     NEED TO UPDATE.
+    #     Calculates the vector of current trajectories ΔI/Δt, as prescribed
+    #     in the plasma category of the MAST-U PCS. The equations followed are:
 
-        Ip_error = (Ip_req - Ip_obs)
-        integral = internal_state + 0.5 * Ip_error * dt
-        internal_state = internal_state + Ip_error * dt
-        ΔIsol_fb/Δt = Kp * Ip_error + Ki * integral
-        ΔIsol/Δt = ΔIsol_fb/Δt * blend - Vloop_ff * (1 - blend)/M_sp
+    #     Ip_error = (Ip_req - Ip_obs)
+    #     integral = internal_state + 0.5 * Ip_error * dt
+    #     internal_state = internal_state + Ip_error * dt
+    #     ΔIsol_fb/Δt = Kp * Ip_error + Ki * integral
+    #     ΔIsol/Δt = ΔIsol_fb/Δt * blend - Vloop_ff * (1 - blend)/M_sp
 
-        It should be noted that the PI controller works at a frequency twice as
-        high as the data recording system. This is why the PI controller goes
-        through two cycles in this method.
+    #     It should be noted that the PI controller works at a frequency twice as
+    #     high as the data recording system. This is why the PI controller goes
+    #     through two cycles in this method.
 
-        Parameters
-        ----------
-        - Kp : float
-            Proportional term used in the Vloop_fb computation.
+    #     Parameters
+    #     ----------
+    #     - Kp : float
+    #         Proportional term used in the Vloop_fb computation.
 
+    #     Returns
+    #     -------
+    #     - dI_dt : 1D numpy array
+    #         Array of delta currents requests that will be part of the input of
+    #         Circuits category.
 
-        Returns
-        -------
-        - dI_dt : 1D numpy array
-            Array of delta currents requests that will be part of the input of
-            Circuits category.
+    #     """
 
-        """
+    #     # extract data
+    #     z_ref = self.interpolants["z_ref"](t)
+    #     ip_ref = self.interpolants["ip_ref"](t)
+    #     k_prop = self.interpolants["k_prop"](t)
+    #     k_deriv = self.interpolants["k_deriv"](t)
 
-        # proportional term
-        ip_err = self.interpolants["ip_ref"](t) - ip_meas
-        k_prop = self.interpolants["k_prop"](t)
-        k_int = self.interpolants["k_int"](t)
-        blend = self.interpolants["ip_blend"](t)
-        vloop_ff = self.interpolants["vloop_ff"](t)
-        M_solenoid = self.interpolants["M_solenoid"](t)
-
-        # integral term
-        ip_int = ip_hist_prev + (0.5 * ip_err * dt)
-
-        # update ip_hist
-        ip_hist = ip_hist_prev + (ip_err * dt)
-
-        # FB term
-        ip_ref = (k_prop * ip_err) + (k_int * ip_int)
-
-        # time deriv of plasma current request
-        dip_dt = (blend * ip_ref) + ((1 - blend) * (vloop_ff / M_solenoid))
-
-        return dip_dt, ip_hist
+    #     # return k_prop*(zip_meas - z_ref*ip_ref) + k_deriv*zipv_meas
+    #     return k_prop*(z_ref*ip_ref - zip_meas) + k_deriv*zipv_meas
 
     def plot_data(self, tmin=-1.0, tmax=1.0, nt=10001):
         """
@@ -155,20 +147,9 @@ class PlasmaController:
                 label=f"raw data",
             )
             ax.grid(True, linestyle="--", alpha=0.6)
+            ax.set_ylabel(key)
 
-            if key == "ip_ref":
-                ax.set_ylabel(rf"{key} [$A/s$]")
-            elif key == "vloop_ff":
-                ax.set_ylabel(rf"{key} [$V$]")
-            elif key == "k_prop":
-                ax.set_ylabel(rf"{key} [$1/s$]")
-            elif key == "k_int":
-                ax.set_ylabel(rf"{key} [$1/s^2$]")
-            elif key == "M_solenoid":
-                ax.set_ylabel(rf"{key} [$V.s/A$]")
-            else:
-                ax.set_ylabel(key)
-
+        fig.suptitle("Coil activation schedule (0 = off, 1 = on)")
         axes[0].legend(loc="best")
         axes[-1].set_xlabel(r"Time [$s$]")
         axes[-1].set_xlim([tmin, tmax])

@@ -99,7 +99,9 @@ class ShapeController:
 
         # extract data
         T_ref = self.extract_values(t=t, targets=self.ctrl_targets, key="ref")
-        T_ff = self.extract_values(t=t, targets=self.ctrl_targets, key="ff", deriv=True)
+        T_ff_deriv = self.extract_values(
+            t=t, targets=self.ctrl_targets, key="ff", deriv=True
+        )
         T_blend = self.extract_values(t=t, targets=self.ctrl_targets, key="blend")
         k_prop = self.extract_values(t=t, targets=self.ctrl_targets, key="k_prop")
         k_int = self.extract_values(t=t, targets=self.ctrl_targets, key="k_int")
@@ -117,10 +119,10 @@ class ShapeController:
         T_hist = T_hist_prev + (T_err * dt)
 
         # FB term
-        T_fb = (k_prop * T_err) + (k_int * T_int)
+        T_fb_deriv = (k_prop * T_err) + (k_int * T_int)
 
         # time deriv of shape target requests
-        dT_dt = ((T_blend * T_fb) + ((1.0 - T_blend) * T_ff)).squeeze()
+        dT_dt = ((T_blend * T_fb_deriv) + ((1.0 - T_blend) * T_ff_deriv)).squeeze()
 
         return dT_dt, T_err, T_hist
 

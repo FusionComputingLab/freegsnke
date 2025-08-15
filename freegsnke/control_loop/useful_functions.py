@@ -38,7 +38,7 @@ def interpolate_step(
         kind="previous",
         axis=0,
         bounds_error=False,
-        fill_value=(vals[0], vals[-1]),  # extrapolate for first and last values
+        fill_value=(0.0, vals[-1]),  # extrapolate for first and last values
     )
 
     return f_interp
@@ -72,7 +72,7 @@ def interpolate_spline(data):
         vals,
         k=1,  # order (linear)
         s=0,  # interpolates points exactly
-        ext=3,  # extrapolates to boundary points
+        ext="zeros",  # extrapolate to zeros outside of boundary points
     )
 
     return f_interp

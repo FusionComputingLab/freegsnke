@@ -32,6 +32,7 @@ class VirtualCircuitsController:
         ctrl_coils,
         ctrl_targets,
         plasma_target,
+        emu_vc_provider=None,
     ):
 
         # coils list
@@ -61,6 +62,10 @@ class VirtualCircuitsController:
         for key in self.keys_to_step:
             self.interpolants[key] = interpolate_step(self.data[key])
 
+        self.emu_vc_provider = emu_vc_provider
+        if self.emu_vc_provider is not None:
+            print("Emulated VC's provided")
+
     def run_control(
         self,
         t,
@@ -68,6 +73,7 @@ class VirtualCircuitsController:
         dip_dt,
         dT_dt,
         I_approved_prev,
+        emu_flag=False,
     ):
         """
         NEED TO UPDATE.
@@ -93,10 +99,22 @@ class VirtualCircuitsController:
         )
 
         # extract VC matrix (targets x coils)
-        V = self.extract_values(t=t, targets=self.ctrl_targets + self.plasma_target)
+        # get shape vc
+        if emu_flag == True:
+            assert (
+                self.emu_vc_provider is not None
+            ), "Need to provide an emulator VC provider to the class"
+            VC_shape = self.emu_vc_provider.get_vc(
+                targets=self.shape_targets, coils=self.ctrl_coils
+            )
+        else:
+            VC_shape = self.extract_values(t=t, targets=self.shape_targets)
+
+        # get plasma vc
+        VC_plas = self.extract_values(t=t, targets=self.plasma_target)
 
         # unapproved coil currents rates of change
-        dI_dt_unapproved = dI_dt_ref + np.concatenate((dT_dt, [dip_dt])) @ V
+        dI_dt_unapproved = dI_dt_ref + (dT_dt @ VC_shape) + (dip_dt @ VC_plas)
 
         # unapproved coil currents (by simple Euler integration)
         I_unapproved = I_approved_prev + (dI_dt_unapproved * dt)

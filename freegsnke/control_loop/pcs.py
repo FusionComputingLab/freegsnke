@@ -12,10 +12,8 @@ from .pf_category import PFController
 from .plasma_category import PlasmaController
 from .shape_category import ShapeController
 from .systems_category import SystemsController
+from .vertical_category import VerticalController
 from .virtual_circuits_category import VirtualCircuitsController
-
-# from .target_scheduler import TargetScheduler
-# from .vertical_control import vertical_controller
 
 
 class PlasmaControlSystem:
@@ -38,6 +36,7 @@ class PlasmaControlSystem:
         circuits_data,
         systems_data,
         pf_data,
+        vertical_data,
         active_coils,
         ctrl_coils,
         solenoid_coils,
@@ -46,7 +45,7 @@ class PlasmaControlSystem:
         plasma_target,
     ):
 
-        # TODO consistency checks --> need to check coils stuff?
+        # TODO consistency checks --> need to check coils ordering?
         self.active_coils = active_coils
         self.ctrl_coils = ctrl_coils
         self.solenoid_coils = solenoid_coils
@@ -82,9 +81,9 @@ class PlasmaControlSystem:
             data=pf_data,
         )
 
-        # TODO
-        # figure out storage/retrieval of various parametesr
-        # figure out storage of integral/pi states etc. (and any other 'previous timestep' quantities)
+        self.VerticalControl = VerticalController(
+            data=vertical_data,
+        )
 
     def calculate_ctrl_voltages(
         self,

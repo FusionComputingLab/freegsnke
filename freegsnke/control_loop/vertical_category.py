@@ -61,30 +61,6 @@ class VerticalController:
     ):
         """
         NEED TO UPDATE.
-        Calculates the vector of current trajectories ΔI/Δt, as prescribed
-        in the plasma category of the MAST-U PCS. The equations followed are:
-
-        Ip_error = (Ip_req - Ip_obs)
-        integral = internal_state + 0.5 * Ip_error * dt
-        internal_state = internal_state + Ip_error * dt
-        ΔIsol_fb/Δt = Kp * Ip_error + Ki * integral
-        ΔIsol/Δt = ΔIsol_fb/Δt * blend - Vloop_ff * (1 - blend)/M_sp
-
-        It should be noted that the PI controller works at a frequency twice as
-        high as the data recording system. This is why the PI controller goes
-        through two cycles in this method.
-
-        Parameters
-        ----------
-        - Kp : float
-            Proportional term used in the Vloop_fb computation.
-
-
-        Returns
-        -------
-        - dI_dt : 1D numpy array
-            Array of delta currents requests that will be part of the input of
-            Circuits category.
 
         """
 
@@ -94,6 +70,94 @@ class VerticalController:
         k_deriv = self.interpolants["k_deriv"](t)
 
         return k_prop * (z_ref * ip_meas - zip_meas) + k_deriv * zipv_meas
+
+    def run_control2(
+        self,
+        dt,
+        target,
+        history,
+        Ip,
+    ):
+        """
+        PID controller required for plasma vertical position. Computes the required voltage
+        in the vertical stability coil to stabilise the plasma.
+
+        Parameters
+        ----------
+        dt : float
+            Time step over which controller should act [s].
+        target : float
+            Target vertical position [m].
+        history : list
+            List of previous vertical positions of the effective toroidal current center [m].
+        k_prop : float
+            Proportional gain controls how strongly the voltage reacts to deviations from the target.
+        k_int : float
+            Integral gain controls how the controller accumulates error over time (to correct drifts).
+        k_deriv : float
+            Derivative gain controls how the controller reacts to rapid changes in target.
+        prop_exponent : float
+            Exoponent in proportional term.
+        prop_error : float
+            Reference error for the proportional term.
+        deriv_threshold : float
+            Threshold for derivative action - limits effect of sudden jumps in target.
+        int_factor : float
+            Exponential decay factor that limits effect of older values on integral term.
+        Ip : float
+            Total plasma current at current time [Amps].
+        Ip_ref : float
+            Reference total plasma current [Amps], used to normalise output.
+        derivative_lag : int
+            Number of historical values over which the derivative term acts.
+
+        Returns
+        -------
+        float
+            Voltage required for the vertical stability coil to stabilise the plasma [Volts].
+        """
+
+        k_prop = -20000
+        k_int = 0
+        k_deriv = -50
+        prop_exponent = 1.0
+        prop_error = 1e-3
+        deriv_threshold = 50
+        int_factor = 0.98
+        Ip_ref = None
+        derivative_lag = 1
+
+        # proportional term
+        error = history[-1] - target
+        output = (
+            k_prop
+            * prop_error
+            * np.sign(error)
+            * (np.abs(error / prop_error) ** prop_exponent)
+        )
+
+        # integral and derivative terms only if there's enough history
+        if len(history) > derivative_lag:
+
+            # integral term
+            memory = (int_factor ** np.arange(len(history)))[::-1]
+            integral_term = k_int * np.sum(np.array(history) * memory) * dt
+
+            # derivative term (capped)
+            derivative_term = k_deriv * (
+                (history[-1] - history[-1 - derivative_lag]) / dt
+            )
+            derivative_term = np.sign(derivative_term) * min(
+                abs(derivative_term), deriv_threshold
+            )
+
+            output += integral_term + derivative_term
+
+        # scale by plasma current reference
+        if Ip_ref is not None:
+            output *= Ip / Ip_ref
+
+        return output
 
     def plot_data(self, tmin=-1.0, tmax=1.0, nt=10001):
         """

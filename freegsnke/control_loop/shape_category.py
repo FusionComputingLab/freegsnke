@@ -39,20 +39,15 @@ class ShapeController:
         self.keys_to_spline = ["ff", "ref", "blend"]
         self.keys_to_step = ["k_prop", "k_int", "damping"]
         for targ in self.ctrl_targets:
-            if targ not in data:
-                raise ValueError(
-                    f"{ShapeController}: Key '{targ}' not found in 'data'. "
-                    f"Please include waveforms {self.keys_to_spline+self.keys_to_step} for '{targ}'."
+            for key in self.keys_to_spline + self.keys_to_step:
+                check_data_entry(
+                    data=data[targ], key=key, controller_name="ShapeController"
                 )
-                for key in self.keys_to_spline + self.keys_to_step:
-                    check_data_entry(
-                        data=data[targ], key=key, controller_name="ShapeController"
-                    )
 
         # create an internal copy of the data
         self.data = data
 
-        # create a dictionary to store the spline functions
+        # create a dictionary to store the spline funcions
         self.interpolants = {}
 
         # interpolate the input data
@@ -124,7 +119,7 @@ class ShapeController:
         # time deriv of shape target requests
         dT_dt = ((T_blend * T_fb_deriv) + ((1.0 - T_blend) * T_ff_deriv)).squeeze()
 
-        return dT_dt, T_err, T_hist
+        return dT_dt.squeeze(), T_err.squeeze(), T_hist.squeeze()
 
     def extract_values(
         self,
@@ -143,7 +138,7 @@ class ShapeController:
         targets : list of str
             A list of target names corresponding to keys in `self.interpolants`.
         key : str
-            The dictionary key (e.g., 'ref') used to select the interpolation function for each target.
+            The dictionary key (e.g., 'fb') used to select the interpolation function for each target.
         deriv : bool
             Returns first derivative of the interpolant if True.
 

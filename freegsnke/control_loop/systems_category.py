@@ -118,7 +118,7 @@ class SystemsController:
             print(f"    Approved coil currents = {I_approved}")
             print(f"    Approved delta coil currents = {dI_dt_approved}")
 
-        return I_approved, dI_dt_approved
+        return I_approved.squeeze(), dI_dt_approved.squeeze()
 
     def extract_values(
         self,

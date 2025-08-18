@@ -123,7 +123,7 @@ class PFController:
         delta_clipped = np.clip(delta_voltages, -max_delta, max_delta)
         V_approved = V_approved_prev + delta_clipped
 
-        return V_approved
+        return V_approved.squeeze()
 
     def extract_values(
         self,

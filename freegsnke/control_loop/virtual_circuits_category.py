@@ -105,21 +105,21 @@ class VirtualCircuitsController:
                 self.emu_vc_provider is not None
             ), "Need to provide an emulator VC provider to the class"
             VC_shape = self.emu_vc_provider.get_vc(
-                targets=self.shape_targets, coils=self.ctrl_coils
+                targets=self.ctrl_targets, coils=self.ctrl_coils
             )
         else:
-            VC_shape = self.extract_values(t=t, targets=self.shape_targets)
+            VC_shape = self.extract_values(t=t, targets=self.ctrl_targets)
 
         # get plasma vc
         VC_plas = self.extract_values(t=t, targets=self.plasma_target)
 
         # unapproved coil currents rates of change
-        dI_dt_unapproved = dI_dt_ref + (dT_dt @ VC_shape) + (dip_dt @ VC_plas)
+        dI_dt_unapproved = dI_dt_ref + (dT_dt @ VC_shape) + (dip_dt * VC_plas)
 
         # unapproved coil currents (by simple Euler integration)
         I_unapproved = I_approved_prev + (dI_dt_unapproved * dt)
 
-        return I_unapproved, dI_dt_unapproved
+        return I_unapproved.squeeze(), dI_dt_unapproved.squeeze()
 
     def extract_values(
         self,

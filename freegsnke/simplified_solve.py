@@ -38,10 +38,10 @@ class simplified_solver_J1:
         self,
         eq,
         Lambdam1,
+        P,
         Pm1,
         Rm1,
         Mey,
-        # limiter_handler,
         plasma_norm_factor,
         plasma_resistance_1d,
         full_timestep=0.0001,
@@ -59,9 +59,11 @@ class simplified_solver_J1:
         Lambdam1: np.array
             State matrix of the circuit equations for the metal in normal mode form:
             P is the identity on the active coils and diagonalises the isolated dynamics
-            of the passive coils, R^{-1/2}L_{passive}R^{-1/2}
+            of the passive coils, R^{-1}L_{passive}
+        P: np.array
+            change of basis matrix, as defined above, with modes appropriately removed
         Pm1: np.array
-            change of basis matrix, as defined above, to the power of -1
+            Inverse of the change of basis matrix, as defined above, with modes appropriately removed
         Rm1: np.array
             matrix of all metal resitances to the power of -1. Diagonal.
         Mey: np.array
@@ -91,12 +93,14 @@ class simplified_solver_J1:
 
         self.Lmatrix = np.copy(self.Mmatrix)
 
-        self.Pm1 = Pm1
         self.Rm1 = Rm1
+        self.Pm1 = Pm1
+        # self.RP = np.diag(eq.tokamak.coil_resist) @ P
+        # self.RP_inv = np.linalg.solve(self.RP.T @ self.RP, self.RP.T)
+        # self.RP_inv_Mey = np.matmul(self.RP_inv, Mey)
         self.Pm1Rm1 = Pm1 @ Rm1
         self.Pm1Rm1Mey = np.matmul(self.Pm1Rm1, Mey)
-        self.MyeP_T = Pm1 @ Mey
-        # self.handleMyy = Myy_handler(limiter_handler)
+        self.MyeP = np.matmul(Mey.T, P).T
 
         self.n_active_coils = eq.tokamak.n_active_coils
         self.n_coils = eq.tokamak.n_coils
@@ -176,7 +180,7 @@ class simplified_solver_J1:
         Rp = np.sum(self.plasma_resistance_1d * hatIy_left * hatIy_1)
         self.Rp = Rp
 
-        self.Mmatrix[-1, :-1] = np.dot(self.MyeP_T, hatIy_left) / (
+        self.Mmatrix[-1, :-1] = np.dot(self.MyeP, hatIy_left) / (
             Rp * self.plasma_norm_factor
         )
         self.Lmatrix[-1, :-1] = np.copy(self.Mmatrix[-1, :-1])
@@ -282,7 +286,7 @@ class simplified_solver_J1:
         res_met += np.dot(self.Pm1Rm1Mey, Iy_dot) * self.plasma_norm_factor
         # plasma lump
         res_pl = self.handleMyy.dot(Iy_dot)
-        res_pl += np.dot(self.MyeP_T, Id_dot) / self.plasma_norm_factor
+        res_pl += np.dot(self.MyeP, Id_dot) / self.plasma_norm_factor
         res_pl = np.dot(res_pl, hatIy_left)
         res_pl /= Rp
         # build residual vector

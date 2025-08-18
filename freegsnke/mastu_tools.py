@@ -1943,7 +1943,7 @@ def get_XDC_voltages(
 ):
     """
     Extract required XDC voltages in the active coils in MAST-U at time 't' from 'data'
-    dictionary by taking the average voltage between [t, t + dt].
+    dictionary by taking the average voltage between [t-dt, t+dt].
 
     Returns voltages for 'nsteps' (in array).
 
@@ -1971,17 +1971,17 @@ def get_XDC_voltages(
 
     # extract XDC voltages
     coil_names = list(att_dict.keys())
-    for j, coil in enumerate(coil_names):
 
-        # ignore P6 as there are no voltages
-        if coil != "P6":
+    # iterate over time steps
+    for i in range(nsteps):
+        for j, coil in enumerate(coil_names):
 
-            # iterate over time steps
-            for i in range(nsteps):
+            # ignore P6 as there are no voltages
+            if coil != "P6":
 
                 # assign the average voltage over this range (to filter out noisy spikes)
                 voltages[i, j] = smooth_data(
-                    t_start=t,
+                    t_start=t - dt,
                     t_end=t + dt,
                     data=data[coil]["fullV"],
                     t_data_start=data[coil]["full_time"][0],
@@ -1989,8 +1989,8 @@ def get_XDC_voltages(
                     n_data_points=data[coil]["full_time"][2],
                 )
 
-                # move to the next time step
-                t += dt
+        # move to the next time step
+        t += dt
 
     # some coils have voltages with signs the incorrect way
     voltage_signs = np.array([1, 1, 1, 1, 1, 1, 1, 1, 1, -1, -1, 1])
@@ -2007,7 +2007,7 @@ def smooth_data(
     n_data_points=None,
 ):
     """
-    Finds the mean of the `data' vector values between [t_start, t_end]. Requires knowledge
+    Finds the median of the `data' vector values between [t_start, t_end]. Requires knowledge
     of the time interval the data is recorded over [t_data_start, t_data_end].
 
     Parameters
@@ -2028,7 +2028,7 @@ def smooth_data(
     Returns
     -------
     float
-        Returns mean of `data' vector values between [t_start, t_end].
+        Returns median of `data' vector values between [t_start, t_end].
     """
 
     # extract number of data points
@@ -2042,8 +2042,8 @@ def smooth_data(
     idx_min = max(0, int(np.floor((t_start - t_data_start) / dt_data) + 1))
     idx_max = min(n_data_points, int(np.ceil((t_end - t_data_start) / dt_data) - 1))
 
-    # return mean of data in this interval
-    return np.mean(data[idx_min : idx_max + 1])
+    # return average of data in this interval
+    return np.median(data[idx_min : idx_max + 1])
 
 
 def vertical_controller(

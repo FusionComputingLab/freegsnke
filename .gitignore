@@ -25,6 +25,7 @@ examples/paper
 examples/basic*
 examples/machine*
 examples/example_nonlinear_ev*
+examples/example6c*
 examples/static_*
 examples/VC*
 examples/*_.ipynb
@@ -46,6 +47,7 @@ docs/api
 docs/notebooks
 docs/_images
 docs/machine_configs
+freegsnke/GSstaticsolver_pre*
 build/
 examples/.virtual_documents/*
 .virtual_documents/

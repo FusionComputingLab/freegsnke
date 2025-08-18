@@ -354,21 +354,25 @@ class Inverse_optimizer:
             A_i, b_i, l = self.build_isoflux_lsq(full_currents_vec)
             A = np.concatenate(A_i, axis=0)
             b = np.concatenate(b_i, axis=0)
+            self.isoflux_dim = len(b)
             loss = loss + l
         if self.null_points is not None:
             A_np, b_np, l = self.build_null_points_lsq(full_currents_vec)
             A = np.concatenate((A, A_np), axis=0)
             b = np.concatenate((b, b_np), axis=0)
+            self.nullp_dim = len(b)
             loss = loss + l
         if self.psi_vals is not None:
             A_pv, b_pv, l = self.build_psi_vals_lsq(full_currents_vec)
             A = np.concatenate((A, A_pv), axis=0)
             b = np.concatenate((b, b_pv), axis=0)
+            self.psiv_dim = len(b)
             loss = loss + l
         if self.curr_vals is not None:
             A_cv, b_cv, l = self.build_curr_vals_lsq(full_currents_vec)
             A = np.concatenate((A, A_cv), axis=0)
             b = np.concatenate((b, b_cv), axis=0)
+            self.curr_dim = len(b)
             loss = loss + l
         self.A = np.copy(A)
         self.b = np.copy(b)
@@ -402,6 +406,52 @@ class Inverse_optimizer:
         delta_current = np.dot(mat, np.dot(self.A.T, self.b))
 
         return delta_current, np.linalg.norm(self.loss)
+
+    def optimize_currents_grad(
+        self,
+        full_currents_vec,
+        trial_plasma_psi,
+        isoflux_weight=1.0,
+        null_points_weight=1.0,
+        psi_vals_weight=1.0,
+        current_weight=1.0,
+    ):
+        """Solves the least square problem. Tikhonov regularization is applied.
+
+        Parameters
+        ----------
+        full_currents_vec : np.array
+            Full vector of all coil current values. For example as returned by eq.tokamak.getCurrentsVec()
+        trial_plasma_psi : np.array
+            Flux due to the plasma. Same shape as eq.R
+        l2_reg : either float or 1d np.array with len=self.n_control_coils
+            The regularization factor
+
+        """
+        # prepare the plasma-related values
+        self.build_plasma_vals(trial_plasma_psi=trial_plasma_psi)
+
+        # build the matrices that define the optimization
+        self.build_lsq(full_currents_vec)
+
+        # weight the different terms in the loss
+        b_weighted = np.copy(self.b)
+        idx = 0
+        if self.isoflux_set is not None:
+            b_weighted[idx : idx + self.isoflux_dim] *= isoflux_weight
+            idx += self.isoflux_dim
+        if self.null_points is not None:
+            b_weighted[idx : idx + self.nullp_dim] *= null_points_weight
+            idx += self.nullp_dim
+        if self.psi_vals is not None:
+            b_weighted[idx : idx + self.psiv_dim] *= psi_vals_weight
+            idx += self.psiv_dim
+        if self.curr_vals is not None:
+            b_weighted[idx : idx + self.curr_dim] *= current_weight
+
+        grad = np.dot(self.A.T, b_weighted)
+
+        return grad, np.linalg.norm(self.loss)
 
     def plot(self, axis=None, show=True):
         """

@@ -4,16 +4,16 @@ make clean
 
 echo "Copying notebook files"
 mkdir -p notebooks
-cp "../examples/example0 - build_tokamak_machine.ipynb" notebooks
-cp "../examples/example1 - static_inverse_solve_MASTU.ipynb" notebooks
-cp "../examples/example2 - static_forward_solve_MASTU.ipynb" notebooks
-cp "../examples/example3 - extracting_equilibrium_quantites.ipynb" notebooks
-cp "../examples/example4 - using_magnetic_probes.ipynb" notebooks
-cp "../examples/example5 - evolutive_forward_solve.ipynb" notebooks
-cp "../examples/example7 - static_inverse_solve_SPARC.ipynb" notebooks
-cp "../examples/example8 - static_inverse_solve_ITER.ipynb" notebooks
-cp "../examples/example9 - virtual_circuits_MASTU.ipynb" notebooks
-cp ../examples/limiter_currents.json notebooks
+cp "../examples/example00 - build_tokamak_machine.ipynb" notebooks
+cp "../examples/example01 - static_inverse_solve_MASTU.ipynb" notebooks
+cp "../examples/example02 - static_forward_solve_MASTU.ipynb" notebooks
+cp "../examples/example03 - extracting_equilibrium_quantites.ipynb" notebooks
+cp "../examples/example04 - using_magnetic_probes.ipynb" notebooks
+cp "../examples/example05 - evolutive_forward_solve.ipynb" notebooks
+cp "../examples/example07 - static_inverse_solve_SPARC.ipynb" notebooks
+cp "../examples/example08 - static_inverse_solve_ITER.ipynb" notebooks
+cp "../examples/example09 - virtual_circuits_MASTU.ipynb" notebooks
+cp "../examples/example10 - growth_rates.ipynb" notebooks
 cp ../examples/simple_diverted_currents_PaxisIp.pk notebooks
 cp ../examples/simple_limited_currents_PaxisIp.pk notebooks
 

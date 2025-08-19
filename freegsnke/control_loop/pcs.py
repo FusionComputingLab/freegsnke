@@ -3,8 +3,6 @@ Module to implement a Plasma Control System (PCS) in FreeGSNKE.
 
 """
 
-from copy import deepcopy
-
 # imports
 import numpy as np
 

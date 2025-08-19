@@ -2164,8 +2164,10 @@ class nl_solver:
             # if max_iterations exceeded, print warning
             if iterations >= max_solving_iterations:
                 print(f"Forward evolutive solve DID NOT CONVERGE.")
+                self.converged = False
             else:
                 print(f"Forward evolutive solve SUCCESS.")
+                self.converged = True
             print(
                 f"   Last max. relative currents change: {np.max(rel_curr_res):.2e} (vs. requested {target_relative_tol_currents:.2e})."
             )

@@ -15,15 +15,39 @@ from freegsnke.control_loop.useful_functions import (
 
 class ShapeController:
     """
-    ADD DESCRIP.
+    A controller class for managing shape-related control targets using interpolated input data.
 
     Parameters
     ----------
+    data : dict
+        A nested dictionary containing control data for each target to be controlled. Each target's
+        data must include keys for both spline-based and step-based parameters:
+            - Spline keys: "ff", "ref", "blend"
+            - Step keys: "k_prop", "k_int", "damping"
+        Each key should map to a dictionary suitable for interpolation, with keys:
+            - 'times': 1D array of time points
+            - 'vals': 1D array of values at those time points (same length).
 
+    ctrl_targets : list of str
+        A list of target names (keys in `data`) that the controller will manage.
 
     Attributes
     ----------
+    ctrl_targets : list of str
+        The list of control targets being managed.
 
+    keys_to_spline : list of str
+        Keys corresponding to parameters that will be interpolated using splines.
+
+    keys_to_step : list of str
+        Keys corresponding to parameters that will be interpolated using step functions.
+
+    data : dict
+        Internal copy of the input data for each control target.
+
+    interpolants : dict
+        A nested dictionary storing interpolation functions for each control target and parameter.
+        Structure: {target: {param: interpolant_function}}
     """
 
     def __init__(
@@ -51,12 +75,12 @@ class ShapeController:
         self.interpolants = {}
 
         # interpolate the input data
-        for key in self.ctrl_targets:
-            self.interpolants[key] = {}
-            for wave in self.keys_to_spline:
-                self.interpolants[key][wave] = interpolate_spline(self.data[key][wave])
-            for wave in self.keys_to_step:
-                self.interpolants[key][wave] = interpolate_step(self.data[key][wave])
+        for targ in self.ctrl_targets:
+            self.interpolants[targ] = {}
+            for key in self.keys_to_spline:
+                self.interpolants[targ][key] = interpolate_spline(self.data[targ][key])
+            for key in self.keys_to_step:
+                self.interpolants[targ][key] = interpolate_step(self.data[targ][key])
 
     def run_control(
         self,
@@ -67,29 +91,39 @@ class ShapeController:
         T_hist_prev,
     ):
         """
-        Runs the shape control PI loop with blending between feedforward and feedback.
+        Executes the shape control loop using a blended feedforward and feedback PI controller.
+
+        This method computes the time derivative of shape target requests based on measured values,
+        reference trajectories, and control gains. It blends feedforward and feedback contributions
+        using a time-varying blend factor, and applies damping to the error signal.
 
         Parameters
         ----------
         t : float
-            Current time (s).
+            Current time in seconds.
         dt : float
-            Time step (s).
+            Time step in seconds.
         T_meas : np.ndarray
-            Measured shape targets.
+            Measured shape targets at the current time.
         T_err_prev : np.ndarray
-            Previous filtered error signal.
+            Previously filtered error signal (used for damping).
         T_hist_prev : np.ndarray
-            Previous integral (history) term.
+            Previous integral term (used for PI control).
 
         Returns
         -------
         dT_dt : np.ndarray
-            Derivative of target requests (to be passed to circuit solver).
+            Time derivative of the shape target requests.
         T_err : np.ndarray
-            Filtered error term at current time.
+            Filtered error signal at the current time.
         T_hist : np.ndarray
-            Updated integral term for next step.
+            Updated integral term for use in the next control step.
+
+        Notes
+        -----
+        - The error signal is filtered using a damping factor to smooth transitions.
+        - The integral term is updated using trapezoidal integration.
+        - The final output blends feedforward and feedback derivatives based on a dynamic blend factor.
         """
 
         # extract data
@@ -129,23 +163,31 @@ class ShapeController:
         deriv=False,
     ):
         """
-        Evaluate and extract interpolated values at a given time for specified targets.
+        Extracts interpolated values or their derivatives for specified control targets at a given time.
+
+        This method queries the stored interpolation functions for each target and key, returning either
+        the interpolated value or its first derivative depending on the `deriv` flag.
 
         Parameters
         ----------
         t : float
-            The time at which to evaluate the interpolants.
+            Time at which to evaluate the interpolants.
         targets : list of str
-            A list of target names corresponding to keys in `self.interpolants`.
+            List of control target names. Each must correspond to a key in `self.interpolants`.
         key : str
-            The dictionary key (e.g., 'fb') used to select the interpolation function for each target.
-        deriv : bool
-            Returns first derivative of the interpolant if True.
+            The parameter name (e.g., 'ff', 'ref', 'blend', 'k_prop', etc.) used to select the interpolant.
+        deriv : bool, optional
+            If True, returns the first derivative of the interpolant at time `t`. Default is False.
 
         Returns
         -------
         np.ndarray
-            An array of interpolated values evaluated at time `t`, one for each target.
+            Array of interpolated values (or derivatives) for each target at time `t`.
+
+        Notes
+        -----
+        - Assumes that `self.interpolants[target][key]` is a valid `scipy.interpolate` object.
+        - If `deriv=True`, the method calls `.derivative()` on the interpolant before evaluation.
         """
 
         if deriv:
@@ -157,23 +199,29 @@ class ShapeController:
 
     def plot_data(self, targ, tmin=-1.0, tmax=1.0, nt=10001):
         """
-        Plot selected time series from interpolated functions alongside their raw data.
+        Visualizes interpolated control data and corresponding raw input for a specified target.
 
-        This function takes callable interpolants stored in `self.interpolants` and
-        plots them on separate subplots, optionally overlaying the original raw
-        data points from `self.data`.
+        This method generates subplots for each control parameter (both spline and step types),
+        showing the interpolated time series alongside the original data points. It helps verify
+        the quality and behavior of the interpolation.
 
         Parameters
         ----------
         targ : str
-            Choose the shape target key whose data you wish to plot.
+            The name of the control target to plot. Must be a key in `self.interpolants` and `self.data`.
         tmin : float, optional
-            Minimum time for the evaluation grid (default is -1.0).
+            Start time for the evaluation grid (default is -1.0 seconds).
         tmax : float, optional
-            Maximum time for the evaluation grid (default is 1.0).
+            End time for the evaluation grid (default is 1.0 seconds).
         nt : int, optional
-            Number of equally spaced time points to evaluate the interpolants over
-            between `tmin` and `tmax` (default is 10001).
+            Number of time points to evaluate the interpolants over the interval [tmin, tmax] (default is 10001).
+
+        Notes
+        -----
+        - Each subplot corresponds to a control parameter (e.g., 'ff', 'ref', 'blend', 'k_prop', etc.).
+        - Interpolated curves are plotted in navy; raw data points are shown in red.
+        - Axis labels include units where applicable.
+        - Useful for debugging or validating the interpolation quality.
         """
 
         # times to plot at

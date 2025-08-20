@@ -15,39 +15,40 @@ from freegsnke.control_loop.useful_functions import (
 
 class ShapeController:
     """
-    A controller class for managing shape-related control targets using interpolated input data.
+    A controller class for managing shape control waveforms.
 
     Parameters
     ----------
     data : dict
-        A nested dictionary containing control data for each target to be controlled. Each target's
-        data must include keys for both spline-based and step-based parameters:
+        A nested dictionary containing waveforms for each target to be controlled. Each target's
+        dictionary must include keys for both spline-based and step-based parameters:
             - Spline keys: "ff", "ref", "blend"
             - Step keys: "k_prop", "k_int", "damping"
-        Each key should map to a dictionary suitable for interpolation, with keys:
+        Each key should map to a waveform dictionary suitable for interpolation with keys:
             - 'times': 1D array of time points
             - 'vals': 1D array of values at those time points (same length).
 
     ctrl_targets : list of str
-        A list of target names (keys in `data`) that the controller will manage.
+        A list of shape target names (keys in `data`) that the controller will manage.
 
     Attributes
     ----------
     ctrl_targets : list of str
-        The list of control targets being managed.
+        The list of shape targets being managed.
 
     keys_to_spline : list of str
-        Keys corresponding to parameters that will be interpolated using splines.
+        Keys corresponding to waveforms that will be interpolated using splines.
 
     keys_to_step : list of str
-        Keys corresponding to parameters that will be interpolated using step functions.
+        Keys corresponding to waveforms that will be interpolated using step functions.
 
     data : dict
-        Internal copy of the input data for each control target.
+        Internal copy of the input control waveforms.
 
     interpolants : dict
-        A nested dictionary storing interpolation functions for each control target and parameter.
-        Structure: {target: {param: interpolant_function}}
+        A nested dictionary storing interpolation functions of each input waveform for each
+        shape target.
+        Structure: {target: {spline/step key: interpolant_function}}
     """
 
     def __init__(
@@ -91,33 +92,32 @@ class ShapeController:
         T_hist_prev,
     ):
         """
-        Executes the shape control loop using a blended feedforward and feedback PI controller.
-
-        This method computes the time derivative of shape target requests based on measured values,
-        reference trajectories, and control gains. It blends feedforward and feedback contributions
-        using a time-varying blend factor, and applies damping to the error signal.
+        Computes the time derivative of shape target requests based on measured values,
+        reference trajectories, and control gains. It blends feedforward and feedback
+        contributions using a time-varying blend factor, and applies damping to the error
+        signal.
 
         Parameters
         ----------
         t : float
-            Current time in seconds.
+            Current time [s].
         dt : float
-            Time step in seconds.
+            Time step [s].
         T_meas : np.ndarray
-            Measured shape targets at the current time.
+            Measured values of the shape targets at the current time [m].
         T_err_prev : np.ndarray
-            Previously filtered error signal (used for damping).
+            Previously filtered error signal (used for damping) [m].
         T_hist_prev : np.ndarray
-            Previous integral term (used for PI control).
+            Previous integral term (used for PI control) [m.s].
 
         Returns
         -------
         dT_dt : np.ndarray
-            Time derivative of the shape target requests.
+            Time derivative of the shape target requests [m/s].
         T_err : np.ndarray
-            Filtered error signal at the current time.
+            Filtered error signal at the current time [m].
         T_hist : np.ndarray
-            Updated integral term for use in the next control step.
+            Updated integral term for use in the next control step [m.s].
 
         Notes
         -----
@@ -163,7 +163,7 @@ class ShapeController:
         deriv=False,
     ):
         """
-        Extracts interpolated values or their derivatives for specified control targets at a given time.
+        Extracts interpolated values or their derivatives for specified shape targets at a given time.
 
         This method queries the stored interpolation functions for each target and key, returning either
         the interpolated value or its first derivative depending on the `deriv` flag.
@@ -171,11 +171,11 @@ class ShapeController:
         Parameters
         ----------
         t : float
-            Time at which to evaluate the interpolants.
+            Time at which to evaluate the interpolants [s].
         targets : list of str
-            List of control target names. Each must correspond to a key in `self.interpolants`.
+            List of shape target names. Each must correspond to a key in `self.interpolants`.
         key : str
-            The parameter name (e.g., 'ff', 'ref', 'blend', 'k_prop', etc.) used to select the interpolant.
+            The waveform name (e.g., 'ff', 'ref', 'blend', 'k_prop', etc.) used to select the interpolant.
         deriv : bool, optional
             If True, returns the first derivative of the interpolant at time `t`. Default is False.
 
@@ -199,22 +199,25 @@ class ShapeController:
 
     def plot_data(self, targ, tmin=-1.0, tmax=1.0, nt=10001):
         """
-        Visualizes interpolated control data and corresponding raw input for a specified target.
+        Visualizes interpolated control waveforms and corresponding raw inputs for a specified
+        shape target.
 
-        This method generates subplots for each control parameter (both spline and step types),
+        This method generates subplots for each control waveform (both spline and step types),
         showing the interpolated time series alongside the original data points. It helps verify
         the quality and behavior of the interpolation.
 
         Parameters
         ----------
         targ : str
-            The name of the control target to plot. Must be a key in `self.interpolants` and `self.data`.
+            The name of the shape target waveforms to plot. Must be a key in `self.interpolants`
+            and `self.data`.
         tmin : float, optional
             Start time for the evaluation grid (default is -1.0 seconds).
         tmax : float, optional
             End time for the evaluation grid (default is 1.0 seconds).
         nt : int, optional
-            Number of time points to evaluate the interpolants over the interval [tmin, tmax] (default is 10001).
+            Number of time points to evaluate the interpolants over the interval [tmin, tmax]
+            (default is 10001).
 
         Notes
         -----

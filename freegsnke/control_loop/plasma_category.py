@@ -15,33 +15,33 @@ from freegsnke.control_loop.useful_functions import (
 
 class PlasmaController:
     """
-    A controller class for managing plasma-related control parameters using interpolated input data.
+    A controller class for managing plasma control waveforms.
 
     Parameters
     ----------
     data : dict
-        A nested dictionary containing control data for each target to be controlled. Each target's
-        data must include keys for both spline-based and step-based parameters:
+        A dictionary containing waveforms for the plasma current controller. The required keys
+        for both spline-based and step-based waveforms are:
             - Spline keys: "ip_ref", "ip_blend", "vloop_ff"
             - Step keys: "k_prop", "k_int", "M_solenoid"
-        Each key should map to a dictionary suitable for interpolation, with keys:
+        Each key should map to a waveform dictionary suitable for interpolation with keys:
             - 'times': 1D array of time points
             - 'vals': 1D array of values at those time points (same length).
 
     Attributes
     ----------
     keys_to_spline : list of str
-        Keys corresponding to parameters that will be interpolated using splines.
+        Keys corresponding to waveforms that will be interpolated using splines.
 
     keys_to_step : list of str
-        Keys corresponding to parameters that will be interpolated using step functions.
+        Keys corresponding to waveforms that will be interpolated using step functions.
 
     data : dict
-        Internal copy of the input control data.
+        Internal copy of the input control waveforms.
 
     interpolants : dict
-        A nested dictionary storing interpolation functions for each control target and parameter.
-        Structure: {target: {param: interpolant_function}}
+        A nested dictionary storing interpolation functions of each input waveform.
+        Structure: {spline/step key: interpolant_function}
 
     """
 
@@ -85,20 +85,20 @@ class PlasmaController:
         Parameters:
         ----------
         t : float
-            Current time in seconds.
+            Current time [s].
         dt : float
-            Time step in seconds.
+            Time step [s].
         ip_meas : float
-            Measured plasma current at time `t`.
+            Measured plasma current at time `t` [A].
         ip_hist_prev : float
-            Previous value of the integrated plasma current error.
+            Previous value of the integrated plasma current error [A.s].
 
         Returns:
         -------
         dip_dt : float
-            Time derivative of the requested plasma current.
+            Time derivative of the requested plasma current [A/s].
         ip_hist : float
-            Updated integral of the plasma current error.
+            Updated integral of the plasma current error [A.s].
 
         Notes:
         ------
@@ -133,16 +133,14 @@ class PlasmaController:
 
     def plot_data(self, tmin=-1.0, tmax=1.0, nt=10001):
         """
-        Visualizes interpolated control data and corresponding raw input for a specified target.
+        Visualizes interpolated control waveforms and corresponding raw inputs.
 
-        This method generates subplots for each control parameter (both spline and step types),
+        This method generates subplots for each control waveform (both spline and step types),
         showing the interpolated time series alongside the original data points. It helps verify
         the quality and behavior of the interpolation.
 
         Parameters
         ----------
-        targ : str
-            The name of the control target to plot. Must be a key in `self.interpolants` and `self.data`.
         tmin : float, optional
             Start time for the evaluation grid (default is -1.0 seconds).
         tmax : float, optional
@@ -152,7 +150,7 @@ class PlasmaController:
 
         Notes
         -----
-        - Each subplot corresponds to a control parameter (e.g., 'ip_ref', 'ip_blend', 'vloop_ff', 'k_prop', etc.).
+        - Each subplot corresponds to a control waveform (e.g., 'ip_ref', 'ip_blend', 'vloop_ff', 'k_prop', etc.).
         - Interpolated curves are plotted in navy; raw data points are shown in red.
         - Axis labels include units where applicable.
         - Useful for debugging or validating the interpolation quality.

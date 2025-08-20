@@ -16,15 +16,53 @@ from .virtual_circuits_category import VirtualCircuitsController
 
 class PlasmaControlSystem:
     """
+    A high-level class for managing multiple controllers in a plasma
+    control system.
 
-    ADD DESCRIP.
+    This class integrates several subsystem controllers responsible for different aspects
+    of plasma control, including shape control, vertical stabilization, coil current
+    regulation, and virtual circuit modelling. It provides a unified interface for
+    coordinating these controllers based on time-dependent input waveforms.
 
-    Attributes :
-    ------------
+    Attributes
+    ----------
+    active_coils : list of str
+        List of all active coils used.
 
+    ctrl_coils : list of str
+        List of all active coils being used for shape control.
 
-    Methods :
-    ---------
+    solenoid_coils : list of str
+        List of all active coils being used for plasma current control.
+
+    vertical_coils : list of str
+        List of all active coils being used for vertical control.
+
+    ctrl_targets : list of str
+        List of all shape control targets (e.g., X-points, strike points).
+
+    plasma_target : list of str
+        List of all plasma control targets.
+
+    PlasmaController : PlasmaController
+        Handles plasma current control.
+
+    ShapeController : ShapeController
+        Handles shape target control.
+
+    VirtualCircuitsController : VirtualCircuitsController
+        Computes unapproved coil currents in ctrl coils using virtual circuits.
+
+    SystemsController : SystemsController
+        Applies perturbations and enforces coil current and ramp rate limits to
+        find approved coil currents.
+
+    PFController : PFController
+        Transforms approved coil currents into ctrl coil voltages.
+
+    VerticalControl : VerticalController
+        Controls vertical plasma position via vertical control coil.
+
     """
 
     def __init__(
@@ -43,7 +81,7 @@ class PlasmaControlSystem:
         plasma_target,
     ):
 
-        # TODO consistency checks --> need to check coils ordering?
+        # coil ordering
         self.active_coils = active_coils
         self.ctrl_coils = ctrl_coils
         self.solenoid_coils = solenoid_coils
@@ -98,18 +136,66 @@ class PlasmaControlSystem:
         verbose=False,
     ):
         """
-        ADD DOCS.
+        Run the full control pipeline to compute approved coil voltage commands.
+
+        This method coordinates all subsystem controllers (plasma current, shape control,
+        virtual circuits, systems constraints, PF, and vertical) to compute the final
+        voltage commands for the coils. It also returns updated histories and error signals
+        for use in the next control cycle.
 
         Parameters
         ----------
-        data: dict
-            Dictionary of input data.
+        t : float
+            Current time [s].
+
+        dt : float
+            Time step [s].
+
+        ip_meas : float
+            Measured plasma current [A].
+
+        ip_hist_prev : float
+            Previous value of the integrated plasma current error [A.s].
+
+        T_meas : np.ndarray
+            Measured values of the shape targets at the current time [m].
+
+        T_err_prev : np.ndarray
+            Previously shape target filtered error signal (used for damping) [m].
+
+        T_hist_prev : np.ndarray
+            Previous shape target integral term (used for PI control) [m.s].
+
+        I_approved_prev : numpy.ndarray
+            Previously approved coil currents [A].
+
+        I_meas : numpy.ndarray
+            Measured coil currents at the current time step [A].
+
+        V_approved_prev : numpy.ndarray
+            Previously approved coil voltages from the last control step [V].
+
+        verbose : bool, optional
+            If True, prints diagnostic information from subsystem controllers.
 
         Returns
         -------
-        None
+        V_approved : numpy.ndarray
+            Final coil voltage demands after applying all constraints [V].
 
+        ip_hist : list of float
+            Updated integrated plasma current error [A.s].
+
+        T_err : numpy.ndarray
+            Updated shape target filtered error signal (used for damping) [m].
+
+        T_hist : list of numpy.ndarray
+            Updated shape target integral term (used for PI control) [m.s].
+
+        I_approved : numpy.ndarray
+            Approved coil currents after applying perturbations and clipping [A].
         """
+
         # plasma category
         dip_dt, ip_hist = self.PlasmaController.run_control(
             t=t,
@@ -178,137 +264,137 @@ class PlasmaControlSystem:
     #     return control_voltages + vertical_voltage
 
 
-class Simulator:
-    """Simulator class to interface PCS control with dynamic solving in freegsnke"""
+# class Simulator:
+#     """Simulator class to interface PCS control with dynamic solving in freegsnke"""
 
-    def __init__(
-        self,
-        pcs_controller: PlasmaControlSystem,
-        stepping,
-    ):
-        """initialse simulator
+#     def __init__(
+#         self,
+#         pcs_controller: PlasmaControlSystem,
+#         stepping,
+#     ):
+#         """initialse simulator
 
-        Parameters:
-        pcs  : PlasmaControlSystem
-            instance of PCS class to compute voltages
-        stepping : FreeGSNKE NL solver
-            dynamic forward solver in freegsnke
+#         Parameters:
+#         pcs  : PlasmaControlSystem
+#             instance of PCS class to compute voltages
+#         stepping : FreeGSNKE NL solver
+#             dynamic forward solver in freegsnke
 
-        """
-        self.stepping = stepping
-        self.controller = pcs_controller
+#         """
+#         self.stepping = stepping
+#         self.controller = pcs_controller
 
-    def initialise_VCH(
-        self,
-        stepping,
-        target_relative_tolerance: float = 1e-7,
-    ):
-        """initialise the VCH object as class attribute.
-        This must be done after the class is initialised and before first call to calculate_blended_target_deltas
+#     def initialise_VCH(
+#         self,
+#         stepping,
+#         target_relative_tolerance: float = 1e-7,
+#     ):
+#         """initialise the VCH object as class attribute.
+#         This must be done after the class is initialised and before first call to calculate_blended_target_deltas
 
 
-        Inputs
-        ------
-        stepping : object
-            stepping object, to provide solver information
-        target_relative_tolerance : float
-            target relative tolerance
+#         Inputs
+#         ------
+#         stepping : object
+#             stepping object, to provide solver information
+#         target_relative_tolerance : float
+#             target relative tolerance
 
-        Returns
-        -------
-        None
-            Modifies the class attribute self.VCH
-        """
-        self.VCH = vc.VirtualCircuitHandling()
-        self.VCH.define_solver(
-            stepping.NK, target_relative_tolerance=target_relative_tolerance
-        )
-        print("Initialised VCH in shape controller")
+#         Returns
+#         -------
+#         None
+#             Modifies the class attribute self.VCH
+#         """
+#         self.VCH = vc.VirtualCircuitHandling()
+#         self.VCH.define_solver(
+#             stepping.NK, target_relative_tolerance=target_relative_tolerance
+#         )
+#         print("Initialised VCH in shape controller")
 
-    def get_observed_from_eqi(
-        self,
-    ):
-        """
-        Compute or retrieve all appropriate observed quantites from equilibrium
-        Shape targets, plasma current, etc.
+#     def get_observed_from_eqi(
+#         self,
+#     ):
+#         """
+#         Compute or retrieve all appropriate observed quantites from equilibrium
+#         Shape targets, plasma current, etc.
 
-        Returns
-        -------
+#         Returns
+#         -------
 
-        """
+#         """
 
-        pass
+#         pass
 
-    def update_eqi(self, voltages, linear=True):
-        """
-        update and solve equilibrium with new voltages as inputs
-        """
-        if linear == True:
-            print("updating equilibrium  : LINEAR")
-            self.stepping.nlstepper(
-                active_voltage_vec=voltages,
-                linear_only=True,  # linearise solve only
-                verbose=False,
-                # custom_coil_resist=coil_resist,   #options for restistances/inductances used in solve
-                # custom_self_ind=coil_ind)
-            )
-        elif linear == False:
-            print("updating equilibrium : NON-LINEAR")
-            self.stepping.nlstepper(
-                active_voltage_vec=voltages,
-                linear_only=False,  # Non linear solve
-                verbose=False,
-                # custom_coil_resist=coil_resist,   #options for restistances/inductances used in solve
-                # custom_self_ind=coil_ind)
-            )
-        print("equi updated")
+#     def update_eqi(self, voltages, linear=True):
+#         """
+#         update and solve equilibrium with new voltages as inputs
+#         """
+#         if linear == True:
+#             print("updating equilibrium  : LINEAR")
+#             self.stepping.nlstepper(
+#                 active_voltage_vec=voltages,
+#                 linear_only=True,  # linearise solve only
+#                 verbose=False,
+#                 # custom_coil_resist=coil_resist,   #options for restistances/inductances used in solve
+#                 # custom_self_ind=coil_ind)
+#             )
+#         elif linear == False:
+#             print("updating equilibrium : NON-LINEAR")
+#             self.stepping.nlstepper(
+#                 active_voltage_vec=voltages,
+#                 linear_only=False,  # Non linear solve
+#                 verbose=False,
+#                 # custom_coil_resist=coil_resist,   #options for restistances/inductances used in solve
+#                 # custom_self_ind=coil_ind)
+#             )
+#         print("equi updated")
 
-    def simulate(self, control_times):
-        """run simulation ..."""
+#     def simulate(self, control_times):
+#         """run simulation ..."""
 
-        # for time in times
-        # compute voltage request
-        # solve for new equilibrium
-        # compute new plasma shape targets/currents
-        pass
+#         # for time in times
+#         # compute voltage request
+#         # solve for new equilibrium
+#         # compute new plasma shape targets/currents
+#         pass
 
-    def get_fgs_inductance_resistance(self, stepping):
-        """
-        get inductance matrix and coil resistances from stepping object (Freegsnke)
+#     def get_fgs_inductance_resistance(self, stepping):
+#         """
+#         get inductance matrix and coil resistances from stepping object (Freegsnke)
 
-        Inputs :
-        --------
-        stepping : object
-            stepping object
+#         Inputs :
+#         --------
+#         stepping : object
+#             stepping object
 
-        Returns
-        -------
-        inductance_full : np.array
-            full inductance matrix in freegsnke for all active coils
+#         Returns
+#         -------
+#         inductance_full : np.array
+#             full inductance matrix in freegsnke for all active coils
 
-        coil_resist : np.array
-            coil resistances in freegsnke for all active coils
-        """
+#         coil_resist : np.array
+#             coil resistances in freegsnke for all active coils
+#         """
 
-        # assign equi and profiles objects
-        # self.stepping = stepping
-        n_active_coils = (
-            stepping.n_active_coils
-        )  # could also be eq.tokamak.n_active_coils
-        print("number active coils", n_active_coils)
-        tok = stepping.eq1.tokamak
-        active_coils = tok.coils_list[:n_active_coils]
+#         # assign equi and profiles objects
+#         # self.stepping = stepping
+#         n_active_coils = (
+#             stepping.n_active_coils
+#         )  # could also be eq.tokamak.n_active_coils
+#         print("number active coils", n_active_coils)
+#         tok = stepping.eq1.tokamak
+#         active_coils = tok.coils_list[:n_active_coils]
 
-        inductance_full = tok.coil_self_ind[: len(active_coils), : len(active_coils)]
-        coil_resist = tok.coil_resist[: len(active_coils)]
-        print(
-            "Inductances and resistances retrieved for all active coils :", active_coils
-        )
-        coil_order_dictionary = {coil: i for i, coil in enumerate(active_coils)}
+#         inductance_full = tok.coil_self_ind[: len(active_coils), : len(active_coils)]
+#         coil_resist = tok.coil_resist[: len(active_coils)]
+#         print(
+#             "Inductances and resistances retrieved for all active coils :", active_coils
+#         )
+#         coil_order_dictionary = {coil: i for i, coil in enumerate(active_coils)}
 
-        return {
-            "inductance_full": inductance_full,
-            "coil_resist": coil_resist,
-            "coils": active_coils,
-            "coil_order_dictionary": coil_order_dictionary,
-        }
+#         return {
+#             "inductance_full": inductance_full,
+#             "coil_resist": coil_resist,
+#             "coils": active_coils,
+#             "coil_order_dictionary": coil_order_dictionary,
+#         }

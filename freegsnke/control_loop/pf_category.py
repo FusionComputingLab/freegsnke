@@ -15,14 +15,36 @@ from freegsnke.control_loop.useful_functions import (
 
 class PFController:
     """
-    ADD DESCRIP.
+    A controller class for managing coil resistances, inductances, gains, voltage limits, and
+    voltage ramp rate limits.
 
     Parameters
     ----------
-
+    data : dict
+        A nested dictionary containing control waveforms for the PF controller.
+        The required keys
+        for both spline-based and step-based waveforms are:
+            - Spline keys:
+            - Step keys: "R_matrix", "M_FF_matrix", "M_FB_matrix", "coil_gains",
+            "coil_voltage_lims", "coil_voltage_slew_lims"
+        Each key should map to a waveform dictionary suitable for interpolation with keys:
+            - 'times': 1D array of time points
+            - 'vals': 1D array of values at those time points (same length).
 
     Attributes
     ----------
+    keys_to_spline : list of str
+        Keys corresponding to waveforms that will be interpolated using splines.
+
+    keys_to_step : list of str
+        Keys corresponding to waveforms that will be interpolated using step functions.
+
+    data : dict
+        Internal copy of the input control waveforms.
+
+    interpolants : dict
+        A nested dictionary storing interpolation functions of each input waveform.
+        Structure: {spline/step key: interpolant_function}
 
     """
 
@@ -65,34 +87,42 @@ class PFController:
         verbose=False,
     ):
         """
-        Compute the coil voltage demands for the current control loop step.
+        Computes the approved coil voltage commands based on measured and approved currents,
+        while enforcing voltage and slew rate constraints.
 
-        This method implements a control loop with resistive, feedforward (FF),
-        and feedback (FB) voltage components, applies voltage limits and slew rate
-        constraints, and returns the final approved voltage demands.
+        This method calculates the total voltage demand using resistive, feedforward, and
+        feedback components. It then clips the voltage according to hardware limits and
+        applies slew rate constraints to ensure smooth transitions between time steps.
 
         Parameters
         ----------
         t : float
-            Current time (used to interpolate time-dependent system matrices).
+            Current time [s].
+
         dt : float
-            Time step between the current and previous voltage demands, in seconds.
-        I_meas : np.ndarray
-            Measured coil currents at time `t`, in Amps.
-        I_approved : np.ndarray
-            Approved coil currents (from system controller), in Amps.
-        dI_dt_approved : np.ndarray
-            Approved rate of change of coil currents (from system controller), in Amps/sec.
-        V_approved_prev : np.ndarray
-            Previously approved coil voltage demands, in Volts.
+            Time step [s].
+
+        I_meas : numpy.ndarray
+            Measured coil currents at the current time step [A].
+
+        I_approved : numpy.ndarray
+            Approved coil currents after applying perturbations and clipping [A].
+
+        dI_dt_approved : numpy.ndarray
+            Approved coil current derivatives after clipping [A/s].
+
+        V_approved_prev : numpy.ndarray
+            Previously approved coil voltages from the last control step [V].
+
         verbose : bool, optional
-            If True, print detailed diagnostic output.
+            If True, prints diagnostic information about voltage clipping and slew rate limiting.
 
         Returns
         -------
-        V_approved : np.ndarray
-            Final voltage demand to apply to the active coils, in Volts.
+        V_approved : numpy.ndarray
+            Final coil voltage demands after applying all constraints [V].
         """
+
         # extract interpolated data
         R = self.interpolants["R_matrix"](t)
         M_FF = self.interpolants["M_FF_matrix"](t)
@@ -131,40 +161,50 @@ class PFController:
         targets,
     ):
         """
-        Evaluate and extract interpolated values at a given time for specified targets.
+        Extracts interpolated values for specified shape targets at a given time.
 
         Parameters
         ----------
         t : float
-            The time at which to evaluate the interpolants.
+            Time at which to evaluate the interpolants [s].
         targets : list of str
-            A list of target names corresponding to keys in `self.interpolants`.
+            List of keys. Each must correspond to a key in `self.interpolants`.
 
         Returns
         -------
         np.ndarray
-            An array of interpolated values evaluated at time `t`, one for each target.
+            Array of interpolated values (or derivatives) for each target at time `t`.
+
+        Notes
+        -----
+        - Assumes that `self.interpolants[target]` is a valid `scipy.interpolate` object.
         """
 
         return np.array([self.interpolants[target](t) for target in targets])
 
     def plot_data(self, tmin=-1.0, tmax=1.0, nt=10001):
         """
-        Plot selected time series from interpolated functions alongside their raw data.
+        Visualizes interpolated control waveforms and corresponding raw inputs.
 
-        This function takes callable interpolants stored in `self.interpolants` and
-        plots them on separate subplots, optionally overlaying the original raw
-        data points from `self.data`.
+        This method generates subplots for each control waveform (step types),
+        showing the interpolated time series alongside the original data points. It helps verify
+        the quality and behavior of the interpolation.
 
         Parameters
         ----------
         tmin : float, optional
-            Minimum time for the evaluation grid (default is -1.0).
+            Start time for the evaluation grid (default is -1.0 seconds).
         tmax : float, optional
-            Maximum time for the evaluation grid (default is 1.0).
+            End time for the evaluation grid (default is 1.0 seconds).
         nt : int, optional
-            Number of equally spaced time points to evaluate the interpolants over
-            between `tmin` and `tmax` (default is 10001).
+            Number of time points to evaluate the interpolants over the interval [tmin, tmax] (default is 10001).
+
+        Notes
+        -----
+        - Each subplot corresponds to a control waveform.
+        - Interpolated curves are plotted in navy; raw data points are shown in red.
+        - Axis labels include units where applicable.
+        - Useful for debugging or validating the interpolation quality.
         """
 
         # times to plot at

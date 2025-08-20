@@ -15,15 +15,40 @@ from freegsnke.control_loop.useful_functions import (
 
 class CoilActivationController:
     """
-    ADD DESCRIP.
+    A controller class for managing time-dependent coil activation times.
 
     Parameters
     ----------
+    data : dict
+        A nested dictionary containing coil activation waveforms for the controller.
+        The required keys
+        for both spline-based and step-based waveforms are:
+            - Spline keys: "<coil>_activation"
+            - Step keys:
+        Each key should map to a waveform dictionary suitable for interpolation with keys:
+            - 'times': 1D array of time points
+            - 'vals': 1D array of values at those time points (same length).
 
+    active_coils : list of str
+        The list of active coils being used.
 
     Attributes
     ----------
+    active_coils : list of str
+        The list of active coils being used.
 
+    keys_to_spline : list of str
+        Keys corresponding to waveforms that will be interpolated using splines.
+
+    keys_to_step : list of str
+        Keys corresponding to waveforms that will be interpolated using step functions.
+
+    data : dict
+        Internal copy of the input control waveforms.
+
+    interpolants : dict
+        A nested dictionary storing interpolation functions of each input waveform.
+        Structure: {spline/step key: interpolant_function}
     """
 
     def __init__(
@@ -103,21 +128,27 @@ class CoilActivationController:
 
     def plot_data(self, tmin=-1.0, tmax=1.0, nt=10001):
         """
-        Plot selected time series from interpolated functions alongside their raw data.
+        Visualizes interpolated control waveforms and corresponding raw inputs.
 
-        This function takes callable interpolants stored in `self.interpolants` and
-        plots them on separate subplots, optionally overlaying the original raw
-        data points from `self.data`.
+        This method generates subplots for each control waveform (step types),
+        showing the interpolated time series alongside the original data points. It helps verify
+        the quality and behavior of the interpolation.
 
         Parameters
         ----------
         tmin : float, optional
-            Minimum time for the evaluation grid (default is -1.0).
+            Start time for the evaluation grid (default is -1.0 seconds).
         tmax : float, optional
-            Maximum time for the evaluation grid (default is 1.0).
+            End time for the evaluation grid (default is 1.0 seconds).
         nt : int, optional
-            Number of equally spaced time points to evaluate the interpolants over
-            between `tmin` and `tmax` (default is 10001).
+            Number of time points to evaluate the interpolants over the interval [tmin, tmax] (default is 10001).
+
+        Notes
+        -----
+        - Each subplot corresponds to a control waveform.
+        - Interpolated curves are plotted in navy; raw data points are shown in red.
+        - Axis labels include units where applicable.
+        - Useful for debugging or validating the interpolation quality.
         """
 
         # times to plot at

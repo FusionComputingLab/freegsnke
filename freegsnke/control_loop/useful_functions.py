@@ -1,5 +1,5 @@
 """
-Module full of functions required by the PCS in FreeGSNKE.
+Module of functions required by the PCS in FreeGSNKE.
 
 """
 

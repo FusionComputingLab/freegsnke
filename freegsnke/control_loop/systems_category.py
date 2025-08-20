@@ -15,14 +15,40 @@ from freegsnke.control_loop.useful_functions import (
 
 class SystemsController:
     """
-    ADD DESCRIP.
+    A controller class for managing coil current perturbations, coil current limits, and
+    coil current ramp rate limits.
 
     Parameters
     ----------
+    data : dict
+        A nested dictionary containing control waveforms for the systems controller.
+        The required keys for both spline-based and step-based waveforms are:
+            - Spline keys: "<coil>_pert"
+            - Step keys: "min_coil_curr_lims", "max_coil_curr_lims", "max_coil_curr_ramp_lims"
+        Each key should map to a waveform dictionary suitable for interpolation with keys:
+            - 'times': 1D array of time points
+            - 'vals': 1D array of values at those time points (same length).
 
+    ctrl_coils : list of str
+        The list of active coils being controlled.
 
     Attributes
     ----------
+    ctrl_coils : list of str
+        The list of active coils being controlled.
+
+    keys_to_spline : list of str
+        Keys corresponding to waveforms that will be interpolated using splines.
+
+    keys_to_step : list of str
+        Keys corresponding to waveforms that will be interpolated using step functions.
+
+    data : dict
+        Internal copy of the input control waveforms.
+
+    interpolants : dict
+        A nested dictionary storing interpolation functions of each input waveform.
+        Structure: {spline/step key: interpolant_function}
 
     """
 
@@ -59,29 +85,37 @@ class SystemsController:
 
     def run_control(self, t, dt, I_unapproved, dI_dt_unapproved, verbose=False):
         """
-        FIX.
+        Applies coil current perturbations to unapproved coil currents and enforce coil current
+        constraints to produce approved control signals.
 
-        Calculate the output voltage to apply on the coils, as prescribed in
-        the PF category of the PCS.
+        This method adjusts the unapproved coil currents and their rates of change by applying
+        time-dependent perturbations, then clips the results according to current and ramp rate
+        limits. It returns the final approved coil currents and their derivatives.
 
         Parameters
         ----------
-        I_unapproved: numpy 1D array
-            Coil currents (provided by the "circuits" category of the control loops). Input in Amps.
-        dI_dt_unapproved : numpy 1D array
-            Coil current rates of change ("deltas") (provided by the "circuits" category of the control
-            loops). Input in Amps.
+        t : float
+            Current time [s].
+
         dt : float
-            Time step. Input in seconds.
-        verbose : bool
-            Print some output if True.
+            Time step [s].
+
+        I_unapproved : numpy.ndarray
+            Coil currents (not yet approved), computed via Euler integration [A].
+
+        dI_dt_unapproved : numpy.ndarray
+            Rate of change of coil currents (not yet approved) [A/s].
+
+        verbose : bool, optional
+            If True, prints diagnostic messages about clipping and approved values.
 
         Returns
         -------
-        I_approved : numpy 1D array
-            Approved coil currents in the active coils. Input in A.
-        dI_dt_approved: numpy 1D array
-            Approved rate of change of the coil currents in the active coils. Input in A.
+        I_approved : numpy.ndarray
+            Coil currents (approved) [A].
+
+        dI_dt_approved : numpy.ndarray
+            Rate of change of coil currents (approved) [A/s].
 
         """
 
@@ -127,21 +161,29 @@ class SystemsController:
         deriv=False,
     ):
         """
-        Evaluate and extract interpolated values at a given time for specified targets.
+        Extracts interpolated values or their derivatives for specified shape targets at a given time.
+
+        This method queries the stored interpolation functions for each target and key, returning either
+        the interpolated value or its first derivative depending on the `deriv` flag.
 
         Parameters
         ----------
         t : float
-            The time at which to evaluate the interpolants.
+            Time at which to evaluate the interpolants [s].
         targets : list of str
-            A list of target names corresponding to keys in `self.interpolants`.
-        deriv : bool
-            Returns first derivative of the interpolant if True.
+            List of keys. Each must correspond to a key in `self.interpolants`.
+        deriv : bool, optional
+            If True, returns the first derivative of the interpolant at time `t`. Default is False.
 
         Returns
         -------
         np.ndarray
-            An array of interpolated values evaluated at time `t`, one for each target.
+            Array of interpolated values (or derivatives) for each target at time `t`.
+
+        Notes
+        -----
+        - Assumes that `self.interpolants[target]` is a valid `scipy.interpolate` object.
+        - If `deriv=True`, the method calls `.derivative()` on the interpolant before evaluation.
         """
 
         if deriv:
@@ -158,21 +200,27 @@ class SystemsController:
 
     def plot_data(self, tmin=-1.0, tmax=1.0, nt=10001):
         """
-        Plot selected time series from interpolated functions alongside their raw data.
+        Visualizes interpolated control waveforms and corresponding raw inputs.
 
-        This function takes callable interpolants stored in `self.interpolants` and
-        plots them on separate subplots, optionally overlaying the original raw
-        data points from `self.data`.
+        This method generates subplots for each control waveform (spline types),
+        showing the interpolated time series alongside the original data points. It helps verify
+        the quality and behavior of the interpolation.
 
         Parameters
         ----------
         tmin : float, optional
-            Minimum time for the evaluation grid (default is -1.0).
+            Start time for the evaluation grid (default is -1.0 seconds).
         tmax : float, optional
-            Maximum time for the evaluation grid (default is 1.0).
+            End time for the evaluation grid (default is 1.0 seconds).
         nt : int, optional
-            Number of equally spaced time points to evaluate the interpolants over
-            between `tmin` and `tmax` (default is 10001).
+            Number of time points to evaluate the interpolants over the interval [tmin, tmax] (default is 10001).
+
+        Notes
+        -----
+        - Each subplot corresponds to a control waveform (e.g., '<coil>_pert').
+        - Interpolated curves are plotted in navy; raw data points are shown in red.
+        - Axis labels include units where applicable.
+        - Useful for debugging or validating the interpolation quality.
         """
 
         # times to plot at

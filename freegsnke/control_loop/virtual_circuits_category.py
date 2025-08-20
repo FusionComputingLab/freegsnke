@@ -15,15 +15,36 @@ from freegsnke.control_loop.useful_functions import (
 
 class VirtualCircuitsController:
     """
-    ADD DESCRIP.
+    A controller class for managing virtual circuit control matrices and coil current reference
+    waveforms.
+
+    This class supports both spline-based and step-based interpolation of control signals
+    for coils and plasma shaping targets. It optionally integrates with an emulated virtual
+    circuit provider for enhanced control capabilities.
 
     Parameters
     ----------
+    data : dict
+        A nested dictionary containing control waveforms for each target to be controlled.
+        Each target's dictionary must include keys for both spline-based and step-based parameters:
+            - Spline keys: typically of the form '<coil>_ref'
+            - Step keys: typically shape target and plasma target names
+        Each key should map to a dictionary suitable for interpolation, with keys:
+            - 'times': 1D array of time points
+            - 'vals': 1D array of values at those time points (same length).
 
+    ctrl_coils : list of str
+        The list of active coils being controlled.
 
-    Attributes
-    ----------
+    ctrl_targets : list of str
+        The list of shape targets being managed.
 
+    plasma_target : list of str
+        The list of plasma targets being managed.
+
+    emu_vc_provider : object, optional
+        An optional provider object for emulated virtual circuits. If provided, it enables
+        enhanced control capabilities and diagnostics.
     """
 
     def __init__(
@@ -64,7 +85,7 @@ class VirtualCircuitsController:
 
         self.emu_vc_provider = emu_vc_provider
         if self.emu_vc_provider is not None:
-            print("Emulated VC's provided")
+            print("Emulated virtual circuits have been provided.")
 
     def run_control(
         self,
@@ -76,21 +97,41 @@ class VirtualCircuitsController:
         emu_flag=False,
     ):
         """
-        NEED TO UPDATE.
+        Computes the unapproved coil currents and their rates of change based on feedforward
+        coil current references and virtual circuit transformations.
 
+        This method extracts coil current reference derivatives, applies virtual circuit matrices
+        (either from an emulator or interpolated data), and computes the unapproved coil
+        current updates using Euler integration.
 
         Parameters
         ----------
-        - Kp : float
-            Proportional term used in the Vloop_fb computation.
+        t : float
+            Current time at which control values are evaluated [s].
 
+        dt : float
+            Time step for Euler integration [s].
+
+        dip_dt : float
+            Time derivative of the requested plasma current [A/s].
+
+        dT_dt : np.ndarray
+            Time derivative of the shape target requests [m/s].
+
+        I_approved_prev : numpy.ndarray
+            Previously approved coil currents [A].
+
+        emu_flag : bool, optional
+            If True, use the emulated virtual circuit provider to obtain the VC matrix.
+            If False, use interpolated VC data from input.
 
         Returns
         -------
-        - dI_dt : 1D numpy array
-            Array of delta currents requests that will be part of the input of
-            Circuits category.
+        I_unapproved : numpy.ndarray
+            Coil currents (not yet approved), computed via Euler integration [A].
 
+        dI_dt_unapproved : numpy.ndarray
+            Rate of change of coil currents (not yet approved) [A/s].
         """
 
         # extract (feedforward) current references
@@ -128,21 +169,29 @@ class VirtualCircuitsController:
         deriv=False,
     ):
         """
-        Evaluate and extract interpolated values at a given time for specified targets.
+        Extracts interpolated values or their derivatives for specified shape targets at a given time.
+
+        This method queries the stored interpolation functions for each target and key, returning either
+        the interpolated value or its first derivative depending on the `deriv` flag.
 
         Parameters
         ----------
         t : float
-            The time at which to evaluate the interpolants.
+            Time at which to evaluate the interpolants [s].
         targets : list of str
-            A list of target names corresponding to keys in `self.interpolants`.
-        deriv : bool
-            Returns first derivative of the interpolant if True.
+            List of keys. Each must correspond to a key in `self.interpolants`.
+        deriv : bool, optional
+            If True, returns the first derivative of the interpolant at time `t`. Default is False.
 
         Returns
         -------
         np.ndarray
-            An array of interpolated values evaluated at time `t`, one for each target.
+            Array of interpolated values (or derivatives) for each target at time `t`.
+
+        Notes
+        -----
+        - Assumes that `self.interpolants[target]` is a valid `scipy.interpolate` object.
+        - If `deriv=True`, the method calls `.derivative()` on the interpolant before evaluation.
         """
 
         if deriv:
@@ -154,21 +203,27 @@ class VirtualCircuitsController:
 
     def plot_data(self, tmin=-1.0, tmax=1.0, nt=10001):
         """
-        Plot selected time series from interpolated functions alongside their raw data.
+        Visualizes interpolated control waveforms and corresponding raw inputs.
 
-        This function takes callable interpolants stored in `self.interpolants` and
-        plots them on separate subplots, optionally overlaying the original raw
-        data points from `self.data`.
+        This method generates subplots for each control waveform (spline types),
+        showing the interpolated time series alongside the original data points. It helps verify
+        the quality and behavior of the interpolation.
 
         Parameters
         ----------
         tmin : float, optional
-            Minimum time for the evaluation grid (default is -1.0).
+            Start time for the evaluation grid (default is -1.0 seconds).
         tmax : float, optional
-            Maximum time for the evaluation grid (default is 1.0).
+            End time for the evaluation grid (default is 1.0 seconds).
         nt : int, optional
-            Number of equally spaced time points to evaluate the interpolants over
-            between `tmin` and `tmax` (default is 10001).
+            Number of time points to evaluate the interpolants over the interval [tmin, tmax] (default is 10001).
+
+        Notes
+        -----
+        - Each subplot corresponds to a control waveform (e.g., '<coil>_ref').
+        - Interpolated curves are plotted in navy; raw data points are shown in red.
+        - Axis labels include units where applicable.
+        - Useful for debugging or validating the interpolation quality.
         """
 
         # times to plot at

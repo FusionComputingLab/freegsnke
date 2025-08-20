@@ -15,14 +15,33 @@ from freegsnke.control_loop.useful_functions import (
 
 class VerticalController:
     """
-    ADD DESCRIP.
+    A controller class for managing vertical plasma control.
 
     Parameters
     ----------
-
+    data : dict
+        A nested dictionary containing control waveforms for the vertical controller.
+        The required keys for both spline-based and step-based waveforms are:
+            - Spline keys: "z_ref", "k_prop", "k_deriv"
+            - Step keys:
+        Each key should map to a waveform dictionary suitable for interpolation with keys:
+            - 'times': 1D array of time points
+            - 'vals': 1D array of values at those time points (same length).
 
     Attributes
     ----------
+    keys_to_spline : list of str
+        Keys corresponding to waveforms that will be interpolated using splines.
+
+    keys_to_step : list of str
+        Keys corresponding to waveforms that will be interpolated using step functions.
+
+    data : dict
+        Internal copy of the input control waveforms.
+
+    interpolants : dict
+        A nested dictionary storing interpolation functions of each input waveform.
+        Structure: {spline/step key: interpolant_function}
 
     """
 
@@ -60,8 +79,34 @@ class VerticalController:
         zipv_meas,
     ):
         """
-        NEED TO UPDATE.
+        Compute the control signal for plasma vertical position regulation using a
+        proportional-derivative (PD) control law.
 
+        This method uses interpolated reference and gain values to calculate the control
+        output based on the measured plasma current, vertical position, and vertical velocity.
+
+        Parameters
+        ----------
+        t : float
+            Current time [s].
+
+        dt : float
+            Time step [s].
+
+        ip_meas : float
+            Measured plasma current [A].
+
+        zip_meas : float
+            Measured vertical position of the plasma multiplied by measured Ip [A.m].
+
+        zipv_meas : float
+            Measured vertical velocity of the plasma multiplied by measured Ip [A.m/s].
+
+        Returns
+        -------
+        control_signal : float
+            Output of the PD controller, representing the voltage command
+            for vertical position regulation.
         """
 
         # extract data
@@ -79,44 +124,31 @@ class VerticalController:
         Ip,
     ):
         """
-        PID controller required for plasma vertical position. Computes the required voltage
-        in the vertical stability coil to stabilise the plasma.
+        Computes a control signal using a nonlinear proportional-integral-derivative (PID) controller
+        for regulating plasma vertical position.
+
+        This method applies a nonlinear proportional term with exponentiation and saturation,
+        an exponentially weighted integral term, and a capped derivative term. The output can
+        optionally be scaled by the plasma current.
 
         Parameters
         ----------
         dt : float
-            Time step over which controller should act [s].
+            Time step [s].
         target : float
-            Target vertical position [m].
-        history : list
-            List of previous vertical positions of the effective toroidal current center [m].
-        k_prop : float
-            Proportional gain controls how strongly the voltage reacts to deviations from the target.
-        k_int : float
-            Integral gain controls how the controller accumulates error over time (to correct drifts).
-        k_deriv : float
-            Derivative gain controls how the controller reacts to rapid changes in target.
-        prop_exponent : float
-            Exoponent in proportional term.
-        prop_error : float
-            Reference error for the proportional term.
-        deriv_threshold : float
-            Threshold for derivative action - limits effect of sudden jumps in target.
-        int_factor : float
-            Exponential decay factor that limits effect of older values on integral term.
+            Desired plasma vertical position [m].
+        history : list of float
+            Time-ordered list of past measurements of the plasma vertical position [m].
         Ip : float
-            Total plasma current at current time [Amps].
-        Ip_ref : float
-            Reference total plasma current [Amps], used to normalise output.
-        derivative_lag : int
-            Number of historical values over which the derivative term acts.
+            Measured plasma current [A].
 
         Returns
         -------
-        float
-            Voltage required for the vertical stability coil to stabilise the plasma [Volts].
+        output : float
+            Control voltage computed from the PID logic, potentially scaled by plasma current.
         """
 
+        # defualt fixed params
         k_prop = -20000
         k_int = 0
         k_deriv = -50
@@ -161,21 +193,27 @@ class VerticalController:
 
     def plot_data(self, tmin=-1.0, tmax=1.0, nt=10001):
         """
-        Plot selected time series from interpolated functions alongside their raw data.
+        Visualizes interpolated control waveforms and corresponding raw inputs.
 
-        This function takes callable interpolants stored in `self.interpolants` and
-        plots them on separate subplots, optionally overlaying the original raw
-        data points from `self.data`.
+        This method generates subplots for each control waveform (step types),
+        showing the interpolated time series alongside the original data points. It helps verify
+        the quality and behavior of the interpolation.
 
         Parameters
         ----------
         tmin : float, optional
-            Minimum time for the evaluation grid (default is -1.0).
+            Start time for the evaluation grid (default is -1.0 seconds).
         tmax : float, optional
-            Maximum time for the evaluation grid (default is 1.0).
+            End time for the evaluation grid (default is 1.0 seconds).
         nt : int, optional
-            Number of equally spaced time points to evaluate the interpolants over
-            between `tmin` and `tmax` (default is 10001).
+            Number of time points to evaluate the interpolants over the interval [tmin, tmax] (default is 10001).
+
+        Notes
+        -----
+        - Each subplot corresponds to a control waveform.
+        - Interpolated curves are plotted in navy; raw data points are shown in red.
+        - Axis labels include units where applicable.
+        - Useful for debugging or validating the interpolation quality.
         """
 
         # times to plot at

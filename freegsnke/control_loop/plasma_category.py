@@ -15,14 +15,33 @@ from freegsnke.control_loop.useful_functions import (
 
 class PlasmaController:
     """
-    ADD DESCRIP.
+    A controller class for managing plasma-related control parameters using interpolated input data.
 
     Parameters
     ----------
-
+    data : dict
+        A nested dictionary containing control data for each target to be controlled. Each target's
+        data must include keys for both spline-based and step-based parameters:
+            - Spline keys: "ip_ref", "ip_blend", "vloop_ff"
+            - Step keys: "k_prop", "k_int", "M_solenoid"
+        Each key should map to a dictionary suitable for interpolation, with keys:
+            - 'times': 1D array of time points
+            - 'vals': 1D array of values at those time points (same length).
 
     Attributes
     ----------
+    keys_to_spline : list of str
+        Keys corresponding to parameters that will be interpolated using splines.
+
+    keys_to_step : list of str
+        Keys corresponding to parameters that will be interpolated using step functions.
+
+    data : dict
+        Internal copy of the input control data.
+
+    interpolants : dict
+        A nested dictionary storing interpolation functions for each control target and parameter.
+        Structure: {target: {param: interpolant_function}}
 
     """
 
@@ -59,32 +78,35 @@ class PlasmaController:
         ip_hist_prev,
     ):
         """
-        NEED TO UPDATE.
-        Calculates the vector of current trajectories ΔI/Δt, as prescribed
-        in the plasma category of the MAST-U PCS. The equations followed are:
+        Computes the time derivative of the plasma current request (`dip_dt`) and updates the
+        integral history of the plasma current error (`ip_hist`) using a blended feedback and
+        feedforward control strategy.
 
-        Ip_error = (Ip_req - Ip_obs)
-        integral = internal_state + 0.5 * Ip_error * dt
-        internal_state = internal_state + Ip_error * dt
-        ΔIsol_fb/Δt = Kp * Ip_error + Ki * integral
-        ΔIsol/Δt = ΔIsol_fb/Δt * blend - Vloop_ff * (1 - blend)/M_sp
-
-        It should be noted that the PI controller works at a frequency twice as
-        high as the data recording system. This is why the PI controller goes
-        through two cycles in this method.
-
-        Parameters
+        Parameters:
         ----------
-        - Kp : float
-            Proportional term used in the Vloop_fb computation.
+        t : float
+            Current time in seconds.
+        dt : float
+            Time step in seconds.
+        ip_meas : float
+            Measured plasma current at time `t`.
+        ip_hist_prev : float
+            Previous value of the integrated plasma current error.
 
-
-        Returns
+        Returns:
         -------
-        - dI_dt : 1D numpy array
-            Array of delta currents requests that will be part of the input of
-            Circuits category.
+        dip_dt : float
+            Time derivative of the requested plasma current.
+        ip_hist : float
+            Updated integral of the plasma current error.
 
+        Notes:
+        ------
+        - The control law uses time-dependent interpolants for reference current (`ip_ref`),
+        proportional gain (`k_prop`), integral gain (`k_int`), blend factor (`ip_blend`),
+        feedforward voltage (`vloop_ff`), and solenoid inductance (`M_solenoid`).
+        - The blend factor determines the weighting between feedback and feedforward control.
+        - The integral term is computed using the trapezoidal rule for numerical integration.
         """
 
         # proportional term
@@ -111,21 +133,29 @@ class PlasmaController:
 
     def plot_data(self, tmin=-1.0, tmax=1.0, nt=10001):
         """
-        Plot selected time series from interpolated functions alongside their raw data.
+        Visualizes interpolated control data and corresponding raw input for a specified target.
 
-        This function takes callable interpolants stored in `self.interpolants` and
-        plots them on separate subplots, optionally overlaying the original raw
-        data points from `self.data`.
+        This method generates subplots for each control parameter (both spline and step types),
+        showing the interpolated time series alongside the original data points. It helps verify
+        the quality and behavior of the interpolation.
 
         Parameters
         ----------
+        targ : str
+            The name of the control target to plot. Must be a key in `self.interpolants` and `self.data`.
         tmin : float, optional
-            Minimum time for the evaluation grid (default is -1.0).
+            Start time for the evaluation grid (default is -1.0 seconds).
         tmax : float, optional
-            Maximum time for the evaluation grid (default is 1.0).
+            End time for the evaluation grid (default is 1.0 seconds).
         nt : int, optional
-            Number of equally spaced time points to evaluate the interpolants over
-            between `tmin` and `tmax` (default is 10001).
+            Number of time points to evaluate the interpolants over the interval [tmin, tmax] (default is 10001).
+
+        Notes
+        -----
+        - Each subplot corresponds to a control parameter (e.g., 'ip_ref', 'ip_blend', 'vloop_ff', 'k_prop', etc.).
+        - Interpolated curves are plotted in navy; raw data points are shown in red.
+        - Axis labels include units where applicable.
+        - Useful for debugging or validating the interpolation quality.
         """
 
         # times to plot at

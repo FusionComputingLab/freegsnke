@@ -293,11 +293,12 @@ class nksolver:
             self.collinear_aware_regulariz = collinear_aware_regulariz * nR0**2
 
             # solve the regularised least sq problem
+            A = (
+                self.G[:, : self.n_it + 1].T @ self.G[:, : self.n_it + 1]
+                + self.collinear_aware_regulariz
+            )
             coeffs = np.dot(
-                np.linalg.inv(
-                    self.G[:, : self.n_it + 1].T @ self.G[:, : self.n_it + 1]
-                    + self.collinear_aware_regulariz
-                ),
+                np.linalg.solve(A, np.eye(A.shape[0])),
                 np.dot(self.G[:, : self.n_it + 1].T, -R0),
             )
             coeffs = np.clip(coeffs, -clip, clip)

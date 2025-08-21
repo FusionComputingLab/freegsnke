@@ -168,7 +168,8 @@ class NKGSsolver:
 
         # calculates and imposes the boundary conditions
         self.psi_boundary = np.zeros_like(self.R)
-        psi_bnd = np.sum(self.greenfunc * self.jtor[np.newaxis, :, :], axis=(-1, -2))
+        # psi_bnd = np.sum(self.greenfunc * self.jtor[np.newaxis, :, :], axis=(-1, -2))
+        psi_bnd = np.einsum("ijk,jk->i", self.greenfunc, self.jtor)
 
         self.psi_boundary[:, 0] = psi_bnd[: self.nx]
         self.psi_boundary[:, -1] = psi_bnd[self.nx : 2 * self.nx]

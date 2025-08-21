@@ -91,7 +91,7 @@ class PlasmaControlSystem:
         self.ctrl_targets = ctrl_targets
         self.plasma_target = plasma_target
 
-        # initialise controllers and assign data to them
+        # initialise controllers and assign data to each
         self.PlasmaController = PlasmaController(
             data=plasma_data,
         )
@@ -117,7 +117,7 @@ class PlasmaControlSystem:
             data=pf_data,
         )
 
-        self.VerticalControl = VerticalController(
+        self.VerticalController = VerticalController(
             data=vertical_data,
         )
 
@@ -133,6 +133,8 @@ class PlasmaControlSystem:
         I_approved_prev,
         I_meas,
         V_approved_prev,
+        zip_meas,
+        zipv_meas,
         verbose=False,
     ):
         """
@@ -173,15 +175,21 @@ class PlasmaControlSystem:
             Measured coil currents at the current time step [A].
 
         V_approved_prev : numpy.ndarray
-            Previously approved coil voltages from the last control step [V].
+            Previously approved control coil voltages from the last control step [V].
+
+        zip_meas : float
+            Measured vertical position of the plasma multiplied by measured Ip [A.m].
+
+        zipv_meas : float
+            Measured vertical velocity of the plasma multiplied by measured Ip [A.m/s].
 
         verbose : bool, optional
             If True, prints diagnostic information from subsystem controllers.
 
         Returns
         -------
-        V_approved : numpy.ndarray
-            Final coil voltage demands after applying all constraints [V].
+        V_active : numpy.ndarray
+            Final (all active) coil voltage demands after applying all constraints [V].
 
         ip_hist : list of float
             Updated integrated plasma current error [A.s].
@@ -232,7 +240,7 @@ class PlasmaControlSystem:
         )
 
         # PF category
-        V_approved = self.PFController.run_control(
+        V_ctrl = self.PFController.run_control(
             t=t,
             dt=dt,
             I_meas=I_meas,
@@ -242,26 +250,25 @@ class PlasmaControlSystem:
             verbose=verbose,
         )
 
-        return V_approved, ip_hist, T_err, T_hist, I_approved
+        # vertical category
+        V_vertical = self.VerticalController.run_control(
+            t=t,
+            dt=dt,
+            ip_meas=ip_meas,
+            zip_meas=zip_meas,
+            zipv_meas=zipv_meas,
+        )
 
-    # def compute_vertical_voltage(self, time_stamp, other_args):
-    #     """
-    #     Apply vertical control to the vertical coils
+        # lookup dictionaries
+        ctrl_dict = dict(zip(self.ctrl_coils, V_ctrl))
+        vert_dict = dict(zip(self.vertical_coils, np.array([V_vertical])))
 
-    #     """
-    #     # apply vertical controller to get voltages for
-    #     pass
+        # build active coil voltages vector
+        V_active = np.array(
+            [ctrl_dict.get(c, vert_dict.get(c, 0.0)) for c in self.active_coils]
+        )
 
-    # def compute_voltages_all(self, time_stamp):
-
-    #     # shaping voltage,
-    #     # vertical voltage
-    #     # combine these two
-
-    #     control_voltages = self.compute_control_voltage()
-    #     vertical_voltage = self.compute_vertical_voltage()
-
-    #     return control_voltages + vertical_voltage
+        return V_active, ip_hist, T_err, T_hist, I_approved
 
 
 # class Simulator:

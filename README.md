@@ -186,8 +186,7 @@ Here are a list of FreeGSNKE papers that describe or use the code:
 - N. C. Amorisco et al, "FreeGSNKE: A Python-based dynamic free-boundary toroidal plasma equilibrium solver", Physics of Plasmas, **31**, 042517 (2024). DOI: [10.1063/5.0188467](https://doi.org/10.1063/5.0188467).
 - A. Agnello et al, "Emulation techniques for scenario and classical control design of tokamak plasmas", Physics of Plasmas, **31**, 043091 (2024). DOI: [10.1063/5.0187822](https://doi.org/10.1063/5.0187822).
 - K. Pentland et al, "Validation of the static forward Grad-Shafranov equilibrium solvers in FreeGSNKE and Fiesta using EFIT++ reconstructions from MAST-U", Physica Scripta, **100**, 025608 (2025). DOI: [10.1088/1402-4896/ada192](https://iopscience.iop.org/article/10.1088/1402-4896/ada192).
-- K. Pentland et al, "Multiple solutions to the static forward free-boundary Grad-Shafranov problem on MAST-U", arXiv (2025). DOI: [2503.05674](https://arxiv.org/abs/2503.05674).
- 
+- K. Pentland et al, "Multiple solutions to the static forward free-boundary Grad-Shafranov problem on MAST-U", Nuclear Fusion (2025). DOI: [10.1088/1741-4326/adf3cc](https://iopscience.iop.org/article/10.1088/1741-4326/adf3cc). 
 
 If you would like your FreeGSNKE-related paper to be added, please let us know!
 

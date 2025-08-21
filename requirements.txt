@@ -3,4 +3,5 @@ numpy~=1.26.4
 matplotlib~=3.10.3
 h5py~=3.13.0
 deepdiff~=7.0.1
+scikit-image~=0.25.2
 notebook~=7.4.2

@@ -130,4 +130,4 @@ myst_enable_extensions = [
     "dollarmath",
 ]
 
-nb_execution_timeout = 600
+nb_execution_timeout = 1200

@@ -1,5 +1,5 @@
 """
-Module to implement virtual circuits control in FreeGSNKE control loops. 
+Module to implement virtual circuits control in FreeGSNKE control loops.
 
 """
 
@@ -45,6 +45,14 @@ class VirtualCircuitsController:
     emu_vc_provider : object, optional
         An optional provider object for emulated virtual circuits. If provided, it enables
         enhanced control capabilities and diagnostics.
+
+    emu_targets : list of str , optional
+        List of targets to be controlled using emulated VC's. Must be subset of ctrl_targs.
+        All others will be taken from data
+
+    emu_flag : bool, optional
+        If True, use the emulated virtual circuit provider to obtain the VC matrix.
+        If False, use interpolated VC data from input.
     """
 
     def __init__(
@@ -53,7 +61,9 @@ class VirtualCircuitsController:
         ctrl_coils,
         ctrl_targets,
         plasma_target,
+        emu_flag=False,
         emu_vc_provider=None,
+        emu_targets=None,
     ):
 
         # coils list
@@ -62,6 +72,9 @@ class VirtualCircuitsController:
         # targets list
         self.ctrl_targets = ctrl_targets
         self.plasma_target = plasma_target
+        self.emu_targets = emu_targets
+
+        self.ctrl_target_order = {target: i for i, target in self.ctrl_targets}
 
         # check correct data is input and in correct format
         self.keys_to_spline = [coil + "_ref" for coil in self.ctrl_coils]
@@ -83,9 +96,15 @@ class VirtualCircuitsController:
         for key in self.keys_to_step:
             self.interpolants[key] = interpolate_step(self.data[key])
 
-        self.emu_vc_provider = emu_vc_provider
-        if self.emu_vc_provider is not None:
-            print("Emulated virtual circuits have been provided.")
+        # emu flag - true or false
+        self.emu_flag = emu_flag
+        if self.emu_flag == True:
+            print(f"Emulator will be used for controlling {self.emu_targets}")
+            assert self.emu_targets is not None, "provide list of emulator targets"
+            assert (
+                self.emu_vc_provider is not None
+            ), "Please provide a VCProvider for emulated vc's"
+            self.emu_vc_provider = emu_vc_provider
 
     def run_control(
         self,
@@ -94,7 +113,7 @@ class VirtualCircuitsController:
         dip_dt,
         dT_dt,
         I_approved_prev,
-        emu_flag=False,
+        emu_inputs=None,
     ):
         """
         Computes the unapproved coil currents and their rates of change based on feedforward
@@ -121,9 +140,10 @@ class VirtualCircuitsController:
         I_approved_prev : numpy.ndarray
             Previously approved coil currents [A].
 
-        emu_flag : bool, optional
-            If True, use the emulated virtual circuit provider to obtain the VC matrix.
-            If False, use interpolated VC data from input.
+        emu_inputs : numpy.ndarray
+            array of inputs for emulated VC computation.
+
+
 
         Returns
         -------
@@ -141,15 +161,21 @@ class VirtualCircuitsController:
 
         # extract VC matrix (targets x coils)
         # get shape vc
-        if emu_flag == True:
+        if self.emu_flag == True:
             assert (
                 self.emu_vc_provider is not None
             ), "Need to provide an emulator VC provider to the class"
-            VC_shape = self.emu_vc_provider.get_vc(
-                targets=self.ctrl_targets, coils=self.ctrl_coils
+            VC_shape_emu = self.emu_vc_provider.get_vc(
+                targets=self.emu_targets,
+                coils=self.ctrl_coils,
+                input_array=emu_inputs,
             )
-        else:
-            VC_shape = self.extract_values(t=t, targets=self.ctrl_targets)
+        # load all VC's from data
+        VC_shape = self.extract_values(t=t, targets=self.ctrl_targets)
+        # fill appropriate columns from emulated vcs
+        for j, emu_targ in self.emu_targets:
+            i = self.ctrl_target_order[emu_targ]
+            VC_shape[i, :] = 1.0 * VC_shape_emu[:, j]  # check correct orientation
 
         # get plasma vc
         VC_plas = self.extract_values(t=t, targets=self.plasma_target)

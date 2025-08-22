@@ -1,5 +1,5 @@
 """
-Module to implement a Plasma Control System (PCS) in FreeGSNKE. 
+Module to implement a Plasma Control System (PCS) in FreeGSNKE.
 
 """
 
@@ -79,6 +79,9 @@ class PlasmaControlSystem:
         vertical_coils,
         ctrl_targets,
         plasma_target,
+        emu_flag=False,
+        emu_vc_provider=None,
+        emu_targets=None,
     ):
 
         # coil ordering
@@ -106,6 +109,9 @@ class PlasmaControlSystem:
             ctrl_coils=self.ctrl_coils,
             ctrl_targets=self.ctrl_targets,
             plasma_target=self.plasma_target,
+            emu_flag=emu_flag,
+            emu_vc_provider=emu_vc_provider,
+            emu_targets=emu_targets,
         )
 
         self.SystemsController = SystemsController(
@@ -136,6 +142,7 @@ class PlasmaControlSystem:
         zip_meas,
         zipv_meas,
         verbose=False,
+        emu_inputs=None,
     ):
         """
         Run the full control pipeline to compute approved coil voltage commands.
@@ -228,6 +235,7 @@ class PlasmaControlSystem:
             dip_dt=dip_dt,
             dT_dt=dT_dt,
             I_approved_prev=I_approved_prev,
+            emu_inputs=emu_inputs,
         )
 
         # systems category

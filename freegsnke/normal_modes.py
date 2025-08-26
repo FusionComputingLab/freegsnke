@@ -53,9 +53,6 @@ class mode_decomposition:
         self.coil_resist = coil_resist
         self.coil_self_ind = coil_self_ind
 
-        # active + passive
-        self.rm1l_non_symm = np.diag(self.coil_resist**-1.0) @ self.coil_self_ind
-
         # 1. active coils
         # normal modes are not used for the active coils,
         # but they're calculated here for the check on negative eigenvalues below

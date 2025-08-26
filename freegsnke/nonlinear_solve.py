@@ -1876,10 +1876,8 @@ class nl_solver:
             if np.array_equal(
                 active_coil_resistances, self.evol_metal_curr.active_coil_resistances
             ):
-                print("no change needed")
                 return
             else:
-                print("resistance change needed")
                 self.evol_metal_curr.reset_active_coil_resistances(
                     active_coil_resistances
                 )

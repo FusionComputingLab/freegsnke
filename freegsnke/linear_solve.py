@@ -34,7 +34,7 @@ class linear_solver:
 
     def __init__(
         self,
-        eq,
+        coil_numbers,
         Lambdam1,
         P,
         Pm1,
@@ -93,10 +93,10 @@ class linear_solver:
         self.Pm1Rm1Mey = np.matmul(self.Pm1Rm1, Mey)
         self.MyeP = np.matmul(Mey.T, P).T
 
-        if Lambdam1 is None:
-            self.Lambdam1 = Pm1 @ (Rm1 @ (eq.tokamak.coil_self_ind @ P))
-        else:
-            self.Lambdam1 = Lambdam1
+        # if Lambdam1 is None:
+        #     self.Lambdam1 = Pm1 @ (Rm1 @ (eq.tokamak.coil_self_ind @ P))
+        # else:
+        self.Lambdam1 = Lambdam1
         self.n_independent_vars = np.shape(self.Lambdam1)[0]
 
         self.Mmatrix = np.zeros(
@@ -109,7 +109,7 @@ class linear_solver:
             (self.n_independent_vars + 1, self.n_independent_vars + 1)
         )
 
-        self.n_active_coils = eq.tokamak.n_active_coils
+        self.n_active_coils, self.n_coils = coil_numbers
 
         self.solver = implicit_euler_solver(
             Mmatrix=np.eye(self.n_independent_vars + 1),

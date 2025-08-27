@@ -98,7 +98,8 @@ class metal_currents:
             self.coil_resist = eq.tokamak.coil_resist
 
         self.Rm1 = 1.0 / self.coil_resist
-        self.R = self.coil_resist
+        # self.R = np.copy(self.coil_resist)
+        self.active_coil_resistances = np.copy(self.coil_resist[: self.n_active_coils])
 
         # prepare inductance data
         if coil_self_ind is not None:
@@ -109,6 +110,8 @@ class metal_currents:
             self.coil_self_ind = coil_self_ind
         else:
             self.coil_self_ind = eq.tokamak.coil_self_ind
+
+        self.build_rm1l()
 
         self.flag_vessel_eig = flag_vessel_eig
         self.flag_plasma = flag_plasma
@@ -137,6 +140,12 @@ class metal_currents:
 
         # Dummy voltage vector
         self.empty_U = np.zeros(self.n_coils)
+
+    def build_rm1l(
+        self,
+    ):
+        # active + passive
+        self.rm1l_non_symm = np.diag(self.coil_resist**-1.0) @ self.coil_self_ind
 
     def make_selected_mode_mask(self, mode_coupling_masks, verbose):
         """Creates a mask for the vessel normal modes to include in the circuit
@@ -243,7 +252,7 @@ class metal_currents:
         # diagonalised separately from the active coils. The modes of used for the passive structures
         # diagonalise the isolated dynamics of the walls.
         # Equation is Lambda**(-1)Iddot + I = F
-        self.Lambdam1 = self.Pm1 @ (self.normal_modes.rm1l_non_symm @ self.P)
+        self.Lambdam1 = self.Pm1 @ (self.rm1l_non_symm @ self.P)
         # self.RP = np.diag(self.coil_resist) @ self.P
         # self.RP_inv = np.linalg.solve(self.RP.T @ self.RP, self.RP.T)
         # self.Lambdam1 = (self.RP_inv @ self.coil_self_ind) @ self.P
@@ -259,6 +268,15 @@ class metal_currents:
             self.forcing_term = self.forcing_term_eig_plasma
         else:
             self.forcing_term = self.forcing_term_eig_no_plasma
+
+    def reset_active_coil_resistances(self, active_coil_resistances):
+        self.coil_resist = np.concatenate(
+            (active_coil_resistances, self.coil_resist[self.n_active_coils :])
+        )
+        self.active_coil_resistances = np.copy(self.coil_resist[: self.n_active_coils])
+        self.Rm1 = 1 / self.coil_resist
+        self.build_rm1l()
+        self.Lambdam1 = self.Pm1 @ (self.rm1l_non_symm @ self.P)
 
     def initialize_for_no_eig(self):
         """Initializes the metal currents object for the case where vessel

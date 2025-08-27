@@ -106,7 +106,7 @@ def test_linearised_growth_rate(create_machine):
 
 def test_linearised_stepper(create_machine):
     tokamak, eq, profiles, stepping = create_machine
-    U_active = (stepping.vessel_currents_vec * stepping.evol_metal_curr.R)[
+    U_active = (stepping.vessel_currents_vec * stepping.evol_metal_curr.coil_resist)[
         : stepping.evol_metal_curr.n_active_coils
     ]
 
@@ -198,7 +198,7 @@ def test_linearised_stepper(create_machine):
 
 def test_non_linear_stepper(create_machine):
     tokamak, eq, profiles, stepping = create_machine
-    U_active = (stepping.vessel_currents_vec * stepping.evol_metal_curr.R)[
+    U_active = (stepping.vessel_currents_vec * stepping.evol_metal_curr.coil_resist)[
         : stepping.evol_metal_curr.n_active_coils
     ]
 

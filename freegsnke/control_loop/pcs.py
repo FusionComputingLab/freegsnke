@@ -67,6 +67,9 @@ class PlasmaControlSystem:
     CoilActivationControl : CoilActivationController
         Controls coil resistances, depending on if they're switched on or off.
 
+    emulated_VCs : object, optional
+        An optional class object for applying emulated virtual circuits. If not
+        provided, deafult waveform-defined VCs will be used.
     """
 
     def __init__(
@@ -84,9 +87,7 @@ class PlasmaControlSystem:
         vertical_coils,
         ctrl_targets,
         plasma_target,
-        emu_flag=False,
-        emu_vc_provider=None,
-        emu_targets=None,
+        emulated_VCs=None,
     ):
 
         # coil ordering
@@ -114,9 +115,7 @@ class PlasmaControlSystem:
             ctrl_coils=self.ctrl_coils,
             ctrl_targets=self.ctrl_targets,
             plasma_target=self.plasma_target,
-            emu_flag=emu_flag,
-            emu_vc_provider=emu_vc_provider,
-            emu_targets=emu_targets,
+            emulated_VCs=emulated_VCs,
         )
 
         self.SystemsController = SystemsController(
@@ -152,8 +151,8 @@ class PlasmaControlSystem:
         zip_meas,
         zipv_meas,
         active_coil_resists,
+        emulated_VC_targets=None,
         verbose=False,
-        emu_inputs=None,
     ):
         """
         Run the full control pipeline to compute approved coil voltage commands.
@@ -204,6 +203,11 @@ class PlasmaControlSystem:
         active_coil_resists : numpy.ndarray
             Array of active coil resistances when coils are switched on [Ohms].
 
+        emulated_VC_targets : list of str , optional
+            List of targets to be controlled using the emulated VC's. Must be subset of
+            ctrl_targets. Those not defined in this list will be taken from waveform-defined
+            VCs.
+
         verbose : bool, optional
             If True, prints diagnostic information from subsystem controllers.
 
@@ -252,7 +256,7 @@ class PlasmaControlSystem:
             dip_dt=dip_dt,
             dT_dt=dT_dt,
             I_approved_prev=I_approved_prev,
-            emu_inputs=emu_inputs,
+            emulated_VC_targets=emulated_VC_targets,
         )
 
         # systems category

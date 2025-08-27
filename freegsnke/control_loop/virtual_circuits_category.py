@@ -42,17 +42,10 @@ class VirtualCircuitsController:
     plasma_target : list of str
         The list of plasma targets being managed.
 
-    emu_vc_provider : object, optional
-        An optional provider object for emulated virtual circuits. If provided, it enables
-        enhanced control capabilities and diagnostics.
+    emulated_VCs : object, optional
+        An optional class object for applying emulated virtual circuits. If not
+        provided, deafult waveform-defined VCs will be used.
 
-    emu_targets : list of str , optional
-        List of targets to be controlled using emulated VC's. Must be subset of ctrl_targs.
-        All others will be taken from data
-
-    emu_flag : bool, optional
-        If True, use the emulated virtual circuit provider to obtain the VC matrix.
-        If False, use interpolated VC data from input.
     """
 
     def __init__(
@@ -61,9 +54,7 @@ class VirtualCircuitsController:
         ctrl_coils,
         ctrl_targets,
         plasma_target,
-        emu_flag=False,
-        emu_vc_provider=None,
-        emu_targets=None,
+        emulated_VCs=None,
     ):
 
         # coils list
@@ -72,9 +63,6 @@ class VirtualCircuitsController:
         # targets list
         self.ctrl_targets = ctrl_targets
         self.plasma_target = plasma_target
-        self.emu_targets = emu_targets
-
-        self.ctrl_target_order = {target: i for i, target in self.ctrl_targets}
 
         # check correct data is input and in correct format
         self.keys_to_spline = [coil + "_ref" for coil in self.ctrl_coils]
@@ -96,15 +84,8 @@ class VirtualCircuitsController:
         for key in self.keys_to_step:
             self.interpolants[key] = interpolate_step(self.data[key])
 
-        # emu flag - true or false
-        self.emu_flag = emu_flag
-        if self.emu_flag == True:
-            print(f"Emulator will be used for controlling {self.emu_targets}")
-            assert self.emu_targets is not None, "provide list of emulator targets"
-            assert (
-                self.emu_vc_provider is not None
-            ), "Please provide a VCProvider for emulated vc's"
-            self.emu_vc_provider = emu_vc_provider
+        # store emulated VCs class if present
+        self.emulated_VCs = emulated_VCs
 
     def run_control(
         self,
@@ -113,7 +94,7 @@ class VirtualCircuitsController:
         dip_dt,
         dT_dt,
         I_approved_prev,
-        emu_inputs=None,
+        emulated_VC_targets=None,
     ):
         """
         Computes the unapproved coil currents and their rates of change based on feedforward
@@ -122,6 +103,8 @@ class VirtualCircuitsController:
         This method extracts coil current reference derivatives, applies virtual circuit matrices
         (either from an emulator or interpolated data), and computes the unapproved coil
         current updates using Euler integration.
+
+        There is also the option to provide VCs from an emulator class object.
 
         Parameters
         ----------
@@ -140,10 +123,10 @@ class VirtualCircuitsController:
         I_approved_prev : numpy.ndarray
             Previously approved coil currents [A].
 
-        emu_inputs : numpy.ndarray
-            array of inputs for emulated VC computation.
-
-
+        emulated_VC_targets : list of str , optional
+            List of targets to be controlled using the emulated VC's. Must be subset of
+            ctrl_targets. Those not defined in this list will be taken from waveform-defined
+            VCs.
 
         Returns
         -------
@@ -159,29 +142,38 @@ class VirtualCircuitsController:
             t=t, targets=[coil + "_ref" for coil in self.ctrl_coils], deriv=True
         )
 
-        # extract VC matrix (targets x coils)
-        # get shape vc
-        if self.emu_flag == True:
-            assert (
-                self.emu_vc_provider is not None
-            ), "Need to provide an emulator VC provider to the class"
-            VC_shape_emu = self.emu_vc_provider.get_vc(
-                targets=self.emu_targets,
-                coils=self.ctrl_coils,
-                input_array=emu_inputs,
-            )
-        # load all VC's from data
+        # extract shape target VCs from waveform data (targets x coils)
         VC_shape = self.extract_values(t=t, targets=self.ctrl_targets)
-        # fill appropriate columns from emulated vcs
-        for j, emu_targ in self.emu_targets:
-            i = self.ctrl_target_order[emu_targ]
-            VC_shape[i, :] = 1.0 * VC_shape_emu[:, j]  # check correct orientation
 
-        # get plasma vc
-        VC_plas = self.extract_values(t=t, targets=self.plasma_target)
+        # extract plasma target VC from waveform data (targets x coils)
+        VC_plasma = self.extract_values(t=t, targets=self.plasma_target)
+
+        # if emulated VCs to be used, extract the data and overwrite relevant VC
+        # matrix columns
+        if self.emulated_VCs is not None and emulated_VC_targets is not None:
+
+            # error checks
+            assert (
+                self.emulated_VCs is not None
+            ), "Need to provide a VC emulator class to `VirtualCircuitsController`."
+            assert (
+                not emulated_VC_targets
+            ), "Need to provide targets for the VC emulator."
+
+            # extract the relevant emulated VCs
+            VC_shape_emu = self.emulated_VCs.get_vc(
+                t=t,
+                targets=emulated_VC_targets,
+                coils=self.ctrl_coils,
+            )
+
+            # fill appropriate columns from emulated vcs
+            ctrl_target_order = {target: i for i, target in self.ctrl_targets}
+            for j, emu_targ in emulated_VC_targets:
+                VC_shape[ctrl_target_order[emu_targ], :] = 1.0 * VC_shape_emu[:, j]
 
         # unapproved coil currents rates of change
-        dI_dt_unapproved = dI_dt_ref + (dT_dt @ VC_shape) + (dip_dt * VC_plas)
+        dI_dt_unapproved = dI_dt_ref + (dT_dt @ VC_shape) + (dip_dt * VC_plasma)
 
         # unapproved coil currents (by simple Euler integration)
         I_unapproved = I_approved_prev + (dI_dt_unapproved * dt)

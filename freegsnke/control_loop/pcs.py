@@ -6,6 +6,7 @@ Module to implement a Plasma Control System (PCS) in FreeGSNKE.
 # imports
 import numpy as np
 
+from .coil_activation_category import CoilActivationController
 from .pf_category import PFController
 from .plasma_category import PlasmaController
 from .shape_category import ShapeController
@@ -63,6 +64,9 @@ class PlasmaControlSystem:
     VerticalControl : VerticalController
         Controls vertical plasma position via vertical control coil.
 
+    CoilActivationControl : CoilActivationController
+        Controls coil resistances, depending on if they're switched on or off.
+
     """
 
     def __init__(
@@ -73,6 +77,7 @@ class PlasmaControlSystem:
         systems_data,
         pf_data,
         vertical_data,
+        coil_activation_data,
         active_coils,
         ctrl_coils,
         solenoid_coils,
@@ -127,6 +132,11 @@ class PlasmaControlSystem:
             data=vertical_data,
         )
 
+        self.CoilActivationController = CoilActivationController(
+            data=coil_activation_data,
+            active_coils=self.active_coils,
+        )
+
     def calculate_ctrl_voltages(
         self,
         t,
@@ -141,6 +151,7 @@ class PlasmaControlSystem:
         V_approved_prev,
         zip_meas,
         zipv_meas,
+        active_coil_resists,
         verbose=False,
         emu_inputs=None,
     ):
@@ -190,6 +201,9 @@ class PlasmaControlSystem:
         zipv_meas : float
             Measured vertical velocity of the plasma multiplied by measured Ip [A.m/s].
 
+        active_coil_resists : numpy.ndarray
+            Array of active coil resistances when coils are switched on [Ohms].
+
         verbose : bool, optional
             If True, prints diagnostic information from subsystem controllers.
 
@@ -209,6 +223,9 @@ class PlasmaControlSystem:
 
         I_approved : numpy.ndarray
             Approved coil currents after applying perturbations and clipping [A].
+
+        coil_resists : numpy.ndarray
+            Active coil resistances to be used (some coils may be on or off at time t) [Ohms].
         """
 
         # plasma category
@@ -267,6 +284,13 @@ class PlasmaControlSystem:
             zipv_meas=zipv_meas,
         )
 
+        # coil activations category
+        coil_resists = self.CoilActivationController.run_control(
+            t=t,
+            dt=dt,
+            active_coil_resists=active_coil_resists,
+        )
+
         # lookup dictionaries
         ctrl_dict = dict(zip(self.ctrl_coils, V_ctrl))
         vert_dict = dict(zip(self.vertical_coils, np.array([V_vertical])))
@@ -276,7 +300,7 @@ class PlasmaControlSystem:
             [ctrl_dict.get(c, vert_dict.get(c, 0.0)) for c in self.active_coils]
         )
 
-        return V_active, ip_hist, T_err, T_hist, I_approved
+        return V_active, ip_hist, T_err, T_hist, I_approved, coil_resists
 
 
 # class Simulator:

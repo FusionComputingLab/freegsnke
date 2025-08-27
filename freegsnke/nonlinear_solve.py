@@ -2599,7 +2599,6 @@ class nl_solver:
                     active_coil_resistances
                 )
                 self.set_solvers()
-                print(self.evol_metal_curr.coil_resist)
 
     def nlstepper(
         self,

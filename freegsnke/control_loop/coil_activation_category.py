@@ -82,49 +82,87 @@ class CoilActivationController:
             elif key in self.keys_to_step:
                 self.interpolants[key] = interpolate_step(self.data[key])
 
-    # def run_control(
-    #     self,
-    #     t,
-    #     dt,
-    #     zip_meas,
-    #     zipv_meas,
-    # ):
-    #     """
-    #     NEED TO UPDATE.
-    #     Calculates the vector of current trajectories ΔI/Δt, as prescribed
-    #     in the plasma category of the MAST-U PCS. The equations followed are:
+    def run_control(
+        self,
+        t,
+        dt,
+        active_coil_resists,
+    ):
+        """
+        Compute effective coil resistances at a given time step.
 
-    #     Ip_error = (Ip_req - Ip_obs)
-    #     integral = internal_state + 0.5 * Ip_error * dt
-    #     internal_state = internal_state + Ip_error * dt
-    #     ΔIsol_fb/Δt = Kp * Ip_error + Ki * integral
-    #     ΔIsol/Δt = ΔIsol_fb/Δt * blend - Vloop_ff * (1 - blend)/M_sp
+        This function extracts coil activation values at time ``t`` and scales the
+        base resistances accordingly. Coils that are inactive (activation ~ 0)
+        are assigned a very large resistance to effectively disable them in the
+        control model.
 
-    #     It should be noted that the PI controller works at a frequency twice as
-    #     high as the data recording system. This is why the PI controller goes
-    #     through two cycles in this method.
+        Parameters
+        ----------
+        t : float
+            Current time at which to evaluate coil activations.
+        dt : float
+            Time step size (currently unused, but kept for interface consistency).
+        active_coil_resists : numpy.ndarray
+            Array of active coil resistances when coils are switched on [Ohms].
 
-    #     Parameters
-    #     ----------
-    #     - Kp : float
-    #         Proportional term used in the Vloop_fb computation.
+        Returns
+        -------
+        numpy.ndarray
+            Array of effective coil resistances, where inactive coils are set to
+            a large resistance value (``1e12``).
+        """
 
-    #     Returns
-    #     -------
-    #     - dI_dt : 1D numpy array
-    #         Array of delta currents requests that will be part of the input of
-    #         Circuits category.
+        # extract data
+        activations = self.extract_values(t=t, targets=self.active_coils, deriv=False)
 
-    #     """
+        # if coil is not active, set very large resistance
+        final_coil_resists = active_coil_resists + (1.0 - activations) * 1e12
 
-    #     # extract data
-    #     z_ref = self.interpolants["z_ref"](t)
-    #     ip_ref = self.interpolants["ip_ref"](t)
-    #     k_prop = self.interpolants["k_prop"](t)
-    #     k_deriv = self.interpolants["k_deriv"](t)
+        return final_coil_resists
 
-    #     # return k_prop*(zip_meas - z_ref*ip_ref) + k_deriv*zipv_meas
-    #     return k_prop*(z_ref*ip_ref - zip_meas) + k_deriv*zipv_meas
+    def extract_values(
+        self,
+        t,
+        targets,
+        deriv=False,
+    ):
+        """
+        Extracts interpolated values or their derivatives for specified shape targets at a given time.
+
+        This method queries the stored interpolation functions for each target and key, returning either
+        the interpolated value or its first derivative depending on the `deriv` flag.
+
+        Parameters
+        ----------
+        t : float
+            Time at which to evaluate the interpolants [s].
+        targets : list of str
+            List of keys. Each must correspond to a key in `self.interpolants`.
+        deriv : bool, optional
+            If True, returns the first derivative of the interpolant at time `t`. Default is False.
+
+        Returns
+        -------
+        np.ndarray
+            Array of interpolated values (or derivatives) for each target at time `t`.
+
+        Notes
+        -----
+        - Assumes that `self.interpolants[target]` is a valid `scipy.interpolate` object.
+        - If `deriv=True`, the method calls `.derivative()` on the interpolant before evaluation.
+        """
+
+        if deriv:
+            return np.array(
+                [
+                    self.interpolants[target + "_activation"].derivative(n=1)(t)
+                    for target in targets
+                ]
+            )
+        else:
+            return np.array(
+                [self.interpolants[target + "_activation"](t) for target in targets]
+            )
 
     def plot_data(self, tmin=-1.0, tmax=1.0, nt=10001):
         """

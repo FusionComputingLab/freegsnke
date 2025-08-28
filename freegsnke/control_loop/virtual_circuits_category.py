@@ -59,6 +59,10 @@ class VirtualCircuitsController:
 
         # coils list
         self.ctrl_coils = ctrl_coils
+        self.vc_coil_order = data["coil_order"]
+        self.vc_coil_order_index = {
+            coil: i for i, coil in enumerate(self.vc_coil_order)
+        }
 
         # targets list
         self.ctrl_targets = ctrl_targets
@@ -95,6 +99,7 @@ class VirtualCircuitsController:
         dT_dt,
         I_approved_prev,
         emulated_VC_targets=None,
+        emu_inputs=None,
     ):
         """
         Computes the unapproved coil currents and their rates of change based on feedforward
@@ -128,6 +133,9 @@ class VirtualCircuitsController:
             ctrl_targets. Those not defined in this list will be taken from waveform-defined
             VCs.
 
+        emu_inputs : np.ndarray , optional
+            Array of input values for all input parameters (currents and other plasma parameters) of the Neural Network emulator.
+
         Returns
         -------
         I_unapproved : numpy.ndarray
@@ -157,19 +165,22 @@ class VirtualCircuitsController:
                 self.emulated_VCs is not None
             ), "Need to provide a VC emulator class to `VirtualCircuitsController`."
             assert (
-                not emulated_VC_targets
+                emulated_VC_targets is not None
             ), "Need to provide targets for the VC emulator."
 
             # extract the relevant emulated VCs
             VC_shape_emu = self.emulated_VCs.get_vc(
-                t=t,
                 targets=emulated_VC_targets,
                 coils=self.ctrl_coils,
+                input_data=emu_inputs,  # This may be temporary and removed at some point.
             )
 
             # fill appropriate columns from emulated vcs
-            ctrl_target_order = {target: i for i, target in self.ctrl_targets}
-            for j, emu_targ in emulated_VC_targets:
+            ctrl_target_order = {
+                target: i for i, target in enumerate(self.ctrl_targets)
+            }
+            for j, emu_targ in enumerate(emulated_VC_targets):
+                # expand array as apropriate
                 VC_shape[ctrl_target_order[emu_targ], :] = 1.0 * VC_shape_emu[:, j]
 
         # unapproved coil currents rates of change

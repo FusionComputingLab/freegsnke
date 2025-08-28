@@ -310,11 +310,14 @@ class Probes:
         )
         return psi_from_plasma
 
-    def calculate_fluxloop_value(self, eq):
+    def calculate_fluxloop_value(self, eq, vacuum=False):
         """
         total flux for all floop probes
         """
-        return self.psi_floop_all_coils(eq) + self.psi_from_plasma(eq)
+        floops = self.psi_floop_all_coils(eq)
+        if vacuum == False:
+            floops += self.psi_from_plasma(eq)
+        return floops
 
     """
     Things for pickup coils
@@ -534,7 +537,7 @@ class Probes:
 
     #     return BdotN
 
-    def calculate_pickup_value(self, eq, probe="pickups"):
+    def calculate_pickup_value(self, eq, probe="pickups", vacuum=False):
         """
         Compute B.n at pickup probes, using oriented greens functions.
         """

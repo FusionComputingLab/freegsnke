@@ -11,6 +11,8 @@ examples/test*
 examples/*.py
 examples/*.geqdsk
 examples/*.mat
+examples/p6*
+examples/*resistivity*
 examples/Geof*
 examples/*.pdf
 examples/*.png

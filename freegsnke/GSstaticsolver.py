@@ -15,9 +15,9 @@ FreeGSNKE is free software: you can redistribute it and/or modify
 it under the terms of the GNU Lesser General Public License as published by
 the Free Software Foundation, either version 3 of the License, or
 (at your option) any later version.
-  
+
 You should have received a copy of the GNU Lesser General Public License
-along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.  
+along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 import warnings
@@ -937,23 +937,20 @@ class NKGSsolver:
         constrain.prepare_for_solve(eq)
 
         check_equilibrium = False
-        try:
-            GS_residual = self.F_function(
-                tokamak_psi=self.tokamak_psi.reshape(-1),
-                plasma_psi=eq.plasma_psi.reshape(-1),
-                profiles=profiles,
-            )
-            if verbose:
-                print("Initial guess for plasma_psi successful, residual found.")
-            rel_change_full, del_psi = self.relative_del_residual(
-                GS_residual, eq.plasma_psi
-            )
-            if rel_change_full < threshold_val:
-                check_equilibrium = True
-            if profiles.diverted_core_mask is not None:
-                check_core_mask = True
-        except:
-            pass
+        GS_residual = self.F_function(
+            tokamak_psi=self.tokamak_psi.reshape(-1),
+            plasma_psi=eq.plasma_psi.reshape(-1),
+            profiles=profiles,
+        )
+        if verbose:
+            print("Initial guess for plasma_psi successful, residual found.")
+        rel_change_full, del_psi = self.relative_del_residual(
+            GS_residual, eq.plasma_psi
+        )
+        if rel_change_full < threshold_val:
+            check_equilibrium = True
+        if profiles.diverted_core_mask is not None:
+            check_core_mask = True
 
         if verbose:
             print(f"Initial relative error = {rel_change_full:.2e}")

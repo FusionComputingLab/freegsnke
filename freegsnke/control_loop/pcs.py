@@ -152,6 +152,7 @@ class PlasmaControlSystem:
         zipv_meas,
         active_coil_resists,
         emulated_VC_targets=None,
+        emulator_coils=None,
         emu_inputs=None,
         verbose=False,
     ):
@@ -258,6 +259,7 @@ class PlasmaControlSystem:
             dT_dt=dT_dt,
             I_approved_prev=I_approved_prev,
             emulated_VC_targets=emulated_VC_targets,
+            emulator_coils=emulator_coils,
             emu_inputs=emu_inputs,
         )
 

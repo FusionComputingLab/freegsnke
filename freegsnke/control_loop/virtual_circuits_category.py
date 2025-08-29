@@ -99,6 +99,7 @@ class VirtualCircuitsController:
         dT_dt,
         I_approved_prev,
         emulated_VC_targets=None,
+        emulator_coils=None,
         emu_inputs=None,
     ):
         """
@@ -152,6 +153,7 @@ class VirtualCircuitsController:
 
         # extract shape target VCs from waveform data (targets x coils)
         VC_shape = self.extract_values(t=t, targets=self.ctrl_targets)
+        print("VC's from file", VC_shape)
 
         # extract plasma target VC from waveform data (targets x coils)
         VC_plasma = self.extract_values(t=t, targets=self.plasma_target)
@@ -172,9 +174,10 @@ class VirtualCircuitsController:
             VC_shape_emu = self.emulated_VCs.get_vc(
                 targets=emulated_VC_targets,
                 coils=self.ctrl_coils,
+                coils_calc=emulator_coils,
                 input_data=emu_inputs,  # This may be temporary and removed at some point.
             )
-
+            print("Emulated VC matrix", VC_shape_emu)
             # fill appropriate columns from emulated vcs
             ctrl_target_order = {
                 target: i for i, target in enumerate(self.ctrl_targets)
@@ -183,6 +186,7 @@ class VirtualCircuitsController:
                 # expand array as apropriate
                 VC_shape[ctrl_target_order[emu_targ], :] = 1.0 * VC_shape_emu[:, j]
 
+            print("VCs - hybrid emu and file", VC_shape)
         # unapproved coil currents rates of change
         dI_dt_unapproved = dI_dt_ref + (dT_dt @ VC_shape) + (dip_dt * VC_plasma)
 

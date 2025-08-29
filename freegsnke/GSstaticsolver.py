@@ -938,6 +938,7 @@ class NKGSsolver:
 
         check_equilibrium = False
         try:
+            rel_change_full=0
             GS_residual = self.F_function(
                 tokamak_psi=self.tokamak_psi.reshape(-1),
                 plasma_psi=eq.plasma_psi.reshape(-1),

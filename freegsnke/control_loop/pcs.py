@@ -210,6 +210,9 @@ class PlasmaControlSystem:
             ctrl_targets. Those not defined in this list will be taken from waveform-defined
             VCs.
 
+        emulator_coils : list of str, optional
+            List of coils to use in emulated VC compuation. These are coils to use in computing shape sensitivity matrix.
+
         verbose : bool, optional
             If True, prints diagnostic information from subsystem controllers.
 

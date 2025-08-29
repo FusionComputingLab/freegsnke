@@ -134,6 +134,9 @@ class VirtualCircuitsController:
             ctrl_targets. Those not defined in this list will be taken from waveform-defined
             VCs.
 
+        emulator_coils : list of str, optional
+            List of coils to use in emulated VC compuation. These are coils to use in computing shape sensitivity matrix.
+
         emu_inputs : np.ndarray , optional
             Array of input values for all input parameters (currents and other plasma parameters) of the Neural Network emulator.
 
@@ -160,7 +163,11 @@ class VirtualCircuitsController:
 
         # if emulated VCs to be used, extract the data and overwrite relevant VC
         # matrix columns
-        if self.emulated_VCs is not None and emulated_VC_targets is not None:
+        if (
+            (self.emulated_VCs is not None)
+            and (emulated_VC_targets is not None)
+            and (emulator_coils is not None)
+        ):
 
             # error checks
             assert (

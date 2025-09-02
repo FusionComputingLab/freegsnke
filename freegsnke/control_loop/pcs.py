@@ -67,7 +67,7 @@ class PlasmaControlSystem:
     CoilActivationControl : CoilActivationController
         Controls coil resistances, depending on if they're switched on or off.
 
-    emulated_VCs : object, optional
+    vc_generator : object, optional
         An optional class object for applying emulated virtual circuits. If not
         provided, deafult waveform-defined VCs will be used.
     """
@@ -87,7 +87,7 @@ class PlasmaControlSystem:
         vertical_coils,
         ctrl_targets,
         plasma_target,
-        emulated_VCs=None,
+        vc_generator=None,
     ):
 
         # coil ordering
@@ -115,7 +115,7 @@ class PlasmaControlSystem:
             ctrl_coils=self.ctrl_coils,
             ctrl_targets=self.ctrl_targets,
             plasma_target=self.plasma_target,
-            emulated_VCs=emulated_VCs,
+            vc_generator=vc_generator,
         )
 
         self.SystemsController = SystemsController(

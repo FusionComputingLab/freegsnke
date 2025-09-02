@@ -42,7 +42,7 @@ class VirtualCircuitsController:
     plasma_target : list of str
         The list of plasma targets being managed.
 
-    emulated_VCs : object, optional
+    vc_generator : object, optional
         An optional class object for applying emulated virtual circuits. If not
         provided, deafult waveform-defined VCs will be used.
 
@@ -54,7 +54,7 @@ class VirtualCircuitsController:
         ctrl_coils,
         ctrl_targets,
         plasma_target,
-        emulated_VCs=None,
+        vc_generator=None,
     ):
 
         # coils list
@@ -89,7 +89,13 @@ class VirtualCircuitsController:
             self.interpolants[key] = interpolate_step(self.data[key])
 
         # store emulated VCs class if present
-        self.emulated_VCs = emulated_VCs
+        self.vc_generator = vc_generator
+
+        # store first vc matrix
+        # t0 = min(data)
+        # self.present_shape_vc_matrix = self.extract_values(
+        #     t=t, targets=self.ctrl_targets
+        # )
 
     def run_control(
         self,
@@ -164,21 +170,21 @@ class VirtualCircuitsController:
         # if emulated VCs to be used, extract the data and overwrite relevant VC
         # matrix columns
         if (
-            (self.emulated_VCs is not None)
+            (self.vc_generator is not None)
             and (emulated_VC_targets is not None)
             and (emulator_coils is not None)
         ):
 
             # error checks
             assert (
-                self.emulated_VCs is not None
+                self.vc_generator is not None
             ), "Need to provide a VC emulator class to `VirtualCircuitsController`."
             assert (
                 emulated_VC_targets is not None
             ), "Need to provide targets for the VC emulator."
 
             # extract the relevant emulated VCs
-            VC_shape_emu = self.emulated_VCs.get_vc(
+            VC_shape_emu = self.vc_generator.get_vc(
                 targets=emulated_VC_targets,
                 coils=self.ctrl_coils,
                 coils_calc=emulator_coils,

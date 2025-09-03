@@ -60,19 +60,27 @@ class VirtualCircuitProvider(abc.ABC):
     @abc.abstractmethod
     def get_vc(
         self,
-        timestamp: float,
         targets: list[str],
-    ) -> VirtualCircuit | None:
+        coils: list[str],
+        coils_calc: list[str],
+        input_data,
+    ) -> np.ndarray | None:
         """
         Gets a Virtual Circuit for the given timestamp and observables requested from
         the registry.
 
         Parameters
         ----------
-        timestamp : float (4 decimal places)
-            timestamp at which the virtual circuit should be retrieved
         targets : list[str]
             list of targets to get a virtual circuit for
+        coils : list[str]
+            list of coils to return VC matrix for.
+        coils_calc : list[str]
+            list of coils to use for computing VC/jacobians.
+            Must be subset or equal to coils above
+        input_data :
+            data needed to compute/retrieve VC.
+            For example array of inputs for NN emulators, eq/profile for Freegsnke.
 
         Returns
         -------

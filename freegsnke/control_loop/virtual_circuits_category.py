@@ -79,14 +79,8 @@ class VirtualCircuitsController:
         # create an internal copy of the data
         self.data = data
 
-        # create a dictionary to store the spline functions
-        self.interpolants = {}
-
         # interpolate the input data
-        for key in self.keys_to_spline:
-            self.interpolants[key] = interpolate_spline(self.data[key])
-        for key in self.keys_to_step:
-            self.interpolants[key] = interpolate_step(self.data[key])
+        self.update_interpolants()
 
         # store emulated VCs class if present
         self.vc_generator = vc_generator
@@ -96,6 +90,26 @@ class VirtualCircuitsController:
         # self.present_shape_vc_matrix = self.extract_values(
         #     t=t, targets=self.ctrl_targets
         # )
+
+    def update_interpolants(self):
+        """
+        Recompute all interpolant functions from the current `self.data`.
+
+        This method clears the existing `self.interpolants` dictionary and
+        rebuilds it by applying either `interpolate_spline` or `interpolate_step`
+        depending on whether each key belongs to `self.keys_to_spline` or
+        `self.keys_to_step`.
+
+        """
+
+        # create a dictionary to store the spline functions
+        self.interpolants = {}
+
+        # interpolate the input data
+        for key in self.keys_to_spline:
+            self.interpolants[key] = interpolate_spline(self.data[key])
+        for key in self.keys_to_step:
+            self.interpolants[key] = interpolate_step(self.data[key])
 
     def run_control(
         self,

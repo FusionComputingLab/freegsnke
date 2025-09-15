@@ -59,6 +59,20 @@ class VerticalController:
         # create an internal copy of the data
         self.data = data
 
+        # interpolate the input data
+        self.update_interpolants()
+
+    def update_interpolants(self):
+        """
+        Recompute all interpolant functions from the current `self.data`.
+
+        This method clears the existing `self.interpolants` dictionary and
+        rebuilds it by applying either `interpolate_spline` or `interpolate_step`
+        depending on whether each key belongs to `self.keys_to_spline` or
+        `self.keys_to_step`.
+
+        """
+
         # create a dictionary to store the spline functions
         self.interpolants = {}
 

@@ -121,6 +121,7 @@ class VirtualCircuitsController:
         emulated_VC_targets=None,
         emulator_coils=None,
         emu_inputs=None,
+        verbose=False,
     ):
         """
         Computes the unapproved coil currents and their rates of change based on feedforward
@@ -160,6 +161,9 @@ class VirtualCircuitsController:
         emu_inputs : np.ndarray , optional
             Array of input values for all input parameters (currents and other plasma parameters) of the Neural Network emulator.
 
+        verbose : bool
+            Print some output if True.
+
         Returns
         -------
         I_unapproved : numpy.ndarray
@@ -176,7 +180,8 @@ class VirtualCircuitsController:
 
         # extract shape target VCs from waveform data (targets x coils)
         VC_shape = self.extract_values(t=t, targets=self.ctrl_targets)
-        print("VC's from file", VC_shape)
+        if verbose:
+            print("VC's from file", VC_shape)
 
         # extract plasma target VC from waveform data (targets x coils)
         VC_plasma = self.extract_values(t=t, targets=self.plasma_target)
@@ -204,7 +209,8 @@ class VirtualCircuitsController:
                 coils_calc=emulator_coils,
                 input_data=emu_inputs,  # This may be temporary and removed at some point.
             )
-            print("Emulated VC matrix", VC_shape_emu)
+            if verbose:
+                print("Emulated VC matrix", VC_shape_emu)
             # fill appropriate columns from emulated vcs
             ctrl_target_order = {
                 target: i for i, target in enumerate(self.ctrl_targets)
@@ -213,7 +219,8 @@ class VirtualCircuitsController:
                 # expand array as apropriate
                 VC_shape[ctrl_target_order[emu_targ], :] = 1.0 * VC_shape_emu[:, j]
 
-            print("VCs - hybrid emu and file", VC_shape)
+            if verbose:
+                print("VCs - hybrid emu and file", VC_shape)
         # unapproved coil currents rates of change
         dI_dt_unapproved = dI_dt_ref + (dT_dt @ VC_shape) + (dip_dt * VC_plasma)
 

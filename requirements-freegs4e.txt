@@ -1,1 +1,1 @@
-freegs4e~=0.10
+freegs4e~=0.11

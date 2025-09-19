@@ -19,6 +19,8 @@ You should have received a copy of the GNU Lesser General Public License
 along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.  
 """
 
+from dataclasses import dataclass
+
 import freegs4e
 import numpy as np
 from freegs4e.gradshafranov import mu0
@@ -30,6 +32,20 @@ from . import jtor_refinement
 from . import switch_profile as swp
 
 
+@dataclass
+class ProfileData:
+    """Data from a `Jtor_universal` that is used in other
+    areas of the code to avoid copying complex objects.
+    """
+
+    flag_limiter: bool
+    jtor: np.ndarray
+    diverted_core_mask: np.ndarray
+    psi_bndry: np.ndarray
+    xpt: list
+    fvac: float
+
+
 class Jtor_universal:
 
     def __init__(self, refine_jtor=False):
@@ -38,6 +54,16 @@ class Jtor_universal:
             self.Jtor = self.Jtor_refined
         else:
             self.Jtor = self.Jtor_unrefined
+
+    def get_profile_data(self):
+        return ProfileData(
+            flag_limiter=self.flag_limiter,
+            jtor=self.jtor,
+            diverted_core_mask=self.diverted_core_mask,
+            psi_bndry=self.psi_bndry,
+            xpt=self.xpt,
+            fvac=self._fvac,
+        )
 
     def set_masks(self, eq):
         """Universal function to set all masks related to the limiter.

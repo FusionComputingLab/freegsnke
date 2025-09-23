@@ -2124,7 +2124,7 @@ class nl_solver:
         self.eq2.tokamak.set_all_coil_currents(self.vessel_currents_vec)
 
         if from_linear:
-            self.profiles1 = deepcopy(self.profiles2)
+            self.profiles1 = self.profiles2
             self.eq1 = deepcopy(self.eq2)
         else:
             self.eq1.plasma_psi = np.copy(self.trial_plasma_psi)

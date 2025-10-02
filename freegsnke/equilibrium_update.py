@@ -77,7 +77,7 @@ class Equilibrium(freegs4e.equilibrium.Equilibrium):
         equilibrium = Equilibrium.__new__(Equilibrium)
 
         # attributes that FreeGS4e sets
-        equilibrium.tokamak = self.tokamak
+        equilibrium.tokamak = self.tokamak.copy()
         equilibrium.Rmin = self.Rmin
         equilibrium.Rmax = self.Rmax
         equilibrium.Zmin = self.Zmin

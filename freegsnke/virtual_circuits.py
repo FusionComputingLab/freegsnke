@@ -647,7 +647,7 @@ class VirtualCircuitHandling:
         # make copies of the newly solved equilibrium and profile objects
         # these are used for all GS solves below
         self._eq2 = eq.create_auxiliary_equilibrium()
-        self._profiles2 = deepcopy(profiles)
+        self._profiles2 = profiles.copy()
 
         # for each coil, prepare by inferring delta(I_j) corresponding to a change delta(I_y)
         # with norm(delta(I_y)) = target_dIy
@@ -778,7 +778,7 @@ class VirtualCircuitHandling:
 
         # store copies of the eq and profile objects
         eq_new = eq.create_auxiliary_equilibrium()
-        profiles_new = deepcopy(profiles)
+        profiles_new = profiles.copy()
 
         # assign currents to the required coils in the eq object
         new_currents = [

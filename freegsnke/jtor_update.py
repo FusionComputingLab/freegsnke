@@ -28,15 +28,78 @@ from skimage import measure
 
 from . import jtor_refinement
 from . import switch_profile as swp
+from .copying import copy_into
 
 
 class Jtor_universal:
     def __init__(self, refine_jtor=False):
         """Sets default unrefined Jtor."""
-        if refine_jtor:
-            self.Jtor = self.Jtor_refined
+        self._refine_jtor = refine_jtor
+
+    def Jtor(self, *args, **kwargs):
+        if self._refine_jtor:
+            return self.Jtor_refined(*args, **kwargs)
         else:
-            self.Jtor = self.Jtor_unrefined
+            return self.Jtor_unrefined(*args, **kwargs)
+
+    def copy(self, obj=None):
+        """Creates a copy the object.
+
+        obj : Jtor_universal
+            An instance of self that the attributes are copied into instead of
+            creating a new object
+        """
+
+        obj = type(self).__new__(type(self)) if obj is None else obj
+
+        copy_into(self, obj, "_refine_jtor")
+        copy_into(self, obj, "dR")
+        copy_into(self, obj, "dZ")
+        copy_into(self, obj, "dRdZ")
+        copy_into(self, obj, "nx")
+
+        copy_into(self, obj, "dR_dZ", mutable=True)
+        copy_into(self, obj, "grid_points", mutable=True)
+        copy_into(self, obj, "eqRidx", mutable=True)
+        copy_into(self, obj, "eqZidx", mutable=True)
+        copy_into(self, obj, "idx_grid_points", mutable=True)
+        copy_into(self, obj, "R0Z0", mutable=True)
+        copy_into(self, obj, "mask_inside_limiter", mutable=True)
+        copy_into(self, obj, "mask_outside_limiter", mutable=True)
+        copy_into(self, obj, "limiter_mask_out", mutable=True)
+        copy_into(self, obj, "limiter_mask_for_plotting", mutable=True)
+        copy_into(self, obj, "edge_mask", mutable=True)
+        obj.inputs = self.inputs[::]  # shallow copy suffices
+
+        # *Should* not be necessary to copy this
+        obj.limiter_handler = self.limiter_handler
+
+        # the following attributes won't always be present...
+        if hasattr(self, "jtor_refiner"):
+            obj.refinement_thresholds = self.refinement_thresholds[::]
+            obj.jtor_refiner = self.jtor_refiner.copy()
+
+        copy_into(self, obj, "psi_bndry", strict=False)
+        copy_into(self, obj, "flag_limiter", strict=False)
+        copy_into(self, obj, "Ip_logic", strict=False)
+
+        copy_into(self, obj, "psi_map", mutable=True, strict=False)
+        copy_into(self, obj, "record_xpt", mutable=True, strict=False)
+        copy_into(self, obj, "lcfs", mutable=True, strict=False)
+        copy_into(self, obj, "jtor", mutable=True, strict=False)
+        copy_into(self, obj, "opt", mutable=True, strict=False)
+        copy_into(self, obj, "diverted_core_mask", mutable=True, strict=False)
+        copy_into(self, obj, "limiter_core_mask", mutable=True, strict=False)
+        copy_into(self, obj, "unrefined_jtor", mutable=True, strict=False)
+        copy_into(self, obj, "unrefined_djtordpsi", mutable=True, strict=False)
+        copy_into(self, obj, "pure_jtor", mutable=True, strict=False)
+        copy_into(self, obj, "pure_djtordpsi", mutable=True, strict=False)
+        copy_into(self, obj, "dJtordpsi", mutable=True, strict=False)
+
+        copy_into(self, obj, "xpt", mutable=True, strict=False)
+        copy_into(self, obj, "opt", mutable=True, strict=False)
+
+        return obj
 
     def set_masks(self, eq):
         """Universal function to set all masks related to the limiter.
@@ -100,12 +163,10 @@ class Jtor_universal:
         nny : even integer
             refinement factor in the Z direction
         """
+        self._refine_jtor = refine_jtor
         if refine_jtor:
             self.jtor_refiner = jtor_refinement.Jtor_refiner(eq, nnx, nny)
             self.set_refinement_thresholds()
-            self.Jtor = self.Jtor_refined
-        else:
-            self.Jtor = self.Jtor_unrefined
 
     def set_refinement_thresholds(self, thresholds=(1.0, 1.0)):
         """Sets the default criteria for refinement -- used when not directly set.
@@ -215,7 +276,7 @@ class Jtor_universal:
         current_psi_level = valid_max_psi + increment
         self.record_xpt = [valid_max_psi, current_psi_level]
 
-        while abs(increment) > rel_tolerance_xpt or desired_check_larger == False:
+        while abs(increment) > rel_tolerance_xpt or desired_check_larger is False:
             # design regions
             all_regions = measure.find_contours(psi_map, current_psi_level)
             # sort them by distance to the valid maximum
@@ -227,7 +288,7 @@ class Jtor_universal:
             # identify the region containing the valid local maximum
             region_found = False
             idx = -1
-            while region_found == False:
+            while region_found is False:
                 idx += 1
                 path = Path(all_regions[regions_order[idx]])
                 region_found = path.contains_point(idx_valid_max)
@@ -536,7 +597,7 @@ class Jtor_universal:
         self.pure_djtordpsi = self.dJtordpsi / self.L
         core_mask = 1.0 * self.limiter_core_mask
 
-        if thresholds == None:
+        if thresholds is None:
             thresholds = self.refinement_thresholds
 
         bilinear_psi_interp, refined_R = self.jtor_refiner.build_bilinear_psi_interp(
@@ -598,6 +659,22 @@ class ConstrainBetapIp(freegs4e.jtor.ConstrainBetapIp, Jtor_universal):
 
         self.set_masks(eq=eq)
 
+    def copy(self):
+        obj = super().copy()
+
+        copy_into(self, obj, "profile_parameter")
+        copy_into(self, obj, "betap")
+        copy_into(self, obj, "Ip")
+        copy_into(self, obj, "_fvac")
+        copy_into(self, obj, "alpha_m")
+        copy_into(self, obj, "alpha_n")
+        copy_into(self, obj, "Raxis")
+        copy_into(self, obj, "fast")
+        copy_into(self, obj, "L")
+        copy_into(self, obj, "Beta0")
+
+        return obj
+
     def Lao_parameters(
         self, n_alpha, n_beta, alpha_logic=True, beta_logic=True, Ip_logic=True, nn=100
     ):
@@ -650,6 +727,22 @@ class ConstrainPaxisIp(freegs4e.jtor.ConstrainPaxisIp, Jtor_universal):
         self.profile_parameter = self.paxis
 
         self.set_masks(eq=eq)
+
+    def copy(self):
+        obj = super().copy()
+
+        copy_into(self, obj, "profile_parameter")
+        copy_into(self, obj, "paxis")
+        copy_into(self, obj, "Ip")
+        copy_into(self, obj, "_fvac")
+        copy_into(self, obj, "alpha_m")
+        copy_into(self, obj, "alpha_n")
+        copy_into(self, obj, "Raxis")
+        copy_into(self, obj, "fast")
+        copy_into(self, obj, "L")
+        copy_into(self, obj, "Beta0")
+
+        return obj
 
     def Lao_parameters(
         self, n_alpha, n_beta, alpha_logic=True, beta_logic=True, Ip_logic=True, nn=100
@@ -704,6 +797,21 @@ class Fiesta_Topeol(freegs4e.jtor.Fiesta_Topeol, Jtor_universal):
 
         self.set_masks(eq=eq)
 
+    def copy(self):
+        obj = super().copy()
+
+        copy_into(self, obj, "profile_parameter")
+        copy_into(self, obj, "Ip")
+        copy_into(self, obj, "_fvac")
+        copy_into(self, obj, "alpha_m")
+        copy_into(self, obj, "alpha_n")
+        copy_into(self, obj, "Raxis")
+        copy_into(self, obj, "fast")
+        copy_into(self, obj, "L")
+        copy_into(self, obj, "Beta0")
+
+        return obj
+
     def Lao_parameters(
         self, n_alpha, n_beta, alpha_logic=True, beta_logic=True, Ip_logic=True, nn=100
     ):
@@ -757,6 +865,25 @@ class Lao85(freegs4e.jtor.Lao85, Jtor_universal):
         freegs4e.jtor.Lao85.__init__(self, *args, **kwargs)
         self.set_masks(eq=eq)
         self.select_refinement(eq, refine_jtor, nnx, nny)
+
+    def copy(self):
+        obj = super().copy()
+
+        copy_into(self, obj, "Ip")
+        copy_into(self, obj, "_fvac")
+        copy_into(self, obj, "alpha")
+        copy_into(self, obj, "alpha_logic")
+        copy_into(self, obj, "beta")
+        copy_into(self, obj, "beta_logic")
+        copy_into(self, obj, "Raxis")
+        copy_into(self, obj, "fast")
+        copy_into(self, obj, "Ip_logic")
+        copy_into(self, obj, "L")
+        copy_into(self, obj, "dJtorpsin1", strict=False)
+        copy_into(self, obj, "dJtordpsi", mutable=True, strict=False)
+        copy_into(self, obj, "problem_psi", mutable=True, strict=False)
+
+        return obj
 
     def Topeol_parameters(self, nn=100, max_it=100, tol=1e-5):
         """Fids best combination of
@@ -820,6 +947,37 @@ class TensionSpline(freegs4e.jtor.TensionSpline, Jtor_universal):
 
         self.set_masks(eq=eq)
 
+    def copy(self):
+        obj = super().copy()
+
+        copy_into(self, obj, "Ip")
+        copy_into(self, obj, "_fvac")
+        copy_into(self, obj, "Raxis")
+        copy_into(self, obj, "Ip_logic")
+        copy_into(self, obj, "fast")
+        copy_into(self, obj, "L")
+        copy_into(self, obj, "pp_knots", mutable=True)
+        copy_into(self, obj, "pp_values", mutable=True)
+        copy_into(self, obj, "pp_values_2", mutable=True)
+        copy_into(self, obj, "pp_sigma", mutable=True)
+        copy_into(self, obj, "ffp_knots", mutable=True)
+        copy_into(self, obj, "ffp_values", mutable=True)
+        copy_into(self, obj, "ffp_values_2", mutable=True)
+        copy_into(self, obj, "ffp_sigma", mutable=True)
+
+        obj.profile_parameter = [
+            obj.pp_knots,
+            obj.pp_values,
+            obj.pp_values_2,
+            obj.pp_sigma,
+            obj.ffp_knots,
+            obj.ffp_values,
+            obj.ffp_values_2,
+            obj.ffp_sigma,
+        ]
+
+        return obj
+
     def assign_profile_parameter(
         self,
         pp_knots,
@@ -874,6 +1032,26 @@ class GeneralPprimeFFprime(freegs4e.jtor.GeneralPprimeFFprime, Jtor_universal):
 
         self.profile_parameter = []
         self.set_masks(eq=eq)
+
+    def copy(self):
+        obj = super().copy()
+
+        copy_into(self, obj, "profile_parameter")
+        copy_into(self, obj, "Ip")
+        copy_into(self, obj, "_fvac")
+        copy_into(self, obj, "Raxis")
+        copy_into(self, obj, "Ip_logic")
+        copy_into(self, obj, "L")
+        copy_into(self, obj, "fast")
+        copy_into(self, obj, "psi_n", mutable=True)
+        copy_into(self, obj, "pprime_data", mutable=True)
+        copy_into(self, obj, "ffprime_data", mutable=True)
+        copy_into(self, obj, "p_data", mutable=True)
+        copy_into(self, obj, "f_data", mutable=True)
+
+        obj.initialize_profile()
+
+        return obj
 
     def assign_profile_parameter(
         self,

@@ -15,18 +15,15 @@ FreeGSNKE is free software: you can redistribute it and/or modify
 it under the terms of the GNU Lesser General Public License as published by
 the Free Software Foundation, either version 3 of the License, or
 (at your option) any later version.
-  
+
 You should have received a copy of the GNU Lesser General Public License
-along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.  
+along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 """
 
-import warnings
 from copy import deepcopy
 
 import freegs4e
-import matplotlib.pyplot as plt
 import numpy as np
-import scipy as sp
 from freegs4e.gradshafranov import Greens
 
 from . import nk_solver_H as nk_solver
@@ -168,7 +165,10 @@ class NKGSsolver:
 
         # calculates and imposes the boundary conditions
         self.psi_boundary = np.zeros_like(self.R)
-        psi_bnd = np.sum(self.greenfunc * self.jtor[np.newaxis, :, :], axis=(-1, -2))
+        # weighted sum over the last two axes.
+        # "contract" axis 1 of greenfunc with axis 0 of jtor
+        # contract axis 2 of greenfunc with axis 1 of jtor
+        psi_bnd = np.tensordot(self.greenfunc, self.jtor, axes=([1, 2], [0, 1]))
 
         self.psi_boundary[:, 0] = psi_bnd[: self.nx]
         self.psi_boundary[:, -1] = psi_bnd[self.nx : 2 * self.nx]
@@ -418,7 +418,6 @@ class NKGSsolver:
         while (rel_change > target_relative_tolerance) * (
             iterations < max_solving_iterations
         ):
-
             if rel_change > Picard_handover:
                 log.append("Picard iteration: " + str(iterations))
                 # using Picard instead of NK
@@ -762,10 +761,9 @@ class NKGSsolver:
         # print(delta_current)
 
         for i in range(constrain.n_control_coils):
-
             if verbose:
                 print(
-                    f" - calculating derivatives for coil {i+1}/{constrain.n_control_coils}"
+                    f" - calculating derivatives for coil {i + 1}/{constrain.n_control_coils}"
                 )
 
             currents = np.copy(self.dummy_current)
@@ -963,12 +961,10 @@ class NKGSsolver:
             (rel_change_full > target_relative_tolerance)
             + (previous_rel_delta_psit > target_relative_psit_update)
         ) * (iterations < max_solving_iterations):
-
             if verbose:
                 print("Iteration: " + str(iterations))
 
             if check_equilibrium:
-
                 # this_max_rel_psit = min(max_rel_psit, np.mean(self.rel_psit_updates[-6:]))
                 this_max_rel_psit = np.mean(self.rel_psit_updates[-6:])
                 this_max_rel_update_size = 1.0 * max_rel_update_size

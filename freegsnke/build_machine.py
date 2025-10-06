@@ -590,8 +590,8 @@ def build_active_coil_dict(active_coils):
 def copy_tokamak(tokamak: Machine):
     new_tokamak = tokamak.copy()
 
-    new_tokamak.coils_dict = tokamak.coils_dict
-    new_tokamak.coils_list = tokamak.coils_list
+    new_tokamak.coils_dict = tokamak.coils_dict.copy()
+    new_tokamak.coils_list = tokamak.coils_list[::]
     new_tokamak.n_active_coils = tokamak.n_active_coils
     new_tokamak.n_passive_coils = tokamak.n_passive_coils
     new_tokamak.n_coils = tokamak.n_coils

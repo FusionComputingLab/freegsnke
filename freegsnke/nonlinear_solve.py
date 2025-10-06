@@ -197,9 +197,9 @@ class nl_solver:
         print("-----")
 
         # set internal copy of the equilibrium and profile
-        self.eq1 = deepcopy(eq)
+        self.eq1 = eq.create_auxiliary_equilibrium()
         self.profiles1 = deepcopy(profiles)
-        self.eq2 = deepcopy(eq)
+        self.eq2 = eq.create_auxiliary_equilibrium()
         self.profiles2 = deepcopy(profiles)
         self.Iy = self.limiter_handler.Iy_from_jtor(profiles.jtor).copy()
         self.nIy = np.linalg.norm(self.Iy)
@@ -2016,7 +2016,7 @@ class nl_solver:
         # set internal copy of the equilibrium and profile
         # note that at this stage, the equilibrium may have vessel currents.
         # These can not be reproduced exactly if modes are truncated.
-        self.eq1 = deepcopy(eq)
+        self.eq1 = eq.create_auxiliary_equilibrium()
         self.profiles1 = deepcopy(profiles)
         # The pair self.eq1 and self.profiles1 is the pair that is advanced at each timestep.
         # Their properties evolve according to the dynamics.
@@ -2043,7 +2043,7 @@ class nl_solver:
         # self.eq2 and self.profiles2 are used as auxiliary objects when solving for the dynamics
         # They are used for all intermediate calculations, so
         # they should not be used to extract properties of the evolving equilibrium
-        self.eq2 = deepcopy(self.eq1)
+        self.eq2 = self.eq1.create_auxiliary_equilibrium()
         self.profiles2 = deepcopy(self.profiles1)
 
         # self.Iy is the istantaneous 1d vector representing the plasma current distribution

@@ -646,7 +646,7 @@ class VirtualCircuitHandling:
 
         # make copies of the newly solved equilibrium and profile objects
         # these are used for all GS solves below
-        self._eq2 = deepcopy(eq)
+        self._eq2 = eq.create_auxiliary_equilibrium()
         self._profiles2 = deepcopy(profiles)
 
         # for each coil, prepare by inferring delta(I_j) corresponding to a change delta(I_y)
@@ -656,7 +656,6 @@ class VirtualCircuitHandling:
                 print(
                     f"{j}th coil ({coils[j]}) using initial current shift {starting_dI[j]}."
                 )
-            # self._eq2 = deepcopy(eq)
             self.prepare_build_dIydI_j(j, coils, target_dIy, starting_dI[j])
 
         if verbose:
@@ -666,7 +665,6 @@ class VirtualCircuitHandling:
         # for each coil, build the Jacobian using the value of delta(I_j) inferred earlier
         # by self.prepare_build_dIydI_j.
         for j in np.arange(len(coils)):
-            # self._eq2 = deepcopy(eq)
             # each shape matrix row is derivative of targets wrt the final coil current change
             shape_matrix[:, j] = self.build_dIydI_j(
                 j, coils, targets, targets_options, non_standard_targets, verbose
@@ -779,7 +777,7 @@ class VirtualCircuitHandling:
         )
 
         # store copies of the eq and profile objects
-        eq_new = deepcopy(eq)
+        eq_new = eq.create_auxiliary_equilibrium()
         profiles_new = deepcopy(profiles)
 
         # assign currents to the required coils in the eq object

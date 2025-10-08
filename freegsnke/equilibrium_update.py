@@ -28,6 +28,7 @@ from freegs4e import critical
 from scipy import interpolate
 
 from . import limiter_func, virtual_circuits
+from .build_machine import copy_tokamak
 
 
 class Equilibrium(freegs4e.equilibrium.Equilibrium):
@@ -61,6 +62,58 @@ class Equilibrium(freegs4e.equilibrium.Equilibrium):
         self.mask_outside_limiter = 2 * np.logical_not(self.mask_inside_limiter).astype(
             float
         )
+
+    def create_auxiliary_equilibrium(self):
+        """Creates the auxiliary equilibrium object.
+
+        The auxiliary object returned from this method is essentially
+        a copy of the equilibrium object (self) however it is manually
+        setup and so won't contain all attributes on self (especially custom
+        attributes). It is NOT _guaranteed_ to be the same as a deepcopy, or even
+        a shallow copy.
+        """
+        # __new__ stops __init__ being called.
+        # This is necessary because the __init__ method does expensive
+        # calculations which we can just copy the results of
+        equilibrium = Equilibrium.__new__(Equilibrium)
+
+        # attributes that FreeGS4e sets
+        equilibrium.tokamak = copy_tokamak(self.tokamak)
+        equilibrium.Rmin = self.Rmin
+        equilibrium.Rmax = self.Rmax
+        equilibrium.Zmin = self.Zmin
+        equilibrium.Zmax = self.Zmax
+        equilibrium.nx = self.nx
+        equilibrium.ny = self.ny
+        equilibrium.dR = self.dR
+        equilibrium.dZ = self.dZ
+        equilibrium._applyBoundary = self._applyBoundary
+        equilibrium._pgreen = self._pgreen
+        equilibrium._vgreen = self._vgreen
+        equilibrium._current = self._current
+        equilibrium.order = self.order
+        equilibrium._solver = self._solver
+
+        # attributes the FreeGSNKE sets
+        equilibrium.solved = self.solved
+        equilibrium.psi_func_interp = self.psi_func_interp
+        equilibrium.nxh = self.nxh
+        equilibrium.nyh = self.nyh
+        equilibrium.Rnxh = self.Rnxh
+        equilibrium.Znyh = self.Znyh
+        equilibrium.limiter_handler = self.limiter_handler  # should be safe not to copy
+
+        # attributes that actually need to be copied
+        equilibrium.R_1D = np.copy(self.R_1D)
+        equilibrium.Z_1D = np.copy(self.Z_1D)
+        equilibrium.R = np.copy(self.R)
+        equilibrium.Z = np.copy(self.Z)
+        equilibrium.tokamak_psi = np.copy(self.tokamak_psi)
+        equilibrium.plasma_psi = np.copy(self.plasma_psi)
+        equilibrium.mask_inside_limiter = np.copy(self.mask_inside_limiter)
+        equilibrium.mask_outside_limiter = np.copy(self.mask_outside_limiter)
+
+        return equilibrium
 
     def adjust_psi_plasma(
         self,

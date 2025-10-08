@@ -1,5 +1,5 @@
 """
-Defines the FreeGSNKE profile Object, which inherits from the FreeGS4E profile object. 
+Defines the FreeGSNKE profile Object, which inherits from the FreeGS4E profile object.
 
 Copyright 2025 UKAEA, UKRI-STFC, and The Authors, as per the COPYRIGHT and README files.
 
@@ -14,12 +14,12 @@ FreeGSNKE is free software: you can redistribute it and/or modify
 it under the terms of the GNU Lesser General Public License as published by
 the Free Software Foundation, either version 3 of the License, or
 (at your option) any later version.
-  
+
 You should have received a copy of the GNU Lesser General Public License
-along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.  
+along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 """
 
-import freegs4e
+import freegs4e.jtor
 import numpy as np
 from freegs4e.gradshafranov import mu0
 from matplotlib.path import Path
@@ -31,7 +31,6 @@ from . import switch_profile as swp
 
 
 class Jtor_universal:
-
     def __init__(self, refine_jtor=False):
         """Sets default unrefined Jtor."""
         if refine_jtor:
@@ -278,7 +277,6 @@ class Jtor_universal:
         rel_tolerance_xpt=1e-4,
         starting_dx=0.05,
     ):
-
         try:
             opt, xpt, diverted_core_mask, psi_bndry = self.Jtor_part1(
                 R, Z, psi, psi_bndry, mask_outside_limiter

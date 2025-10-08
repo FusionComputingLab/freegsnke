@@ -1,5 +1,5 @@
 """
-Defines the FreeGSNKE equilibrium Object, which inherits from the FreeGS4E equilibrium object. 
+Defines the FreeGSNKE equilibrium Object, which inherits from the FreeGS4E equilibrium object.
 
 Copyright 2025 UKAEA, UKRI-STFC, and The Authors, as per the COPYRIGHT and README files.
 
@@ -14,15 +14,15 @@ FreeGSNKE is free software: you can redistribute it and/or modify
 it under the terms of the GNU Lesser General Public License as published by
 the Free Software Foundation, either version 3 of the License, or
 (at your option) any later version.
-  
+
 You should have received a copy of the GNU Lesser General Public License
-along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.  
+along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 import os
 import pickle
 
-import freegs4e
+import freegs4e.equilibrium
 import numpy as np
 from freegs4e import critical
 from scipy import interpolate

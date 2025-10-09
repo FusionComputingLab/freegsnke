@@ -80,11 +80,14 @@ class Jtor_universal:
             obj.jtor_refiner = self.jtor_refiner.copy()
 
         copy_into(self, obj, "psi_bndry", strict=False)
+        copy_into(self, obj, "psi_axis", strict=False)
         copy_into(self, obj, "flag_limiter", strict=False)
         copy_into(self, obj, "Ip_logic", strict=False)
 
         copy_into(self, obj, "psi_map", mutable=True, strict=False)
-        copy_into(self, obj, "record_xpt", mutable=True, strict=False)
+        copy_into(
+            self, obj, "record_xpt", mutable=True, strict=False, allow_deepcopy=True
+        )
         copy_into(self, obj, "lcfs", mutable=True, strict=False)
         copy_into(self, obj, "jtor", mutable=True, strict=False)
         copy_into(self, obj, "opt", mutable=True, strict=False)
@@ -96,8 +99,8 @@ class Jtor_universal:
         copy_into(self, obj, "pure_djtordpsi", mutable=True, strict=False)
         copy_into(self, obj, "dJtordpsi", mutable=True, strict=False)
 
-        copy_into(self, obj, "xpt", mutable=True, strict=False)
-        copy_into(self, obj, "opt", mutable=True, strict=False)
+        copy_into(self, obj, "xpt", mutable=True, strict=False, allow_deepcopy=True)
+        copy_into(self, obj, "opt", mutable=True, strict=False, allow_deepcopy=True)
 
         return obj
 
@@ -871,14 +874,16 @@ class Lao85(freegs4e.jtor.Lao85, Jtor_universal):
 
         copy_into(self, obj, "Ip")
         copy_into(self, obj, "_fvac")
-        copy_into(self, obj, "alpha")
         copy_into(self, obj, "alpha_logic")
-        copy_into(self, obj, "beta")
         copy_into(self, obj, "beta_logic")
         copy_into(self, obj, "Raxis")
         copy_into(self, obj, "fast")
         copy_into(self, obj, "Ip_logic")
         copy_into(self, obj, "L")
+        copy_into(self, obj, "alpha", mutable=True)
+        copy_into(self, obj, "beta", mutable=True)
+        copy_into(self, obj, "alpha_exp", mutable=True)
+        copy_into(self, obj, "beta_exp", mutable=True)
         copy_into(self, obj, "dJtorpsin1", strict=False)
         copy_into(self, obj, "dJtordpsi", mutable=True, strict=False)
         copy_into(self, obj, "problem_psi", mutable=True, strict=False)
@@ -959,11 +964,11 @@ class TensionSpline(freegs4e.jtor.TensionSpline, Jtor_universal):
         copy_into(self, obj, "pp_knots", mutable=True)
         copy_into(self, obj, "pp_values", mutable=True)
         copy_into(self, obj, "pp_values_2", mutable=True)
-        copy_into(self, obj, "pp_sigma", mutable=True)
+        copy_into(self, obj, "pp_sigma")
         copy_into(self, obj, "ffp_knots", mutable=True)
         copy_into(self, obj, "ffp_values", mutable=True)
         copy_into(self, obj, "ffp_values_2", mutable=True)
-        copy_into(self, obj, "ffp_sigma", mutable=True)
+        copy_into(self, obj, "ffp_sigma")
 
         obj.profile_parameter = [
             obj.pp_knots,

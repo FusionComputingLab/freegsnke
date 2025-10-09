@@ -27,8 +27,9 @@ import numpy as np
 from freegs4e import critical
 from scipy import interpolate
 
-from . import limiter_func, virtual_circuits
+from . import limiter_func
 from .build_machine import copy_tokamak
+from .copying import copy_into
 
 
 class Equilibrium(freegs4e.equilibrium.Equilibrium):
@@ -88,8 +89,6 @@ class Equilibrium(freegs4e.equilibrium.Equilibrium):
         equilibrium.dR = self.dR
         equilibrium.dZ = self.dZ
         equilibrium._applyBoundary = self._applyBoundary
-        equilibrium._pgreen = self._pgreen
-        equilibrium._vgreen = self._vgreen
         equilibrium._current = self._current
         equilibrium.order = self.order
         equilibrium._solver = self._solver
@@ -112,6 +111,20 @@ class Equilibrium(freegs4e.equilibrium.Equilibrium):
         equilibrium.plasma_psi = np.copy(self.plasma_psi)
         equilibrium.mask_inside_limiter = np.copy(self.mask_inside_limiter)
         equilibrium.mask_outside_limiter = np.copy(self.mask_outside_limiter)
+        equilibrium._pgreen = self._pgreen.copy()
+        equilibrium._vgreen = self._vgreen.copy()
+        copy_into(self, equilibrium, "current_vec", mutable=True, strict=False)
+
+        copy_into(
+            self, equilibrium, "opt", mutable=True, strict=False, allow_deepcopy=True
+        )
+        copy_into(
+            self, equilibrium, "xpt", mutable=True, strict=False, allow_deepcopy=True
+        )
+        copy_into(self, equilibrium, "psi_bndry", strict=False)
+
+        if hasattr(self, "_profiles"):
+            equilibrium._profiles = self._profiles.copy()
 
         return equilibrium
 

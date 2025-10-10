@@ -1,5 +1,7 @@
 import numpy as np
 
+from .copying import copy_into
+
 
 class Jtor_refiner:
     """Class to allow for the refinement of the toroidal plasma current Jtor.
@@ -42,6 +44,34 @@ class Jtor_refiner:
         self.edges_mask[:, 0] = 0
         self.edges_mask[-1, :] = 0
         self.edges_mask[:, -1] = 0
+
+    def copy(self):
+        obj = type(self).__new__(type(self))
+
+        copy_into(self, obj, "eqR", mutable=True)
+        copy_into(self, obj, "eqZ", mutable=True)
+
+        copy_into(self, obj, "dR")
+        copy_into(self, obj, "dZ")
+        copy_into(self, obj, "dRdZ")
+        copy_into(self, obj, "nx")
+        copy_into(self, obj, "ny")
+        copy_into(self, obj, "nxny")
+        copy_into(self, obj, "nnx")
+        copy_into(self, obj, "nny")
+        copy_into(self, obj, "hnnx")
+        copy_into(self, obj, "hnny")
+        copy_into(self, obj, "nnxy")
+
+        obj.prepare_for_refinement()
+
+        copy_into(self, obj, "edges_mask", mutable=True)
+        copy_into(self, obj, "lcfs_mask", mutable=True, strict=False)
+        copy_into(self, obj, "value_mask", mutable=True, strict=False)
+        copy_into(self, obj, "gradient_mask", mutable=True, strict=False)
+        copy_into(self, obj, "mask_to_refine", mutable=True, strict=False)
+
+        return obj
 
     def prepare_for_refinement(
         self,

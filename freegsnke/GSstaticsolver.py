@@ -233,7 +233,7 @@ class NKGSsolver:
         eq.flag_limiter = profiles.flag_limiter
 
         eq._current = np.sum(profiles.jtor) * self.dRdZ
-        eq._profiles = deepcopy(profiles)
+        eq._profiles = profiles.copy()
 
         try:
             eq.tokamak_psi = self.tokamak_psi.reshape(self.nx, self.ny)

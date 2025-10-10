@@ -15,9 +15,9 @@ FreeGSNKE is free software: you can redistribute it and/or modify
 it under the terms of the GNU Lesser General Public License as published by
 the Free Software Foundation, either version 3 of the License, or
 (at your option) any later version.
-  
+
 You should have received a copy of the GNU Lesser General Public License
-along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.   
+along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 import freegs4e
@@ -82,6 +82,36 @@ class PassiveStructure(freegs4e.coil.Coil):
         self.filaments = self.build_refining_filaments()
 
         self.greens = {}
+
+    def copy(self):
+        # dont instantiate the new object, it will be slow
+        new_obj = type(self).__new__(type(self))
+
+        new_obj.turns = self.turns
+        new_obj.control = self.turns
+        new_obj.current = self.current
+        new_obj.refine_mode = self.refine_mode
+
+        # ASSUMING the shape will never be modified in-place
+        new_obj.area = self.area
+        new_obj.R = self.R
+        new_obj.Z = self.Z
+        new_obj.Len = self.Len
+        new_obj.Rpolygon = self.Rpolygon
+        new_obj.Zpolygon = self.Zpolygon
+        new_obj.vertices = self.vertices
+        new_obj.polygon = self.polygon
+        new_obj.n_refine = self.n_refine
+        new_obj.filaments = self.filaments
+
+        # This performs a shallow copy of the greens dictionary.
+        # This implicitly assumes that the dictionary might be modified
+        # e.g. self.greens["psi"] = new_array (this would be fine)
+        # but its values WON't be modified in place
+        # e.g. self.greens["psi"][:] = new_array (this would cause problems)
+        new_obj.greens = self.greens.copy()
+
+        return new_obj
 
     def create_RZ_key(self, R, Z):
         """

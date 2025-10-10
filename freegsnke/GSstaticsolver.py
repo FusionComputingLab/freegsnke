@@ -233,7 +233,7 @@ class NKGSsolver:
         eq.flag_limiter = profiles.flag_limiter
 
         eq._current = np.sum(profiles.jtor) * self.dRdZ
-        eq._profiles = deepcopy(profiles)
+        eq._profiles = profiles.copy()
 
         try:
             eq.tokamak_psi = self.tokamak_psi.reshape(self.nx, self.ny)
@@ -769,7 +769,7 @@ class NKGSsolver:
             currents = np.copy(self.dummy_current)
             currents[i] = 1.0 * delta_current[i]
             currents = full_current_vec + constrain.rebuild_full_current_vec(currents)
-            self.eq2 = deepcopy(eq)
+            self.eq2 = eq.create_auxiliary_equilibrium()
             self.eq2.tokamak.set_all_coil_currents(currents)
             self.forward_solve(
                 eq=self.eq2,

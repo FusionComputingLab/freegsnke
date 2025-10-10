@@ -587,6 +587,21 @@ def build_active_coil_dict(active_coils):
     return coils_dict
 
 
+def copy_tokamak(tokamak: Machine):
+    new_tokamak = tokamak.copy()
+
+    new_tokamak.coils_dict = tokamak.coils_dict.copy()
+    new_tokamak.coils_list = tokamak.coils_list[::]
+    new_tokamak.n_active_coils = tokamak.n_active_coils
+    new_tokamak.n_passive_coils = tokamak.n_passive_coils
+    new_tokamak.n_coils = tokamak.n_coils
+
+    # add probe object attribute to tokamak (not strictly required)
+    new_tokamak.probes = tokamak.probes
+
+    return new_tokamak
+
+
 if __name__ == "__main__":
     for coil_name in active_coils:
         print([pol for pol in active_coils[coil_name]])

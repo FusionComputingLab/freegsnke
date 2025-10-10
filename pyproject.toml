@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "freegsnke"
-version = "2.0"
+version = "2.1.0"
 authors = [
     {name = "The FreeGSNKE Developers"}
 ]

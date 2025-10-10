@@ -85,10 +85,9 @@ class Jtor_universal:
         copy_into(self, obj, "Ip_logic", strict=False)
 
         copy_into(self, obj, "psi_map", mutable=True, strict=False)
-        copy_into(self, obj, "record_xpt", mutable=True, strict=False)
+        copy_into(self, obj, "record_xpt", mutable=True, strict=False, allow_deepcopy=True)
         copy_into(self, obj, "lcfs", mutable=True, strict=False)
         copy_into(self, obj, "jtor", mutable=True, strict=False)
-        copy_into(self, obj, "opt", mutable=True, strict=False)
         copy_into(self, obj, "diverted_core_mask", mutable=True, strict=False)
         copy_into(self, obj, "limiter_core_mask", mutable=True, strict=False)
         copy_into(self, obj, "unrefined_jtor", mutable=True, strict=False)

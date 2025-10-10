@@ -93,7 +93,6 @@ class Jtor_universal:
             mutable=True,
             strict=False,
             allow_deepcopy=True,
-            allow_deepcopy=True,
         )
         copy_into(self, obj, "lcfs", mutable=True, strict=False)
         copy_into(self, obj, "jtor", mutable=True, strict=False)

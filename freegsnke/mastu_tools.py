@@ -537,7 +537,7 @@ def get_machine_data(
     # description is required.
     pickle.dump(
         active_coils_nonsym,
-        open(f"{save_path}/MAST-U_active_coils_nonsym.pickle", "wb")
+        open(f"{save_path}/MAST-U_active_coils_nonsym.pickle", "wb"),
     )
 
     # ------------

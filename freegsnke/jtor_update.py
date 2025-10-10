@@ -87,8 +87,14 @@ class Jtor_universal:
 
         copy_into(self, obj, "psi_map", mutable=True, strict=False)
         copy_into(
-            self, obj, "record_xpt", mutable=True, strict=False, allow_deepcopy=True
-        , allow_deepcopy=True)
+            self,
+            obj,
+            "record_xpt",
+            mutable=True,
+            strict=False,
+            allow_deepcopy=True,
+            allow_deepcopy=True,
+        )
         copy_into(self, obj, "lcfs", mutable=True, strict=False)
         copy_into(self, obj, "jtor", mutable=True, strict=False)
         copy_into(self, obj, "diverted_core_mask", mutable=True, strict=False)

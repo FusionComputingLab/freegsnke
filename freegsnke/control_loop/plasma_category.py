@@ -199,7 +199,7 @@ class PlasmaController:
             ax.grid(True, linestyle="--", alpha=0.6)
 
             if key == "ip_ref":
-                ax.set_ylabel(rf"{key} [$A/s$]")
+                ax.set_ylabel(rf"{key} [$A$]")
             elif key == "vloop_ff":
                 ax.set_ylabel(rf"{key} [$V$]")
             elif key == "k_prop":

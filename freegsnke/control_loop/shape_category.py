@@ -153,7 +153,7 @@ class ShapeController:
         )
 
         # proportional term
-        T_err = (1 - alpha_inv) * T_err_prev + alpha_inv * (T_ref - T_meas)
+        T_err = ((1 - alpha_inv) * T_err_prev) + (alpha_inv * (T_ref - T_meas))
 
         # integral term
         T_int = T_hist_prev + (0.5 * T_err * dt)

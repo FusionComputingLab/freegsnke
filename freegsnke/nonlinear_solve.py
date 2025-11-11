@@ -82,6 +82,7 @@ class nl_solver:
         l2_reg=1e-6,
         collinearity_reg=1e-6,
         verbose=False,
+        plasma_descriptor_function=None,
     ):
         """
         Initialize the nonlinear solver.
@@ -519,6 +520,7 @@ class nl_solver:
                 )
             automatic_timestep_flag = True
 
+        self.plasma_descriptor_function = plasma_descriptor_function
         if automatic_timestep_flag + mode_removal + linearize:
             # builds the linearization and sets everything up for the stepper
             self.initialize_from_ICs(
@@ -529,6 +531,7 @@ class nl_solver:
                 dIydtheta=dIydtheta,
                 verbose=verbose,
                 force_core_mask_linearization=force_core_mask_linearization,
+                plasma_descriptor_function=plasma_descriptor_function,
             )
             print("-----")
 
@@ -554,6 +557,8 @@ class nl_solver:
             self.dIydI_ICs = np.copy(self.dIydI)
             self.dRZdI = self.dRZdI[:, self.retained_modes_mask]
             self.final_dI_record = self.final_dI_record[self.retained_modes_mask]
+            self.dvdId = self.dvdId[:, self.retained_modes_mask]
+            self.currents0 = self.currents0[self.retained_modes_mask]
 
             self.remove_modes(eq, self.retained_modes_mask[:-1])
 
@@ -1429,53 +1434,8 @@ class nl_solver:
 
         return dIydIj, rel_ndIy
 
-    def build_plasma_descriptor_linearization(
-        self,
-        plasma_descriptor_function,
-        rtol: float = 1e-6,
-    ):
-        """
-        Builds the response matrices for dv/dId (self.dvdId) and dv/dtheta (self.dvdtheta)
-        about the current equilibrium. This method also sets the initial descriptor vector
-        (self.v0).
-
-        Parameters
-        ----------
-        plasma_descriptor_function : Callable[[eq], np.ndarray]
-            A function that takes an equilibrium and calculates a vector `v`
-            of descriptors of the plasma.
-
-        """
-        if plasma_descriptor_function is None:
-            self.v0 = None
-            self.currents0 = None
-            self.dvdId = None
-            self.dvdtheta = None
-            return
-
-        self.v0 = np.array(plasma_descriptor_function(self.eq2))
-        self.currents0 = np.copy(self.currents_vec)
-        n_descriptors = self.v0.shape[0]
-
-        self.dvdId = np.zeros((n_descriptors, self.n_metal_modes + 1))
-        self.dvdtheta = np.zeros((n_descriptors, self.n_profiles_parameters))
-
-        # calculate the response matrix of v wrt perturbations in metal mode currents + plasma current
-        for j in range(self.dvdId.shape[1]):
-            currents = np.copy(self.currents_vec)
-            dId = 1e-8 if currents[j] == 0 else abs(currents[j] * 1e-8)
-            currents[j] += dId
-
-            self.assign_currents_solve_GS(currents, rtol)
-
-            dv = plasma_descriptor_function(self.eq2) - self.v0
-            self.dvdId[:, j] = dv / dId
-
-            # reset the auxiliary equilibrium
-            self.eq2.plasma_psi = np.copy(self.eq1.plasma_psi)
-
     def new_plasma_descriptors(
-        self, delta_Id: np.ndarray, delta_theta: np.ndarray, *, delta_Ip=None
+        self, v0: np.ndarray, new_currents: np.ndarray, delta_theta: np.ndarray
     ):
         """Calculates the estimate plasma descriptors vector `v` from the linearisation.
 
@@ -1485,19 +1445,12 @@ class nl_solver:
             in plasma current!
         """
 
-        if delta_Ip is not None:
-            delta_Id = np.append(delta_Id, delta_Ip)
+        current_contribution = (
+            self.dvdId @ (new_currents - self.currents0)[:, np.newaxis]
+        )
+        # profile_contribution = self.dvdtheta @ delta_theta[:, np.newaxis]
 
-        if self.dvdId is None or self.dvdtheta is None:
-            raise RuntimeError(
-                "No linearization present for the plasma descriptors."
-                "This is likely because no plasma_descriptor_function was provided."
-            )
-
-        current_contribution = self.dvdId @ delta_Id[:, np.newaxis]
-        profile_contribution = self.dvdtheta @ delta_theta[:, np.newaxis]
-
-        return (self.v0 + current_contribution + profile_contribution).squeeze()
+        return (v0 + current_contribution).squeeze()
 
     def build_linearization(
         self,
@@ -1508,6 +1461,7 @@ class nl_solver:
         target_relative_tolerance_linearization,
         force_core_mask_linearization,
         verbose,
+        plasma_descriptor_function,
     ):
         """
         Builds the Jacobians d(Iy)/dI and d(Iy)/dtheta for linearizing the plasma-current
@@ -1557,6 +1511,8 @@ class nl_solver:
         self.Iy = self.limiter_handler.Iy_from_jtor(profiles.jtor).copy()
         self.nIy = np.linalg.norm(self.Iy)
 
+        self.v0 = np.array(plasma_descriptor_function(eq))
+
         self.R0 = eq.Rcurrent()
         self.Z0 = eq.Zcurrent()
         self.dRZdI = np.zeros((2, self.n_metal_modes + 1))
@@ -1578,6 +1534,9 @@ class nl_solver:
                 self.psideltaI = np.zeros((self.n_metal_modes + 1, self.nx, self.ny))
                 self.ddIyddI = np.zeros(self.n_metal_modes + 1)
                 self.final_dI_record = np.zeros(self.n_metal_modes + 1)
+
+                self.dvdId = np.zeros((self.v0.shape[0], self.n_metal_modes + 1))
+                self.currents0 = np.copy(self.currents_vec)
 
                 for j in self.arange_currents:
 
@@ -1678,6 +1637,9 @@ class nl_solver:
                     Z0 = self.eq2.Zcurrent()
                     self.dRZdI[0, j] = (R0 - self.R0) / self.final_dI_record[j]
                     self.dRZdI[1, j] = (Z0 - self.Z0) / self.final_dI_record[j]
+
+                    v0 = plasma_descriptor_function(self.eq2)
+                    self.dvdId[:, j] = (v0 - self.v0) / self.final_dI_record[j]
 
                 self.dIydI_ICs = np.copy(self.dIydI)
             else:
@@ -2139,6 +2101,8 @@ class nl_solver:
             target_relative_tolerance_linearization=target_relative_tolerance_linearization,
             force_core_mask_linearization=force_core_mask_linearization,
             verbose=verbose,
+            plasma_descriptor_function=plasma_descriptor_function
+            or self.plasma_descriptor_function,
         )
 
         # set Myy matrix in place throught the handling object
@@ -2151,10 +2115,6 @@ class nl_solver:
             dIydtheta=self.dIydtheta_ICs,
             hatIy0=self.blended_hatIy,
             Myy_hatIy0=self.Myy_hatIy0,
-        )
-
-        self.build_plasma_descriptor_linearization(
-            plasma_descriptor_function, target_relative_tolerance_linearization
         )
 
     def step_complete_assign(self, working_relative_tol_GS, from_linear=False):

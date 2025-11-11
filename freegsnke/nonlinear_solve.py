@@ -1429,6 +1429,74 @@ class nl_solver:
 
         return dIydIj, rel_ndIy
 
+    def build_plasma_descriptor_linearization(
+        self,
+        plasma_descriptor_function,
+        rtol: float = 1e-6,
+    ):
+        """
+        Builds the response matrices for dv/dId (self.dvdId) and dv/dtheta (self.dvdtheta)
+        about the current equilibrium. This method also sets the initial descriptor vector
+        (self.v0).
+
+        Parameters
+        ----------
+        plasma_descriptor_function : Callable[[eq], np.ndarray]
+            A function that takes an equilibrium and calculates a vector `v`
+            of descriptors of the plasma.
+
+        """
+        if plasma_descriptor_function is None:
+            self.v0 = None
+            self.dvdId = None
+            self.dvdtheta = None
+            return
+
+        self.v0 = np.array(plasma_descriptor_function(self.eq2))
+        n_descriptors = self.v0.shape[0]
+
+        self.dvdId = np.zeros((n_descriptors, self.n_metal_modes + 1))
+        self.dvdtheta = np.zeros((n_descriptors, self.n_profiles_parameters))
+
+        # calculate the response matrix of v wrt perturbations in metal mode currents + plasma current
+        for j in range(self.dvdId.shape[1]):
+            currents = np.copy(self.currents_vec)
+            dId = 1e-6 if currents[j] == 0 else abs(currents[j] * 1e-8)
+            currents[j] += dId
+
+            self.assign_currents_solve_GS(currents, rtol)
+
+            dv = plasma_descriptor_function(self.eq2) - self.v0
+            self.dvdId[:, j] = dv / dId
+
+            # reset the auxiliary equilibrium
+            self.eq2.plasma_psi = np.copy(self.eq1.plasma_psi)
+
+    def new_plasma_descriptors(
+        self, delta_Id: np.ndarray, delta_theta: np.ndarray, *, delta_Ip=None
+    ):
+        """Calculates the estimate plasma descriptors vector `v` from the linearisation.
+
+        delta_Ip : float | None
+            If not None, is appended to the end of delta_Id to ensure that the vector is of length
+            n_metal_modes + 1. Only provide this argument if delta_Id does not contain the change
+            in plasma current!
+        """
+
+        if delta_Ip is not None:
+            delta_Id = np.append(delta_Id, delta_Ip)
+
+        if self.dvdId is None or self.dvdtheta is None:
+            raise RuntimeError(
+                "No linearization present for the plasma descriptors."
+                "This is likely because no plasma_descriptor_function was provided."
+            )
+
+        current_contribution = self.dvdId @ delta_Id[:, np.newaxis]
+        profile_contribution = self.dvdtheta @ delta_theta[:, np.newaxis]
+
+        return (self.v0 + current_contribution + profile_contribution).squeeze()
+
     def build_linearization(
         self,
         eq,
@@ -1961,6 +2029,7 @@ class nl_solver:
         dIydtheta=None,
         force_core_mask_linearization=False,
         verbose=False,
+        plasma_descriptor_function=None,
     ):
         """
         Initialize the dynamics solver from a given equilibrium and plasma profiles.
@@ -2080,6 +2149,10 @@ class nl_solver:
             dIydtheta=self.dIydtheta_ICs,
             hatIy0=self.blended_hatIy,
             Myy_hatIy0=self.Myy_hatIy0,
+        )
+
+        self.build_plasma_descriptor_linearization(
+            plasma_descriptor_function, target_relative_tolerance_linearization
         )
 
     def step_complete_assign(self, working_relative_tol_GS, from_linear=False):

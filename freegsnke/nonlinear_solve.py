@@ -1448,11 +1448,13 @@ class nl_solver:
         """
         if plasma_descriptor_function is None:
             self.v0 = None
+            self.currents0 = None
             self.dvdId = None
             self.dvdtheta = None
             return
 
         self.v0 = np.array(plasma_descriptor_function(self.eq2))
+        self.currents0 = np.copy(self.currents_vec)
         n_descriptors = self.v0.shape[0]
 
         self.dvdId = np.zeros((n_descriptors, self.n_metal_modes + 1))
@@ -1461,7 +1463,7 @@ class nl_solver:
         # calculate the response matrix of v wrt perturbations in metal mode currents + plasma current
         for j in range(self.dvdId.shape[1]):
             currents = np.copy(self.currents_vec)
-            dId = 1e-6 if currents[j] == 0 else abs(currents[j] * 1e-8)
+            dId = 1e-8 if currents[j] == 0 else abs(currents[j] * 1e-8)
             currents[j] += dId
 
             self.assign_currents_solve_GS(currents, rtol)

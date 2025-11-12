@@ -848,11 +848,7 @@ class nl_solver:
 
         self.set_solvers()
 
-    def set_linear_solution(
-        self,
-        active_voltage_vec,
-        dtheta_dt,
-    ):
+    def set_linear_solution(self, active_voltage_vec, dtheta_dt, no_GS=False):
         """
         Compute an initial nonlinear solve guess using the linearised dynamics.
 
@@ -884,7 +880,8 @@ class nl_solver:
             active_voltage_vec=active_voltage_vec,
             dtheta_dt=dtheta_dt,
         )
-        self.assign_currents_solve_GS(self.trial_currents, self.rtol_NK)
+        if not no_GS:
+            self.assign_currents_solve_GS(self.trial_currents, self.rtol_NK)
         self.trial_plasma_psi = np.copy(self.eq2.plasma_psi)
 
     def prepare_build_dIydtheta(
@@ -1486,13 +1483,13 @@ class nl_solver:
         current_contribution = (
             self.dvdId
             @ (new_currents - self.initial_currents_plasma_descriptor)[:, np.newaxis]
-        )
+        ).squeeze()
         profile_contribution = (
             self.dvdtheta
             @ (new_profiles - self.initial_profiles_plasma_descriptor)[:, np.newaxis]
-        )
+        ).squeeze()
 
-        return (v0 + current_contribution + profile_contribution).squeeze()
+        return v0 + current_contribution + profile_contribution
 
     def build_linearization(
         self,
@@ -2703,6 +2700,7 @@ class nl_solver:
         linear_only=False,
         max_solving_iterations=50,
         custom_active_coil_resistances=None,
+        no_GS=False,
     ):
         """
         Advance the system by one timestep using a nonlinear Newton-Krylov (NK) stepper.
@@ -2804,6 +2802,9 @@ class nl_solver:
             If the nonlinear solve does not converge within ``max_solving_iterations``.
         """
 
+        if no_GS and not linear_only:
+            raise ValueError("no_GS can only be used when linear_only=True")
+
         # retrieve the old profile parameter values
         self.get_profiles_values(self.profiles1)
         old_params = self.profiles_parameters_vec
@@ -2845,8 +2846,7 @@ class nl_solver:
         # results in preparation for the nonlinear calculations
         # Solution and GS equilibrium are assigned to self.trial_currents and self.trial_plasma_psi
         self.set_linear_solution(
-            active_voltage_vec=active_voltage_vec,
-            dtheta_dt=dtheta_dt,
+            active_voltage_vec=active_voltage_vec, dtheta_dt=dtheta_dt, no_GS=no_GS
         )
 
         # check Matrix is still applicable

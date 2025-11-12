@@ -520,7 +520,9 @@ class nl_solver:
                 )
             automatic_timestep_flag = True
 
-        self.plasma_descriptor_function = plasma_descriptor_function
+        self.plasma_descriptor_function = plasma_descriptor_function or (
+            lambda _: np.array([0.0])
+        )
         if automatic_timestep_flag + mode_removal + linearize:
             # builds the linearization and sets everything up for the stepper
             self.initialize_from_ICs(
@@ -1470,15 +1472,9 @@ class nl_solver:
         return dIydIj, rel_ndIy
 
     def new_plasma_descriptors(
-        self, v0: np.ndarray, new_currents: np.ndarray, new_profiles: np.ndarray
+        self, new_currents: np.ndarray, new_profiles: np.ndarray
     ):
-        """Calculates the estimate plasma descriptors vector `v` from the linearisation.
-
-        delta_Ip : float | None
-            If not None, is appended to the end of delta_Id to ensure that the vector is of length
-            n_metal_modes + 1. Only provide this argument if delta_Id does not contain the change
-            in plasma current!
-        """
+        """Calculates the estimate plasma descriptors vector `v` from the linearisation."""
 
         current_contribution = (
             self.dvdId
@@ -1489,7 +1485,7 @@ class nl_solver:
             @ (new_profiles - self.initial_profiles_plasma_descriptor)[:, np.newaxis]
         ).squeeze()
 
-        return v0 + current_contribution + profile_contribution
+        return self.v0 + current_contribution + profile_contribution
 
     def build_linearization(
         self,

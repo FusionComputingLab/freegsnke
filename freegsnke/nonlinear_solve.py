@@ -82,6 +82,7 @@ class nl_solver:
         l2_reg=1e-6,
         collinearity_reg=1e-6,
         verbose=False,
+        plasma_descriptor_function=None,
     ):
         """
         Initialize the nonlinear solver.
@@ -519,6 +520,9 @@ class nl_solver:
                 )
             automatic_timestep_flag = True
 
+        self.plasma_descriptor_function = plasma_descriptor_function or (
+            lambda _: np.array([0.0])
+        )
         if automatic_timestep_flag + mode_removal + linearize:
             # builds the linearization and sets everything up for the stepper
             self.initialize_from_ICs(
@@ -529,6 +533,7 @@ class nl_solver:
                 dIydtheta=dIydtheta,
                 verbose=verbose,
                 force_core_mask_linearization=force_core_mask_linearization,
+                plasma_descriptor_function=plasma_descriptor_function,
             )
             print("-----")
 
@@ -554,6 +559,10 @@ class nl_solver:
             self.dIydI_ICs = np.copy(self.dIydI)
             self.dRZdI = self.dRZdI[:, self.retained_modes_mask]
             self.final_dI_record = self.final_dI_record[self.retained_modes_mask]
+            self.dvdId = self.dvdId[:, self.retained_modes_mask]
+            self.initial_currents_plasma_descriptor = (
+                self.initial_currents_plasma_descriptor[self.retained_modes_mask]
+            )
 
             self.remove_modes(eq, self.retained_modes_mask[:-1])
 
@@ -841,11 +850,7 @@ class nl_solver:
 
         self.set_solvers()
 
-    def set_linear_solution(
-        self,
-        active_voltage_vec,
-        dtheta_dt,
-    ):
+    def set_linear_solution(self, active_voltage_vec, dtheta_dt, no_GS=False):
         """
         Compute an initial nonlinear solve guess using the linearised dynamics.
 
@@ -877,7 +882,8 @@ class nl_solver:
             active_voltage_vec=active_voltage_vec,
             dtheta_dt=dtheta_dt,
         )
-        self.assign_currents_solve_GS(self.trial_currents, self.rtol_NK)
+        if not no_GS:
+            self.assign_currents_solve_GS(self.trial_currents, self.rtol_NK)
         self.trial_plasma_psi = np.copy(self.eq2.plasma_psi)
 
     def prepare_build_dIydtheta(
@@ -886,6 +892,7 @@ class nl_solver:
         rtol_NK,
         target_dIy,
         starting_dtheta,
+        plasma_descriptor_function,
         verbose=False,
     ):
         """
@@ -932,8 +939,17 @@ class nl_solver:
         dIy_0 = np.zeros((len(self.Iy), self.n_profiles_parameters))
         rel_ndIy_0 = np.zeros(self.n_profiles_parameters)
 
+        dv = np.zeros((self.v0.shape[0], self.n_profiles_parameters))
+
         # carry out the initial perturbations
         if self.profiles_param is not None:
+            self.initial_profiles_plasma_descriptor = np.array(
+                [
+                    profiles.alpha_m,
+                    profiles.alpha_n,
+                    getattr(profiles, self.profiles_param),
+                ]
+            )
 
             # vary alpha_m
             self.check_and_change_profiles(
@@ -950,6 +966,7 @@ class nl_solver:
             dIy_0[:, 0] = (
                 self.limiter_handler.Iy_from_jtor(self.profiles2.jtor) - self.Iy
             )
+            dv[:, 0] = plasma_descriptor_function(self.eq2) - self.v0
             rel_ndIy_0[0] = np.linalg.norm(dIy_0[:, 0]) / self.nIy
             self.final_dtheta_record[0] = (
                 starting_dtheta[0] * target_dIy[0] / rel_ndIy_0[0]
@@ -977,6 +994,7 @@ class nl_solver:
             dIy_0[:, 1] = (
                 self.limiter_handler.Iy_from_jtor(self.profiles2.jtor) - self.Iy
             )
+            dv[:, 1] = plasma_descriptor_function(self.eq2) - self.v0
             rel_ndIy_0[1] = np.linalg.norm(dIy_0[:, 1]) / self.nIy
             self.final_dtheta_record[1] = (
                 starting_dtheta[1] * target_dIy[1] / rel_ndIy_0[1]
@@ -1005,6 +1023,7 @@ class nl_solver:
             dIy_0[:, 2] = (
                 self.limiter_handler.Iy_from_jtor(self.profiles2.jtor) - self.Iy
             )
+            dv[:, 2] = plasma_descriptor_function(self.eq2) - self.v0
             rel_ndIy_0[2] = np.linalg.norm(dIy_0[:, 2]) / self.nIy
             self.final_dtheta_record[2] = (
                 starting_dtheta[2] * target_dIy[2] / rel_ndIy_0[2]
@@ -1027,6 +1046,9 @@ class nl_solver:
             )
 
         else:  # this is particular to the Lao profile coefficients (which there may be few or many of)
+            self.initial_profiles_plasma_descriptor = np.concatenate(
+                (profiles.alpha, profiles.beta)
+            )
 
             # for each alpha coefficient
             alpha_base = profiles.alpha.copy()
@@ -1051,6 +1073,7 @@ class nl_solver:
                 dIy_0[:, i] = (
                     self.limiter_handler.Iy_from_jtor(self.profiles2.jtor) - self.Iy
                 )
+                dv[:, i] = plasma_descriptor_function(self.eq2) - self.v0
                 rel_ndIy_0[i] = np.linalg.norm(dIy_0[:, i]) / self.nIy
                 self.final_dtheta_record[i] = (
                     starting_dtheta[i] * target_dIy[i] / rel_ndIy_0[i]
@@ -1087,6 +1110,9 @@ class nl_solver:
                 dIy_0[:, i + self.n_profiles_parameters_alpha] = (
                     self.limiter_handler.Iy_from_jtor(self.profiles2.jtor) - self.Iy
                 )
+                dv[:, i + self.n_profiles_parameters_alpha] = (
+                    plasma_descriptor_function(self.eq2) - self.v0
+                )
                 rel_ndIy_0[i + self.n_profiles_parameters_alpha] = (
                     np.linalg.norm(dIy_0[:, i + self.n_profiles_parameters_alpha])
                     / self.nIy
@@ -1118,9 +1144,11 @@ class nl_solver:
                     }
                 )
 
-        return dIy_0 / starting_dtheta, rel_ndIy_0
+        return dIy_0 / starting_dtheta, rel_ndIy_0, dv / starting_dtheta
 
-    def build_dIydtheta(self, profiles, rtol_NK, verbose=False):
+    def build_dIydtheta(
+        self, profiles, rtol_NK, plasma_descriptor_function, verbose=False
+    ):
         """
         Compute the finite-difference Jacobian d(Iy)/dθ using pre-scaled perturbations.
 
@@ -1164,6 +1192,8 @@ class nl_solver:
         dIydtheta = np.zeros((len(self.Iy), self.n_profiles_parameters))
         rel_ndIy = np.zeros(self.n_profiles_parameters)
 
+        dvdtheta = np.zeros((self.v0.shape[0], self.n_profiles_parameters))
+
         # carry out the initial perturbations
         if self.profiles_param is not None:
 
@@ -1181,6 +1211,8 @@ class nl_solver:
             dIy_1 = self.limiter_handler.Iy_from_jtor(self.profiles2.jtor) - self.Iy
             rel_ndIy[0] = np.linalg.norm(dIy_1) / self.nIy
             dIydtheta[:, 0] = dIy_1 / final_theta[0]
+            dv = plasma_descriptor_function(self.eq2) - self.v0
+            dvdtheta[:, 0] = dv / final_theta[0]
             if verbose:
                 print("")
                 print(f"Profile parameter: alpha_m:")
@@ -1203,6 +1235,8 @@ class nl_solver:
             dIy_1 = self.limiter_handler.Iy_from_jtor(self.profiles2.jtor) - self.Iy
             rel_ndIy[1] = np.linalg.norm(dIy_1) / self.nIy
             dIydtheta[:, 1] = dIy_1 / final_theta[1]
+            dv = plasma_descriptor_function(self.eq2) - self.v0
+            dvdtheta[:, 1] = dv / final_theta[1]
             if verbose:
                 print("")
                 print(f"Profile parameter: alpha_n:")
@@ -1226,6 +1260,8 @@ class nl_solver:
             dIy_1 = self.limiter_handler.Iy_from_jtor(self.profiles2.jtor) - self.Iy
             rel_ndIy[2] = np.linalg.norm(dIy_1) / self.nIy
             dIydtheta[:, 2] = dIy_1 / final_theta[2]
+            dv = plasma_descriptor_function(self.eq2) - self.v0
+            dvdtheta[:, 2] = dv / final_theta[2]
             if verbose:
                 print("")
                 print(f"Profile parameter: {self.profiles_param}:")
@@ -1268,6 +1304,8 @@ class nl_solver:
                 dIy_1 = self.limiter_handler.Iy_from_jtor(self.profiles2.jtor) - self.Iy
                 rel_ndIy[i] = np.linalg.norm(dIy_1) / self.nIy
                 dIydtheta[:, i] = dIy_1 / final_theta[i]
+                dv = plasma_descriptor_function(self.eq2) - self.v0
+                dvdtheta[:, i] = dv / final_theta[i]
                 if verbose:
                     print("")
                     print(f"Profile parameter: alpha_{i}:")
@@ -1303,6 +1341,10 @@ class nl_solver:
                 dIydtheta[:, i + self.n_profiles_parameters_alpha] = (
                     dIy_1 / final_theta[i + self.n_profiles_parameters_alpha]
                 )
+                dv = plasma_descriptor_function(self.eq2) - self.v0
+                dvdtheta[:, i + self.n_profiles_parameters_alpha] = (
+                    dv / final_theta[i + self.n_profiles_parameters_alpha]
+                )
 
                 if verbose:
                     print("")
@@ -1322,7 +1364,7 @@ class nl_solver:
                 }
             )
 
-        return dIydtheta, rel_ndIy
+        return dIydtheta, rel_ndIy, dvdtheta
 
     def prepare_build_dIydI_j(
         self,
@@ -1429,6 +1471,22 @@ class nl_solver:
 
         return dIydIj, rel_ndIy
 
+    def new_plasma_descriptors(
+        self, new_currents: np.ndarray, new_profiles: np.ndarray
+    ):
+        """Calculates the estimate plasma descriptors vector `v` from the linearisation."""
+
+        current_contribution = (
+            self.dvdId
+            @ (new_currents - self.initial_currents_plasma_descriptor)[:, np.newaxis]
+        ).squeeze()
+        profile_contribution = (
+            self.dvdtheta
+            @ (new_profiles - self.initial_profiles_plasma_descriptor)[:, np.newaxis]
+        ).squeeze()
+
+        return self.v0 + current_contribution + profile_contribution
+
     def build_linearization(
         self,
         eq,
@@ -1438,6 +1496,7 @@ class nl_solver:
         target_relative_tolerance_linearization,
         force_core_mask_linearization,
         verbose,
+        plasma_descriptor_function,
     ):
         """
         Builds the Jacobians d(Iy)/dI and d(Iy)/dtheta for linearizing the plasma-current
@@ -1487,6 +1546,8 @@ class nl_solver:
         self.Iy = self.limiter_handler.Iy_from_jtor(profiles.jtor).copy()
         self.nIy = np.linalg.norm(self.Iy)
 
+        self.v0 = np.array(plasma_descriptor_function(eq))
+
         self.R0 = eq.Rcurrent()
         self.Z0 = eq.Zcurrent()
         self.dRZdI = np.zeros((2, self.n_metal_modes + 1))
@@ -1508,6 +1569,9 @@ class nl_solver:
                 self.psideltaI = np.zeros((self.n_metal_modes + 1, self.nx, self.ny))
                 self.ddIyddI = np.zeros(self.n_metal_modes + 1)
                 self.final_dI_record = np.zeros(self.n_metal_modes + 1)
+
+                self.dvdId = np.zeros((self.v0.shape[0], self.n_metal_modes + 1))
+                self.initial_currents_plasma_descriptor = np.copy(self.currents_vec)
 
                 for j in self.arange_currents:
 
@@ -1609,6 +1673,9 @@ class nl_solver:
                     self.dRZdI[0, j] = (R0 - self.R0) / self.final_dI_record[j]
                     self.dRZdI[1, j] = (Z0 - self.Z0) / self.final_dI_record[j]
 
+                    v0 = plasma_descriptor_function(self.eq2)
+                    self.dvdId[:, j] = (v0 - self.v0) / self.final_dI_record[j]
+
                 self.dIydI_ICs = np.copy(self.dIydI)
             else:
                 self.dIydI = np.copy(self.dIydI_ICs)
@@ -1631,15 +1698,17 @@ class nl_solver:
                 self.dIydtheta = np.zeros(
                     (self.plasma_domain_size, self.n_profiles_parameters)
                 )
+                self.dvdtheta = np.zeros((self.v0.shape[0], self.n_profiles_parameters))
 
                 profiles_copy = profiles.copy()
 
                 # prepare to build the Jacobian by finding appropriate step size
-                dIydtheta, ndIy = self.prepare_build_dIydtheta(
+                dIydtheta, ndIy, dvdtheta = self.prepare_build_dIydtheta(
                     profiles=profiles_copy,
                     rtol_NK=target_relative_tolerance_linearization,
                     target_dIy=self.approved_target_dtheta,
                     starting_dtheta=self.starting_dtheta,
+                    plasma_descriptor_function=plasma_descriptor_function,
                     verbose=verbose,
                 )
 
@@ -1648,9 +1717,10 @@ class nl_solver:
                     > 0.5
                 ).any():
 
-                    dIydtheta, rel_ndIy = self.build_dIydtheta(
+                    dIydtheta, rel_ndIy, dvdtheta = self.build_dIydtheta(
                         profiles=profiles_copy,
                         rtol_NK=target_relative_tolerance_linearization,
+                        plasma_descriptor_function=plasma_descriptor_function,
                         verbose=verbose,
                     )
 
@@ -1659,6 +1729,7 @@ class nl_solver:
 
                 self.dIydtheta = np.copy(dIydtheta)
                 self.dIydtheta_ICs = np.copy(self.dIydtheta)
+                self.dvdtheta = np.copy(dvdtheta)
             else:
                 self.dIydtheta = np.copy(self.dIydtheta_ICs)
         else:
@@ -1961,6 +2032,7 @@ class nl_solver:
         dIydtheta=None,
         force_core_mask_linearization=False,
         verbose=False,
+        plasma_descriptor_function=None,
     ):
         """
         Initialize the dynamics solver from a given equilibrium and plasma profiles.
@@ -2068,6 +2140,8 @@ class nl_solver:
             target_relative_tolerance_linearization=target_relative_tolerance_linearization,
             force_core_mask_linearization=force_core_mask_linearization,
             verbose=verbose,
+            plasma_descriptor_function=plasma_descriptor_function
+            or self.plasma_descriptor_function,
         )
 
         # set Myy matrix in place throught the handling object
@@ -2621,6 +2695,7 @@ class nl_solver:
         linear_only=False,
         max_solving_iterations=50,
         custom_active_coil_resistances=None,
+        no_GS=False,
     ):
         """
         Advance the system by one timestep using a nonlinear Newton-Krylov (NK) stepper.
@@ -2722,6 +2797,9 @@ class nl_solver:
             If the nonlinear solve does not converge within ``max_solving_iterations``.
         """
 
+        if no_GS and not linear_only:
+            raise ValueError("no_GS can only be used when linear_only=True")
+
         # retrieve the old profile parameter values
         self.get_profiles_values(self.profiles1)
         old_params = self.profiles_parameters_vec
@@ -2763,8 +2841,7 @@ class nl_solver:
         # results in preparation for the nonlinear calculations
         # Solution and GS equilibrium are assigned to self.trial_currents and self.trial_plasma_psi
         self.set_linear_solution(
-            active_voltage_vec=active_voltage_vec,
-            dtheta_dt=dtheta_dt,
+            active_voltage_vec=active_voltage_vec, dtheta_dt=dtheta_dt, no_GS=no_GS
         )
 
         # check Matrix is still applicable

@@ -10,6 +10,7 @@ from freegsnke.control_loop.useful_functions import (
     check_data_entry,
     interpolate_spline,
     interpolate_step,
+    PID,
 )
 
 

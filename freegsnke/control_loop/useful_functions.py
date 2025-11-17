@@ -181,13 +181,13 @@ def PID(
 
     out = 0
 
-    if error_prop is not None and k_prop is not None:
+    if error_prop is not None:
         out += k_prop * error_prop
 
-    if error_int is not None and k_int is not None:
+    if error_int is not None:
         out += k_int * error_int
 
-    if error_deriv is not None and k_deriv is not None:
+    if error_deriv is not None:
         out += k_deriv * error_deriv
 
     return out

@@ -45,6 +45,9 @@ class PlasmaControlSystem:
     plasma_target : list of str
         List of all plasma control targets.
 
+    shape_control_mode : str
+        Select which shape control algorithm to use (see shape_category.py).
+
     PlasmaController : PlasmaController
         Handles plasma current control.
 
@@ -87,6 +90,7 @@ class PlasmaControlSystem:
         vertical_coils,
         ctrl_targets,
         plasma_target,
+        shape_control_mode=None,
         vc_generator=None,
     ):
 
@@ -108,6 +112,7 @@ class PlasmaControlSystem:
         self.ShapeController = ShapeController(
             data=shape_data,
             ctrl_targets=self.ctrl_targets,
+            mode=shape_control_mode,
         )
 
         self.VirtualCircuitsController = VirtualCircuitsController(

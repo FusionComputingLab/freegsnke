@@ -60,7 +60,7 @@ class ShapeController:
         self,
         data,
         ctrl_targets,
-        mode="PI_with_P_damping",
+        mode=None,
     ):
 
         # targets list
@@ -70,6 +70,9 @@ class ShapeController:
         self.data = data
 
         # choose controller to use (more can be added)
+        if mode is None:
+            mode = "PI_with_P_damping"
+
         if mode == "PI_with_P_damping":
             # select control algorithm
             self.run_control = self.run_control_PI_with_P_damping

@@ -128,7 +128,20 @@ class VerticalController:
         k_prop = self.interpolants["k_prop"](t)
         k_deriv = self.interpolants["k_deriv"](t)
 
-        return k_prop * (z_ref * ip_meas - zip_meas) + k_deriv * zipv_meas
+        # proportional error
+        err_prop = (z_ref * ip_meas) - zip_meas
+
+        # FB term
+        output = PID(
+            error_prop=err_prop,
+            error_int=None,
+            error_deriv=zipv_meas,
+            k_prop=k_prop,
+            k_int=0.0,
+            k_deriv=k_deriv,
+        )
+
+        return output
 
     def plot_data(self, tmin=-1.0, tmax=1.0, nt=10001):
         """

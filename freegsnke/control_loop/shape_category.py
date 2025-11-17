@@ -10,6 +10,7 @@ from freegsnke.control_loop.useful_functions import (
     check_data_entry,
     interpolate_spline,
     interpolate_step,
+    PID,
 )
 
 
@@ -162,26 +163,19 @@ class ShapeController:
         T_hist = T_hist_prev + (T_err * dt)
 
         # FB term
-        T_fb_deriv = (k_prop * T_err) + (k_int * T_int)
+        T_fb_deriv = PID(
+            error_prop=T_err,
+            error_int=T_int,
+            error_deriv=None,
+            k_prop=k_prop,
+            k_int=k_int,
+            k_deriv=0.0,
+        )
 
         # time deriv of shape target requests
         dT_dt = ((T_blend * T_fb_deriv) + ((1.0 - T_blend) * T_ff_deriv)).squeeze()
 
         return dT_dt.squeeze(), T_err.squeeze(), T_hist.squeeze()
-
-        # # proportional term
-        # T_err = T_ref - T_meas
-
-        # # FB term
-        # T_fb_deriv = (k_prop * alpha_inv) * (T_err + T_hist_prev/1e-4)
-
-        # # integral term
-        # T_hist = T_hist_prev + (T_err * dt)
-
-        # # time deriv of shape target requests
-        # dT_dt = ((T_blend * T_fb_deriv) + ((1.0 - T_blend) * T_ff_deriv)).squeeze()
-
-        # return dT_dt.squeeze(), T_err.squeeze(), T_hist.squeeze()
 
 
     def extract_values(

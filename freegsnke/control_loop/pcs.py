@@ -141,6 +141,183 @@ class PlasmaControlSystem:
             active_coils=self.active_coils,
         )
 
+    # def calculate_ctrl_voltages(
+    #     self,
+    #     t,
+    #     dt,
+    #     ip_meas,
+    #     ip_hist_prev,
+    #     T_meas,
+    #     T_err_prev,
+    #     T_hist_prev,
+    #     I_approved_prev,
+    #     I_meas,
+    #     V_approved_prev,
+    #     zip_meas,
+    #     zipv_meas,
+    #     active_coil_resists,
+    #     emulated_VC_targets=None,
+    #     emulator_coils=None,
+    #     emu_inputs=None,
+    #     verbose=False,
+    # ):
+    #     """
+    #     Run the full control pipeline to compute approved coil voltage commands.
+
+    #     This method coordinates all subsystem controllers (plasma current, shape control,
+    #     virtual circuits, systems constraints, PF, and vertical) to compute the final
+    #     voltage commands for the coils. It also returns updated histories and error signals
+    #     for use in the next control cycle.
+
+    #     Parameters
+    #     ----------
+    #     t : float
+    #         Current time [s].
+
+    #     dt : float
+    #         Time step [s].
+
+    #     ip_meas : float
+    #         Measured plasma current [A].
+
+    #     ip_hist_prev : float
+    #         Previous value of the integrated plasma current error [A.s].
+
+    #     T_meas : np.ndarray
+    #         Measured values of the shape targets at the current time [m].
+
+    #     T_err_prev : np.ndarray
+    #         Previously shape target filtered error signal (used for damping) [m].
+
+    #     T_hist_prev : np.ndarray
+    #         Previous shape target integral term (used for PI control) [m.s].
+
+    #     I_approved_prev : numpy.ndarray
+    #         Previously approved coil currents [A].
+
+    #     I_meas : numpy.ndarray
+    #         Measured coil currents at the current time step [A].
+
+    #     V_approved_prev : numpy.ndarray
+    #         Previously approved control coil voltages from the last control step [V].
+
+    #     zip_meas : float
+    #         Measured vertical position of the plasma multiplied by measured Ip [A.m].
+
+    #     zipv_meas : float
+    #         Measured vertical velocity of the plasma multiplied by measured Ip [A.m/s].
+
+    #     active_coil_resists : numpy.ndarray
+    #         Array of active coil resistances when coils are switched on [Ohms].
+
+    #     emulated_VC_targets : list of str , optional
+    #         List of targets to be controlled using the emulated VC's. Must be subset of
+    #         ctrl_targets. Those not defined in this list will be taken from waveform-defined
+    #         VCs.
+
+    #     emulator_coils : list of str, optional
+    #         List of coils to use in emulated VC compuation. These are coils to use in computing shape sensitivity matrix.
+
+    #     verbose : bool, optional
+    #         If True, prints diagnostic information from subsystem controllers.
+
+    #     Returns
+    #     -------
+    #     V_active : numpy.ndarray
+    #         Final (all active) coil voltage demands after applying all constraints [V].
+
+    #     ip_hist : list of float
+    #         Updated integrated plasma current error [A.s].
+
+    #     T_err : numpy.ndarray
+    #         Updated shape target filtered error signal (used for damping) [m].
+
+    #     T_hist : list of numpy.ndarray
+    #         Updated shape target integral term (used for PI control) [m.s].
+
+    #     I_approved : numpy.ndarray
+    #         Approved coil currents after applying perturbations and clipping [A].
+
+    #     coil_resists : numpy.ndarray
+    #         Active coil resistances to be used (some coils may be on or off at time t) [Ohms].
+    #     """
+
+    #     # plasma category
+    #     dip_dt, ip_hist = self.PlasmaController.run_control(
+    #         t=t,
+    #         dt=dt,
+    #         ip_meas=ip_meas,
+    #         ip_hist_prev=ip_hist_prev,
+    #     )
+
+    #     # shape category
+    #     dT_dt, T_err, T_hist = self.ShapeController.run_control(
+    #         t=t,
+    #         dt=dt,
+    #         T_meas=T_meas,
+    #         T_err_prev=T_err_prev,
+    #         T_hist_prev=T_hist_prev,
+    #     )
+
+    #     # virtual circuits category
+    #     I_unapproved, dI_dt_unapproved = self.VirtualCircuitsController.run_control(
+    #         t=t,
+    #         dt=dt,
+    #         dip_dt=dip_dt,
+    #         dT_dt=dT_dt,
+    #         I_approved_prev=I_approved_prev,
+    #         emulated_VC_targets=emulated_VC_targets,
+    #         emulator_coils=emulator_coils,
+    #         emu_inputs=emu_inputs,
+    #     )
+
+    #     # systems category
+    #     I_approved, dI_dt_approved = self.SystemsController.run_control(
+    #         t=t,
+    #         dt=dt,
+    #         I_unapproved=I_unapproved,
+    #         dI_dt_unapproved=dI_dt_unapproved,
+    #         verbose=verbose,
+    #     )
+
+    #     # PF category
+    #     V_ctrl = self.PFController.run_control(
+    #         t=t,
+    #         dt=dt,
+    #         I_meas=I_meas,
+    #         I_approved=I_approved,
+    #         dI_dt_approved=dI_dt_approved,
+    #         V_approved_prev=V_approved_prev,
+    #         verbose=verbose,
+    #     )
+
+    #     # vertical category
+    #     V_vertical = self.VerticalController.run_control(
+    #         t=t,
+    #         dt=dt,
+    #         ip_meas=ip_meas,
+    #         zip_meas=zip_meas,
+    #         zipv_meas=zipv_meas,
+    #     )
+
+    #     # coil activations category
+    #     coil_resists = self.CoilActivationController.run_control(
+    #         t=t,
+    #         dt=dt,
+    #         active_coil_resists=active_coil_resists,
+    #     )
+
+    #     # lookup dictionaries
+    #     ctrl_dict = dict(zip(self.ctrl_coils, V_ctrl))
+    #     vert_dict = dict(zip(self.vertical_coils, np.array([V_vertical])))
+
+    #     # build active coil voltages vector
+    #     V_active = np.array(
+    #         [ctrl_dict.get(c, vert_dict.get(c, 0.0)) for c in self.active_coils]
+    #     )
+
+    #     return V_active, ip_hist, T_err, T_hist, I_approved, coil_resists
+
     def calculate_ctrl_voltages(
         self,
         t,
@@ -156,6 +333,7 @@ class PlasmaControlSystem:
         zip_meas,
         zipv_meas,
         active_coil_resists,
+        dt_simulator=None,
         emulated_VC_targets=None,
         emulator_coils=None,
         emu_inputs=None,
@@ -175,7 +353,7 @@ class PlasmaControlSystem:
             Current time [s].
 
         dt : float
-            Time step [s].
+            Time step to run the controllers at (must have 'dt = dt_simulator/n' where n is a natural number) [s].
 
         ip_meas : float
             Measured plasma current [A].
@@ -210,6 +388,9 @@ class PlasmaControlSystem:
         active_coil_resists : numpy.ndarray
             Array of active coil resistances when coils are switched on [Ohms].
 
+        dt_simulator : float
+            Time step of the simulator (must have 'dt_simulator = dt*n' where n is a natural number) [s].
+
         emulated_VC_targets : list of str , optional
             List of targets to be controlled using the emulated VC's. Must be subset of
             ctrl_targets. Those not defined in this list will be taken from waveform-defined
@@ -242,78 +423,109 @@ class PlasmaControlSystem:
             Active coil resistances to be used (some coils may be on or off at time t) [Ohms].
         """
 
-        # plasma category
-        dip_dt, ip_hist = self.PlasmaController.run_control(
-            t=t,
-            dt=dt,
-            ip_meas=ip_meas,
-            ip_hist_prev=ip_hist_prev,
-        )
+        # check timesteps align correctly (default: dt_simulator = dt)
+        if dt_simulator is None:
+            dt_simulator = dt
+            n = 1
+        else:
+            n = round(dt_simulator / dt)  # nearest integer
+            if n < 1:
+                n = 1  # enforce natural number >= 1
 
-        # shape category
-        dT_dt, T_err, T_hist = self.ShapeController.run_control(
-            t=t,
-            dt=dt,
-            T_meas=T_meas,
-            T_err_prev=T_err_prev,
-            T_hist_prev=T_hist_prev,
-        )
+        # call the PCS class (n times per simulator step if requested)
+        V_actives = []
+        for i in range(0, n):
 
-        # virtual circuits category
-        I_unapproved, dI_dt_unapproved = self.VirtualCircuitsController.run_control(
-            t=t,
-            dt=dt,
-            dip_dt=dip_dt,
-            dT_dt=dT_dt,
-            I_approved_prev=I_approved_prev,
-            emulated_VC_targets=emulated_VC_targets,
-            emulator_coils=emulator_coils,
-            emu_inputs=emu_inputs,
-        )
+            # plasma category
+            dip_dt, ip_hist = self.PlasmaController.run_control(
+                t=t + (i * dt),
+                dt=dt,
+                ip_meas=ip_meas,
+                ip_hist_prev=ip_hist_prev,
+            )
 
-        # systems category
-        I_approved, dI_dt_approved = self.SystemsController.run_control(
-            t=t,
-            dt=dt,
-            I_unapproved=I_unapproved,
-            dI_dt_unapproved=dI_dt_unapproved,
-            verbose=verbose,
-        )
+            # update "history" terms
+            ip_hist_prev = ip_hist.copy()
 
-        # PF category
-        V_ctrl = self.PFController.run_control(
-            t=t,
-            dt=dt,
-            I_meas=I_meas,
-            I_approved=I_approved,
-            dI_dt_approved=dI_dt_approved,
-            V_approved_prev=V_approved_prev,
-            verbose=verbose,
-        )
+            # shape category
+            dT_dt, T_err, T_hist = self.ShapeController.run_control(
+                t=t + (i * dt),
+                dt=dt,
+                T_meas=T_meas,
+                T_err_prev=T_err_prev,
+                T_hist_prev=T_hist_prev,
+            )
 
-        # vertical category
-        V_vertical = self.VerticalController.run_control(
-            t=t,
-            dt=dt,
-            ip_meas=ip_meas,
-            zip_meas=zip_meas,
-            zipv_meas=zipv_meas,
-        )
+            # update "history" terms
+            T_err_prev = T_err.copy()
+            T_hist_prev = T_hist.copy()
 
-        # coil activations category
-        coil_resists = self.CoilActivationController.run_control(
-            t=t,
-            dt=dt,
-            active_coil_resists=active_coil_resists,
-        )
+            # virtual circuits category
+            I_unapproved, dI_dt_unapproved = self.VirtualCircuitsController.run_control(
+                t=t + (i * dt),
+                dt=dt,
+                dip_dt=dip_dt,
+                dT_dt=dT_dt,
+                I_approved_prev=I_approved_prev,
+                emulated_VC_targets=emulated_VC_targets,
+                emulator_coils=emulator_coils,
+                emu_inputs=emu_inputs,
+            )
 
-        # lookup dictionaries
-        ctrl_dict = dict(zip(self.ctrl_coils, V_ctrl))
-        vert_dict = dict(zip(self.vertical_coils, np.array([V_vertical])))
+            # systems category
+            I_approved, dI_dt_approved = self.SystemsController.run_control(
+                t=t + (i * dt),
+                dt=dt,
+                I_unapproved=I_unapproved,
+                dI_dt_unapproved=dI_dt_unapproved,
+                verbose=verbose,
+            )
 
-        # build active coil voltages vector
-        V_active = np.array(
-            [ctrl_dict.get(c, vert_dict.get(c, 0.0)) for c in self.active_coils]
-        )
+            # update "history" terms
+            I_approved_prev = I_approved.copy()
+
+            # PF category
+            V_ctrl = self.PFController.run_control(
+                t=t + (i * dt),
+                dt=dt,
+                I_meas=I_meas,
+                I_approved=I_approved,
+                dI_dt_approved=dI_dt_approved,
+                V_approved_prev=V_approved_prev,
+                verbose=verbose,
+            )
+
+            # update "history" terms
+            V_approved_prev = V_ctrl.copy()
+
+            # vertical category
+            V_vertical = self.VerticalController.run_control(
+                t=t + (i * dt),
+                dt=dt,
+                ip_meas=ip_meas,
+                zip_meas=zip_meas,
+                zipv_meas=zipv_meas,
+            )
+
+            # coil activations category
+            coil_resists = self.CoilActivationController.run_control(
+                t=t + (i * dt),
+                dt=dt,
+                active_coil_resists=active_coil_resists,
+            )
+
+            # lookup dictionaries
+            ctrl_dict = dict(zip(self.ctrl_coils, V_ctrl))
+            vert_dict = dict(zip(self.vertical_coils, np.array([V_vertical])))
+
+            # build active coil voltages vector
+            V_actives.append(
+                np.array(
+                    [ctrl_dict.get(c, vert_dict.get(c, 0.0)) for c in self.active_coils]
+                )
+            )
+
+        # average the requested voltages for use in simulator
+        V_active = np.mean(V_actives, axis=0)
 
         return V_active, ip_hist, T_err, T_hist, I_approved, coil_resists

@@ -126,7 +126,7 @@ class ShapeController:
             for key in self.keys_to_step:
                 self.interpolants[targ][key] = interpolate_step(self.data[targ][key])
 
-    def run_control_PI_with_scaled_out_damping(
+    def run_control_PI_with_P_damping(
         self,
         t,
         dt,

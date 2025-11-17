@@ -10,6 +10,7 @@ from freegsnke.control_loop.useful_functions import (
     check_data_entry,
     interpolate_spline,
     interpolate_step,
+    PID,
 )
 
 
@@ -123,25 +124,38 @@ class PlasmaController:
         - The integral term is computed using the trapezoidal rule for numerical integration.
         """
 
-        # proportional term
-        ip_err = self.interpolants["ip_ref"](t) - ip_meas
+        # extract data
+        ip_ref = self.interpolants["ip_ref"](t)
         k_prop = self.interpolants["k_prop"](t)
         k_int = self.interpolants["k_int"](t)
         blend = self.interpolants["ip_blend"](t)
         vloop_ff = self.interpolants["vloop_ff"](t)
         M_solenoid = self.interpolants["M_solenoid"](t)
 
+        # proportional term
+        ip_err = ip_ref - ip_meas
+
         # integral term
         ip_int = ip_hist_prev + (0.5 * ip_err * dt)
 
-        # update ip_hist
-        ip_hist = ip_hist_prev + (ip_err * dt)
-
         # FB term
-        ip_ref = (k_prop * ip_err) + (k_int * ip_int)
+        dip_dt_FB = PID(
+            error_prop=ip_err,
+            error_int=ip_int,
+            error_deriv=None,
+            k_prop=k_prop,
+            k_int=k_int,
+            k_deriv=0.0,
+        )
+
+        # FF term
+        dip_dt_FF = vloop_ff / M_solenoid
 
         # time deriv of plasma current request
-        dip_dt = (blend * ip_ref) + ((1 - blend) * (vloop_ff / M_solenoid))
+        dip_dt = (blend * dip_dt_FB) + ((1 - blend) * dip_dt_FF)
+
+        # update ip_hist
+        ip_hist = ip_hist_prev + (ip_err * dt)
 
         return dip_dt, ip_hist
 

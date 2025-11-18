@@ -10,6 +10,7 @@ from freegsnke.control_loop.useful_functions import (
     check_data_entry,
     interpolate_spline,
     interpolate_step,
+    PID,
 )
 
 
@@ -128,80 +129,18 @@ class VerticalController:
         k_prop = self.interpolants["k_prop"](t)
         k_deriv = self.interpolants["k_deriv"](t)
 
-        return k_prop * (z_ref * ip_meas - zip_meas) + k_deriv * zipv_meas
+        # proportional error
+        err_prop = (z_ref * ip_meas) - zip_meas
 
-    def run_control2(
-        self,
-        dt,
-        target,
-        history,
-        Ip,
-    ):
-        """
-        Computes a control signal using a nonlinear proportional-integral-derivative (PID) controller
-        for regulating plasma vertical position.
-
-        This method applies a nonlinear proportional term with exponentiation and saturation,
-        an exponentially weighted integral term, and a capped derivative term. The output can
-        optionally be scaled by the plasma current.
-
-        Parameters
-        ----------
-        dt : float
-            Time step [s].
-        target : float
-            Desired plasma vertical position [m].
-        history : list of float
-            Time-ordered list of past measurements of the plasma vertical position [m].
-        Ip : float
-            Measured plasma current [A].
-
-        Returns
-        -------
-        output : float
-            Control voltage computed from the PID logic, potentially scaled by plasma current.
-        """
-
-        # defualt fixed params
-        k_prop = -20000
-        k_int = 0
-        k_deriv = -50
-        prop_exponent = 1.0
-        prop_error = 1e-3
-        deriv_threshold = 50
-        int_factor = 0.98
-        Ip_ref = None
-        derivative_lag = 1
-
-        # proportional term
-        error = history[-1] - target
-        output = (
-            k_prop
-            * prop_error
-            * np.sign(error)
-            * (np.abs(error / prop_error) ** prop_exponent)
+        # FB term
+        output = PID(
+            error_prop=err_prop,
+            error_int=None,
+            error_deriv=zipv_meas,
+            k_prop=k_prop,
+            k_int=0.0,
+            k_deriv=k_deriv,
         )
-
-        # integral and derivative terms only if there's enough history
-        if len(history) > derivative_lag:
-
-            # integral term
-            memory = (int_factor ** np.arange(len(history)))[::-1]
-            integral_term = k_int * np.sum(np.array(history) * memory) * dt
-
-            # derivative term (capped)
-            derivative_term = k_deriv * (
-                (history[-1] - history[-1 - derivative_lag]) / dt
-            )
-            derivative_term = np.sign(derivative_term) * min(
-                abs(derivative_term), deriv_threshold
-            )
-
-            output += integral_term + derivative_term
-
-        # scale by plasma current reference
-        if Ip_ref is not None:
-            output *= Ip / Ip_ref
 
         return output
 

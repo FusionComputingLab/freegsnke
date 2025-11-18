@@ -10,6 +10,7 @@ from freegsnke.control_loop.useful_functions import (
     check_data_entry,
     interpolate_spline,
     interpolate_step,
+    PID,
 )
 
 
@@ -30,6 +31,10 @@ class ShapeController:
 
     ctrl_targets : list of str
         A list of shape target names (keys in `data`) that the controller will manage.
+
+    mode : str
+        Choose the type of controller to use, here the default is an "PI_with_P_damping"
+        controller, see "run_control" method for more information.
 
     Attributes
     ----------
@@ -55,22 +60,49 @@ class ShapeController:
         self,
         data,
         ctrl_targets,
+        mode=None,
     ):
 
         # targets list
         self.ctrl_targets = ctrl_targets
 
+        # create an internal copy of the data
+        self.data = data
+
+        # choose controller to use (more can be added)
+        if mode is None:
+            mode = "PI_with_P_damping"
+
+        if mode == "PI_with_P_damping":
+            # select control algorithm
+            self.run_control = self.run_control_PI_with_P_damping
+
+            # inputs required for this algorithm
+            self.keys_to_spline = ["ff", "ref", "blend"]
+            self.keys_to_step = ["k_prop", "k_int", "damping"]
+
+        elif mode == "PID_with_scaled_out_damping":
+            # select control algorithm
+            self.run_control = self.run_control_PID_with_scaled_out_damping
+
+            # inputs required for this algorithm
+            self.keys_to_spline = ["ff", "ref", "blend"]
+            self.keys_to_step = ["k_prop", "damping"]
+
+        elif mode == "PID":
+            # select control algorithm
+            self.run_control = self.run_control_PID
+
+            # inputs required for this algorithm
+            self.keys_to_spline = ["ff", "ref", "blend"]
+            self.keys_to_step = ["k_prop", "k_int", "k_deriv"]
+
         # check correct data is input and in correct format
-        self.keys_to_spline = ["ff", "ref", "blend"]
-        self.keys_to_step = ["k_prop", "k_int", "damping"]
         for targ in self.ctrl_targets:
             for key in self.keys_to_spline + self.keys_to_step:
                 check_data_entry(
                     data=data[targ], key=key, controller_name="ShapeController"
                 )
-
-        # create an internal copy of the data
-        self.data = data
 
         # interpolate the input data
         self.update_interpolants()
@@ -97,7 +129,7 @@ class ShapeController:
             for key in self.keys_to_step:
                 self.interpolants[targ][key] = interpolate_step(self.data[targ][key])
 
-    def run_control(
+    def run_control_PI_with_P_damping(
         self,
         t,
         dt,
@@ -162,27 +194,190 @@ class ShapeController:
         T_hist = T_hist_prev + (T_err * dt)
 
         # FB term
-        T_fb_deriv = (k_prop * T_err) + (k_int * T_int)
+        T_fb_deriv = PID(
+            error_prop=T_err,
+            error_int=T_int,
+            error_deriv=None,
+            k_prop=k_prop,
+            k_int=k_int,
+            k_deriv=0.0,
+        )
 
         # time deriv of shape target requests
         dT_dt = ((T_blend * T_fb_deriv) + ((1.0 - T_blend) * T_ff_deriv)).squeeze()
 
         return dT_dt.squeeze(), T_err.squeeze(), T_hist.squeeze()
 
-        # # proportional term
-        # T_err = T_ref - T_meas
+    def run_control_PID_with_scaled_out_damping(
+        self,
+        t,
+        dt,
+        T_meas,
+        T_err_prev,
+        T_hist_prev,
+    ):
+        """
+        Computes the time derivative of shape target requests based on measured values,
+        reference trajectories, and control gains. It blends feedforward and feedback
+        contributions using a time-varying blend factor, and applies damping to the error
+        signal.
 
-        # # FB term
-        # T_fb_deriv = (k_prop * alpha_inv) * (T_err + T_hist_prev/1e-4)
+        This function re-formulates "run_control_PI_with_scaled_out_damping" to not include a
+        damping term.
 
-        # # integral term
-        # T_hist = T_hist_prev + (T_err * dt)
+        Parameters
+        ----------
+        t : float
+            Current time [s].
+        dt : float
+            Time step [s].
+        T_meas : np.ndarray
+            Measured values of the shape targets at the current time [m].
+        T_err_prev : np.ndarray
+            Previously filtered error signal [m].
+        T_hist_prev : np.ndarray
+            Previous integral term (used for PI control) [m.s].
 
-        # # time deriv of shape target requests
-        # dT_dt = ((T_blend * T_fb_deriv) + ((1.0 - T_blend) * T_ff_deriv)).squeeze()
+        Returns
+        -------
+        dT_dt : np.ndarray
+            Time derivative of the shape target requests [m/s].
+        T_err : np.ndarray
+            Filtered error signal at the current time [m].
+        T_hist : np.ndarray
+            Updated integral term for use in the next control step [m.s].
 
-        # return dT_dt.squeeze(), T_err.squeeze(), T_hist.squeeze()
+        """
 
+        # extract data
+        T_ref = self.extract_values(t=t, targets=self.ctrl_targets, key="ref")
+        T_ff_deriv = self.extract_values(
+            t=t, targets=self.ctrl_targets, key="ff", deriv=True
+        )
+        T_blend = self.extract_values(t=t, targets=self.ctrl_targets, key="blend")
+        k_prop = self.extract_values(t=t, targets=self.ctrl_targets, key="k_prop")
+        alpha_inv = 1.0 / self.extract_values(
+            t=t, targets=self.ctrl_targets, key="damping"
+        )
+
+        # build PID gains to match damping
+        beta = 1 - alpha_inv
+        abs_beta = np.abs(beta)
+
+        k_int = alpha_inv * (1 + beta) / (1e-4)
+        k_deriv = (abs_beta * k_int * dt - beta) * dt
+        k_prop_new = 1 - k_int * dt / 2 - k_deriv / dt
+
+        # rescale
+        k_int *= k_prop * alpha_inv
+        k_deriv *= k_prop * alpha_inv
+        k_prop = k_prop_new * k_prop * alpha_inv
+
+        # proportional term
+        T_err = T_ref - T_meas
+
+        # integral term
+        T_int = abs_beta ** (dt / 1e-4) * T_hist_prev + (0.5 * T_err * dt)
+
+        # derivative term
+        T_deriv = (T_err - T_err_prev) / dt
+
+        # FB term
+        T_fb_deriv = PID(
+            error_prop=T_err,
+            error_int=T_int,
+            error_deriv=T_deriv,
+            k_prop=k_prop,
+            k_int=k_int,
+            k_deriv=k_deriv,
+        )
+
+        # time deriv of shape target requests
+        dT_dt = ((T_blend * T_fb_deriv) + ((1.0 - T_blend) * T_ff_deriv)).squeeze()
+
+        # update hist
+        T_hist = T_int + (0.5 * T_err * dt)
+
+        return dT_dt.squeeze(), T_err.squeeze(), T_hist.squeeze()
+
+    def run_control_PID(
+        self,
+        t,
+        dt,
+        T_meas,
+        T_err_prev,
+        T_hist_prev,
+    ):
+        """
+        Computes the time derivative of shape target requests based on measured values,
+        reference trajectories, and control gains. It blends feedforward and feedback
+        contributions using a time-varying blend factor.
+
+        Parameters
+        ----------
+        t : float
+            Current time [s].
+        dt : float
+            Time step [s].
+        T_meas : np.ndarray
+            Measured values of the shape targets at the current time [m].
+        T_err_prev : np.ndarray
+            Previously filtered error signal [m].
+        T_hist_prev : np.ndarray
+            Previous integral term (used for PI control) [m.s].
+
+        Returns
+        -------
+        dT_dt : np.ndarray
+            Time derivative of the shape target requests [m/s].
+        T_err : np.ndarray
+            Filtered error signal at the current time [m].
+        T_hist : np.ndarray
+            Updated integral term for use in the next control step [m.s].
+
+        Notes
+        -----
+        - The integral term is updated using trapezoidal integration.
+        - The final output blends feedforward and feedback derivatives based on a dynamic blend factor.
+        - THIS FUNCTION IS UNTESTED.
+        """
+
+        # extract data
+        T_ref = self.extract_values(t=t, targets=self.ctrl_targets, key="ref")
+        T_ff_deriv = self.extract_values(
+            t=t, targets=self.ctrl_targets, key="ff", deriv=True
+        )
+        T_blend = self.extract_values(t=t, targets=self.ctrl_targets, key="blend")
+        k_prop = self.extract_values(t=t, targets=self.ctrl_targets, key="k_prop")
+        k_int = self.extract_values(t=t, targets=self.ctrl_targets, key="k_int")
+        k_deriv = self.extract_values(t=t, targets=self.ctrl_targets, key="k_deriv")
+
+        # proportional term
+        T_err = T_ref - T_meas
+
+        # integral term
+        T_int = T_hist_prev + (0.5 * T_err * dt)
+
+        # derivative term
+        T_deriv = (T_err - T_err_prev) / dt
+
+        # FB term
+        T_fb_deriv = PID(
+            error_prop=T_err,
+            error_int=T_int,
+            error_deriv=T_deriv,
+            k_prop=k_prop,
+            k_int=k_int,
+            k_deriv=k_deriv,
+        )
+
+        # time deriv of shape target requests
+        dT_dt = ((T_blend * T_fb_deriv) + ((1.0 - T_blend) * T_ff_deriv)).squeeze()
+
+        # update hist
+        T_hist = T_hist_prev + (T_err * dt)
+
+        return dT_dt.squeeze(), T_err.squeeze(), T_hist.squeeze()
 
     def extract_values(
         self,

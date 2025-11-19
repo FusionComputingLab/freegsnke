@@ -109,6 +109,8 @@ class Equilibrium(freegs4e.equilibrium.Equilibrium):
         equilibrium.Z = np.copy(self.Z)
         equilibrium.tokamak_psi = np.copy(self.tokamak_psi)
         equilibrium.plasma_psi = np.copy(self.plasma_psi)
+        equilibrium.psi_axis = np.copy(self.psi_axis)
+        equilibrium.psi_bndry = np.copy(self.psi_bndry)
         equilibrium.mask_inside_limiter = np.copy(self.mask_inside_limiter)
         equilibrium.mask_outside_limiter = np.copy(self.mask_outside_limiter)
         equilibrium._pgreen = self._pgreen.copy()
@@ -121,7 +123,7 @@ class Equilibrium(freegs4e.equilibrium.Equilibrium):
         copy_into(
             self, equilibrium, "xpt", mutable=True, strict=False, allow_deepcopy=True
         )
-        copy_into(self, equilibrium, "psi_bndry", strict=False)
+        # copy_into(self, equilibrium, "psi_bndry", strict=False)
 
         if hasattr(self, "_profiles"):
             equilibrium._profiles = self._profiles.copy()

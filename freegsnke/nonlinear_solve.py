@@ -1054,7 +1054,30 @@ class nl_solver:
             )
 
         else:  # this is particular to the Lao profile coefficients (which there may be few or many of)
+
+            # extract parameters for the plasma descriptor function
             self.initial_profiles_plasma_descriptor = np.concatenate(
+                (
+                    self.profiles_parameters_vec[self.profiles_alpha_indices],
+                    self.profiles_parameters_vec[self.profiles_beta_indices],
+                )
+            )
+
+            self.profiles_alpha_indices = slice(0, self.n_profiles_parameters_alpha)
+            alpha_shift = 0
+            if profiles.alpha_logic:
+                alpha_shift += 1
+
+            self.profiles_beta_indices = slice(
+                self.n_profiles_parameters_alpha + alpha_shift,
+                self.n_profiles_parameters_alpha
+                + alpha_shift
+                + self.n_profiles_parameters_beta,
+            )
+
+            self.profiles_parameters = {"alpha": profiles.alpha, "beta": profiles.beta}
+            self.profiles_param = None
+            self.profiles_parameters_vec = np.concatenate(
                 (profiles.alpha, profiles.beta)
             )
 
@@ -2907,9 +2930,19 @@ class nl_solver:
 
             # when not solving GS, evolve the plasma descriptors
             if no_GS:
+
+                # extract correct profile parameters
+                if self.profiles_type == "Lao85":
+                    new_alphas = new_params[self.profiles_alpha_indices]
+                    new_betas = new_params[self.profiles_beta_indices]
+                    new_profiles = np.concatenate((new_alphas, new_betas))
+                else:
+                    new_profiles = new_params
+
+                # solve for new descriptors
                 self.plasma_descriptors_vec = self.new_plasma_descriptors(
                     new_currents=self.currents_vec,
-                    new_profiles=self.profiles_parameters_vec,
+                    new_profiles=new_profiles,
                 )
 
         else:

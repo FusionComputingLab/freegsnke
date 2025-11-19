@@ -1764,7 +1764,7 @@ class nl_solver:
                 self.dIydtheta_ICs = np.copy(self.dIydtheta)
                 self.dvdtheta = np.copy(dvdtheta)
 
-                if plasma_descriptor_function is not None:
+                if self.no_GS:
                     print(
                         f"Built the {len(self.initial_plasma_descriptors)} x {self.n_metal_modes + 1} Jacobian (ds/dI)",
                         "of plasma descriptors",
@@ -2847,7 +2847,8 @@ class nl_solver:
             raise ValueError(
                 "The flag 'no_GS' can only be True when 'linear_only=True', please change."
             )
-
+        self.no_GS = no_GS
+        
         # retrieve the old profile parameter values
         self.get_profiles_values(self.profiles1)
         old_params = self.profiles_parameters_vec

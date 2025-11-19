@@ -189,154 +189,172 @@ class VirtualCircuitHandling:
         else:
             target_vec = np.zeros(len(targets) + len(non_standard_targets[0]))
 
-        for i, target in enumerate(targets):
-
-            # inner midplane radius
-            if target == "R_in":
-                if rinout_flag == False:
-                    rin, rout = eq.innerOuterSeparatrix()
-                    rinout_flag = True
-                target_vec[i] = rin
-
-            # outer midplane radius
-            elif target == "R_out":
-                if rinout_flag == False:
-                    rin, rout = eq.innerOuterSeparatrix()
-                    rinout_flag = True
-                target_vec[i] = rout
-
-            # lower X-point (radial) position
-            elif target == "Rx_lower":
-
-                if target in targets_options:
-                    # (R,Z) location where the X-point should roughly be
-                    loc = targets_options[target]
-
-                    # find closest x-point to 'loc'
-                    xpts = eq.xpt[:, 0:2]
-                    x_point_ind = np.argmin(np.sum((xpts - loc) ** 2, axis=1))
-                    target_vec[i] = xpts[x_point_ind, 0]
-                else:
-                    print(f"Use of the 'target_option' input for {target} is advised!")
-
-                    # choose from first two X-points
-                    xpts = eq.xpt[0:2, 0:2]
-                    x_point_ind = np.argmin(xpts[:, 1])
-                    target_vec[i] = xpts[x_point_ind, 0]
-
-            # lower X-point (vertical) position
-            elif target == "Zx_lower":
-
-                if target in targets_options:
-                    # (R,Z) location where the X-point should roughly be
-                    loc = targets_options[target]
-
-                    # find closest x-point to 'loc'
-                    xpts = eq.xpt[:, 0:2]
-                    x_point_ind = np.argmin(np.sum((xpts - loc) ** 2, axis=1))
-                    target_vec[i] = xpts[x_point_ind, 1]
-                else:
-                    print(f"Use of the 'target_option' input for {target} is advised!")
-
-                    # choose from first two X-points
-                    xpts = eq.xpt[0:2, 0:2]
-                    x_point_ind = np.argmin(xpts[:, 1])
-                    target_vec[i] = xpts[x_point_ind, 1]
-
-            # upper X-point (radial) position
-            elif target == "Rx_upper":
-
-                if target in targets_options:
-                    # (R,Z) location where the X-point should roughly be
-                    loc = targets_options[target]
-
-                    # find closest x-point to 'loc'
-                    xpts = eq.xpt[:, 0:2]
-                    x_point_ind = np.argmin(np.sum((xpts - loc) ** 2, axis=1))
-                    target_vec[i] = xpts[x_point_ind, 0]
-                else:
-                    print(f"Use of the 'target_option' input for {target} is advised!")
-
-                    # choose from first two X-points
-                    xpts = eq.xpt[0:2, 0:2]
-                    x_point_ind = np.argmax(xpts[:, 1])
-                    target_vec[i] = xpts[x_point_ind, 0]
-
-            # upper X-point (vertical) position
-            elif target == "Zx_upper":
-
-                if target in targets_options:
-                    # (R,Z) location where the X-point should roughly be
-                    loc = targets_options[target]
-
-                    # find closest x-point to 'loc'
-                    xpts = eq.xpt[:, 0:2]
-                    x_point_ind = np.argmin(np.sum((xpts - loc) ** 2, axis=1))
-                    target_vec[i] = xpts[x_point_ind, 1]
-                else:
-                    print(f"Use of the 'target_option' input for {target} is advised!")
-
-                    # choose from first two X-points
-                    xpts = eq.xpt[0:2, 0:2]
-                    x_point_ind = np.argmax(xpts[:, 1])
-                    target_vec[i] = xpts[x_point_ind, 1]
-
-            # lower outer strikepoint (radial) position
-            elif target == "Rs_lower_outer":
-
-                if target in targets_options:
-                    # (R,Z) location where the strikepoint should roughly be
-                    loc = targets_options[target]
-
-                    # find closets strikepoint to 'loc'
-                    strikes = eq.strikepoints()
-                    strike_ind = np.argmin(np.sum((strikes - loc) ** 2, axis=1))
-                    target_vec[i] = strikes[strike_ind, 0]
-                else:
-                    print(f"Use of the 'target_option' input for {target} is advised!")
-
-                    # choose the (lower) strikepoint with the largest radial position
-                    strikes = eq.strikepoints()
-                    if strikes.shape[0] > 4:
-                        print(
-                            f"More than four strikepoints located, use of 'target_option' input for {target} is strongly advised!"
-                        )
-                    s_point_ind = strikes[strikes[:, 1] < 0]
-                    print
-                    target_vec[i] = s_point_ind[np.argmax(s_point_ind[:, 0]), 0]
-
-            # upper outer strikepoint (radial) position
-            elif target == "Rs_upper_outer":
-
-                if target in targets_options:
-                    # (R,Z) location where the strikepoint should roughly be
-                    loc = targets_options[target]
-
-                    # find closets strikepoint to 'loc'
-                    strikes = eq.strikepoints()
-                    strike_ind = np.argmin(np.sum((strikes - loc) ** 2, axis=1))
-                    target_vec[i] = strikes[strike_ind, 0]
-                else:
-                    print(f"Use of the 'target_option' input for {target} is advised!")
-
-                    # choose the (upper) strikepoint with the largest radial position
-                    strikes = eq.strikepoints()
-                    if strikes.shape[0] > 4:
-                        print(
-                            f"More than four strikepoints located, use of 'target_option' input for {target} is strongly advised!"
-                        )
-                    s_point_ind = strikes[strikes[:, 1] > 0]
-                    target_vec[i] = s_point_ind[np.argmax(s_point_ind[:, 0]), 0]
-
-            # catch undefined targets
-            else:
-                raise ValueError(f"Undefined target: {target}.")
-
-        # add in extra target calculations
-        if non_standard_targets is not None:
+        if len(targets) == 0 and non_standard_targets is not None:
             final_targets += non_standard_targets[0]
             for j in range(0, len(non_standard_targets[0])):
-                target_vec[(i + 1) + j] = non_standard_targets[1][j](eq)
+                target_vec[j] = non_standard_targets[1][j](eq)
+
+        elif len(targets) > 0:
+            for i, target in enumerate(targets):
+
+                # inner midplane radius
+                if target == "R_in":
+                    if rinout_flag == False:
+                        rin, rout = eq.innerOuterSeparatrix()
+                        rinout_flag = True
+                    target_vec[i] = rin
+
+                # outer midplane radius
+                elif target == "R_out":
+                    if rinout_flag == False:
+                        rin, rout = eq.innerOuterSeparatrix()
+                        rinout_flag = True
+                    target_vec[i] = rout
+
+                # lower X-point (radial) position
+                elif target == "Rx_lower":
+
+                    if target in targets_options:
+                        # (R,Z) location where the X-point should roughly be
+                        loc = targets_options[target]
+
+                        # find closest x-point to 'loc'
+                        xpts = eq.xpt[:, 0:2]
+                        x_point_ind = np.argmin(np.sum((xpts - loc) ** 2, axis=1))
+                        target_vec[i] = xpts[x_point_ind, 0]
+                    else:
+                        print(
+                            f"Use of the 'target_option' input for {target} is advised!"
+                        )
+
+                        # choose from first two X-points
+                        xpts = eq.xpt[0:2, 0:2]
+                        x_point_ind = np.argmin(xpts[:, 1])
+                        target_vec[i] = xpts[x_point_ind, 0]
+
+                # lower X-point (vertical) position
+                elif target == "Zx_lower":
+
+                    if target in targets_options:
+                        # (R,Z) location where the X-point should roughly be
+                        loc = targets_options[target]
+
+                        # find closest x-point to 'loc'
+                        xpts = eq.xpt[:, 0:2]
+                        x_point_ind = np.argmin(np.sum((xpts - loc) ** 2, axis=1))
+                        target_vec[i] = xpts[x_point_ind, 1]
+                    else:
+                        print(
+                            f"Use of the 'target_option' input for {target} is advised!"
+                        )
+
+                        # choose from first two X-points
+                        xpts = eq.xpt[0:2, 0:2]
+                        x_point_ind = np.argmin(xpts[:, 1])
+                        target_vec[i] = xpts[x_point_ind, 1]
+
+                # upper X-point (radial) position
+                elif target == "Rx_upper":
+
+                    if target in targets_options:
+                        # (R,Z) location where the X-point should roughly be
+                        loc = targets_options[target]
+
+                        # find closest x-point to 'loc'
+                        xpts = eq.xpt[:, 0:2]
+                        x_point_ind = np.argmin(np.sum((xpts - loc) ** 2, axis=1))
+                        target_vec[i] = xpts[x_point_ind, 0]
+                    else:
+                        print(
+                            f"Use of the 'target_option' input for {target} is advised!"
+                        )
+
+                        # choose from first two X-points
+                        xpts = eq.xpt[0:2, 0:2]
+                        x_point_ind = np.argmax(xpts[:, 1])
+                        target_vec[i] = xpts[x_point_ind, 0]
+
+                # upper X-point (vertical) position
+                elif target == "Zx_upper":
+
+                    if target in targets_options:
+                        # (R,Z) location where the X-point should roughly be
+                        loc = targets_options[target]
+
+                        # find closest x-point to 'loc'
+                        xpts = eq.xpt[:, 0:2]
+                        x_point_ind = np.argmin(np.sum((xpts - loc) ** 2, axis=1))
+                        target_vec[i] = xpts[x_point_ind, 1]
+                    else:
+                        print(
+                            f"Use of the 'target_option' input for {target} is advised!"
+                        )
+
+                        # choose from first two X-points
+                        xpts = eq.xpt[0:2, 0:2]
+                        x_point_ind = np.argmax(xpts[:, 1])
+                        target_vec[i] = xpts[x_point_ind, 1]
+
+                # lower outer strikepoint (radial) position
+                elif target == "Rs_lower_outer":
+
+                    if target in targets_options:
+                        # (R,Z) location where the strikepoint should roughly be
+                        loc = targets_options[target]
+
+                        # find closets strikepoint to 'loc'
+                        strikes = eq.strikepoints()
+                        strike_ind = np.argmin(np.sum((strikes - loc) ** 2, axis=1))
+                        target_vec[i] = strikes[strike_ind, 0]
+                    else:
+                        print(
+                            f"Use of the 'target_option' input for {target} is advised!"
+                        )
+
+                        # choose the (lower) strikepoint with the largest radial position
+                        strikes = eq.strikepoints()
+                        if strikes.shape[0] > 4:
+                            print(
+                                f"More than four strikepoints located, use of 'target_option' input for {target} is strongly advised!"
+                            )
+                        s_point_ind = strikes[strikes[:, 1] < 0]
+                        print
+                        target_vec[i] = s_point_ind[np.argmax(s_point_ind[:, 0]), 0]
+
+                # upper outer strikepoint (radial) position
+                elif target == "Rs_upper_outer":
+
+                    if target in targets_options:
+                        # (R,Z) location where the strikepoint should roughly be
+                        loc = targets_options[target]
+
+                        # find closets strikepoint to 'loc'
+                        strikes = eq.strikepoints()
+                        strike_ind = np.argmin(np.sum((strikes - loc) ** 2, axis=1))
+                        target_vec[i] = strikes[strike_ind, 0]
+                    else:
+                        print(
+                            f"Use of the 'target_option' input for {target} is advised!"
+                        )
+
+                        # choose the (upper) strikepoint with the largest radial position
+                        strikes = eq.strikepoints()
+                        if strikes.shape[0] > 4:
+                            print(
+                                f"More than four strikepoints located, use of 'target_option' input for {target} is strongly advised!"
+                            )
+                        s_point_ind = strikes[strikes[:, 1] > 0]
+                        target_vec[i] = s_point_ind[np.argmax(s_point_ind[:, 0]), 0]
+
+                # catch undefined targets
+                else:
+                    raise ValueError(f"Undefined target: {target}.")
+
+            # add in extra target calculations
+            if non_standard_targets is not None:
+                final_targets += non_standard_targets[0]
+                for j in range(0, len(non_standard_targets[0])):
+                    target_vec[(i + 1) + j] = non_standard_targets[1][j](eq)
 
         return final_targets, target_vec
 

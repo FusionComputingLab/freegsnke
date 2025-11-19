@@ -1771,7 +1771,7 @@ class nl_solver:
                         "with respect to all metal currents and the total plasma current.",
                     )
                     print(
-                        f"Built the {self.initial_plasma_descriptors} x {self.n_profiles_parameters} Jacobian (ds/dtheta)",
+                        f"Built the {len(self.initial_plasma_descriptors)} x {self.n_profiles_parameters} Jacobian (ds/dtheta)",
                         "of plasma descriptors",
                         "with respect to all plasma current density profile parameters within Jtor.",
                     )
@@ -2844,7 +2844,9 @@ class nl_solver:
         """
 
         if no_GS and not linear_only:
-            raise ValueError("no_GS can only be used when linear_only=True")
+            raise ValueError(
+                "The flag 'no_GS' can only be True when 'linear_only=True', please change."
+            )
 
         # retrieve the old profile parameter values
         self.get_profiles_values(self.profiles1)
@@ -2901,6 +2903,13 @@ class nl_solver:
                     "The plasma used for calculating the adopted linearization and the plasma in this evolution have departed by more than",
                     self.handleMyy.tolerance,
                     "domain pixels. The linearization may not be accurate.",
+                )
+
+            # when not solving GS, evolve the plasma descriptors
+            if no_GS:
+                self.plasma_descriptors_vec = self.new_plasma_descriptors(
+                    new_currents=self.currents_vec,
+                    new_profiles=self.profiles_parameters_vec,
                 )
 
         else:

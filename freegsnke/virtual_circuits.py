@@ -40,6 +40,7 @@ class VirtualCircuit:
         VCs_matrix,
         target_names,
         coils,
+        target_calculator,
     ):
         """
         Store the key quantities from the VirtualCircuitHandling calculations.
@@ -62,6 +63,8 @@ class VirtualCircuit:
             A list of the target names, e.g [Rin, Rout, Rx, Zx, ...] (must be same length as array from target_calculator).
         coils : list
             The list of coils used to calculate the shape_matrix and VCs_matrix.
+        target_calculator : function
+            Function returning an array of the shape targets (VC will be calculated for ALL of these targets).
         """
 
         self.name = name
@@ -71,6 +74,7 @@ class VirtualCircuit:
         self.VCs_matrix = VCs_matrix
         self.target_names = target_names
         self.coils = coils
+        self.target_calculator = target_calculator
 
 
 class VirtualCircuitHandling:
@@ -522,6 +526,8 @@ class VirtualCircuitHandling:
         )
 
         # calculate the targets
+        if not hasattr(self, "calculate_targets"):
+            self.calculate_targets = VC_object.target_calculator
         old_target_values = self.calculate_targets(eq)
 
         # store copies of the eq and profile objects

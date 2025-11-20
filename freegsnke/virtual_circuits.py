@@ -296,7 +296,7 @@ class VirtualCircuitHandling:
         self.assign_currents_solve_GS(currents, coils, self.target_relative_tolerance)
 
         # calculate finite difference of targets wrt to the coil current
-        self._target_vec_1 = self.calculate_targets(self._eq2)
+        self._target_vec_1 = self.target_calculator(self._eq2)
 
         dtargets = self._target_vec_1 - self._targets_vec
         # self._dtargetsdIj = dtargets / final_dI
@@ -368,10 +368,10 @@ class VirtualCircuitHandling:
         # store function to calculate targets from equilibrium
         if target_calculator is None:
             raise ValueError("You need to input a 'target_calculator' function!")
-        self.calculate_targets = target_calculator
+        self.target_calculator = target_calculator
 
         # calculate the targets from the equilibrium
-        self._targets_vec = self.calculate_targets(eq)
+        self._targets_vec = self.target_calculator(eq)
 
         if target_names is None:
             raise ValueError("You need to input a list of 'target_names'!")
@@ -447,6 +447,7 @@ class VirtualCircuitHandling:
             ),  # "virtual circuits" are the pseudo-inverse of the shape matrix
             target_names=target_names,
             coils=coils,
+            target_calculator=target_calculator,
         )
         setattr(self, name, store_VC)
 
@@ -526,9 +527,9 @@ class VirtualCircuitHandling:
         )
 
         # calculate the targets
-        if not hasattr(self, "calculate_targets"):
-            self.calculate_targets = VC_object.target_calculator
-        old_target_values = self.calculate_targets(eq)
+        if not hasattr(self, "target_calculator"):
+            self.target_calculator = VC_object.target_calculator
+        old_target_values = self.target_calculator(eq)
 
         # store copies of the eq and profile objects
         eq_new = eq.create_auxiliary_equilibrium()
@@ -550,7 +551,7 @@ class VirtualCircuitHandling:
         )
 
         # calculate new target values and the difference vs. the old
-        new_target_values = self.calculate_targets(eq_new)
+        new_target_values = self.target_calculator(eq_new)
 
         if verbose:
             print(f"Targets shifts from VCs:")

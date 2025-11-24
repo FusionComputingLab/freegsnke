@@ -318,7 +318,6 @@ class VirtualCircuitHandling:
                                 f"More than four strikepoints located, use of 'target_option' input for {target} is strongly advised!"
                             )
                         s_point_ind = strikes[strikes[:, 1] < 0]
-                        print
                         target_vec[i] = s_point_ind[np.argmax(s_point_ind[:, 0]), 0]
 
                 # upper outer strikepoint (radial) position

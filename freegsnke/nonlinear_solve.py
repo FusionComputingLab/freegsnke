@@ -1866,7 +1866,7 @@ class nl_solver:
         self.simplified_solver_J1.reset_plasma_resistivity(self.plasma_resistance_1d)
 
     def check_and_change_plasma_resistivity(
-        self, plasma_resistivity, relative_threshold_difference=0.01
+        self, plasma_resistivity, relative_threshold_difference=1e-5
     ):
         """
         Check if the plasma resistivity differs from the current value and update it if necessary.
@@ -1895,7 +1895,7 @@ class nl_solver:
             # check how different
             check = (
                 np.abs(plasma_resistivity - self.plasma_resistivity)
-                / self.plasma_resistivity
+                / np.abs(self.plasma_resistivity)
             ) > relative_threshold_difference
             if check:
                 self.reset_plasma_resistivity(plasma_resistivity=plasma_resistivity)

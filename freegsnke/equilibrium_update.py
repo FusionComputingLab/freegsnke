@@ -115,6 +115,14 @@ class Equilibrium(freegs4e.equilibrium.Equilibrium):
         equilibrium.mask_outside_limiter = np.copy(self.mask_outside_limiter)
         equilibrium._pgreen = self._pgreen.copy()
         equilibrium._vgreen = self._vgreen.copy()
+        copy_into(
+            self,
+            equilibrium,
+            "flag_limiter",
+            mutable=True,
+            strict=False,
+            allow_deepcopy=True,
+        )
         copy_into(self, equilibrium, "current_vec", mutable=True, strict=False)
 
         copy_into(

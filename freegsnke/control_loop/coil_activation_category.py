@@ -130,7 +130,10 @@ class CoilActivationController:
         activations = self.extract_values(t=t, targets=self.active_coils, deriv=False)
 
         # if coil is not active, set very large resistance
-        final_coil_resists = active_coil_resists + (1.0 - activations) * 1e12
+        # final_coil_resists = active_coil_resists + (1.0 - activations) * 1e12
+        mask = activations.astype(bool)
+        final_coil_resists = active_coil_resists.copy()
+        final_coil_resists[~mask] = 1e12
 
         return final_coil_resists
 

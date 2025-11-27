@@ -2733,8 +2733,11 @@ class nl_solver:
         if active_coil_resistances is None:
             return
         else:
-            if np.array_equal(
-                active_coil_resistances, self.evol_metal_curr.active_coil_resistances
+            if np.allclose(
+                active_coil_resistances,
+                self.evol_metal_curr.active_coil_resistances,
+                atol=1e-5,
+                rtol=1e-3,
             ):
                 return
             else:

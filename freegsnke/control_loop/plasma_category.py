@@ -159,7 +159,7 @@ class PlasmaController:
 
         return dip_dt, ip_hist
 
-    def plot_data(self, tmin=-1.0, tmax=1.0, nt=10001):
+    def plot_data(self, tmin=-1.0, tmax=1.0, nt=1001):
         """
         Visualizes interpolated control waveforms and corresponding raw inputs.
 
@@ -174,7 +174,7 @@ class PlasmaController:
         tmax : float, optional
             End time for the evaluation grid (default is 1.0 seconds).
         nt : int, optional
-            Number of time points to evaluate the interpolants over the interval [tmin, tmax] (default is 10001).
+            Number of time points to evaluate the interpolants over the interval [tmin, tmax] (default is 1001).
 
         Notes
         -----

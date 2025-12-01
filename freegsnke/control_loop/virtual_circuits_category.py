@@ -268,7 +268,7 @@ class VirtualCircuitsController:
         else:
             return np.array([self.interpolants[target](t) for target in targets])
 
-    def plot_data(self, tmin=-1.0, tmax=1.0, nt=10001):
+    def plot_data(self, tmin=-1.0, tmax=1.0, nt=1001):
         """
         Visualizes interpolated control waveforms and corresponding raw inputs.
 
@@ -283,7 +283,7 @@ class VirtualCircuitsController:
         tmax : float, optional
             End time for the evaluation grid (default is 1.0 seconds).
         nt : int, optional
-            Number of time points to evaluate the interpolants over the interval [tmin, tmax] (default is 10001).
+            Number of time points to evaluate the interpolants over the interval [tmin, tmax] (default is 1001).
 
         Notes
         -----
@@ -298,7 +298,7 @@ class VirtualCircuitsController:
         nplots = len(self.keys_to_spline)  # number of plots
 
         # start plotting
-        fig, axes = plt.subplots(nplots, 1, figsize=(10, 2.5 * nplots), sharex=True)
+        fig, axes = plt.subplots(nplots, 1, figsize=(6, 2.5 * nplots), sharex=True)
 
         if nplots == 1:
             axes = [axes]
@@ -339,7 +339,7 @@ class VirtualCircuitsController:
                 if yrange == 0:
                     yrange = 1.0
                 ax.set_ylim(ymin - 0.02 * yrange, ymax + 0.02 * yrange)
-                
+
         axes[0].legend(loc="best")
         axes[-1].set_xlabel(r"Time [$s$]")
         axes[-1].set_xlim([tmin, tmax])

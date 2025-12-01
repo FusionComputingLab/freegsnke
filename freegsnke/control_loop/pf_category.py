@@ -196,7 +196,7 @@ class PFController:
 
         return np.array([self.interpolants[target](t) for target in targets])
 
-    def plot_data(self, tmin=-1.0, tmax=1.0, nt=10001):
+    def plot_data(self, tmin=-1.0, tmax=1.0, nt=1001):
         """
         Visualizes interpolated control waveforms and corresponding raw inputs.
 
@@ -211,7 +211,7 @@ class PFController:
         tmax : float, optional
             End time for the evaluation grid (default is 1.0 seconds).
         nt : int, optional
-            Number of time points to evaluate the interpolants over the interval [tmin, tmax] (default is 10001).
+            Number of time points to evaluate the interpolants over the interval [tmin, tmax] (default is 1001).
 
         Notes
         -----
@@ -226,20 +226,12 @@ class PFController:
         nplots = len(self.keys_to_step[3:6])  # number of plots
 
         # start plotting
-        fig, axes = plt.subplots(nplots, 1, figsize=(10, 2.5 * nplots), sharex=True)
+        fig, axes = plt.subplots(nplots, 1, figsize=(6, 2.5 * nplots), sharex=True)
 
         if nplots == 1:
             axes = [axes]
 
         for ax, key in zip(axes, self.keys_to_step[3:6]):
-            ax.plot(
-                t,
-                self.interpolants[key](t),
-                color="navy",
-                linewidth=0.8,
-                label="interpolated",
-            )
-
             times = np.asarray(self.data[key]["times"])
             vals_list = self.data[key]["vals"]
 
@@ -247,9 +239,10 @@ class PFController:
                 ax.scatter(
                     self.data[key]["times"],
                     self.data[key]["vals"],
-                    s=3,
-                    marker=".",
-                    color="red",
+                    s=10,
+                    marker="x",
+                    color="tab:orange",
+                    alpha=0.9,
                     label=f"raw data",
                 )
             else:
@@ -259,11 +252,20 @@ class PFController:
                 ax.scatter(
                     times_repeated,
                     vals_flat,
-                    s=3,
-                    marker=".",
-                    color="red",
-                    label="raw data",
+                    s=10,
+                    marker="x",
+                    color="tab:orange",
+                    alpha=0.9,
+                    label=f"raw data",
                 )
+
+            ax.plot(
+                t,
+                self.interpolants[key](t),
+                color="navy",
+                linewidth=1.2,
+                label="interpolated",
+            )
 
             ax.grid(True, linestyle="--", alpha=0.6)
 
@@ -275,6 +277,19 @@ class PFController:
                 ax.set_ylabel(rf"{key} [$V/s$]")
             else:
                 ax.set_ylabel(key)
+
+            # y-scaling inside the window
+            times = np.array(self.data[key]["times"])
+            mask = (times >= tmin) & (times <= tmax)
+            if np.any(mask):
+                ydata = np.concatenate(
+                    [self.interpolants[key](t), np.array(self.data[key]["vals"])[mask]]
+                )
+                ymin, ymax = np.min(ydata), np.max(ydata)
+                yrange = ymax - ymin
+                if yrange == 0:
+                    yrange = 1.0
+                ax.set_ylim(ymin - 0.02 * yrange, ymax + 0.02 * yrange)
 
         # axes[0].legend(loc='best')
         axes[-1].set_xlabel(r"Time [$s$]")

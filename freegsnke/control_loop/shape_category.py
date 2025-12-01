@@ -456,7 +456,7 @@ class ShapeController:
         nplots = len(self.keys_to_spline + self.keys_to_step)  # number of plots
 
         # start plotting
-        fig, axes = plt.subplots(nplots, 1, figsize=(10, 2.5 * nplots), sharex=True)
+        fig, axes = plt.subplots(nplots, 1, figsize=(6, 2.5 * nplots), sharex=True)
 
         if nplots == 1:
             axes = [axes]
@@ -489,18 +489,21 @@ class ShapeController:
                 ax.set_ylabel(key)
 
             # y-scaling inside the window
-            times = np.array(self.data[key]["times"])
+            times = np.array(self.data[targ][key]["times"])
             mask = (times >= tmin) & (times <= tmax)
             if np.any(mask):
                 ydata = np.concatenate(
-                    [self.interpolants[key](t), np.array(self.data[key]["vals"])[mask]]
+                    [
+                        self.interpolants[targ][key](t),
+                        np.array(self.data[targ][key]["vals"])[mask],
+                    ]
                 )
                 ymin, ymax = np.min(ydata), np.max(ydata)
                 yrange = ymax - ymin
                 if yrange == 0:
                     yrange = 1.0
                 ax.set_ylim(ymin - 0.02 * yrange, ymax + 0.02 * yrange)
-                
+
         fig.suptitle(targ)
         axes[0].legend(loc="best")
         axes[-1].set_xlabel(r"Time [$s$]")

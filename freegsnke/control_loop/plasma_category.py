@@ -189,27 +189,29 @@ class PlasmaController:
         nplots = len(self.keys_to_spline + self.keys_to_step)  # number of plots
 
         # start plotting
-        fig, axes = plt.subplots(nplots, 1, figsize=(10, 2.5 * nplots), sharex=True)
+        fig, axes = plt.subplots(nplots, 1, figsize=(6, 2.5 * nplots), sharex=True)
 
         if nplots == 1:
             axes = [axes]
 
         for ax, key in zip(axes, self.data.keys()):
+            ax.scatter(
+                self.data[key]["times"],
+                self.data[key]["vals"],
+                s=10,
+                marker="x",
+                color="tab:orange",
+                alpha=0.9,
+                label=f"raw data",
+            )
             ax.plot(
                 t,
                 self.interpolants[key](t),
                 color="navy",
-                linewidth=0.8,
+                linewidth=1.2,
                 label="interpolated",
             )
-            ax.scatter(
-                self.data[key]["times"],
-                self.data[key]["vals"],
-                s=3,
-                marker=".",
-                color="red",
-                label=f"raw data",
-            )
+
             ax.grid(True, linestyle="--", alpha=0.6)
 
             if key == "ip_ref":
@@ -224,6 +226,19 @@ class PlasmaController:
                 ax.set_ylabel(rf"{key} [$V.s/A$]")
             else:
                 ax.set_ylabel(key)
+
+            # y-scaling inside the window
+            times = np.array(self.data[key]["times"])
+            mask = (times >= tmin) & (times <= tmax)
+            if np.any(mask):
+                ydata = np.concatenate(
+                    [self.interpolants[key](t), np.array(self.data[key]["vals"])[mask]]
+                )
+                ymin, ymax = np.min(ydata), np.max(ydata)
+                yrange = ymax - ymin
+                if yrange == 0:
+                    yrange = 1.0
+                ax.set_ylim(ymin - 0.02 * yrange, ymax + 0.02 * yrange)
 
         axes[0].legend(loc="best")
         axes[-1].set_xlabel(r"Time [$s$]")

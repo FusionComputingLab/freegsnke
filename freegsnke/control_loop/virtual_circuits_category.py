@@ -153,7 +153,7 @@ class VirtualCircuitsController:
 
         emulated_VC_targets : list of str , optional
             List of targets to be controlled using the emulated VC's. Must be subset of
-            ctrl_targets. Those not defined in this list will be taken from waveform-defined
+            ctrl_targets, and subset/equal to emulated_VC_targets_calc. Those not defined in this list will be taken from waveform-defined
             VCs.
 
         emulated_VC_targets_calc : list of str , optional
@@ -208,6 +208,9 @@ class VirtualCircuitsController:
             assert (
                 emulated_VC_targets is not None
             ), "Need to provide targets for the VC emulator."
+            assert (
+                emulated_VC_targets_calc is not None
+            ), "Need to provide targets for calculation in the VC emulator."
 
             # extract the relevant emulated VCs
             VC_shape_emu = self.vc_generator.get_vc(

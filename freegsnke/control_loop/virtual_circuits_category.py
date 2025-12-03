@@ -119,7 +119,8 @@ class VirtualCircuitsController:
         dT_dt,
         I_approved_prev,
         emulated_VC_targets=None,
-        emulator_coils=None,
+        emulated_VC_targets_calc=None,
+        emulator_coils_calc=None,
         emu_inputs=None,
         verbose=False,
     ):
@@ -155,7 +156,10 @@ class VirtualCircuitsController:
             ctrl_targets. Those not defined in this list will be taken from waveform-defined
             VCs.
 
-        emulator_coils : list of str, optional
+        emulated_VC_targets_calc : list of str , optional
+            List of targets to be used when performing pseudoinverse of jacobian when calculating the emulated VC.
+
+        emulator_coils_calc : list of str, optional
             List of coils to use in emulated VC compuation. These are coils to use in computing shape sensitivity matrix.
 
         emu_inputs : np.ndarray , optional
@@ -191,8 +195,11 @@ class VirtualCircuitsController:
         if (
             (self.vc_generator is not None)
             and (emulated_VC_targets is not None)
-            and (emulator_coils is not None)
+            and (emulated_VC_targets_calc is not None)
+            and (emulator_coils_calc is not None)
         ):
+            print("emulated targets", emulated_VC_targets)
+            print("emulated targets_calc", emulated_VC_targets_calc)
 
             # error checks
             assert (
@@ -205,8 +212,9 @@ class VirtualCircuitsController:
             # extract the relevant emulated VCs
             VC_shape_emu = self.vc_generator.get_vc(
                 targets=emulated_VC_targets,
+                targets_calc=emulated_VC_targets_calc,
                 coils=self.ctrl_coils,
-                coils_calc=emulator_coils,
+                coils_calc=emulator_coils_calc,
                 input_data=emu_inputs,  # This may be temporary and removed at some point.
             )
             if verbose:

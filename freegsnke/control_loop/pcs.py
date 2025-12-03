@@ -157,7 +157,7 @@ class PlasmaControlSystem:
     #     zipv_meas,
     #     active_coil_resists,
     #     emulated_VC_targets=None,
-    #     emulator_coils=None,
+    #     emulator_coils_calc=None,
     #     emu_inputs=None,
     #     verbose=False,
     # ):
@@ -215,7 +215,7 @@ class PlasmaControlSystem:
     #         ctrl_targets. Those not defined in this list will be taken from waveform-defined
     #         VCs.
 
-    #     emulator_coils : list of str, optional
+    #     emulator_coils_calc : list of str, optional
     #         List of coils to use in emulated VC compuation. These are coils to use in computing shape sensitivity matrix.
 
     #     verbose : bool, optional
@@ -267,7 +267,7 @@ class PlasmaControlSystem:
     #         dT_dt=dT_dt,
     #         I_approved_prev=I_approved_prev,
     #         emulated_VC_targets=emulated_VC_targets,
-    #         emulator_coils=emulator_coils,
+    #         emulator_coils_calc=emulator_coils_calc,
     #         emu_inputs=emu_inputs,
     #     )
 
@@ -335,7 +335,8 @@ class PlasmaControlSystem:
         active_coil_resists,
         dt_simulator=None,
         emulated_VC_targets=None,
-        emulator_coils=None,
+        emulated_VC_targets_calc=None,
+        emulator_coils_calc=None,
         emu_inputs=None,
         verbose=False,
     ):
@@ -393,10 +394,13 @@ class PlasmaControlSystem:
 
         emulated_VC_targets : list of str , optional
             List of targets to be controlled using the emulated VC's. Must be subset of
-            ctrl_targets. Those not defined in this list will be taken from waveform-defined
+            ctrl_targets, and subset/equal to emulated_VC_targets_calc. Those not defined in this list will be taken from waveform-defined
             VCs.
 
-        emulator_coils : list of str, optional
+        emulated_VC_targets_calc : list of str , optional
+            List of targets to be used when performing pseudoinverse of jacobian when calculating the emulated VC.
+
+        emulator_coils_calc : list of str, optional
             List of coils to use in emulated VC compuation. These are coils to use in computing shape sensitivity matrix.
 
         verbose : bool, optional
@@ -468,7 +472,8 @@ class PlasmaControlSystem:
                 dT_dt=dT_dt,
                 I_approved_prev=I_approved_prev,
                 emulated_VC_targets=emulated_VC_targets,
-                emulator_coils=emulator_coils,
+                emulated_VC_targets_calc=emulated_VC_targets_calc,
+                emulator_coils_calc=emulator_coils_calc,
                 emu_inputs=emu_inputs,
             )
 

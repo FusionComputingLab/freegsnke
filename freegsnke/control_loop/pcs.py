@@ -73,6 +73,10 @@ class PlasmaControlSystem:
     vc_generator : object, optional
         An optional class object for applying emulated virtual circuits. If not
         provided, deafult waveform-defined VCs will be used.
+
+    vc_update_rate : float, optional
+        Optional argument to specify how ofte, in seconds, new VCs are computed with vc_generator. W
+        If None provided, defaults to zero and new VC computed at every iterration.
     """
 
     def __init__(

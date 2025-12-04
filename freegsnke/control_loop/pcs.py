@@ -92,6 +92,7 @@ class PlasmaControlSystem:
         plasma_target,
         shape_control_mode=None,
         vc_generator=None,
+        vc_update_rate=None,
     ):
 
         # coil ordering
@@ -121,6 +122,7 @@ class PlasmaControlSystem:
             ctrl_targets=self.ctrl_targets,
             plasma_target=self.plasma_target,
             vc_generator=vc_generator,
+            vc_update_rate=vc_update_rate,
         )
 
         self.SystemsController = SystemsController(
@@ -338,6 +340,7 @@ class PlasmaControlSystem:
         emulated_VC_targets_calc=None,
         emulator_coils_calc=None,
         emu_inputs=None,
+        vc_update_rate=None,
         verbose=False,
     ):
         """

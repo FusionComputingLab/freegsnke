@@ -46,6 +46,10 @@ class VirtualCircuitsController:
         An optional class object for applying emulated virtual circuits. If not
         provided, deafult waveform-defined VCs will be used.
 
+    vc_update_rate : float, optional
+        Optional argument to specify how often, in seconds, new VCs are computed with vc_generator.
+        If None provided, defaults to zero and new VC computed at every iterration.
+
     """
 
     def __init__(
@@ -55,6 +59,7 @@ class VirtualCircuitsController:
         ctrl_targets,
         plasma_target,
         vc_generator=None,
+        vc_update_rate=None,
     ):
 
         # coils list
@@ -84,6 +89,19 @@ class VirtualCircuitsController:
 
         # store emulated VCs class if present
         self.vc_generator = vc_generator
+        if vc_update_rate is None:
+            vc_update_rate = 0.0
+            print(
+                "Setting default update rate to zero. New VC computed at every time step"
+            )
+        self.vc_update_rate = vc_update_rate
+        # set holders for most recent vcs
+        self.latest_vc_time = None
+        self.latest_vc = None
+
+        # store emulated VC's that were used
+        self.emulated_vc_list = []
+        self.emulated_vc_times = []
 
         # store first vc matrix
         # t0 = min(data)
@@ -200,7 +218,6 @@ class VirtualCircuitsController:
         ):
             print("emulated targets", emulated_VC_targets)
             print("emulated targets_calc", emulated_VC_targets_calc)
-
             # error checks
             assert (
                 self.vc_generator is not None
@@ -212,14 +229,43 @@ class VirtualCircuitsController:
                 emulated_VC_targets_calc is not None
             ), "Need to provide targets for calculation in the VC emulator."
 
-            # extract the relevant emulated VCs
-            VC_shape_emu = self.vc_generator.get_vc(
-                targets=emulated_VC_targets,
-                targets_calc=emulated_VC_targets_calc,
-                coils=self.ctrl_coils,
-                coils_calc=emulator_coils_calc,
-                input_data=emu_inputs,  # This may be temporary and removed at some point.
-            )
+            if self.latest_vc is None:
+                # compute first emulated VC
+                print("First VC computed")
+                VC_shape_emu = self.vc_generator.get_vc(
+                    targets=emulated_VC_targets,
+                    targets_calc=emulated_VC_targets_calc,
+                    coils=self.ctrl_coils,
+                    coils_calc=emulator_coils_calc,
+                    input_data=emu_inputs,  # This may be temporary and removed at some point.
+                )
+                # update latest vcs/times
+                self.latest_vc_time = 1.0 * t
+                self.latest_vc = VC_shape_emu
+
+            delta_t_vc = t - self.latest_vc_time
+            if delta_t_vc >= self.vc_update_rate:
+                # compute new emulated VCs
+                print(f"New VC computed at time {t}")
+                VC_shape_emu = self.vc_generator.get_vc(
+                    targets=emulated_VC_targets,
+                    targets_calc=emulated_VC_targets_calc,
+                    coils=self.ctrl_coils,
+                    coils_calc=emulator_coils_calc,
+                    input_data=emu_inputs,  # This may be temporary and removed at some point.
+                )
+                # update latest vcs/times
+                self.latest_vc_time = 1.0 * t
+                self.latest_vc = VC_shape_emu
+                # store VC's
+                self.emulated_vc_list.append(VC_shape_emu)
+                self.emulated_vc_times.append(t)
+
+            else:
+                print(f"Using latest VC, computed at time {self.latest_vc_time} ")
+                VC_shape_emu = self.latest_vc
+
+            print("latest vc", self.latest_vc)
             if verbose:
                 print("Emulated VC matrix", VC_shape_emu)
             # fill appropriate columns from emulated vcs

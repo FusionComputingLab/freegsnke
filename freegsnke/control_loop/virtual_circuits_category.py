@@ -47,7 +47,8 @@ class VirtualCircuitsController:
         provided, deafult waveform-defined VCs will be used.
 
     vc_update_rate : float, optional
-        Time period in seconds to recompute VC using vc_generator.
+        Optional argument to specify how often, in seconds, new VCs are computed with vc_generator.
+        If None provided, defaults to zero and new VC computed at every iterration.
 
     """
 

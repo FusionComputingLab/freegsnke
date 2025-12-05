@@ -75,7 +75,7 @@ class PlasmaControlSystem:
         provided, deafult waveform-defined VCs will be used.
 
     vc_update_rate : float, optional
-        Optional argument to specify how ofte, in seconds, new VCs are computed with vc_generator. W
+        Optional argument to specify how ofte, in seconds, new VCs are computed with vc_generator.
         If None provided, defaults to zero and new VC computed at every iterration.
     """
 

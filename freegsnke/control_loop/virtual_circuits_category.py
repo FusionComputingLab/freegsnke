@@ -217,6 +217,16 @@ class VirtualCircuitsController:
         ):
             print("emulated targets", emulated_VC_targets)
             print("emulated targets_calc", emulated_VC_targets_calc)
+            # error checks
+            assert (
+                self.vc_generator is not None
+            ), "Need to provide a VC emulator class to `VirtualCircuitsController`."
+            assert (
+                emulated_VC_targets is not None
+            ), "Need to provide targets for the VC emulator."
+            assert (
+                emulated_VC_targets_calc is not None
+            ), "Need to provide targets for calculation in the VC emulator."
 
             if self.latest_vc is None:
                 # compute first emulated VC
@@ -231,17 +241,6 @@ class VirtualCircuitsController:
                 # update latest vcs/times
                 self.latest_vc_time = 1.0 * t
                 self.latest_vc = VC_shape_emu
-
-            # error checks
-            assert (
-                self.vc_generator is not None
-            ), "Need to provide a VC emulator class to `VirtualCircuitsController`."
-            assert (
-                emulated_VC_targets is not None
-            ), "Need to provide targets for the VC emulator."
-            assert (
-                emulated_VC_targets_calc is not None
-            ), "Need to provide targets for calculation in the VC emulator."
 
             delta_t_vc = t - self.latest_vc_time
             if delta_t_vc >= self.vc_update_rate:
@@ -265,6 +264,7 @@ class VirtualCircuitsController:
                 print(f"Using latest VC, computed at time {self.latest_vc_time} ")
                 VC_shape_emu = self.latest_vc
 
+            print("latest vc", self.latest_vc)
             if verbose:
                 print("Emulated VC matrix", VC_shape_emu)
             # fill appropriate columns from emulated vcs

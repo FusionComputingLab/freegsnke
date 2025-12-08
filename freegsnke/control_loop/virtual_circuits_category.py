@@ -475,9 +475,10 @@ class VirtualCircuitsController:
             ax.set_yticks(sorted(set(state_ids)))
             ax.grid(True, linestyle="--", alpha=0.6)
             ax.set_ylabel(f"Unique VC ID")
+            ax.legend(loc="best")
+
 
         axes[-1].set_xlabel(r"Time [$s$]")
         axes[-1].set_xlim([tmin, tmax])
-        axes[0].legend(loc="best")
         plt.tight_layout(rect=[0, 0, 1, 0.97])
         plt.show()

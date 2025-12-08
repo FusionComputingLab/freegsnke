@@ -455,6 +455,16 @@ class ShapeController:
         t = np.linspace(tmin, tmax, nt)
         nplots = len(self.keys_to_spline + self.keys_to_step)  # number of plots
 
+        # find out which control is ON and when
+        FF_reference = self.interpolants[targ]["ff"](t)
+        FF_mask = (self.interpolants[targ]["blend"](t) < 1) * (
+            np.abs(self.interpolants[targ]["ff"].derivative()(t)) > 0
+        )
+        FB_reference = self.interpolants[targ]["ref"](t)
+        FB_mask = (self.interpolants[targ]["blend"](t) > 0) * (
+            np.abs(self.interpolants[targ]["ref"](t)) > 0
+        )
+
         # start plotting
         fig, axes = plt.subplots(nplots, 1, figsize=(6, 2.5 * nplots), sharex=True)
 
@@ -462,6 +472,26 @@ class ShapeController:
             axes = [axes]
 
         for ax, key in zip(axes, self.keys_to_spline + self.keys_to_step):
+
+            # shade region of FB control
+            on_regions = np.where(np.diff(FB_mask.astype(int)) != 0)[0] + 1
+            segments = np.split(t, on_regions)
+            states = np.split(FB_mask, on_regions)
+
+            for seg_t, seg_state in zip(segments, states):
+                if np.all(seg_state):  # region fully "on"
+                    ax.axvspan(seg_t[0], seg_t[-1], color="green", alpha=0.25)
+
+            # shade region of FF control
+            on_regions = np.where(np.diff(FF_mask.astype(int)) != 0)[0] + 1
+            segments = np.split(t, on_regions)
+            states = np.split(FF_mask, on_regions)
+
+            for seg_t, seg_state in zip(segments, states):
+                if np.all(seg_state):  # region fully "on"
+                    ax.axvspan(seg_t[0], seg_t[-1], color="yellow", alpha=0.25)
+
+            # raw data
             ax.scatter(
                 self.data[targ][key]["times"],
                 self.data[targ][key]["vals"],
@@ -470,6 +500,7 @@ class ShapeController:
                 color="tab:orange",
                 label=f"raw data",
             )
+            # interpolated data
             ax.plot(
                 t,
                 self.interpolants[targ][key](t),

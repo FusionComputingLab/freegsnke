@@ -188,6 +188,12 @@ class PlasmaController:
         t = np.linspace(tmin, tmax, nt)
         nplots = len(self.keys_to_spline + self.keys_to_step)  # number of plots
 
+        # find out which control is ON and when
+        FB_reference = self.interpolants["ip_ref"](t)
+        FF_reference = self.interpolants["vloop_ff"](t)
+        FB_mask = (self.interpolants["ip_blend"](t) > 0) & (np.abs(FB_reference) > 0)
+        FF_mask = (self.interpolants["ip_blend"](t) < 1) & (np.abs(FF_reference) > 0)
+
         # start plotting
         fig, axes = plt.subplots(nplots, 1, figsize=(6, 2.5 * nplots), sharex=True)
 
@@ -195,20 +201,41 @@ class PlasmaController:
             axes = [axes]
 
         for ax, key in zip(axes, self.data.keys()):
+
+            # shade region of FB control
+            on_regions = np.where(np.diff(FB_mask.astype(int)) != 0)[0] + 1
+            segments = np.split(t, on_regions)
+            states = np.split(FB_mask, on_regions)
+
+            for seg_t, seg_state in zip(segments, states):
+                if np.all(seg_state):  # region fully "on"
+                    ax.axvspan(seg_t[0], seg_t[-1], color="green", alpha=0.25)
+
+            # shade region of FF control
+            on_regions = np.where(np.diff(FF_mask.astype(int)) != 0)[0] + 1
+            segments = np.split(t, on_regions)
+            states = np.split(FF_mask, on_regions)
+
+            for seg_t, seg_state in zip(segments, states):
+                if np.all(seg_state):  # region fully "on"
+                    ax.axvspan(seg_t[0], seg_t[-1], color="yellow", alpha=0.2)
+
+            # raw data
             ax.scatter(
                 self.data[key]["times"],
                 self.data[key]["vals"],
-                s=10,
+                s=12,
                 marker="x",
                 color="tab:orange",
                 alpha=0.9,
                 label=f"raw data",
             )
+            # interpolated data
             ax.plot(
                 t,
                 self.interpolants[key](t),
                 color="navy",
-                linewidth=1.2,
+                linewidth=1.5,
                 label="interpolated",
             )
 

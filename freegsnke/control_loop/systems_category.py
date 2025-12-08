@@ -251,6 +251,21 @@ class SystemsController:
             times = np.asarray(self.data[key]["times"])
             vals_list = self.data[key]["vals"]
 
+            # find out which control is ON and when
+            if key in self.keys_to_spline:
+                FF_reference = self.interpolants[key].derivative()(t)
+                FF_mask = np.abs(FF_reference) > 0
+
+                # shade region of FF control
+                on_regions = np.where(np.diff(FF_mask.astype(int)) != 0)[0] + 1
+                segments = np.split(t, on_regions)
+                states = np.split(FF_mask, on_regions)
+
+                for seg_t, seg_state in zip(segments, states):
+                    if np.all(seg_state):  # region fully "on"
+                        if len(seg_t) > 0:
+                            ax.axvspan(seg_t[0], seg_t[-1], color="yellow", alpha=0.25)
+
             if np.isscalar(vals_list[0]):
                 ax.scatter(
                     self.data[key]["times"],

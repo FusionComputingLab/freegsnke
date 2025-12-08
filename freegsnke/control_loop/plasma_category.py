@@ -218,7 +218,7 @@ class PlasmaController:
 
             for seg_t, seg_state in zip(segments, states):
                 if np.all(seg_state):  # region fully "on"
-                    ax.axvspan(seg_t[0], seg_t[-1], color="yellow", alpha=0.2)
+                    ax.axvspan(seg_t[0], seg_t[-1], color="yellow", alpha=0.25)
 
             # raw data
             ax.scatter(

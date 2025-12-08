@@ -325,7 +325,7 @@ class VirtualCircuitsController:
         else:
             return np.array([self.interpolants[target](t) for target in targets])
 
-    def plot_data(self, tmin=-1.0, tmax=1.0, nt=1001):
+    def plot_data_FF_currents(self, tmin=-1.0, tmax=1.0, nt=1001):
         """
         Visualizes interpolated control waveforms and corresponding raw inputs.
 
@@ -361,6 +361,21 @@ class VirtualCircuitsController:
             axes = [axes]
 
         for ax, key in zip(axes, self.keys_to_spline):
+
+            # find out which control is ON and when
+            FF_reference = self.interpolants[key](t)
+            FF_mask = np.abs(FF_reference) > 0
+
+            # shade region of FF control
+            on_regions = np.where(np.diff(FF_mask.astype(int)) != 0)[0] + 1
+            segments = np.split(t, on_regions)
+            states = np.split(FF_mask, on_regions)
+
+            for seg_t, seg_state in zip(segments, states):
+                if np.all(seg_state):  # region fully "on"
+                    ax.axvspan(seg_t[0], seg_t[-1], color="yellow", alpha=0.25)
+
+            # raw data
             ax.scatter(
                 self.data[key]["times"],
                 self.data[key]["vals"],
@@ -370,6 +385,7 @@ class VirtualCircuitsController:
                 alpha=0.9,
                 label=f"raw data",
             )
+            # interpolated data
             ax.plot(
                 t,
                 self.interpolants[key](t),
@@ -400,5 +416,68 @@ class VirtualCircuitsController:
         axes[0].legend(loc="best")
         axes[-1].set_xlabel(r"Time [$s$]")
         axes[-1].set_xlim([tmin, tmax])
+        plt.tight_layout(rect=[0, 0, 1, 0.97])
+        plt.show()
+
+    def plot_data_VCs(self, tmin=-1.0, tmax=1.0, nt=1001):
+        """
+        Visualizes virtual circuits times and corresponding raw inputs.
+
+        Parameters
+        ----------
+        tmin : float, optional
+            Start time for the evaluation grid (default is -1.0 seconds).
+        tmax : float, optional
+            End time for the evaluation grid (default is 1.0 seconds).
+        nt : int, optional
+            Number of time points to evaluate the interpolants over the interval [tmin, tmax] (default is 1001).
+
+        """
+
+        # times to plot at
+        t = np.linspace(tmin, tmax, nt)
+        nplots = len(self.keys_to_step)  # number of plots
+
+        # start plotting
+        fig, axes = plt.subplots(nplots, 1, figsize=(6, 2.5 * nplots), sharex=True)
+
+        if nplots == 1:
+            axes = [axes]
+
+        # Convert each array to a hashable form
+        def make_key(arr):
+            return tuple(arr.tolist())
+
+        for ax, key in zip(axes, self.keys_to_step):
+
+            # Assign a unique ID to each unique array
+            state_ids = []
+
+            next_id = 1
+            for arr in self.data[key]["vals"]:
+
+                if np.all(np.abs(arr) < 1e-12):
+                    state_ids.append(0)
+                else:
+                    state_ids.append(next_id)
+                    next_id += 1
+
+            state_ids = np.array(state_ids)
+
+            # plot different VC times
+            ax.step(
+                self.data[key]["times"],
+                state_ids,
+                where="post",
+                color="navy",
+                label=key,
+            )
+            ax.set_yticks(sorted(set(state_ids)))
+            ax.grid(True, linestyle="--", alpha=0.6)
+            ax.set_ylabel(f"Unique VC ID")
+
+        axes[-1].set_xlabel(r"Time [$s$]")
+        axes[-1].set_xlim([tmin, tmax])
+        axes[0].legend(loc="best")
         plt.tight_layout(rect=[0, 0, 1, 0.97])
         plt.show()

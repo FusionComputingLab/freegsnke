@@ -564,6 +564,12 @@ class nl_solver:
                 self.initial_currents_plasma_descriptor[self.retained_modes_mask]
             )
 
+            # apply mask in case of re-linearisation
+            self.approved_target_dIy = self.approved_target_dIy[
+                self.retained_modes_mask
+            ]
+            self.starting_dI = self.starting_dI[self.retained_modes_mask]
+
             self.remove_modes(eq, self.retained_modes_mask[:-1])
 
             print(
@@ -2197,10 +2203,17 @@ class nl_solver:
         self.hatIy1 = np.copy(self.hatIy)
         self.make_blended_hatIy(self.hatIy1)
 
+        # store norm of jtor for use if relinearising in future time steps
+        self.jtor0 = self.profiles1.jtor
+
         self.time = 0
         self.step_no = -1
 
         # build the linearization if not provided
+        self._force_core_mask_linearization = force_core_mask_linearization
+        self._target_relative_tolerance_linearization = (
+            target_relative_tolerance_linearization
+        )
         self.build_linearization(
             self.eq1,
             self.profiles1,
@@ -2224,6 +2237,71 @@ class nl_solver:
             hatIy0=self.blended_hatIy,
             Myy_hatIy0=self.Myy_hatIy0,
         )
+
+    def relinearise(self, *, verbose=False):
+        """
+        Recompute (relinearise) the linearisation of the equilibrium
+        problem around the current plasma state.
+
+        This method temporarily constructs auxiliary equilibria and profile
+        objects in order to rebuild all linearised operators and sensitivity
+        matrices used by the solver. After the linearisation operators are
+        rebuilt, the original equilibria and profiles are restored so that the
+        nonlinear state of the main solver remains unchanged.
+
+        Parameters
+        ----------
+        verbose : bool, optional
+            If True, print progress messages during the relinearisation
+            process. Default is False.
+
+        """
+
+        if verbose:
+            print("Relinearising around the current plasma")
+
+        # create and store auxiliary copies of eq and profiles
+        original_eq1 = self.eq1.create_auxiliary_equilibrium()
+        original_eq2 = self.eq2.create_auxiliary_equilibrium()
+        original_profiles1 = self.profiles1.copy()
+        original_profiles2 = self.profiles2.copy()
+
+        # reset previous linearisations
+        self.dIydI_ICs = None
+        self.dIydtheta_ICs = None
+
+        # recompute the linearisations
+        self.build_linearization(
+            self.eq1.create_auxiliary_equilibrium(),
+            self.profiles1.copy(),
+            dIydI=None,
+            dIydtheta=None,
+            target_relative_tolerance_linearization=self._target_relative_tolerance_linearization,
+            force_core_mask_linearization=self._force_core_mask_linearization,
+            verbose=verbose,
+            plasma_descriptor_function=self.plasma_descriptor_function,
+        )
+
+        # rebuild operators based on new linearisations
+        self.handleMyy.force_build_Myy(self.hatIy)
+        self.Myy_hatIy0 = self.handleMyy.dot(self.hatIy)
+
+        # update internal linearisation point object
+        self.linearised_sol.set_linearization_point(
+            dIydI=self.dIydI_ICs,
+            dIydtheta=self.dIydtheta_ICs,
+            hatIy0=self.blended_hatIy,
+            Myy_hatIy0=self.Myy_hatIy0,
+        )
+
+        # reset internal objects incase modifed by above
+        self.eq1 = original_eq1
+        self.eq2 = original_eq2
+        self.profiles1 = original_profiles1
+        self.profiles2 = original_profiles2
+
+        # store norm of jtor at relinearisation point (used for next relinearisation triggering)
+        self.jtor0 = self.profiles1.jtor
 
     def step_complete_assign(self, working_relative_tol_GS, from_linear=False):
         """
@@ -2768,111 +2846,127 @@ class nl_solver:
         max_solving_iterations=50,
         custom_active_coil_resistances=None,
         no_GS=False,
+        relinearise_threshold=None,
     ):
         """
-        Advance the system by one timestep using a nonlinear Newton-Krylov (NK) stepper.
+        Advance the system by one timestep using a nonlinear Newton–Krylov solver.
 
-        If ``linear_only=True``, only the linearised dynamic problem is advanced.
-        Otherwise, a full nonlinear solution is sought using an iterative NK-based algorithm.
-        On convergence, the timestep is advanced by ``self.dt_step`` and the updated
-        currents, equilibrium, and profile objects are assigned to ``self.currents_vec``,
-        ``self.eq1``, and ``self.profiles1``.
+        This method advances the plasma and coil current state from time ``t`` to
+        ``t + dt_step`` by solving the coupled dynamic–static inverse equilibrium
+        problem. The solver uses a Newton–Krylov (NK) strategy alternating between:
+
+        - A static Grad–Shafranov (GS) solve at fixed currents.
+        - A dynamic current solve at fixed plasma flux.
+
+        If ``linear_only=True``, only the linearised dynamic problem is evolved and
+        no nonlinear fixed-point or NK iterations are executed.
+
+        On successful convergence, the method updates:
+
+        - ``self.currents_vec``: advanced coil currents,
+        - ``self.eq1``: updated GS equilibrium,
+        - ``self.profiles1``: updated plasma profiles.
 
         Algorithm overview
         ------------------
-        The solver proceeds as follows:
+        The nonlinear step proceeds as:
 
-        1. Solve the linearised problem to obtain an initial guess for the currents and
-        solve the associated static Grad–Shafranov (GS) problem, yielding
-        ``trial_plasma_psi`` and ``trial_currents`` (including ``tokamak_psi``).
-        2. If the pair [``trial_plasma_psi``, ``tokamak_psi``] fails the GS tolerance check,
-        update ``trial_plasma_psi`` toward the GS solution.
-        3. At fixed currents, update ``trial_plasma_psi`` via NK iterations on the
-        root problem in plasma flux.
-        4. At fixed plasma flux, update currents via NK iterations on the root problem
-        in currents.
-        5. If either the current residuals or the GS tolerance check fail, return to step 2.
-        6. On convergence, record the solution into ``self.currents_vec``, ``self.eq1``,
-        and ``self.profiles1``.
+        1. Solve the linearised dynamic problem to produce initial guesses for
+        currents and plasma flux (``trial_currents``, ``trial_plasma_psi``).
+        2. Optionally (if ``no_GS=False``), solve the GS equation and blend the
+        result with the trial flux using ``blend_GS``.
+        3. At fixed currents, perform NK iterations on the plasma flux until the
+        GS residual meets the working tolerance.
+        4. At fixed plasma flux, perform NK iterations on the currents until the
+        current residual meets the required tolerance.
+        5. Repeat steps 2–4 until both the current convergence criterion and the
+        GS convergence criterion are satisfied.
+        6. If ``relinearise_threshold`` is set and the baseline toroidal current
+        changes sufficiently, trigger a full relinearisation before continuing.
+        7. On convergence, commit the solution to the object's internal state.
 
         Parameters
         ----------
-        active_voltage_vec : np.ndarray
-            Vector of applied voltages on the active coils between ``t`` and ``t+dt``.
+        active_voltage_vec : array-like
+            Voltages applied to the active coils between ``t`` and ``t + dt_step``.
         profiles_parameters : dict or None, optional
-            If None, profile parameters remain unchanged. Otherwise, dictionary specifying
-            updated parameters for the profiles object. See ``get_profiles_values`` for
-            dictionary structure. This enables time-dependent profile parameters.
+            Parameters to update the profile model. If None, profiles are unchanged.
         plasma_resistivity : float or array-like, optional
-            Updated plasma resistivity. If None, resistivity is left unchanged. Enables time-
-            dependent resistivity.
-        target_relative_tol_currents : float, optional, default=0.005
-            Required relative tolerance on currents for convergence of the dynamic problem.
-            Computed as ``residual / (currents(t+dt) - currents(t))``.
-        target_relative_tol_GS : float, optional, default=0.003
-            Required relative tolerance on plasma flux for convergence of the static GS problem.
-            Computed as ``residual / Δψ`` where Δψ is the flux change between timesteps.
-        working_relative_tol_GS : float, optional, default=0.001
-            Tolerance used when solving intermediate GS problems during the step.
-            Must be stricter than ``target_relative_tol_GS``.
-        target_relative_unexplained_residual : float, optional, default=0.5
-            NK solver stopping criterion: inclusion of additional Krylov basis vectors
-            stops once more than ``1 - target_relative_unexplained_residual`` of the residual
-            is canceled.
-        max_n_directions : int, optional, default=3
-            Maximum number of Krylov basis vectors used in NK updates.
-        step_size_psi : float, optional, default=2.0
-            Step size for finite difference calculations in the NK solver applied to ψ,
-            measured in units of the residual norm.
-        step_size_curr : float, optional, default=0.8
-            Step size for finite difference calculations in the NK solver applied to currents,
-            measured in units of the residual norm.
-        scaling_with_n : int, optional, default=0
-            Exponent controlling step scaling in NK updates:
-            candidate step is scaled by ``(1 + n_iterations)**scaling_with_n``.
-        blend_GS : float, optional, default=0.5
-            Blending coefficient used when updating ``trial_plasma_psi`` toward the GS solution.
-            Must be in [0, 1].
-        curr_eps : float, optional, default=1e-5
-            Regularisation parameter for relative current convergence checks,
-            preventing division by small current changes.
-        max_no_NK_psi : float, optional, default=5.0
-            Threshold for triggering NK updates on ψ. Activated if
-            ``relative_psi_residual > max_no_NK_psi * target_relative_tol_GS``.
-        clip : float, optional, default=5
-            Maximum allowed step size for each accepted Krylov basis vector, in units
-            of the exploratory step.
-        verbose : int, optional, default=0
-            Verbosity level.
-            * 0: silent
-            * 1: report convergence progress per NK cycle
-            * 2: include detailed intermediate output
-        linear_only : bool, optional, default=False
-            If True, only the linearised solution is used (skipping nonlinear solves).
-        max_solving_iterations : int, optional, default=50
-            Maximum number of nonlinear NK cycles before the solve is terminated.
+            New plasma resistivity. If None, resistivity remains unchanged.
+        target_relative_tol_currents : float, default=0.005
+            Convergence tolerance for the dynamic current solve.
+        target_relative_tol_GS : float, default=0.003
+            Convergence tolerance for the final GS solve.
+        working_relative_tol_GS : float, default=0.001
+            Tighter intermediate tolerance for GS updates inside NK cycles.
+        target_relative_unexplained_residual : float, default=0.5
+            NK termination threshold based on unexplained residual fraction.
+        max_n_directions : int, default=3
+            Maximum Krylov basis size for each NK update.
+        step_size_psi : float, default=2.0
+            Exploratory finite-difference step size for NK updates in flux space.
+        step_size_curr : float, default=0.8
+            Exploratory step size for NK updates in current space.
+        scaling_with_n : int, default=0
+            Exponent for scaling candidate steps by ``(1 + n_iter)**scaling_with_n``.
+        blend_GS : float, default=0.5
+            Blending factor for updating trial GS solutions.
+        curr_eps : float, default=1e-5
+            Regularisation term to avoid division by small current differences.
+        max_no_NK_psi : float, default=5.0
+            Threshold for enabling NK flux updates.
+        clip : float, default=5
+            Maximum allowed NK update magnitude (per direction).
+        verbose : int, default=0
+            Verbosity level: 0 = silent, 1 = coarse, 2 = detailed.
+        linear_only : bool, default=False
+            If True, perform only the linearised update and skip nonlinear solves.
+        max_solving_iterations : int, default=50
+            Maximum allowed NK cycles.
         custom_active_coil_resistances : array-like or None, optional
-            If provided, overrides default active coil resistances with those specifed.
-            Enables time-dependent coil resistances (can be used for switching coils "on"
-            and "off").
+            Custom resistances for active coils. If provided, overrides defaults.
+        no_GS : bool, default=False
+            If True, skip all GS solves (current-only evolution). Intended mainly for
+            specialised debugging or reduced models. Works with linear_only=True only.
+        relinearise_threshold : float or None, optional
+            If provided, triggers a relinearisation when the change in toroidal current
+            since the last linearisation exceeds this relative threshold.
 
         Notes
         -----
-        On convergence, the method updates internal state:
-        - ``self.currents_vec`` stores the evolved currents.
-        - ``self.eq1`` stores the new Grad–Shafranov equilibrium.
-        - ``self.profiles1`` stores the updated profile object.
+        The solver simultaneously advances plasma equilibrium and circuit dynamics,
+        using the linearised operators built by :meth:`relinearise`. If convergence
+        is not achieved, the method stops after ``max_solving_iterations`` iterations.
 
         Raises
         ------
         RuntimeError
-            If the nonlinear solve does not converge within ``max_solving_iterations``.
+            If the nonlinear solver fails to converge.
         """
 
+        # GS can only be disabled in linear-only mode
         if no_GS and not linear_only:
             raise ValueError(
-                "The flag 'no_GS' can only be True when 'linear_only=True', please change."
+                "The flag 'no_GS' can only be True when 'linear_only=True'."
             )
+
+        # compute relative change in jtor since last linearisation
+        self.jtor_norm = np.linalg.norm(
+            self.profiles1.jtor - self.jtor0
+        ) / np.linalg.norm(self.jtor0)
+
+        # relinearise if in linear-only mode and threshold exceeded
+        if (
+            linear_only
+            and relinearise_threshold is not None
+            and self.jtor_norm >= relinearise_threshold
+        ):
+            print("Re-linearising around current equilibrium!")
+            print(
+                f"   Relative jtor change = {self.jtor_norm*100:.3f}% "
+                f"(threshold = {relinearise_threshold*100:.3f}%)"
+            )
+            self.relinearise(verbose=verbose)
 
         # retrieve the old profile parameter values
         self.get_profiles_values(self.profiles1)

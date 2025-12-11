@@ -477,7 +477,6 @@ class VirtualCircuitsController:
             ax.set_ylabel(f"Unique VC ID")
             ax.legend(loc="best")
 
-
         axes[-1].set_xlabel(r"Time [$s$]")
         axes[-1].set_xlim([tmin, tmax])
         plt.tight_layout(rect=[0, 0, 1, 0.97])

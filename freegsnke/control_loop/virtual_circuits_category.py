@@ -91,9 +91,6 @@ class VirtualCircuitsController:
         self.vc_generator = vc_generator
         if vc_update_rate is None:
             vc_update_rate = 0.0
-            print(
-                "Setting default update rate to zero. New VC computed at every time step"
-            )
         self.vc_update_rate = vc_update_rate
         # set holders for most recent vcs
         self.latest_vc_time = None

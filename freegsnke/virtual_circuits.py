@@ -491,8 +491,6 @@ class VirtualCircuitHandling:
             Returns the equilibrium object after applying the shifted currents.
         object
             Returns the profiles object after applying the shifted currents.
-        list
-            List of strings containing all of targets of interest.
         np.array
             Array of new target values.
         np.array

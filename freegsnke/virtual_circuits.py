@@ -189,12 +189,15 @@ class VirtualCircuitHandling:
         self.assign_currents(currents_vec, coils, eq=self._eq2)
 
         # solve for equilibrium
-        self.solver.forward_solve(
-            self._eq2,
-            self._profiles2,
-            target_relative_tolerance=target_relative_tolerance,
-            # suppress=True,
-        )
+        try:
+            self.solver.forward_solve(
+                self._eq2,
+                self._profiles2,
+                target_relative_tolerance=target_relative_tolerance,
+                # suppress=True,
+            )
+        except AttributeError:
+            raise AttributeError("Solver not defined. Call define_solver() first.")
 
     def prepare_build_dIydI_j(
         self, j, coils, target_dIy, starting_dI, min_curr=1e-4, max_curr=300
@@ -381,12 +384,15 @@ class VirtualCircuitHandling:
         self.target_names = target_names
 
         # solve static GS problem (it's already solved?)
-        self.solver.forward_solve(
-            eq=eq,
-            profiles=profiles,
-            target_relative_tolerance=self.target_relative_tolerance,
-            suppress=True,
-        )
+        try:
+            self.solver.forward_solve(
+                eq=eq,
+                profiles=profiles,
+                target_relative_tolerance=self.target_relative_tolerance,
+                suppress=True,
+            )
+        except AttributeError:
+            raise AttributeError("Solver not defined. Call define_solver() first.")
 
         # store the flattened plasma current vector (and its norm)
         self.Iy = eq.limiter_handler.Iy_from_jtor(profiles.jtor).copy()
@@ -516,12 +522,15 @@ class VirtualCircuitHandling:
             print(f"{VC_object.coils} = {current_shifts}.")
 
         # re-solve static GS problem (to make sure it's solved already)
-        self.solver.forward_solve(
-            eq=eq,
-            profiles=profiles,
-            target_relative_tolerance=self.target_relative_tolerance,
-            suppress=True,
-        )
+        try:
+            self.solver.forward_solve(
+                eq=eq,
+                profiles=profiles,
+                target_relative_tolerance=self.target_relative_tolerance,
+                suppress=True,
+            )
+        except AttributeError:
+            raise AttributeError("Solver not defined. Call define_solver() first.")
 
         # calculate the targets
         if not hasattr(self, "target_calculator"):
@@ -540,12 +549,15 @@ class VirtualCircuitHandling:
         self.assign_currents(new_currents, VC_object.coils, eq=eq_new)
 
         # solve for the new equilibrium
-        self.solver.forward_solve(
-            eq_new,
-            profiles_new,
-            target_relative_tolerance=self.target_relative_tolerance,
-            suppress=True,
-        )
+        try:
+            self.solver.forward_solve(
+                eq_new,
+                profiles_new,
+                target_relative_tolerance=self.target_relative_tolerance,
+                suppress=True,
+            )
+        except AttributeError:
+            raise AttributeError("Solver not defined. Call define_solver() first.")
 
         # calculate new target values and the difference vs. the old
         new_target_values = self.target_calculator(eq_new)

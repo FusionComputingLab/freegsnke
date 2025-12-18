@@ -19,7 +19,6 @@ You should have received a copy of the GNU Lesser General Public License
 along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>. 
 """
 
-from copy import deepcopy
 from datetime import datetime
 
 import numpy as np

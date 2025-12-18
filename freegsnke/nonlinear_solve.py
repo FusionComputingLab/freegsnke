@@ -14,9 +14,9 @@ FreeGSNKE is free software: you can redistribute it and/or modify
 it under the terms of the GNU Lesser General Public License as published by
 the Free Software Foundation, either version 3 of the License, or
 (at your option) any later version.
-  
+
 You should have received a copy of the GNU Lesser General Public License
-along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.   
+along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 import warnings
@@ -1060,7 +1060,6 @@ class nl_solver:
             )
 
         else:  # this is particular to the Lao profile coefficients (which there may be few or many of)
-
             # extract parameters for the plasma descriptor function
             self.initial_profiles_plasma_descriptor = np.concatenate(
                 (
@@ -1168,13 +1167,13 @@ class nl_solver:
                     print("")
                     print(f"Profile parameter: beta_{i}:")
                     print(
-                        f"  Initial delta parameter = {starting_dtheta[i+self.n_profiles_parameters_alpha]}"
+                        f"  Initial delta parameter = {starting_dtheta[i + self.n_profiles_parameters_alpha]}"
                     )
                     print(
-                        f"  Initial relative Iy change = {rel_ndIy_0[i+self.n_profiles_parameters_alpha]}"
+                        f"  Initial relative Iy change = {rel_ndIy_0[i + self.n_profiles_parameters_alpha]}"
                     )
                     print(
-                        f"  Final delta parameter = {self.final_dtheta_record[i+self.n_profiles_parameters_alpha]}"
+                        f"  Final delta parameter = {self.final_dtheta_record[i + self.n_profiles_parameters_alpha]}"
                     )
 
                 # reset profiles in profiles1 and profiles2 objects
@@ -1239,7 +1238,6 @@ class nl_solver:
 
         # carry out the initial perturbations
         if self.profiles_param is not None:
-
             # vary alpha_m
             self.check_and_change_profiles(
                 profiles_parameters={
@@ -1323,7 +1321,6 @@ class nl_solver:
             )
 
         else:  # this is particular to the Lao profile coefficients (which there may be few or many of)
-
             # for each alpha coefficient
 
             alpha_base = profiles.alpha.copy()
@@ -1399,7 +1396,7 @@ class nl_solver:
                     print("")
                     print(f"Profile parameter: beta_{i}:")
                     print(
-                        f"  Final relative Iy change = {rel_ndIy[i+self.n_profiles_parameters_alpha]}"
+                        f"  Final relative Iy change = {rel_ndIy[i + self.n_profiles_parameters_alpha]}"
                     )
                     print(
                         f"  Initial vs. Final GS residual: {self.NK.initial_rel_residual} vs. {self.NK.relative_change}"
@@ -1600,6 +1597,7 @@ class nl_solver:
         self.nIy = np.linalg.norm(self.Iy)
 
         self.initial_plasma_descriptors = np.array(plasma_descriptor_function(eq))
+        self.plasma_descriptors_vec = np.copy(self.initial_plasma_descriptors)
 
         self.R0 = eq.Rcurrent()
         self.Z0 = eq.Zcurrent()
@@ -1629,7 +1627,6 @@ class nl_solver:
                 self.initial_currents_plasma_descriptor = np.copy(self.currents_vec)
 
                 for j in self.arange_currents:
-
                     this_target_dIy = 1.0 * self.approved_target_dIy[j]
                     dIydIj, ndIy = self.prepare_build_dIydI_j(
                         j,
@@ -1778,7 +1775,6 @@ class nl_solver:
                     np.abs(np.log10(self.final_dtheta_record / self.starting_dtheta))
                     > 0.5
                 ).any():
-
                     dIydtheta, rel_ndIy, dvdtheta = self.build_dIydtheta(
                         profiles=profiles_copy,
                         rtol_NK=target_relative_tolerance_linearization,
@@ -2951,21 +2947,35 @@ class nl_solver:
             )
 
         # compute relative change in jtor since last linearisation
-        self.jtor_norm = np.linalg.norm(
-            self.profiles1.jtor - self.jtor0
-        ) / np.linalg.norm(self.jtor0)
+        if no_GS:
+            self.relinearise_criteria = np.max(
+                (self.plasma_descriptors_vec - self.initial_plasma_descriptors)
+                / self.initial_plasma_descriptors
+            )
+        else:
+            self.relinearise_criteria = np.linalg.norm(
+                self.profiles1.jtor - self.jtor0
+            ) / np.linalg.norm(self.jtor0)
 
         # relinearise if in linear-only mode and threshold exceeded
         if (
             linear_only
             and relinearise_threshold is not None
-            and self.jtor_norm >= relinearise_threshold
+            and self.relinearise_criteria >= relinearise_threshold
         ):
             print("Re-linearising around current equilibrium!")
             print(
-                f"   Relative jtor change = {self.jtor_norm*100:.3f}% "
-                f"(threshold = {relinearise_threshold*100:.3f}%)"
+                f"   Relative relinearisation criteria change = {self.relinearise_criteria * 100:.3f}% "
+                f"(threshold = {relinearise_threshold * 100:.3f}%) "
+                f"(criteria = {'max relative descriptor change' if no_GS else 'relative norm jtor'})"
             )
+            if no_GS:
+                self.set_linear_solution(
+                    active_voltage_vec=self.last_active_voltage_vec,
+                    dtheta_dt=self.dtheta_dt,
+                    no_GS=False,
+                )
+                self.step_complete_assign(working_relative_tol_GS, from_linear=True)
             self.relinearise(verbose=verbose)
 
         # retrieve the old profile parameter values
@@ -2992,12 +3002,12 @@ class nl_solver:
             old_betas = old_params[self.profiles_beta_indices]
             new_alphas = new_params[self.profiles_alpha_indices]
             new_betas = new_params[self.profiles_beta_indices]
-            dtheta_dt = (
+            self.dtheta_dt = (
                 np.concatenate((new_alphas, new_betas))
                 - np.concatenate((old_alphas, old_betas))
             ) / self.dt_step
         else:
-            dtheta_dt = (new_params - old_params) / self.dt_step
+            self.dtheta_dt = (new_params - old_params) / self.dt_step
 
         # check if plasma resistivity is being evolved
         # and action the change where necessary
@@ -3009,8 +3019,9 @@ class nl_solver:
         # results in preparation for the nonlinear calculations
         # Solution and GS equilibrium are assigned to self.trial_currents and self.trial_plasma_psi
         self.set_linear_solution(
-            active_voltage_vec=active_voltage_vec, dtheta_dt=dtheta_dt, no_GS=no_GS
+            active_voltage_vec=active_voltage_vec, dtheta_dt=self.dtheta_dt, no_GS=no_GS
         )
+        self.last_active_voltage_vec = np.copy(active_voltage_vec)
 
         # check Matrix is still applicable
         myy_flag = self.handleMyy.check_Myy(self.hatIy)
@@ -3027,19 +3038,18 @@ class nl_solver:
 
             # when not solving GS, evolve the plasma descriptors
             if no_GS:
-
                 # extract correct profile parameters
                 if self.profiles_type == "Lao85":
                     new_alphas = new_params[self.profiles_alpha_indices]
                     new_betas = new_params[self.profiles_beta_indices]
-                    new_profiles = np.concatenate((new_alphas, new_betas))
+                    self.profiles_vec = np.concatenate((new_alphas, new_betas))
                 else:
-                    new_profiles = new_params
+                    self.profiles_vec = new_params
 
                 # solve for new descriptors
                 self.plasma_descriptors_vec = self.new_plasma_descriptors(
                     new_currents=self.currents_vec,
-                    new_profiles=new_profiles,
+                    new_profiles=self.profiles_vec,
                 )
 
         else:

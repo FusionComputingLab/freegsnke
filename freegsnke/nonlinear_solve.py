@@ -2924,9 +2924,13 @@ class nl_solver:
         no_GS : bool, default=False
             If True, skip all GS solves (current-only evolution). Intended mainly for
             specialised debugging or reduced models. Works with linear_only=True only.
-        relinearise_threshold : float or None, optional
-            If provided, triggers a relinearisation when the change in toroidal current
+        relinearise_threshold : float or list[float] or None, optional
+            If None or linear_only=False, no relinearisation occurs.
+            If no_GS=False, triggers a relinearisation when the change in toroidal current
             since the last linearisation exceeds this relative threshold.
+            If no_GS=True, triggers a relinearisation when the relative change in the descriptors
+            exceeds this relative threshold. If this threshold is scalar then the maximum relative
+            change is considered otherwise an elementwise comparison occurs.
 
         Notes
         -----
@@ -2946,27 +2950,49 @@ class nl_solver:
                 "The flag 'no_GS' can only be True when 'linear_only=True'."
             )
 
-        # compute relative change in jtor since last linearisation
-        if no_GS:
-            self.relinearise_criteria = np.max(
-                (self.plasma_descriptors_vec - self.initial_plasma_descriptors)
-                / self.initial_plasma_descriptors
-            )
-        else:
-            self.relinearise_criteria = np.linalg.norm(
-                self.profiles1.jtor - self.jtor0
-            ) / np.linalg.norm(self.jtor0)
+        relinearise = False
+        self.relinearise_criteria = 0.0
+        if relinearise_threshold is not None:
+            if no_GS:
+                if isinstance(relinearise_threshold, list):
+                    relinearise_threshold = [
+                        np.inf if r is None else r for r in relinearise_threshold
+                    ]
+                relinearise_threshold = np.atleast_1d(np.array(relinearise_threshold))
 
-        # relinearise if in linear-only mode and threshold exceeded
-        if (
-            linear_only
-            and relinearise_threshold is not None
-            and self.relinearise_criteria >= relinearise_threshold
-        ):
+                if len(relinearise_threshold) == 1:
+                    self.relinearise_criteria = np.max(
+                        np.abs(
+                            (
+                                self.plasma_descriptors_vec
+                                - self.initial_plasma_descriptors
+                            )
+                            / self.initial_plasma_descriptors
+                        )
+                    )
+                    relinearise = (
+                        self.relinearise_criteria >= relinearise_threshold.item()
+                    )
+                else:
+                    self.relinearise_criteria = np.abs(
+                        (self.plasma_descriptors_vec - self.initial_plasma_descriptors)
+                        / self.initial_plasma_descriptors
+                    )
+                    relinearise = (
+                        self.relinearise_criteria >= relinearise_threshold
+                    ).any()
+            else:
+                # compute relative change in jtor since last linearisation
+                self.relinearise_criteria = np.linalg.norm(
+                    self.profiles1.jtor - self.jtor0
+                ) / np.linalg.norm(self.jtor0)
+                relinearise = self.relinearise_criteria >= relinearise_threshold
+
+        if linear_only and relinearise:
             print("Re-linearising around current equilibrium!")
             print(
-                f"   Relative relinearisation criteria change = {self.relinearise_criteria * 100:.3f}% "
-                f"(threshold = {relinearise_threshold * 100:.3f}%) "
+                f"   Relative relinearisation criteria change = {np.round(self.relinearise_criteria * 100, 3)}% "
+                f"(threshold = {np.round(relinearise_threshold * 100, 3)}%) "
                 f"(criteria = {'max relative descriptor change' if no_GS else 'relative norm jtor'})"
             )
             if no_GS:

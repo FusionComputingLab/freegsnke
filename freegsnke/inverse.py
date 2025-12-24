@@ -14,9 +14,9 @@ FreeGSNKE is free software: you can redistribute it and/or modify
 it under the terms of the GNU Lesser General Public License as published by
 the Free Software Foundation, either version 3 of the License, or
 (at your option) any later version.
-  
+
 You should have received a copy of the GNU Lesser General Public License
-along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.  
+along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 from copy import deepcopy
@@ -415,10 +415,11 @@ class Inverse_optimizer:
         self,
         full_currents_vec,
         trial_plasma_psi,
-        isoflux_weight=1.0,
-        null_points_weight=1.0,
+        isoflux_weight=5.0,
+        null_points_weight=5.0,
         psi_vals_weight=1.0,
         current_weight=1.0,
+        coil_coefficients=None,
     ):
         """Solves the least square problem. Tikhonov regularization is applied.
 
@@ -438,6 +439,8 @@ class Inverse_optimizer:
         # build the matrices that define the optimization
         self.build_lsq(full_currents_vec)
 
+        coil_coefficients = coil_coefficients or np.ones((self.n_control_coils,))
+
         # weight the different terms in the loss
         b_weighted = np.copy(self.b)
         idx = 0
@@ -453,9 +456,18 @@ class Inverse_optimizer:
         if self.curr_vals is not None:
             b_weighted[idx : idx + self.curr_dim] *= current_weight
 
-        grad = np.dot(self.A.T, b_weighted)
+        loss = np.linalg.norm(
+            np.dot(self.A, full_currents_vec[self.control_mask]) - b_weighted
+        )
+        grad = -2 * np.dot(self.A.T, b_weighted) * coil_coefficients
 
-        return grad, np.linalg.norm(self.loss)
+        # find a step to reduce the loss by 10%.
+        # Taking larger steps can be numerically unstable because we often end up
+        # stepping over the optima.
+        # TODO: make 0.1 (10%) an input?
+        alpha = -0.1 * loss / np.linalg.norm(grad) ** 2
+
+        return alpha * grad, loss
 
     def plot(self, axis=None, show=True):
         """
@@ -476,7 +488,6 @@ class Inverse_optimizer:
         self.psi0 -= self.min_psi
 
     def prepare_plasma_vals_for_plasma(self, trial_plasma_psi):
-
         self.prepare_plasma_psi(trial_plasma_psi=trial_plasma_psi)
 
         psi_func = interpolate.RectBivariateSpline(
@@ -504,7 +515,6 @@ class Inverse_optimizer:
         self.build_greens(eq=eq)
 
     def build_plasma_isoflux_lsq(self, full_currents_vec, trial_plasma_psi):
-
         self.prepare_plasma_vals_for_plasma(trial_plasma_psi)
 
         loss = []

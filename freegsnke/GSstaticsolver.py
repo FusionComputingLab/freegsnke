@@ -821,6 +821,8 @@ class NKGSsolver:
         full_jacobian_handover=[1e-5, 7e-3],
         l2_reg_fj=1e-8,
         force_up_down_symmetric=False,
+        inverse_solve_gradient=False,
+        gradient_coil_coefficients=None,
         verbose=False,
         suppress=False,
     ):
@@ -904,6 +906,13 @@ class NKGSsolver:
             This means that the actual Jacobians are used rather than the green functions.
         l2_reg_fj : float
             The regularization factor applied when the full Jacobians are used.
+        inverse_solve_gradient : bool
+            Whether the inverse solver should optimise the coil currents using a gradient method (True)
+            or least-squares (False, default).
+        gradient_coil_coefficients : list[float]
+            When inverse_solve_gradient=True, multiplies the ith element of the gradient vector by the
+            ith element of this list (gradient vector is the constraint loss wrt the pertubations in the
+            ith coil current).
         verbose : bool
             flag to allow progress printouts
         suppress : bool
@@ -1014,11 +1023,18 @@ class NKGSsolver:
                         "Using simplified Green's Jacobian (of constraints wrt coil currents) to optimise the currents."
                     )
                 # use Greens as Jacobian: i.e. psi_plasma is assumed fixed
-                delta_current, loss = constrain.optimize_currents(
-                    full_currents_vec=full_currents_vec,
-                    trial_plasma_psi=eq.plasma_psi,
-                    l2_reg=this_l2_reg,
-                )
+                if inverse_solve_gradient:
+                    delta_current, loss = constrain.optimize_currents_grad(
+                        full_currents_vec=full_currents_vec,
+                        trial_plasma_psi=eq.plasma_psi,
+                        coil_coefficients=gradient_coil_coefficients,
+                    )
+                else:
+                    delta_current, loss = constrain.optimize_currents(
+                        full_currents_vec=full_currents_vec,
+                        trial_plasma_psi=eq.plasma_psi,
+                        l2_reg=this_l2_reg,
+                    )
             self.constrain_loss.append(loss)
 
             rel_delta_psit = self.get_rel_delta_psit(
@@ -1162,6 +1178,8 @@ class NKGSsolver:
         full_jacobian_handover=[1e-5, 7e-3],
         l2_reg_fj=1e-8,
         force_up_down_symmetric=False,
+        inverse_solve_gradient=False,
+        gradient_coil_coefficients=None,
         verbose=False,
         suppress=False,
     ):
@@ -1236,6 +1254,13 @@ class NKGSsolver:
             This means that the actual Jacobians are used rather than the green functions.
         l2_reg_fj : float
             The regularization factor applied when the full Jacobians are used.
+        inverse_solve_gradient : bool
+            Whether the inverse solver should optimise the coil currents using a gradient method (True)
+            or least-squares (False, default).
+        gradient_coil_coefficients : list[float]
+            When inverse_solve_gradient=True, multiplies the ith element of the gradient vector by the
+            ith element of this list (gradient vector is the constraint loss wrt the pertubations in the
+            ith coil current).
         verbose : bool
             flag to allow progress printouts
         suppress : bool
@@ -1290,6 +1315,8 @@ class NKGSsolver:
                 use_full_Jacobian=use_full_Jacobian,
                 l2_reg_fj=l2_reg_fj,
                 force_up_down_symmetric=force_up_down_symmetric,
+                inverse_solve_gradient=inverse_solve_gradient,
+                gradient_coil_coefficients=gradient_coil_coefficients,
                 verbose=verbose,
                 suppress=suppress,
             )

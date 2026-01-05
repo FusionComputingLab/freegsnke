@@ -11,6 +11,7 @@ These example Jupyter notebooks are intended to be the **first port of call for 
 | Example 04 | Use the magnetic probes object in a MAST-U-like tokamak. | Anyone |
 | Example 05a | Use the nonlinear and linear evolutive solvers to simulate time-dependent equilibria in a MAST-U-like tokamak. | Anyone |
 | Example 05b | Use the linear evolutive solver (without solving GS at each timestep) to evolve plasma parameters of interest in a MAST-U-like tokamak. | Anyone |
+| Example 05c | Use the linear solver with intermittently recalculated linearisation to simulate time-dependent equilibria in a MAST-U-like tokamak.  | Anyone |
 | Example 06a/b | Simulate (static) MAST-U equilibria over an entire shot using inputs from EFIT++ (requires internal UKAEA MAST-U database). | UKAEA employees + collaborators |
 | Example 07 | Static inverse solve in a SPARC-like tokamak. | Anyone |
 | Example 08 | Static inverse solve in an ITER-like tokamak. | Anyone |

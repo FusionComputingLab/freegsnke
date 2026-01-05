@@ -2950,9 +2950,12 @@ class nl_solver:
                 "The flag 'no_GS' can only be True when 'linear_only=True'."
             )
 
+        # evaluate whether relinearisation criterion met or not
         relinearise = False
         self.relinearise_criteria = 0.0
         if relinearise_threshold is not None:
+
+            # compare relative change in plasma descriptors since last linearisation for noGS
             if no_GS:
                 if isinstance(relinearise_threshold, list):
                     relinearise_threshold = [
@@ -2963,26 +2966,24 @@ class nl_solver:
                 if len(relinearise_threshold) == 1:
                     self.relinearise_criteria = np.max(
                         np.abs(
-                            (
-                                self.plasma_descriptors_vec
-                                - self.initial_plasma_descriptors
-                            )
-                            / self.initial_plasma_descriptors
+                            self.plasma_descriptors_vec
+                            - self.initial_plasma_descriptors
                         )
+                        / (np.abs(self.initial_plasma_descriptors) + 1e-16)
                     )
                     relinearise = (
                         self.relinearise_criteria >= relinearise_threshold.item()
                     )
                 else:
                     self.relinearise_criteria = np.abs(
-                        (self.plasma_descriptors_vec - self.initial_plasma_descriptors)
-                        / self.initial_plasma_descriptors
-                    )
+                        self.plasma_descriptors_vec - self.initial_plasma_descriptors
+                    ) / (np.abs(self.initial_plasma_descriptors) + 1e-16)
                     relinearise = (
                         self.relinearise_criteria >= relinearise_threshold
                     ).any()
+
+            # compare relative change in jtor since last linearisation otherwise
             else:
-                # compute relative change in jtor since last linearisation
                 self.relinearise_criteria = np.linalg.norm(
                     self.profiles1.jtor - self.jtor0
                 ) / np.linalg.norm(self.jtor0)

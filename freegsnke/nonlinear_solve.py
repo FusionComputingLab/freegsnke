@@ -2996,14 +2996,15 @@ class nl_solver:
                 f"(threshold = {np.round(relinearise_threshold * 100, 3)}%) "
                 f"(criteria = {'max relative descriptor change' if no_GS else 'relative norm jtor'})"
             )
+            # before relinearisation we need to solve GS to update the eq object and obtain new plasma descriptors
             if no_GS:
-                self.set_linear_solution(
-                    active_voltage_vec=self.last_active_voltage_vec,
-                    dtheta_dt=self.dtheta_dt,
-                    no_GS=False,
-                )
+                self.assign_currents_solve_GS(self.trial_currents, self.rtol_NK)
                 self.step_complete_assign(working_relative_tol_GS, from_linear=True)
             self.relinearise(verbose=verbose)
+
+            # we ned to update the initial descriptors to the values at the relinearisation time
+            if no_GS:
+                self.initial_plasma_descriptors = self.plasma_descriptors_vec
 
         # retrieve the old profile parameter values
         self.get_profiles_values(self.profiles1)
@@ -3048,7 +3049,6 @@ class nl_solver:
         self.set_linear_solution(
             active_voltage_vec=active_voltage_vec, dtheta_dt=self.dtheta_dt, no_GS=no_GS
         )
-        self.last_active_voltage_vec = np.copy(active_voltage_vec)
 
         # check Matrix is still applicable
         myy_flag = self.handleMyy.check_Myy(self.hatIy)

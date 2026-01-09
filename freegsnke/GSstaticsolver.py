@@ -709,6 +709,7 @@ class NKGSsolver:
         target_relative_tolerance,
         relative_psit_size=1e-3,
         l2_reg=1e-12,
+        inverse_solve_gradient=False,
         verbose=False,
     ):
         """Calculates requested current changes for the coils available to control
@@ -744,11 +745,17 @@ class NKGSsolver:
             target_relative_tolerance=target_relative_tolerance,
             suppress=True,
         )
-        delta_current, loss = constrain.optimize_currents(
-            full_currents_vec=full_current_vec,
-            trial_plasma_psi=eq.plasma_psi,
-            l2_reg=1e-12,
-        )
+        if inverse_solve_gradient:
+            delta_current, loss = constrain.optimize_currents_grad(
+                full_currents_vec=full_current_vec,
+                trial_plasma_psi=eq.plasma_psi,
+            )
+        else:
+            delta_current, loss = constrain.optimize_currents(
+                full_currents_vec=full_current_vec,
+                trial_plasma_psi=eq.plasma_psi,
+                l2_reg=1e-12,
+            )
         b0 = np.copy(constrain.b)
         rel_delta_psit = self.get_rel_delta_psit(
             delta_current, profiles, eq._vgreen[constrain.control_mask]
@@ -777,6 +784,7 @@ class NKGSsolver:
                 target_relative_tolerance=target_relative_tolerance,
                 suppress=True,
             )
+            # dont need to add inverse_solve_gradient here because the output is not used
             constrain.optimize_currents(
                 full_currents_vec=currents,
                 trial_plasma_psi=self.eq2.plasma_psi,
@@ -784,7 +792,7 @@ class NKGSsolver:
             )
             self.dbdI[:, i] = (constrain.b - b0) / delta_current[i]
 
-        if type(l2_reg) == float:
+        if isinstance(l2_reg, float):
             reg_matrix = l2_reg * np.eye(constrain.n_control_coils)
         else:
             reg_matrix = np.diag(l2_reg)
@@ -1015,6 +1023,7 @@ class NKGSsolver:
                     target_relative_tolerance=target_relative_tolerance,
                     relative_psit_size=this_max_rel_psit,
                     l2_reg=l2_reg_fj,
+                    inverse_solve_gradient=inverse_solve_gradient,
                     verbose=verbose,
                 )
             else:

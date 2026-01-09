@@ -37,6 +37,7 @@ class Inverse_optimizer:
         null_points=None,
         psi_vals=None,
         curr_vals=None,
+        coil_current_limits=None,
     ):
         """Instantiates the object and sets all magnetic constraints to be used.
 
@@ -55,6 +56,10 @@ class Inverse_optimizer:
             Sets the desired values of psi for a set of coordinates, possibly an entire map
         curr_vals : list, optional
             structure [[coil indexes in the array of coils available for control], [coil current values]]
+        coil_current_limits : list, optional
+            A list of [coil upper limits, coil lower limits] where the limits are a list with the length of the number of actively
+            controlled coils. E.g. [[upper limit coil 1, None, None, None], [None, None, lower limit coil 3, lower limit coil 4]].
+            This limit is only applied when using the gradient-solver, it does not work with least-squares!
         """
 
         self.isoflux_set = isoflux_set
@@ -89,6 +94,8 @@ class Inverse_optimizer:
                 np.array(self.curr_vals[0]).astype(int),
                 np.array(self.curr_vals[1]).astype(float),
             ]
+
+        self.coil_current_limits = coil_current_limits
 
     def prepare_for_solve(self, eq):
         """To be called after object is instantiated.
@@ -411,6 +418,54 @@ class Inverse_optimizer:
 
         return delta_current, np.linalg.norm(self.loss)
 
+    def coil_current_limit_constraint(self, full_currents_vec):
+        """Calculates the loss and gradient of the loss wrt coil currents of the constraint that limits the coil currents."""
+
+        coil_upper_limits, coil_lower_limits = self.coil_current_limits
+
+        currents = full_currents_vec[self.control_mask]
+
+        loss = 0.0
+        num_constraints = 0
+        dloss_dcoilcurrent = np.zeros_like(currents)
+
+        logistic_growth_rate = calculate_logistic_growth_rate(
+            0.0, L=0.1, xl=-0.1, loss_at_xl=1e-4
+        )
+
+        for coil_index, ul in enumerate(coil_upper_limits):
+            if ul is None:
+                continue
+
+            scaled_coil_current = (currents[coil_index] - ul) / abs(ul)
+
+            loss += logistic_function(
+                scaled_coil_current, L=0.1, k=logistic_growth_rate, x0=0.0
+            )
+            # divide by ul because we want the gradient wrt the coil current, not the scaled current
+            dloss_dcoilcurrent[coil_index] += derivative_logistic_function(
+                scaled_coil_current, L=0.1, k=logistic_growth_rate, x0=0.0
+            ) / abs(ul)
+            num_constraints += 1
+
+        for coil_index, ll in enumerate(coil_lower_limits):
+            if ll is None:
+                continue
+
+            scaled_coil_current = (ll - currents[coil_index]) / abs(ll)
+
+            loss += logistic_function(
+                scaled_coil_current, L=0.1, k=logistic_growth_rate, x0=0.0
+            )
+            dloss_dcoilcurrent[coil_index] += -derivative_logistic_function(
+                scaled_coil_current, L=0.1, k=logistic_growth_rate, x0=0.0
+            ) / abs(ll)
+            num_constraints += 1
+
+        if num_constraints < 1:
+            return dloss_dcoilcurrent, 0.0
+        return dloss_dcoilcurrent, loss / num_constraints
+
     def optimize_currents_grad(
         self,
         full_currents_vec,
@@ -460,6 +515,14 @@ class Inverse_optimizer:
             np.dot(self.A, full_currents_vec[self.control_mask]) - b_weighted
         )
         grad = -2 * np.dot(self.A.T, b_weighted) * coil_coefficients
+
+        if self.coil_current_limits is not None:
+            coil_limit_grad, coil_limit_loss = self.coil_current_limit_constraint(
+                full_currents_vec
+            )
+
+            grad += coil_limit_grad
+            loss += coil_limit_loss
 
         # find a step to reduce the loss by 10%.
         # Taking larger steps can be numerically unstable because we often end up
@@ -549,3 +612,48 @@ class Inverse_optimizer:
         delta_current = np.dot(mat, np.dot(self.A_plasma.T, self.b_plasma))
 
         return delta_current, self.loss_plasma
+
+
+def logistic_function(x: float, *, L=1.0, k=1.0, x0=0.0):
+    """Evaluates the logistic function at a point x.
+
+    By default, this is the standard logistic function however this can be changed with
+    parameter L, k, and x0.
+
+    Parameters
+    ----------
+    x : float
+        The point at which to evaluate the logistic function
+    L : float
+        The maximum value of the function.
+    k : float
+        The logistic growth rate (steepness).
+    x0 : float
+        The function's midpoint.
+    """
+    return L / (1.0 + np.exp(-k * (x - x0)))
+
+
+def derivative_logistic_function(x: float, *, L=1.0, k=1.0, x0=0.0):
+    """Calculates the derivative of the logistic function at a point x.
+
+    Parameters are the same as `logistic_function`
+    """
+    return (L * k * np.exp(-k * (x - x0))) / (1 + np.exp(-k * (x - x0))) ** 2
+
+
+def calculate_logistic_growth_rate(x0, L=1.0, xl=0.9, loss_at_xl=0.01):
+    """Calculates the logistic growth rate (k) required to achieve a given loss at a given point.
+
+    Parameters
+    ----------
+    x0 : float
+        The logistic function's midpoint.
+    L : float
+        The maximum value of the logistic function.
+    xl : float
+        The point on the domain of the logistic function to prescribe a loss.
+    loss_at_xl : float
+        The desired loss at f(xl).
+    """
+    return -(np.log((L / loss_at_xl) - 1)) / (xl - x0)

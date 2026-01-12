@@ -466,6 +466,18 @@ class Inverse_optimizer:
             return dloss_dcoilcurrent, 0.0
         return dloss_dcoilcurrent, loss / num_constraints
 
+    def l2_regularization_constraint(
+        self, full_currents_vec, l2_coefficient: float | np.ndarray
+    ):
+
+        if isinstance(l2_coefficient, float):
+            l2_coefficient = l2_coefficient * np.ones(self.n_control_coils)
+
+        loss = np.sum(l2_coefficient * full_currents_vec[self.control_mask] ** 2)
+        grad = 2 * l2_coefficient * full_currents_vec[self.control_mask]
+
+        return loss, grad
+
     def optimize_currents_grad(
         self,
         full_currents_vec,
@@ -475,6 +487,7 @@ class Inverse_optimizer:
         psi_vals_weight=1.0,
         current_weight=1.0,
         coil_coefficients=None,
+        l2_reg=None,
     ):
         """Solves the least square problem. Tikhonov regularization is applied.
 
@@ -520,9 +533,15 @@ class Inverse_optimizer:
             coil_limit_grad, coil_limit_loss = self.coil_current_limit_constraint(
                 full_currents_vec
             )
-
             grad += coil_limit_grad
             loss += coil_limit_loss
+
+        if l2_reg is not None:
+            l2_loss, l2_grad = self.l2_regularization_constraint(
+                full_currents_vec, l2_reg
+            )
+            grad += l2_grad
+            loss += l2_loss
 
         # find a step to reduce the loss by 10%.
         # Taking larger steps can be numerically unstable because we often end up

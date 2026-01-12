@@ -748,17 +748,14 @@ class NKGSsolver:
         delta_current, loss = constrain.optimize_currents_grad(
             full_currents_vec=full_current_vec,
             trial_plasma_psi=eq.plasma_psi,
+            l2_reg=l2_reg,
         )
         b0 = np.copy(constrain.b)
         rel_delta_psit = self.get_rel_delta_psit(
             delta_current, profiles, eq._vgreen[constrain.control_mask]
         )
         adj_factor = min(1, relative_psit_size / rel_delta_psit)
-        # print(delta_current, rel_delta_psit, adj_factor)
         delta_current *= adj_factor
-        # delta_current_ = np.where(delta_current > 0.1, delta_current, 0.1*np.ones_like(delta_current))
-
-        # print(delta_current)
 
         for i in range(constrain.n_control_coils):
             if verbose:
@@ -784,11 +781,6 @@ class NKGSsolver:
             )
             self.dbdI[:, i] = (constrain.b - b0) / delta_current[i]
 
-        if isinstance(l2_reg, float):
-            reg_matrix = l2_reg * np.eye(constrain.n_control_coils)
-        else:
-            reg_matrix = np.diag(l2_reg)
-
         loss = np.linalg.norm(np.dot(self.dbdI, currents[constrain.control_mask]) - b0)
         grad = -2 * np.dot(self.dbdI.T, b0)
 
@@ -796,9 +788,13 @@ class NKGSsolver:
             coil_limit_grad, coil_limit_loss = constrain.coil_current_limit_constraint(
                 currents
             )
-
             grad += coil_limit_grad
             loss += coil_limit_loss
+
+        if l2_reg is not None:
+            l2_loss, l2_grad = constrain.l2_regularization_constraint(currents, l2_reg)
+            grad += l2_grad
+            loss += l2_loss
 
         Newton_delta_current = (-0.1 * loss / np.linalg.norm(grad) ** 2) * grad
 
@@ -1143,6 +1139,7 @@ class NKGSsolver:
                         full_currents_vec=full_currents_vec,
                         trial_plasma_psi=eq.plasma_psi,
                         coil_coefficients=gradient_coil_coefficients,
+                        l2_reg=this_l2_reg,
                     )
                 else:
                     delta_current, loss = constrain.optimize_currents(

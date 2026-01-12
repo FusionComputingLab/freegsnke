@@ -2927,9 +2927,9 @@ class nl_solver:
         relinearise_threshold : float or list[float] or None, optional
             If None or linear_only=False, no relinearisation occurs.
             If no_GS=False, triggers a relinearisation when the change in toroidal current
-            since the last linearisation exceeds this relative threshold.
-            If no_GS=True, triggers a relinearisation when the relative change in the descriptors
-            exceeds this relative threshold. If this threshold is scalar then the maximum relative
+            since the last linearisation exceeds this relative threshold (float).
+            If no_GS=True, triggers a relinearisation when the absolute change in the descriptors
+            exceeds this threshold(s). If this threshold is scalar then the maximum absolute
             change is considered otherwise an elementwise comparison occurs.
 
         Notes
@@ -2969,7 +2969,7 @@ class nl_solver:
                             self.plasma_descriptors_vec
                             - self.initial_plasma_descriptors
                         )
-                        / (np.abs(self.initial_plasma_descriptors) + 1e-16)
+                        # / (np.abs(self.initial_plasma_descriptors) + 1e-16)
                     )
                     relinearise = (
                         self.relinearise_criteria >= relinearise_threshold.item()
@@ -2977,7 +2977,8 @@ class nl_solver:
                 else:
                     self.relinearise_criteria = np.abs(
                         self.plasma_descriptors_vec - self.initial_plasma_descriptors
-                    ) / (np.abs(self.initial_plasma_descriptors) + 1e-16)
+                    )
+                    # / (np.abs(self.initial_plasma_descriptors) + 1e-16)
                     relinearise = (
                         self.relinearise_criteria >= relinearise_threshold
                     ).any()
@@ -2991,15 +2992,19 @@ class nl_solver:
 
         if linear_only and relinearise:
             print("Re-linearising around current equilibrium!")
-            print(
-                f"   Relative relinearisation criteria change = {np.round(self.relinearise_criteria * 100, 3)}% "
-                f"(threshold = {np.round(relinearise_threshold * 100, 3)}%) "
-                f"(criteria = {'max relative descriptor change' if no_GS else 'relative norm jtor'})"
-            )
             # before relinearisation we need to solve GS to update the eq object and obtain new plasma descriptors
             if no_GS:
                 self.assign_currents_solve_GS(self.trial_currents, self.rtol_NK)
                 self.step_complete_assign(working_relative_tol_GS, from_linear=True)
+                print(
+                    f"   Absolute relinearisation criteria change = {np.round(self.relinearise_criteria, 3)} "
+                    f"(threshold = {np.round(relinearise_threshold, 3)}) "
+                )
+            else:
+                print(
+                    f"   Relative relinearisation criteria change = {np.round(self.relinearise_criteria * 100, 3)}% "
+                    f"(threshold = {np.round(relinearise_threshold * 100, 3)}%) "
+                )
             self.relinearise(verbose=verbose)
 
             # we ned to update the initial descriptors to the values at the relinearisation time

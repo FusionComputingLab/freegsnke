@@ -582,6 +582,13 @@ class Inverse_optimizer:
         )
         grad = -2 * np.dot(self.A.T, b_weighted) * coil_coefficients
 
+        if l2_reg is not None:
+            l2_loss, l2_grad = self.l2_regularization_constraint(
+                full_currents_vec, l2_reg
+            )
+            grad += l2_grad
+            loss += l2_loss
+
         if self.coil_current_limits is not None:
             coil_limit_grad, coil_limit_loss = self.coil_current_limit_constraint(
                 full_currents_vec,
@@ -591,13 +598,6 @@ class Inverse_optimizer:
             )
             grad += coil_limit_grad
             loss += coil_limit_loss
-
-        # if l2_reg is not None:
-        #     l2_loss, l2_grad = self.l2_regularization_constraint(
-        #         full_currents_vec, l2_reg
-        #     )
-        #     grad += l2_grad
-        #     loss += l2_loss
 
         # find a step to reduce the loss by 10%.
         # Taking larger steps can be numerically unstable because we often end up

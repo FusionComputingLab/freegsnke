@@ -784,6 +784,11 @@ class NKGSsolver:
         loss = np.linalg.norm(np.dot(self.dbdI, currents[constrain.control_mask]) - b0)
         grad = -2 * np.dot(self.dbdI.T, b0)
 
+        if l2_reg is not None:
+            l2_loss, l2_grad = constrain.l2_regularization_constraint(currents, l2_reg)
+            grad += l2_grad
+            loss += l2_loss
+
         if constrain.coil_current_limits is not None:
             coil_limit_grad, coil_limit_loss = constrain.coil_current_limit_constraint(
                 currents,
@@ -793,11 +798,6 @@ class NKGSsolver:
             )
             grad += coil_limit_grad
             loss += coil_limit_loss
-
-        if l2_reg is not None:
-            l2_loss, l2_grad = constrain.l2_regularization_constraint(currents, l2_reg)
-            grad += l2_grad
-            loss += l2_loss
 
         Newton_delta_current = (-0.1 * loss / np.linalg.norm(grad) ** 2) * grad
 

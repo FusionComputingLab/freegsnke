@@ -429,37 +429,28 @@ class Inverse_optimizer:
         num_constraints = 0
         dloss_dcoilcurrent = np.zeros_like(currents)
 
-        logistic_growth_rate = calculate_logistic_growth_rate(
-            0.0, L=0.1, xl=-0.1, loss_at_xl=1e-4
-        )
-
         for coil_index, ul in enumerate(coil_upper_limits):
             if ul is None:
                 continue
 
-            scaled_coil_current = (currents[coil_index] - ul) / abs(ul)
-
-            loss += logistic_function(
-                scaled_coil_current, L=0.1, k=logistic_growth_rate, x0=0.0
+            delta = 0.1 * ul
+            l, d = huberized_hinge_function(
+                currents[coil_index], ul, delta, hb=1e-3, x0=0.0, scale=1e-4
             )
-            # divide by ul because we want the gradient wrt the coil current, not the scaled current
-            dloss_dcoilcurrent[coil_index] += derivative_logistic_function(
-                scaled_coil_current, L=0.1, k=logistic_growth_rate, x0=0.0
-            ) / abs(ul)
+            loss += l
+            dloss_dcoilcurrent[coil_index] += d
             num_constraints += 1
 
         for coil_index, ll in enumerate(coil_lower_limits):
             if ll is None:
                 continue
 
-            scaled_coil_current = (ll - currents[coil_index]) / abs(ll)
-
-            loss += logistic_function(
-                scaled_coil_current, L=0.1, k=logistic_growth_rate, x0=0.0
+            delta = 0.1 * ll
+            l, d = huberized_hinge_function(
+                -currents[coil_index], -ll, -delta, hb=1e-3, x0=0.0, scale=1e-4
             )
-            dloss_dcoilcurrent[coil_index] += -derivative_logistic_function(
-                scaled_coil_current, L=0.1, k=logistic_growth_rate, x0=0.0
-            ) / abs(ll)
+            loss += l
+            dloss_dcoilcurrent[coil_index] += -d
             num_constraints += 1
 
         if num_constraints < 1:
@@ -536,12 +527,12 @@ class Inverse_optimizer:
             grad += coil_limit_grad
             loss += coil_limit_loss
 
-        if l2_reg is not None:
-            l2_loss, l2_grad = self.l2_regularization_constraint(
-                full_currents_vec, l2_reg
-            )
-            grad += l2_grad
-            loss += l2_loss
+        # if l2_reg is not None:
+        #     l2_loss, l2_grad = self.l2_regularization_constraint(
+        #         full_currents_vec, l2_reg
+        #     )
+        #     grad += l2_grad
+        #     loss += l2_loss
 
         # find a step to reduce the loss by 10%.
         # Taking larger steps can be numerically unstable because we often end up
@@ -676,3 +667,57 @@ def calculate_logistic_growth_rate(x0, L=1.0, xl=0.9, loss_at_xl=0.01):
         The desired loss at f(xl).
     """
     return -(np.log((L / loss_at_xl) - 1)) / (xl - x0)
+
+
+def huberized_hinge_function(
+    x: float, b: float, delta: float, *, scale=1.0, hb=None, x0=None
+):
+    """Calculates the huberized hinge loss, and gradient of the loss, for the constraint x<=b.
+
+    The behaviour of this function h(x) is as follows on the x-domain:
+    - [-inf, x0): h(x) = 0
+    - [x0, b-δ]: h(x) linearly tapers up from h(x0) = 0 to h(b-δ) = hb
+    - [b-δ, b+δ]: h(x) quadratically increases from h(b-δ) = hb to h(b+δ) = δ+hb
+    - (b+δ, +inf]: h(x) linearly increases from h(b+δ) = δ+hb towards infinity
+
+    The scale parameter multiplies the result of h(x) across the entire domain.
+
+    Parameters
+    ----------
+    x : float
+        The point on the x domain to evaluate h(x) at.
+    b : float
+        The upper bound of the constraint.
+    delta : float
+        The distance around the bound (in both directions) where the loss function
+        increases quadratically.
+    scale : float
+        Scales the result of h(x) and its gradient.
+    hb : float
+        Must be specified with x0. Specifies the maximum of the linear taper s.t. h(b-delta) = hb.
+    x0 : float
+        Must be specified with hb. Specifies the end of the linear taper s.t. h(x0) = 0.0 where
+        x0 < b-delta.
+    """
+    if (hb is not None or x0 is not None) and not (hb is not None and x0 is not None):
+        raise ValueError("If either h0 or l0 is specified, both must be specified.")
+
+    hb = hb or 0.0
+    x0 = x0 or 0.0
+
+    if x < x0:
+        return 0.0, 0.0
+    elif x <= b - delta:
+        if hb is not None:
+            gradient_when_satisfied = hb / (b - delta - x0)
+            return (
+                scale * (gradient_when_satisfied * x - (gradient_when_satisfied * x0)),
+                scale * gradient_when_satisfied,
+            )
+        return 0.0, 0.0
+    elif x > b + delta:
+        return scale * (x - b + hb), scale
+    else:
+        return scale * ((((x - b + delta) ** 2) / (4 * delta)) + hb), scale * (
+            x - b + delta
+        ) / (2 * delta)

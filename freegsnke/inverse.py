@@ -418,8 +418,60 @@ class Inverse_optimizer:
 
         return delta_current, np.linalg.norm(self.loss)
 
-    def coil_current_limit_constraint(self, full_currents_vec):
-        """Calculates the loss and gradient of the loss wrt coil currents of the constraint that limits the coil currents."""
+    def coil_current_limit_constraint(
+        self,
+        full_currents_vec,
+        *,
+        current_loss=None,
+        bpdelta_rel_increase=None,
+        bmdelta_rel_increase=None,
+        delta_margin=0.1,
+    ):
+        """Calculates the loss and gradient of the loss wrt coil currents of the constraint that limits the coil currents.
+
+        The loss is calculated using a Huberized-Hinge loss function which penalises currents at or near (within `(100*delta_margin)%` of) the
+        specified limit. A slight loss and gradient is produced even when not near the limit to improve numeric stability.
+
+        There is an option to automatically scale this loss that such that:
+        - A violation by 10% of a coil's limit produces a loss of `bpdelta_rel_increase*current_loss`
+        - A coil that is 90% of its limit will produce a loss of `bmdelta_rel_increase*current_loss`
+
+        assuming, `bmdelta_rel_increase << bpdelta_rel_increase`.
+
+        Parameters
+        ----------
+        full_currents_vec : list[float]
+            The currents of the active coils.
+        current_loss : float
+            The current loss of the inverse optimisation problem.
+        bpdelta_rel_increase : float
+            The factor of the `current_loss` that calculates the loss for a coil violating its limit by `(100*delta_margin)%`.
+        bpdelta_rel_increase : float
+            The factor of the `current_loss` that calculates the loss for a coil within its limit by `(100*delta_margin)%`.
+        delta_margin : float
+            Specifies the margin around the limit (+/- `(100*delta_margin)%`) where the loss is quadratic.
+        """
+
+        _check_args_all_none_all_specified(
+            "All of current_loss, bpdelta_pc_increase, pmdelta_pc_increase must be specified if any other is",
+            current_loss,
+            bpdelta_rel_increase,
+            bmdelta_rel_increase,
+        )
+
+        def _calculate_hb(delta):
+            if bmdelta_rel_increase is None:
+                return 1e-3
+            return (bmdelta_rel_increase * delta) / (
+                bpdelta_rel_increase - bmdelta_rel_increase
+            )
+
+        def _calculate_scale(delta):
+            if current_loss is None:
+                return 1e-4
+            return (
+                current_loss * (bpdelta_rel_increase - bmdelta_rel_increase)
+            ) / delta
 
         coil_upper_limits, coil_lower_limits = self.coil_current_limits
 
@@ -433,9 +485,14 @@ class Inverse_optimizer:
             if ul is None:
                 continue
 
-            delta = 0.1 * ul
+            delta = delta_margin * ul
             l, d = huberized_hinge_function(
-                currents[coil_index], ul, delta, hb=1e-3, x0=0.0, scale=1e-4
+                currents[coil_index],
+                ul,
+                delta,
+                hb=_calculate_hb(delta),
+                x0=0.0,
+                scale=_calculate_scale(delta),
             )
             loss += l
             dloss_dcoilcurrent[coil_index] += d
@@ -445,9 +502,14 @@ class Inverse_optimizer:
             if ll is None:
                 continue
 
-            delta = 0.1 * ll
+            delta = delta_margin * ll
             l, d = huberized_hinge_function(
-                -currents[coil_index], -ll, -delta, hb=1e-3, x0=0.0, scale=1e-4
+                -currents[coil_index],
+                -ll,
+                -delta,
+                hb=_calculate_hb(-delta),
+                x0=0.0,
+                scale=_calculate_scale(-delta),
             )
             loss += l
             dloss_dcoilcurrent[coil_index] += -d
@@ -522,7 +584,10 @@ class Inverse_optimizer:
 
         if self.coil_current_limits is not None:
             coil_limit_grad, coil_limit_loss = self.coil_current_limit_constraint(
-                full_currents_vec
+                full_currents_vec,
+                current_loss=loss,
+                bpdelta_rel_increase=0.01,
+                bmdelta_rel_increase=0.0000001,
             )
             grad += coil_limit_grad
             loss += coil_limit_loss
@@ -699,8 +764,9 @@ def huberized_hinge_function(
         Must be specified with hb. Specifies the end of the linear taper s.t. h(x0) = 0.0 where
         x0 < b-delta.
     """
-    if (hb is not None or x0 is not None) and not (hb is not None and x0 is not None):
-        raise ValueError("If either h0 or l0 is specified, both must be specified.")
+    _check_args_all_none_all_specified(
+        "If either h0 or l0 is specified, both must be specified.", hb, x0
+    )
 
     hb = hb or 0.0
     x0 = x0 or 0.0
@@ -721,3 +787,12 @@ def huberized_hinge_function(
         return scale * ((((x - b + delta) ** 2) / (4 * delta)) + hb), scale * (
             x - b + delta
         ) / (2 * delta)
+
+
+def _check_args_all_none_all_specified(error_msg: str, *args, sentinel=None):
+    """Checks that all of the args are either None (or other specified sentinel) or are all
+    specified (not the sentinel).
+    """
+    args_are_none = [a is not sentinel for a in args]
+    if any(args_are_none) and not all(args_are_none):
+        raise ValueError(error_msg)

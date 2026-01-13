@@ -786,7 +786,10 @@ class NKGSsolver:
 
         if constrain.coil_current_limits is not None:
             coil_limit_grad, coil_limit_loss = constrain.coil_current_limit_constraint(
-                currents
+                currents,
+                current_loss=loss,
+                bpdelta_rel_increase=0.01,
+                bmdelta_rel_increase=0.0000001,
             )
             grad += coil_limit_grad
             loss += coil_limit_loss

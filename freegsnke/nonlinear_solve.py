@@ -2994,7 +2994,7 @@ class nl_solver:
             print("Re-linearising around current equilibrium!")
             # before relinearisation we need to solve GS to update the eq object and obtain new plasma descriptors
             if no_GS:
-                self.assign_currents_solve_GS(self.trial_currents, self.rtol_NK)
+                self.assign_currents_solve_GS(self.trial_currents, 1e-7)
                 self.step_complete_assign(working_relative_tol_GS, from_linear=True)
                 print(
                     f"   Absolute relinearisation criteria change = {np.round(self.relinearise_criteria, 3)} "

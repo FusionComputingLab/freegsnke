@@ -14,9 +14,9 @@ FreeGSNKE is free software: you can redistribute it and/or modify
 it under the terms of the GNU Lesser General Public License as published by
 the Free Software Foundation, either version 3 of the License, or
 (at your option) any later version.
-  
+
 You should have received a copy of the GNU Lesser General Public License
-along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.  
+along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 from copy import deepcopy
@@ -37,6 +37,7 @@ class Inverse_optimizer:
         null_points=None,
         psi_vals=None,
         curr_vals=None,
+        coil_current_limits=None,
     ):
         """Instantiates the object and sets all magnetic constraints to be used.
 
@@ -55,6 +56,10 @@ class Inverse_optimizer:
             Sets the desired values of psi for a set of coordinates, possibly an entire map
         curr_vals : list, optional
             structure [[coil indexes in the array of coils available for control], [coil current values]]
+        coil_current_limits : list, optional
+            A list of [coil upper limits, coil lower limits] where the limits are a list with the length of the number of actively
+            controlled coils. E.g. [[upper limit coil 1, None, None, None], [None, None, lower limit coil 3, lower limit coil 4]].
+            This limit is only applied when using the gradient-solver, it does not work with least-squares!
         """
 
         self.isoflux_set = isoflux_set
@@ -89,6 +94,8 @@ class Inverse_optimizer:
                 np.array(self.curr_vals[0]).astype(int),
                 np.array(self.curr_vals[1]).astype(float),
             ]
+
+        self.coil_current_limits = coil_current_limits
 
     def prepare_for_solve(self, eq):
         """To be called after object is instantiated.
@@ -411,14 +418,129 @@ class Inverse_optimizer:
 
         return delta_current, np.linalg.norm(self.loss)
 
+    def coil_current_limit_constraint(
+        self,
+        full_currents_vec,
+        *,
+        current_loss=None,
+        bpdelta_rel_increase=None,
+        bmdelta_rel_increase=None,
+        delta_margin=0.1,
+    ):
+        """Calculates the loss and gradient of the loss wrt coil currents of the constraint that limits the coil currents.
+
+        The loss is calculated using a Huberized-Hinge loss function which penalises currents at or near (within `(100*delta_margin)%` of) the
+        specified limit. A slight loss and gradient is produced even when not near the limit to improve numeric stability.
+
+        There is an option to automatically scale this loss that such that:
+        - A violation by 10% of a coil's limit produces a loss of `bpdelta_rel_increase*current_loss`
+        - A coil that is 90% of its limit will produce a loss of `bmdelta_rel_increase*current_loss`
+
+        assuming, `bmdelta_rel_increase << bpdelta_rel_increase`.
+
+        Parameters
+        ----------
+        full_currents_vec : list[float]
+            The currents of the active coils.
+        current_loss : float
+            The current loss of the inverse optimisation problem.
+        bpdelta_rel_increase : float
+            The factor of the `current_loss` that calculates the loss for a coil violating its limit by `(100*delta_margin)%`.
+        bpdelta_rel_increase : float
+            The factor of the `current_loss` that calculates the loss for a coil within its limit by `(100*delta_margin)%`.
+        delta_margin : float
+            Specifies the margin around the limit (+/- `(100*delta_margin)%`) where the loss is quadratic.
+        """
+
+        _check_args_all_none_all_specified(
+            "All of current_loss, bpdelta_pc_increase, pmdelta_pc_increase must be specified if any other is",
+            current_loss,
+            bpdelta_rel_increase,
+            bmdelta_rel_increase,
+        )
+
+        def _calculate_hb(delta):
+            if bmdelta_rel_increase is None:
+                return 1e-3
+            return (bmdelta_rel_increase * delta) / (
+                bpdelta_rel_increase - bmdelta_rel_increase
+            )
+
+        def _calculate_scale(delta):
+            if current_loss is None:
+                return 1e-4
+            return (
+                current_loss * (bpdelta_rel_increase - bmdelta_rel_increase)
+            ) / delta
+
+        coil_upper_limits, coil_lower_limits = self.coil_current_limits
+
+        currents = full_currents_vec[self.control_mask]
+
+        loss = 0.0
+        num_constraints = 0
+        dloss_dcoilcurrent = np.zeros_like(currents)
+
+        for coil_index, ul in enumerate(coil_upper_limits):
+            if ul is None:
+                continue
+
+            delta = delta_margin * ul
+            l, d = huberized_hinge_function(
+                currents[coil_index],
+                ul,
+                delta,
+                hb=_calculate_hb(delta),
+                x0=0.0,
+                scale=_calculate_scale(delta),
+            )
+            loss += l
+            dloss_dcoilcurrent[coil_index] += d
+            num_constraints += 1
+
+        for coil_index, ll in enumerate(coil_lower_limits):
+            if ll is None:
+                continue
+
+            delta = delta_margin * ll
+            l, d = huberized_hinge_function(
+                -currents[coil_index],
+                -ll,
+                -delta,
+                hb=_calculate_hb(-delta),
+                x0=0.0,
+                scale=_calculate_scale(-delta),
+            )
+            loss += l
+            dloss_dcoilcurrent[coil_index] += -d
+            num_constraints += 1
+
+        if num_constraints < 1:
+            return dloss_dcoilcurrent, 0.0
+        return dloss_dcoilcurrent, loss / num_constraints
+
+    def l2_regularization_constraint(
+        self, full_currents_vec, l2_coefficient: float | np.ndarray
+    ):
+
+        if isinstance(l2_coefficient, float):
+            l2_coefficient = l2_coefficient * np.ones(self.n_control_coils)
+
+        loss = np.sum(l2_coefficient * full_currents_vec[self.control_mask] ** 2)
+        grad = 2 * l2_coefficient * full_currents_vec[self.control_mask]
+
+        return loss, grad
+
     def optimize_currents_grad(
         self,
         full_currents_vec,
         trial_plasma_psi,
-        isoflux_weight=1.0,
-        null_points_weight=1.0,
+        isoflux_weight=5.0,
+        null_points_weight=5.0,
         psi_vals_weight=1.0,
         current_weight=1.0,
+        coil_coefficients=None,
+        l2_reg=None,
     ):
         """Solves the least square problem. Tikhonov regularization is applied.
 
@@ -438,6 +560,8 @@ class Inverse_optimizer:
         # build the matrices that define the optimization
         self.build_lsq(full_currents_vec)
 
+        coil_coefficients = coil_coefficients or np.ones((self.n_control_coils,))
+
         # weight the different terms in the loss
         b_weighted = np.copy(self.b)
         idx = 0
@@ -453,9 +577,35 @@ class Inverse_optimizer:
         if self.curr_vals is not None:
             b_weighted[idx : idx + self.curr_dim] *= current_weight
 
-        grad = np.dot(self.A.T, b_weighted)
+        loss = np.linalg.norm(
+            np.dot(self.A, full_currents_vec[self.control_mask]) - b_weighted
+        )
+        grad = -2 * np.dot(self.A.T, b_weighted) * coil_coefficients
 
-        return grad, np.linalg.norm(self.loss)
+        if l2_reg is not None:
+            l2_loss, l2_grad = self.l2_regularization_constraint(
+                full_currents_vec, l2_reg
+            )
+            grad += l2_grad
+            loss += l2_loss
+
+        if self.coil_current_limits is not None:
+            coil_limit_grad, coil_limit_loss = self.coil_current_limit_constraint(
+                full_currents_vec,
+                current_loss=loss,
+                bpdelta_rel_increase=0.01,
+                bmdelta_rel_increase=0.0000001,
+            )
+            grad += coil_limit_grad
+            loss += coil_limit_loss
+
+        # find a step to reduce the loss by 10%.
+        # Taking larger steps can be numerically unstable because we often end up
+        # stepping over the optima.
+        # TODO: make 0.1 (10%) an input?
+        alpha = -0.1 * loss / np.linalg.norm(grad) ** 2
+
+        return alpha * grad, loss
 
     def plot(self, axis=None, show=True):
         """
@@ -476,7 +626,6 @@ class Inverse_optimizer:
         self.psi0 -= self.min_psi
 
     def prepare_plasma_vals_for_plasma(self, trial_plasma_psi):
-
         self.prepare_plasma_psi(trial_plasma_psi=trial_plasma_psi)
 
         psi_func = interpolate.RectBivariateSpline(
@@ -504,7 +653,6 @@ class Inverse_optimizer:
         self.build_greens(eq=eq)
 
     def build_plasma_isoflux_lsq(self, full_currents_vec, trial_plasma_psi):
-
         self.prepare_plasma_vals_for_plasma(trial_plasma_psi)
 
         loss = []
@@ -539,3 +687,112 @@ class Inverse_optimizer:
         delta_current = np.dot(mat, np.dot(self.A_plasma.T, self.b_plasma))
 
         return delta_current, self.loss_plasma
+
+
+def logistic_function(x: float, *, L=1.0, k=1.0, x0=0.0):
+    """Evaluates the logistic function at a point x.
+
+    By default, this is the standard logistic function however this can be changed with
+    parameter L, k, and x0.
+
+    Parameters
+    ----------
+    x : float
+        The point at which to evaluate the logistic function
+    L : float
+        The maximum value of the function.
+    k : float
+        The logistic growth rate (steepness).
+    x0 : float
+        The function's midpoint.
+    """
+    return L / (1.0 + np.exp(-k * (x - x0)))
+
+
+def derivative_logistic_function(x: float, *, L=1.0, k=1.0, x0=0.0):
+    """Calculates the derivative of the logistic function at a point x.
+
+    Parameters are the same as `logistic_function`
+    """
+    return (L * k * np.exp(-k * (x - x0))) / (1 + np.exp(-k * (x - x0))) ** 2
+
+
+def calculate_logistic_growth_rate(x0, L=1.0, xl=0.9, loss_at_xl=0.01):
+    """Calculates the logistic growth rate (k) required to achieve a given loss at a given point.
+
+    Parameters
+    ----------
+    x0 : float
+        The logistic function's midpoint.
+    L : float
+        The maximum value of the logistic function.
+    xl : float
+        The point on the domain of the logistic function to prescribe a loss.
+    loss_at_xl : float
+        The desired loss at f(xl).
+    """
+    return -(np.log((L / loss_at_xl) - 1)) / (xl - x0)
+
+
+def huberized_hinge_function(
+    x: float, b: float, delta: float, *, scale=1.0, hb=None, x0=None
+):
+    """Calculates the huberized hinge loss, and gradient of the loss, for the constraint x<=b.
+
+    The behaviour of this function h(x) is as follows on the x-domain:
+    - [-inf, x0): h(x) = 0
+    - [x0, b-δ]: h(x) linearly tapers up from h(x0) = 0 to h(b-δ) = hb
+    - [b-δ, b+δ]: h(x) quadratically increases from h(b-δ) = hb to h(b+δ) = δ+hb
+    - (b+δ, +inf]: h(x) linearly increases from h(b+δ) = δ+hb towards infinity
+
+    The scale parameter multiplies the result of h(x) across the entire domain.
+
+    Parameters
+    ----------
+    x : float
+        The point on the x domain to evaluate h(x) at.
+    b : float
+        The upper bound of the constraint.
+    delta : float
+        The distance around the bound (in both directions) where the loss function
+        increases quadratically.
+    scale : float
+        Scales the result of h(x) and its gradient.
+    hb : float
+        Must be specified with x0. Specifies the maximum of the linear taper s.t. h(b-delta) = hb.
+    x0 : float
+        Must be specified with hb. Specifies the end of the linear taper s.t. h(x0) = 0.0 where
+        x0 < b-delta.
+    """
+    _check_args_all_none_all_specified(
+        "If either h0 or l0 is specified, both must be specified.", hb, x0
+    )
+
+    hb = hb or 0.0
+    x0 = x0 or 0.0
+
+    if x < x0:
+        return 0.0, 0.0
+    elif x <= b - delta:
+        if hb is not None:
+            gradient_when_satisfied = hb / (b - delta - x0)
+            return (
+                scale * (gradient_when_satisfied * x - (gradient_when_satisfied * x0)),
+                scale * gradient_when_satisfied,
+            )
+        return 0.0, 0.0
+    elif x > b + delta:
+        return scale * (x - b + hb), scale
+    else:
+        return scale * ((((x - b + delta) ** 2) / (4 * delta)) + hb), scale * (
+            x - b + delta
+        ) / (2 * delta)
+
+
+def _check_args_all_none_all_specified(error_msg: str, *args, sentinel=None):
+    """Checks that all of the args are either None (or other specified sentinel) or are all
+    specified (not the sentinel).
+    """
+    args_are_none = [a is not sentinel for a in args]
+    if any(args_are_none) and not all(args_are_none):
+        raise ValueError(error_msg)

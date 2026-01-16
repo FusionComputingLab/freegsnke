@@ -701,6 +701,108 @@ class NKGSsolver:
         rel_delta_psit /= np.linalg.norm((new_psi + previous_psi) * core_mask)
         return rel_delta_psit
 
+    def optimize_currents_grad(
+        self,
+        eq,
+        profiles,
+        constrain,
+        target_relative_tolerance,
+        relative_psit_size=1e-3,
+        l2_reg=1e-12,
+        verbose=False,
+    ):
+        """Calculates requested current changes for the coils available to control
+        using the actual Jacobian rather than assuming the Jacobian is given by the
+        green functions.
+
+        Parameters
+        ----------
+        eq : freegsnke equilibrium object
+            Used to source coil currents and plasma_psi
+        profiles : freegsnke equilibrium object
+            Provides the plasma properties
+        constrain : freegnske inverse_optimizer object
+            Provides information on the coils available for control
+        target_relative_tolerance : float
+            Target tolerance applied to GS when building the Jacobian
+        relative_psit_size : float, optional
+            Used to size the finite difference steps that define the Jacobian, by default 1e-3
+        l2_reg : float, optional
+            The Tichonov regularization factor applied to the least sq problem, by default 1e-12
+        verbose : bool
+            Print output
+        """
+
+        self.dbdI = np.zeros((np.size(constrain.b), constrain.n_control_coils))
+        self.dummy_current = np.zeros(constrain.n_control_coils)
+
+        full_current_vec = np.copy(eq.tokamak.current_vec)
+
+        self.forward_solve(
+            eq=eq,
+            profiles=profiles,
+            target_relative_tolerance=target_relative_tolerance,
+            suppress=True,
+        )
+
+        delta_current, loss = constrain.optimize_currents_grad(
+            full_currents_vec=full_current_vec,
+            trial_plasma_psi=eq.plasma_psi,
+            l2_reg=l2_reg,
+        )
+        b0 = np.copy(constrain.b)
+        rel_delta_psit = self.get_rel_delta_psit(
+            delta_current, profiles, eq._vgreen[constrain.control_mask]
+        )
+        adj_factor = min(1, relative_psit_size / rel_delta_psit)
+        delta_current *= adj_factor
+
+        for i in range(constrain.n_control_coils):
+            if verbose:
+                print(
+                    f" - calculating derivatives for coil {i + 1}/{constrain.n_control_coils}"
+                )
+
+            currents = np.copy(self.dummy_current)
+            currents[i] = 1.0 * delta_current[i]
+            currents = full_current_vec + constrain.rebuild_full_current_vec(currents)
+            self.eq2 = eq.create_auxiliary_equilibrium()
+            self.eq2.tokamak.set_all_coil_currents(currents)
+            self.forward_solve(
+                eq=self.eq2,
+                profiles=profiles,
+                target_relative_tolerance=target_relative_tolerance,
+                suppress=True,
+            )
+            # dont need to add inverse_solve_gradient here because the output is not used
+            constrain.optimize_currents_grad(
+                full_currents_vec=currents,
+                trial_plasma_psi=self.eq2.plasma_psi,
+            )
+            self.dbdI[:, i] = (constrain.b - b0) / delta_current[i]
+
+        loss = np.linalg.norm(np.dot(self.dbdI, currents[constrain.control_mask]) - b0)
+        grad = -2 * np.dot(self.dbdI.T, b0)
+
+        if l2_reg is not None:
+            l2_loss, l2_grad = constrain.l2_regularization_constraint(currents, l2_reg)
+            grad += l2_grad
+            loss += l2_loss
+
+        if constrain.coil_current_limits is not None:
+            coil_limit_grad, coil_limit_loss = constrain.coil_current_limit_constraint(
+                currents,
+                current_loss=loss,
+                bpdelta_rel_increase=0.01,
+                bmdelta_rel_increase=0.0000001,
+            )
+            grad += coil_limit_grad
+            loss += coil_limit_loss
+
+        Newton_delta_current = (-0.1 * loss / np.linalg.norm(grad) ** 2) * grad
+
+        return Newton_delta_current, loss
+
     def optimize_currents(
         self,
         eq,
@@ -744,6 +846,7 @@ class NKGSsolver:
             target_relative_tolerance=target_relative_tolerance,
             suppress=True,
         )
+
         delta_current, loss = constrain.optimize_currents(
             full_currents_vec=full_current_vec,
             trial_plasma_psi=eq.plasma_psi,
@@ -784,7 +887,7 @@ class NKGSsolver:
             )
             self.dbdI[:, i] = (constrain.b - b0) / delta_current[i]
 
-        if type(l2_reg) == float:
+        if isinstance(l2_reg, float):
             reg_matrix = l2_reg * np.eye(constrain.n_control_coils)
         else:
             reg_matrix = np.diag(l2_reg)
@@ -821,6 +924,8 @@ class NKGSsolver:
         full_jacobian_handover=[1e-5, 7e-3],
         l2_reg_fj=1e-8,
         force_up_down_symmetric=False,
+        inverse_solve_gradient=False,
+        gradient_coil_coefficients=None,
         verbose=False,
         suppress=False,
     ):
@@ -904,6 +1009,13 @@ class NKGSsolver:
             This means that the actual Jacobians are used rather than the green functions.
         l2_reg_fj : float
             The regularization factor applied when the full Jacobians are used.
+        inverse_solve_gradient : bool
+            Whether the inverse solver should optimise the coil currents using a gradient method (True)
+            or least-squares (False, default).
+        gradient_coil_coefficients : list[float]
+            When inverse_solve_gradient=True, multiplies the ith element of the gradient vector by the
+            ith element of this list (gradient vector is the constraint loss wrt the pertubations in the
+            ith coil current).
         verbose : bool
             flag to allow progress printouts
         suppress : bool
@@ -999,26 +1111,45 @@ class NKGSsolver:
                     )
 
                 # use complete Jacobian: psi_plasma changes with the coil currents
-                delta_current, loss = self.optimize_currents(
-                    eq=eq,
-                    profiles=profiles,
-                    constrain=constrain,
-                    target_relative_tolerance=target_relative_tolerance,
-                    relative_psit_size=this_max_rel_psit,
-                    l2_reg=l2_reg_fj,
-                    verbose=verbose,
-                )
+                if inverse_solve_gradient:
+                    delta_current, loss = self.optimize_currents_grad(
+                        eq=eq,
+                        profiles=profiles,
+                        constrain=constrain,
+                        target_relative_tolerance=target_relative_tolerance,
+                        relative_psit_size=this_max_rel_psit,
+                        l2_reg=l2_reg_fj,
+                        verbose=verbose,
+                    )
+                else:
+                    delta_current, loss = self.optimize_currents(
+                        eq=eq,
+                        profiles=profiles,
+                        constrain=constrain,
+                        target_relative_tolerance=target_relative_tolerance,
+                        relative_psit_size=this_max_rel_psit,
+                        l2_reg=l2_reg_fj,
+                        verbose=verbose,
+                    )
             else:
                 if verbose:
                     print(
                         "Using simplified Green's Jacobian (of constraints wrt coil currents) to optimise the currents."
                     )
                 # use Greens as Jacobian: i.e. psi_plasma is assumed fixed
-                delta_current, loss = constrain.optimize_currents(
-                    full_currents_vec=full_currents_vec,
-                    trial_plasma_psi=eq.plasma_psi,
-                    l2_reg=this_l2_reg,
-                )
+                if inverse_solve_gradient:
+                    delta_current, loss = constrain.optimize_currents_grad(
+                        full_currents_vec=full_currents_vec,
+                        trial_plasma_psi=eq.plasma_psi,
+                        coil_coefficients=gradient_coil_coefficients,
+                        l2_reg=this_l2_reg,
+                    )
+                else:
+                    delta_current, loss = constrain.optimize_currents(
+                        full_currents_vec=full_currents_vec,
+                        trial_plasma_psi=eq.plasma_psi,
+                        l2_reg=this_l2_reg,
+                    )
             self.constrain_loss.append(loss)
 
             rel_delta_psit = self.get_rel_delta_psit(
@@ -1162,6 +1293,8 @@ class NKGSsolver:
         full_jacobian_handover=[1e-5, 7e-3],
         l2_reg_fj=1e-8,
         force_up_down_symmetric=False,
+        inverse_solve_gradient=False,
+        gradient_coil_coefficients=None,
         verbose=False,
         suppress=False,
     ):
@@ -1236,6 +1369,13 @@ class NKGSsolver:
             This means that the actual Jacobians are used rather than the green functions.
         l2_reg_fj : float
             The regularization factor applied when the full Jacobians are used.
+        inverse_solve_gradient : bool
+            Whether the inverse solver should optimise the coil currents using a gradient method (True)
+            or least-squares (False, default).
+        gradient_coil_coefficients : list[float]
+            When inverse_solve_gradient=True, multiplies the ith element of the gradient vector by the
+            ith element of this list (gradient vector is the constraint loss wrt the pertubations in the
+            ith coil current).
         verbose : bool
             flag to allow progress printouts
         suppress : bool
@@ -1290,6 +1430,8 @@ class NKGSsolver:
                 use_full_Jacobian=use_full_Jacobian,
                 l2_reg_fj=l2_reg_fj,
                 force_up_down_symmetric=force_up_down_symmetric,
+                inverse_solve_gradient=inverse_solve_gradient,
+                gradient_coil_coefficients=gradient_coil_coefficients,
                 verbose=verbose,
                 suppress=suppress,
             )

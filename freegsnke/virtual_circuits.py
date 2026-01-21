@@ -19,7 +19,6 @@ You should have received a copy of the GNU Lesser General Public License
 along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>. 
 """
 
-from copy import deepcopy
 from datetime import datetime
 
 import numpy as np
@@ -190,12 +189,15 @@ class VirtualCircuitHandling:
         self.assign_currents(currents_vec, coils, eq=self._eq2)
 
         # solve for equilibrium
-        self.solver.forward_solve(
-            self._eq2,
-            self._profiles2,
-            target_relative_tolerance=target_relative_tolerance,
-            # suppress=True,
-        )
+        try:
+            self.solver.forward_solve(
+                self._eq2,
+                self._profiles2,
+                target_relative_tolerance=target_relative_tolerance,
+                # suppress=True,
+            )
+        except AttributeError:
+            raise AttributeError("Solver not defined. Call define_solver() first.")
 
     def prepare_build_dIydI_j(
         self, j, coils, target_dIy, starting_dI, min_curr=1e-4, max_curr=300
@@ -243,7 +245,13 @@ class VirtualCircuitHandling:
         dIy_0 = self._eq2.limiter_handler.Iy_from_jtor(self._profiles2.jtor) - self.Iy
 
         # relative norm of plasma current change
-        rel_ndIy_0 = np.linalg.norm(dIy_0) / self._nIy
+        norm_dIy_0 = np.linalg.norm(dIy_0)
+        if norm_dIy_0 < 1e-10:
+            raise ZeroDivisionError(
+                "Norm of change in jtor is near-zero for this Jacobian, please increase 'starting_dI' parameter."
+            )
+        else:
+            rel_ndIy_0 = norm_dIy_0 / self._nIy
 
         # scale the starting_dI to match the target
         final_dI = starting_dI * target_dIy / rel_ndIy_0
@@ -283,6 +291,10 @@ class VirtualCircuitHandling:
             VC object modifed in place.
         """
 
+        # print some output
+        if verbose:
+            print(f"Coil {coils[j]}")
+
         # store dI
         final_dI = 1.0 * self.final_dI_record[j]
 
@@ -299,11 +311,6 @@ class VirtualCircuitHandling:
         self._target_vec_1 = self.target_calculator(self._eq2)
 
         dtargets = self._target_vec_1 - self._targets_vec
-        # self._dtargetsdIj = dtargets / final_dI
-
-        # print some output
-        if verbose:
-            print(f"{j}th coil ({coils[j]}) using scaled current shift {final_dI}.")
 
         return dtargets / final_dI
 
@@ -346,8 +353,8 @@ class VirtualCircuitHandling:
             Function returning an array of the shape targets (VC will be calculated for ALL of these targets).
         target_dIy : float
             Target value for the norm of delta(I_y), from which the finite difference derivative is calculated.
-        starting_dI : float
-            Initial value to be used as delta(I_j) to infer the slope of norm(delta(I_y))/delta(I_j).
+        starting_dI : array
+            Initial current perturbations [Amps] to be used as delta(I_j) to infer the slope of norm(delta(I_y))/delta(I_j).
         min_starting_dI : float
             Minimum starting_dI value to be used as delta(I_j): to infer the slope of norm(delta(I_y))/delta(I_j).
         verbose: bool
@@ -382,12 +389,15 @@ class VirtualCircuitHandling:
         self.target_names = target_names
 
         # solve static GS problem (it's already solved?)
-        self.solver.forward_solve(
-            eq=eq,
-            profiles=profiles,
-            target_relative_tolerance=self.target_relative_tolerance,
-            suppress=True,
-        )
+        try:
+            self.solver.forward_solve(
+                eq=eq,
+                profiles=profiles,
+                target_relative_tolerance=self.target_relative_tolerance,
+                suppress=True,
+            )
+        except AttributeError:
+            raise AttributeError("Solver not defined. Call define_solver() first.")
 
         # store the flattened plasma current vector (and its norm)
         self.Iy = eq.limiter_handler.Iy_from_jtor(profiles.jtor).copy()
@@ -401,8 +411,10 @@ class VirtualCircuitHandling:
             )
 
         if verbose:
-            print("---")
-            print("Preparing the scaled current shifts with respect to the:")
+            print("--- Stage one ---")
+            print(
+                f"Re-sizing each initial coil current shift so that it produces a {np.round(target_dIy*100,2)}% change in plasma current density from the input equilibrium."
+            )
 
         # storage matrices
         shape_matrix = np.zeros((len(self._targets_vec), len(coils)))
@@ -416,15 +428,17 @@ class VirtualCircuitHandling:
         # for each coil, prepare by inferring delta(I_j) corresponding to a change delta(I_y)
         # with norm(delta(I_y)) = target_dIy
         for j in np.arange(len(coils)):
+            self.prepare_build_dIydI_j(j, coils, target_dIy, starting_dI[j])
             if verbose:
                 print(
-                    f"{j}th coil ({coils[j]}) using initial current shift {starting_dI[j]}."
+                    f"Coil {coils[j]} (original current shift = {np.round(starting_dI[j],2)} [A] --> scaled current shift {np.round(self.final_dI_record[j],2)} [A])."
                 )
-            self.prepare_build_dIydI_j(j, coils, target_dIy, starting_dI[j])
 
         if verbose:
-            print("---")
-            print("Building the shape matrix with respect to the:")
+            print("--- Stage two ---")
+            print(
+                "Building the shape matrix (Jacobian) of the shape parameter changes wrt scaled current shifts for each coil:"
+            )
 
         # for each coil, build the Jacobian using the value of delta(I_j) inferred earlier
         # by self.prepare_build_dIydI_j.
@@ -435,6 +449,10 @@ class VirtualCircuitHandling:
         # store the data in its own (new) class
         if name is None:
             name = self.default_VC_name
+
+        print("--- Stage three ---")
+        print("Inverting the shape matrix to get the virtual circuit matrix.")
+        print(f"VC object stored under name: '{name}'.")
 
         # store the VC object dynamically
         store_VC = VirtualCircuit(
@@ -450,10 +468,6 @@ class VirtualCircuitHandling:
             target_calculator=target_calculator,
         )
         setattr(self, name, store_VC)
-
-        print("---")
-        print("Shape and virtual circuit matrices built.")
-        print(f"VC object stored under name: '{name}'.")
 
     def apply_VC(
         self,
@@ -492,8 +506,6 @@ class VirtualCircuitHandling:
             Returns the equilibrium object after applying the shifted currents.
         object
             Returns the profiles object after applying the shifted currents.
-        list
-            List of strings containing all of targets of interest.
         np.array
             Array of new target values.
         np.array
@@ -519,17 +531,20 @@ class VirtualCircuitHandling:
             print(f"{VC_object.coils} = {current_shifts}.")
 
         # re-solve static GS problem (to make sure it's solved already)
-        self.solver.forward_solve(
-            eq=eq,
-            profiles=profiles,
-            target_relative_tolerance=self.target_relative_tolerance,
-            suppress=True,
-        )
+        try:
+            self.solver.forward_solve(
+                eq=eq,
+                profiles=profiles,
+                target_relative_tolerance=self.target_relative_tolerance,
+                suppress=True,
+            )
+        except AttributeError:
+            raise AttributeError("Solver not defined. Call define_solver() first.")
 
         # calculate the targets
-        if not hasattr(self, "target_calculator"):
-            self.target_calculator = VC_object.target_calculator
-        old_target_values = self.target_calculator(eq)
+        # if not hasattr(self, "target_calculator"):
+        #     self.target_calculator = VC_object.target_calculator
+        old_target_values = VC_object.target_calculator(eq)
 
         # store copies of the eq and profile objects
         eq_new = eq.create_auxiliary_equilibrium()
@@ -543,15 +558,18 @@ class VirtualCircuitHandling:
         self.assign_currents(new_currents, VC_object.coils, eq=eq_new)
 
         # solve for the new equilibrium
-        self.solver.forward_solve(
-            eq_new,
-            profiles_new,
-            target_relative_tolerance=self.target_relative_tolerance,
-            suppress=True,
-        )
+        try:
+            self.solver.forward_solve(
+                eq_new,
+                profiles_new,
+                target_relative_tolerance=self.target_relative_tolerance,
+                suppress=True,
+            )
+        except AttributeError:
+            raise AttributeError("Solver not defined. Call define_solver() first.")
 
         # calculate new target values and the difference vs. the old
-        new_target_values = self.target_calculator(eq_new)
+        new_target_values = VC_object.target_calculator(eq_new)
 
         if verbose:
             print(f"Targets shifts from VCs:")

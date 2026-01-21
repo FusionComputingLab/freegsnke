@@ -1713,7 +1713,10 @@ class nl_solver:
                         print(f"  Initial relative Iy change = {ndIy}")
                         print(f"  Final delta_current = {self.final_dI_record[j]}")
                         print("")
-                        print(f"  Final relative Iy change = {rel_ndIy}")
+                        if "rel_ndIy" in locals():
+                            print(f"  Final relative Iy change = {rel_ndIy}")
+                        else:
+                            print(f"  Final relative Iy change = {ndIy}")
                         print(
                             f"  Initial vs. Final GS residual: {self.NK.initial_rel_residual} vs. {self.NK.relative_change}"
                         )

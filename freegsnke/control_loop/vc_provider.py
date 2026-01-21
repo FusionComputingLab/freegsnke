@@ -125,27 +125,44 @@ class VirtualCircuitProvider(abc.ABC):
 
 class VCGenerator(VirtualCircuitProvider):
     """
-    Class to generate VC's using the built in FreeGSNKE VirtualCircuitHandling class.
+    Virtual Circuit (VC) generator based on FreeGSNKE's
+    ``VirtualCircuitHandling`` infrastructure.
+
+    This class acts as an adapter between a control or optimisation framework
+    and FreeGSNKE's internal VC computation routines. It allows:
+
+    - Mapping between user-facing and internal target names
+    - Computation of virtual circuit matrices for a selected subset of coils
+    - Optional access to sensitivity (shape/derivative) matrices
+
+    The class assumes that equilibrium and profile objects are provided
+    externally (e.g. via an observable registry).
     """
 
     def __init__(self, solver):
         """
-        Create instance of VC handling class, and assign solver
+        Initialise the VC generator and bind it to a FreeGSNKE solver.
 
-        Default available targets for computing are
-            - "R_in": inner midplane radius.
-            - "R_out": outer midplane radius.
-            - "Rx_lower": lower X-point (radial) position.
-            - "Zx_lower": lower X-point (vertical) position.
-            - "Rx_upper": upper X-point (radial) position.
-            - "Zx_upper": upper X-point (vertical) position.
-            - "Rs_lower_outer": lower strikepoint (radial) position.
-            - "Rs_upper_outer": upper strikepoint (radial) position.
+        This sets up a ``VirtualCircuitHandling`` instance and registers the
+        solver object required for VC computations. It also defines the default
+        set of supported targets and their internal naming conventions.
+
+        Default available targets are:
+
+        - ``"R_in"``           : Inner midplane radius
+        - ``"R_out"``          : Outer midplane radius
+        - ``"Rx_lower"``       : Lower X-point radial position
+        - ``"Zx_lower"``       : Lower X-point vertical position
+        - ``"Rx_upper"``       : Upper X-point radial position
+        - ``"Zx_upper"``       : Upper X-point vertical position
+        - ``"Rs_lower_outer"`` : Lower outer strike-point radius
+        - ``"Rs_upper_outer"`` : Upper outer strike-point radius
 
         Parameters
         ----------
-        solver : obj
-            freegsnke solver object
+        solver : object
+            A FreeGSNKE solver instance used internally by
+            ``VirtualCircuitHandling`` to compute virtual circuits.
         """
 
         self.VCH = VirtualCircuitHandling()
@@ -169,21 +186,26 @@ class VCGenerator(VirtualCircuitProvider):
 
     def rename_targets(self, names_user: list[str], names_internal: list[str]):
         """
-        Rename targets for ease of the user/interfacing with control code.
-        Provide two ordered lists of new and old variable names, and list of variable names modified.
+        Rename target labels exposed to the user or control code.
+
+        This method allows user-facing target names to differ from the
+        internal FreeGSNKE naming scheme. The mapping is order-dependent:
+        each entry in ``names_user`` corresponds to the entry at the same
+        index in ``names_internal``.
 
         Parameters
         ----------
-        names_user :  list[str]
-            list of new names for use by user
+        names_user : list[str]
+            New target names to be exposed to the user.
         names_internal : list[str]
-            ordered list of old/internal names corresponding to new names in names_user
+            Existing internal target names to be replaced.
 
         Returns
         -------
         None
-            modifies class attributes target_names_user and output_user_to_internal dictionary
+            Updates ``target_names_user`` and ``targets_user_to_internal`` in-place.
         """
+
         internal_to_user = dict(zip(names_internal, names_user))
         user_to_internal = dict(zip(names_user, names_internal))
 
@@ -211,24 +233,37 @@ class VCGenerator(VirtualCircuitProvider):
         sensitivity=False,
     ):
         """
-        Compute and return VC matrix
+        Compute the virtual circuit (VC) matrix for a given set of targets and coils.
+
+        The VC matrix maps coil current perturbations to changes in the selected
+        plasma shape or position targets. Only a subset of coils may be used
+        for the VC computation, but the returned matrix is expanded to include
+        all coils provided in ``coils``.
 
         Parameters
         ----------
         targets : list[str]
-            list of targets to use in VC matrix
+            User-facing names of targets to include (order is preserved).
         coils : list[str]
-            list of coils to use in VC matrix
-        inputs : list
-            list of inputs. Here it is equilibrium and profiles
-        sensitivity : bool
-            Optional fag to return sensitivity matrix instead. Defaults to False and will return vc matrix
+            Full list of coils defining the output matrix row ordering.
+        coils_calc : list[str]
+            Subset of coils actually used in the VC calculation.
+        input_data : tuple
+            Tuple of inputs required for VC computation.
+            Expected to be ``(equilibrium, profiles)``.
+        sensitivity : bool, optional
+            If ``True``, return the sensitivity (shape/derivative) matrix instead
+            of the VC matrix. Default is ``False``.
 
         Returns
         -------
         vc_matrix : np.ndarray
-            virtual circuit matrix
+            Expanded virtual circuit matrix of shape
+            ``(len(coils), len(targets))`` if ``sensitivity=False``.
+        derivative_matrix : np.ndarray
+            Sensitivity (shape) matrix if ``sensitivity=True``.
         """
+
         # get inputs
         print(input_data)
         eq = input_data[0]
@@ -278,21 +313,43 @@ class VCGenerator(VirtualCircuitProvider):
             return derivative_matrix
 
     def get_inputs(self, eq, profiles):
-        """method to get inputs
+        """
+        Package equilibrium and profile data into the input format expected
+        by ``get_vc``.
 
-        For now just returns eq, profiles. This will be tweaked into the obs registry somehow
+        This method exists for compatibility with higher-level infrastructure
+        (e.g. observable registries).
+
+        Parameters
+        ----------
+        eq : object
+            Equilibrium object.
+        profiles : object
+            Plasma profile data.
+
+        Returns
+        -------
+        tuple
+            ``(eq, profiles)``
         """
         return eq, profiles
 
     def set_observable_registry(self, observable_registry: ObservableRegistry) -> bool:
         """
-        Sets observable registry to provided registry if it provides the necessary
-        observables for the provider to execute get_vc correctly.
+        Set the observable registry used by this provider.
+
+        The registry is only accepted if it satisfies the requirements checked
+        by ``_validate_observable_registry``.
 
         Parameters
         ----------
-        observable_registry : ObservableRegistry | None (default: None)
-            The observable registry to set the provider to use.
+        observable_registry : ObservableRegistry
+            Registry providing access to equilibrium and profile observables.
+
+        Returns
+        -------
+        bool
+            ``True`` if the registry was accepted, ``False`` otherwise.
         """
         if not self._validate_observable_registry(observable_registry):
             return False
@@ -304,13 +361,31 @@ class VCGenerator(VirtualCircuitProvider):
         self, observable_registry: ObservableRegistry
     ) -> bool:
         """
-        Determine if the provided observable registry satisfies the necessary
-        requirements for get_vc to be executed correctly. E.g. does it provide access to
-        all the physical parameters of an equilibrium needed by a model.
+        Validate that an observable registry provides all data required
+        for VC computation.
+
+        This method should check that the registry can supply, at a minimum,
+        the equilibrium and profile information needed by ``get_vc``.
+        Typical checks may include:
+
+        - Availability of equilibrium objects
+        - Availability of plasma profiles
+        - Consistent update semantics
 
         Parameters
         ----------
         observable_registry : ObservableRegistry
             The observable registry to validate.
+
+        Returns
+        -------
+        bool
+            ``True`` if the registry satisfies all requirements,
+            ``False`` otherwise.
+
+        Notes
+        -----
+        This method is currently unimplemented and should be extended
+        as the observable interface is finalised.
         """
         pass

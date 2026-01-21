@@ -38,7 +38,7 @@ Static Grad-Shafranov problems are solved using **fourth-order accurate finite d
 <video autoplay width="650" src="https://github.com/user-attachments/assets/0f0207f9-1c5e-451e-b45e-24e7c9589154" />
 </div>
 
-In the left panel above we show an example of a dynamic equilibrium calculated using FreeGSNKE's forward solver, simulating the flat-phase of a **MAST-U** plasma discharge.On the right is the sequence of equilibrium reconstructions for the actual MAST-U shot. The agreement between the simulation and the real shot is very good in both the plasma shape targets and the currents in the poloidal field coils, illustrating FreeGSNKE's accuracy. The contours represent constant poloidal flux and the different tokamak features are plotted in various colours (refer back to table above). 
+In the left panel above we show an example of a dynamic equilibrium calculated using FreeGSNKE's forward solver, simulating the flat-phase of a **MAST-U** plasma discharge. On the right is the sequence of equilibrium reconstructions for the actual MAST-U shot. The agreement between the simulation and the real shot is very good in both the plasma shape targets and the currents in the poloidal field coils, illustrating FreeGSNKE's accuracy. The contours represent constant poloidal flux and the different tokamak features are plotted in various colours (refer back to table above). 
 
 ## Feature roadmap
 FreeGSNKE is constantly evolving and so we hope to provide users with more advanced features over time:
@@ -187,6 +187,7 @@ Here are a list of FreeGSNKE papers that describe or use the code:
 - A. Agnello et al, "Emulation techniques for scenario and classical control design of tokamak plasmas", Physics of Plasmas, **31**, 043091 (2024). DOI: [10.1063/5.0187822](https://doi.org/10.1063/5.0187822).
 - K. Pentland et al, "Validation of the static forward Grad-Shafranov equilibrium solvers in FreeGSNKE and Fiesta using EFIT++ reconstructions from MAST-U", Physica Scripta, **100**, 025608 (2025). DOI: [10.1088/1402-4896/ada192](https://iopscience.iop.org/article/10.1088/1402-4896/ada192).
 - K. Pentland et al, "Multiple solutions to the static forward free-boundary Grad-Shafranov problem on MAST-U", Nuclear Fusion (2025). DOI: [10.1088/1741-4326/adf3cc](https://iopscience.iop.org/article/10.1088/1741-4326/adf3cc). 
+- P. Cavestany et al, "Real-Time Applicability of Emulated Virtual Circuits for Tokamak Plasma Shape Control", IEEE Conference on Control Technology and Applications (CCTA), San Diego, CA, USA, (2025), pp. 826-831, DOI: [10.1109/CCTA53793.2025.11151371](https://ieeexplore.ieee.org/document/11151371).
 
 If you would like your FreeGSNKE-related paper to be added, please let us know!
 

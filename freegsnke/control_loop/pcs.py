@@ -1,6 +1,22 @@
 """
 Module to implement a Plasma Control System (PCS) in FreeGSNKE.
 
+Copyright 2025 UKAEA, UKRI-STFC, and The Authors, as per the COPYRIGHT and README files.
+
+This file is part of FreeGSNKE.
+
+FreeGSNKE is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Lesser General Public License for more details.
+
+FreeGSNKE is free software: you can redistribute it and/or modify
+it under the terms of the GNU Lesser General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+  
+You should have received a copy of the GNU Lesser General Public License
+along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 # imports
@@ -146,183 +162,6 @@ class PlasmaControlSystem:
             data=coil_activation_data,
             active_coils=self.active_coils,
         )
-
-    # def calculate_ctrl_voltages(
-    #     self,
-    #     t,
-    #     dt,
-    #     ip_meas,
-    #     ip_hist_prev,
-    #     T_meas,
-    #     T_err_prev,
-    #     T_hist_prev,
-    #     I_approved_prev,
-    #     I_meas,
-    #     V_approved_prev,
-    #     zip_meas,
-    #     zipv_meas,
-    #     active_coil_resists,
-    #     emulated_VC_targets=None,
-    #     emulator_coils_calc=None,
-    #     emu_inputs=None,
-    #     verbose=False,
-    # ):
-    #     """
-    #     Run the full control pipeline to compute approved coil voltage commands.
-
-    #     This method coordinates all subsystem controllers (plasma current, shape control,
-    #     virtual circuits, systems constraints, PF, and vertical) to compute the final
-    #     voltage commands for the coils. It also returns updated histories and error signals
-    #     for use in the next control cycle.
-
-    #     Parameters
-    #     ----------
-    #     t : float
-    #         Current time [s].
-
-    #     dt : float
-    #         Time step [s].
-
-    #     ip_meas : float
-    #         Measured plasma current [A].
-
-    #     ip_hist_prev : float
-    #         Previous value of the integrated plasma current error [A.s].
-
-    #     T_meas : np.ndarray
-    #         Measured values of the shape targets at the current time [m].
-
-    #     T_err_prev : np.ndarray
-    #         Previously shape target filtered error signal (used for damping) [m].
-
-    #     T_hist_prev : np.ndarray
-    #         Previous shape target integral term (used for PI control) [m.s].
-
-    #     I_approved_prev : numpy.ndarray
-    #         Previously approved coil currents [A].
-
-    #     I_meas : numpy.ndarray
-    #         Measured coil currents at the current time step [A].
-
-    #     V_approved_prev : numpy.ndarray
-    #         Previously approved control coil voltages from the last control step [V].
-
-    #     zip_meas : float
-    #         Measured vertical position of the plasma multiplied by measured Ip [A.m].
-
-    #     zipv_meas : float
-    #         Measured vertical velocity of the plasma multiplied by measured Ip [A.m/s].
-
-    #     active_coil_resists : numpy.ndarray
-    #         Array of active coil resistances when coils are switched on [Ohms].
-
-    #     emulated_VC_targets : list of str , optional
-    #         List of targets to be controlled using the emulated VC's. Must be subset of
-    #         ctrl_targets. Those not defined in this list will be taken from waveform-defined
-    #         VCs.
-
-    #     emulator_coils_calc : list of str, optional
-    #         List of coils to use in emulated VC compuation. These are coils to use in computing shape sensitivity matrix.
-
-    #     verbose : bool, optional
-    #         If True, prints diagnostic information from subsystem controllers.
-
-    #     Returns
-    #     -------
-    #     V_active : numpy.ndarray
-    #         Final (all active) coil voltage demands after applying all constraints [V].
-
-    #     ip_hist : list of float
-    #         Updated integrated plasma current error [A.s].
-
-    #     T_err : numpy.ndarray
-    #         Updated shape target filtered error signal (used for damping) [m].
-
-    #     T_hist : list of numpy.ndarray
-    #         Updated shape target integral term (used for PI control) [m.s].
-
-    #     I_approved : numpy.ndarray
-    #         Approved coil currents after applying perturbations and clipping [A].
-
-    #     coil_resists : numpy.ndarray
-    #         Active coil resistances to be used (some coils may be on or off at time t) [Ohms].
-    #     """
-
-    #     # plasma category
-    #     dip_dt, ip_hist = self.PlasmaController.run_control(
-    #         t=t,
-    #         dt=dt,
-    #         ip_meas=ip_meas,
-    #         ip_hist_prev=ip_hist_prev,
-    #     )
-
-    #     # shape category
-    #     dT_dt, T_err, T_hist = self.ShapeController.run_control(
-    #         t=t,
-    #         dt=dt,
-    #         T_meas=T_meas,
-    #         T_err_prev=T_err_prev,
-    #         T_hist_prev=T_hist_prev,
-    #     )
-
-    #     # virtual circuits category
-    #     I_unapproved, dI_dt_unapproved = self.VirtualCircuitsController.run_control(
-    #         t=t,
-    #         dt=dt,
-    #         dip_dt=dip_dt,
-    #         dT_dt=dT_dt,
-    #         I_approved_prev=I_approved_prev,
-    #         emulated_VC_targets=emulated_VC_targets,
-    #         emulator_coils_calc=emulator_coils_calc,
-    #         emu_inputs=emu_inputs,
-    #     )
-
-    #     # systems category
-    #     I_approved, dI_dt_approved = self.SystemsController.run_control(
-    #         t=t,
-    #         dt=dt,
-    #         I_unapproved=I_unapproved,
-    #         dI_dt_unapproved=dI_dt_unapproved,
-    #         verbose=verbose,
-    #     )
-
-    #     # PF category
-    #     V_ctrl = self.PFController.run_control(
-    #         t=t,
-    #         dt=dt,
-    #         I_meas=I_meas,
-    #         I_approved=I_approved,
-    #         dI_dt_approved=dI_dt_approved,
-    #         V_approved_prev=V_approved_prev,
-    #         verbose=verbose,
-    #     )
-
-    #     # vertical category
-    #     V_vertical = self.VerticalController.run_control(
-    #         t=t,
-    #         dt=dt,
-    #         ip_meas=ip_meas,
-    #         zip_meas=zip_meas,
-    #         zipv_meas=zipv_meas,
-    #     )
-
-    #     # coil activations category
-    #     coil_resists = self.CoilActivationController.run_control(
-    #         t=t,
-    #         dt=dt,
-    #         active_coil_resists=active_coil_resists,
-    #     )
-
-    #     # lookup dictionaries
-    #     ctrl_dict = dict(zip(self.ctrl_coils, V_ctrl))
-    #     vert_dict = dict(zip(self.vertical_coils, np.array([V_vertical])))
-
-    #     # build active coil voltages vector
-    #     V_active = np.array(
-    #         [ctrl_dict.get(c, vert_dict.get(c, 0.0)) for c in self.active_coils]
-    #     )
-
-    #     return V_active, ip_hist, T_err, T_hist, I_approved, coil_resists
 
     def calculate_ctrl_voltages(
         self,

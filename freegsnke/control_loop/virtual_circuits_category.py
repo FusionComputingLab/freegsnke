@@ -229,8 +229,6 @@ class VirtualCircuitsController:
             and (emulated_VC_targets_calc is not None)
             and (emulator_coils_calc is not None)
         ):
-            print("emulated targets", emulated_VC_targets)
-            print("emulated targets_calc", emulated_VC_targets_calc)
             # error checks
             assert (
                 self.vc_generator is not None
@@ -244,7 +242,8 @@ class VirtualCircuitsController:
 
             if self.latest_vc is None:
                 # compute first emulated VC
-                print("First VC computed")
+                if verbose:
+                    print("...first emulated VCs being used.")
                 VC_shape_emu = self.vc_generator.get_vc(
                     targets=emulated_VC_targets,
                     targets_calc=emulated_VC_targets_calc,
@@ -259,7 +258,8 @@ class VirtualCircuitsController:
             delta_t_vc = t - self.latest_vc_time
             if delta_t_vc >= self.vc_update_rate:
                 # compute new emulated VCs
-                print(f"New VC computed at time {t}")
+                if verbose:
+                    print("...updating the emulated VCs being used.")
                 VC_shape_emu = self.vc_generator.get_vc(
                     targets=emulated_VC_targets,
                     targets_calc=emulated_VC_targets_calc,
@@ -275,12 +275,9 @@ class VirtualCircuitsController:
                 self.emulated_vc_times.append(t)
 
             else:
-                print(f"Using latest VC, computed at time {self.latest_vc_time} ")
+                # use the existing emulated VC
                 VC_shape_emu = self.latest_vc
 
-            print("latest vc", self.latest_vc)
-            if verbose:
-                print("Emulated VC matrix", VC_shape_emu)
             # fill appropriate columns from emulated vcs
             ctrl_target_order = {
                 target: i for i, target in enumerate(self.ctrl_targets)
@@ -289,8 +286,6 @@ class VirtualCircuitsController:
                 # expand array as apropriate
                 VC_shape[ctrl_target_order[emu_targ], :] = 1.0 * VC_shape_emu[:, j]
 
-            if verbose:
-                print("VCs - hybrid emu and file", VC_shape)
         # unapproved coil currents rates of change
         dI_dt_unapproved = dI_dt_ref + (dT_dt @ VC_shape) + (dip_dt * VC_plasma)
 

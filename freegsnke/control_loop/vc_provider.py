@@ -265,20 +265,20 @@ class VCGenerator(VirtualCircuitProvider):
         """
 
         # get inputs
-        print(input_data)
+        # print(input_data)
         eq = input_data[0]
         profiles = input_data[1]
-        print(eq)
-        print(profiles)
+        # print(eq)
+        # print(profiles)
 
         t1 = time.time()
-        print(f"Computing VCs for {targets}")
-        print("targets user", targets)
+        # print(f"Computing VCs for {targets}")
+        # print("targets user", targets)
         # convert back to internal names
         targets_internal = [self.targets_user_to_internal[t] for t in targets]
-        print("targets internal ", targets_internal)
+        # print("targets internal ", targets_internal)
 
-        print("coils for calc", coils_calc)
+        # print("coils for calc", coils_calc)
 
         # compute vc's
         self.VCH.calculate_VC(
@@ -290,13 +290,13 @@ class VCGenerator(VirtualCircuitProvider):
         )
         vc_matrix = self.VCH.latest_VC.VCs_matrix
         derivative_matrix = self.VCH.latest_VC.shape_matrix
-        print("small matrix shape")
-        print(np.shape(vc_matrix))
+        # print("small matrix shape")
+        # print(np.shape(vc_matrix))
 
         # larger full matrix, including zeros
         vc_matrix_big = np.zeros((len(coils), len(targets)))
-        print("big matrix shape")
-        print(np.shape(vc_matrix_big))
+        # print("big matrix shape")
+        # print(np.shape(vc_matrix_big))
 
         # index dict
         index_coils = {coil: i for i, coil in enumerate(coils)}
@@ -306,7 +306,7 @@ class VCGenerator(VirtualCircuitProvider):
             vc_matrix_big[ind, :] = 1.0 * vc_matrix[i, :]
 
         t2 = time.time()
-        print("VC compute time", t2 - t1)
+        # print("VC compute time", t2 - t1)
         if sensitivity == False:
             return vc_matrix_big
         elif sensitivity == True:

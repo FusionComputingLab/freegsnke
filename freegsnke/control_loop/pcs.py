@@ -287,7 +287,7 @@ class PlasmaControlSystem:
         for i in range(0, n):
 
             # plasma category
-            dip_dt, ip_hist = self.PlasmaController.run_control(
+            self.dip_dt, ip_hist = self.PlasmaController.run_control(
                 t=t + (i * dt),
                 dt=dt,
                 ip_meas=ip_meas,
@@ -298,7 +298,7 @@ class PlasmaControlSystem:
             ip_hist_prev = ip_hist.copy()
 
             # shape category
-            dT_dt, T_err, T_hist = self.ShapeController.run_control(
+            self.dT_dt, T_err, T_hist = self.ShapeController.run_control(
                 t=t + (i * dt),
                 dt=dt,
                 T_meas=T_meas,
@@ -311,46 +311,48 @@ class PlasmaControlSystem:
             T_hist_prev = T_hist.copy()
 
             # virtual circuits category
-            I_unapproved, dI_dt_unapproved = self.VirtualCircuitsController.run_control(
-                t=t + (i * dt),
-                dt=dt,
-                dip_dt=dip_dt,
-                dT_dt=dT_dt,
-                I_approved_prev=I_approved_prev,
-                emulated_VC_targets=emulated_VC_targets,
-                emulated_VC_targets_calc=emulated_VC_targets_calc,
-                emulator_coils_calc=emulator_coils_calc,
-                emu_inputs=emu_inputs,
+            self.I_unapproved, self.dI_dt_unapproved = (
+                self.VirtualCircuitsController.run_control(
+                    t=t + (i * dt),
+                    dt=dt,
+                    dip_dt=self.dip_dt,
+                    dT_dt=self.dT_dt,
+                    I_approved_prev=I_approved_prev,
+                    emulated_VC_targets=emulated_VC_targets,
+                    emulated_VC_targets_calc=emulated_VC_targets_calc,
+                    emulator_coils_calc=emulator_coils_calc,
+                    emu_inputs=emu_inputs,
+                )
             )
 
             # systems category
-            I_approved, dI_dt_approved = self.SystemsController.run_control(
+            self.I_approved, self.dI_dt_approved = self.SystemsController.run_control(
                 t=t + (i * dt),
                 dt=dt,
-                I_unapproved=I_unapproved,
-                dI_dt_unapproved=dI_dt_unapproved,
+                I_unapproved=self.I_unapproved,
+                dI_dt_unapproved=self.dI_dt_unapproved,
                 verbose=verbose,
             )
 
             # update "history" terms
-            I_approved_prev = I_approved.copy()
+            I_approved_prev = self.I_approved.copy()
 
             # PF category
-            V_ctrl = self.PFController.run_control(
+            self.V_ctrl = self.PFController.run_control(
                 t=t + (i * dt),
                 dt=dt,
                 I_meas=I_meas,
-                I_approved=I_approved,
-                dI_dt_approved=dI_dt_approved,
+                I_approved=self.I_approved,
+                dI_dt_approved=self.dI_dt_approved,
                 V_approved_prev=V_approved_prev,
                 verbose=verbose,
             )
 
             # update "history" terms
-            V_approved_prev = V_ctrl.copy()
+            V_approved_prev = self.V_ctrl.copy()
 
             # vertical category
-            V_vertical = self.VerticalController.run_control(
+            self.V_vertical = self.VerticalController.run_control(
                 t=t + (i * dt),
                 dt=dt,
                 ip_meas=ip_meas,
@@ -366,8 +368,8 @@ class PlasmaControlSystem:
             )
 
             # lookup dictionaries
-            ctrl_dict = dict(zip(self.ctrl_coils, V_ctrl))
-            vert_dict = dict(zip(self.vertical_coils, np.array([V_vertical])))
+            ctrl_dict = dict(zip(self.ctrl_coils, self.V_ctrl))
+            vert_dict = dict(zip(self.vertical_coils, np.array([self.V_vertical])))
 
             # build active coil voltages vector
             V_actives.append(
@@ -379,4 +381,4 @@ class PlasmaControlSystem:
         # average the requested voltages for use in simulator
         V_active = np.mean(V_actives, axis=0)
 
-        return V_active, ip_hist, T_err, T_hist, I_approved, coil_resists
+        return V_active, ip_hist, T_err, T_hist, self.I_approved, coil_resists

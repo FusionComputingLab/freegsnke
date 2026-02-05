@@ -120,19 +120,41 @@ class NKGSsolver:
         )
         self.bndry_indices = bndry_indices
 
-        # matrices of responses of boundary locations to each grid positions
-        greenfunc = Greens(
-            R[np.newaxis, :, :],
-            Z[np.newaxis, :, :],
-            R_1D[bndry_indices[:, 0]][:, np.newaxis, np.newaxis],
-            Z_1D[bndry_indices[:, 1]][:, np.newaxis, np.newaxis],
-        )
-        # Prevent infinity/nan by removing Greens(x,y;x,y)
-        zeros = np.ones_like(greenfunc)
-        zeros[
-            np.arange(len(bndry_indices)), bndry_indices[:, 0], bndry_indices[:, 1]
-        ] = 0
-        self.greenfunc = greenfunc * zeros * self.dRdZ
+        n_bndry_nodes = bndry_indices.shape[0]
+
+        # matrices of responses of boundary locations to each grid position
+        greenfunc = np.ones(
+            (n_bndry_nodes, R.shape[0], R.shape[1])
+        )  # initialize as a "mask" of 1s
+
+        # fill up the array sequentially (to limit memory usage), by calling Greens on different ranges
+        # of boundary nodes
+
+        num_slices = 10
+        step = n_bndry_nodes // num_slices
+        for i in range(num_slices):
+
+            start = i * step
+            end = start + step
+            end = (
+                end if i != num_slices - 1 else n_bndry_nodes
+            )  # last slice gets the remainder
+
+            # filter out Greens(x,y;x,y), to prevent infinity/NaNs
+            greenfunc[start:end, bndry_indices[:, 0], bndry_indices[:, 1]] = 0
+
+            # multiply in-place by the actual Green's function value, to obtain the filtered result
+            # greenfunc(x,y;x0,y0) = Greens(x,y,x0,y0) | x0 != x or y0 != y
+            greenfunc[start:end, :, :] *= Greens(
+                R[np.newaxis, :, :],
+                Z[np.newaxis, :, :],
+                R_1D[bndry_indices[:, 0]][start:end, np.newaxis, np.newaxis],
+                Z_1D[bndry_indices[:, 1]][start:end, np.newaxis, np.newaxis],
+            )
+
+        greenfunc *= self.dRdZ
+
+        self.greenfunc = greenfunc
 
         # RHS/Jtor
         self.rhs_before_jtor = -freegs4e.gradshafranov.mu0 * eq.R

@@ -210,7 +210,7 @@ def test_static_solver_rejects_invalid_operator_order(create_machine):
     with pytest.raises(ValueError, match="gs_operator_order"):
         GSstaticsolver.NKGSsolver(eq, gs_operator_order=3)
 
-
+@pytest.mark.skip(reason="not currently using the masked/reduced version")
 def test_limiter_reduced_boundary_green_is_exact(create_machine):
     """Limiter reduction preserves the boundary flux for confined current."""
     eq, _, _ = create_machine

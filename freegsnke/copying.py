@@ -41,6 +41,11 @@ def copy_into(
     # will error if strict and attribute doesnt exist
     attribute_value = getattr(obj, attr)
 
+    # handle singletons
+    if attribute_value is None or attribute_value is True or attribute_value is False:
+        setattr(new_obj, attr, attribute_value)
+        return
+
     if mutable:
         if (
             isinstance(attribute_value, np.ndarray)

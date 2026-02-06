@@ -784,13 +784,20 @@ class NKGSsolver:
             )
             self.dbdI[:, i] = (constrain.b - b0) / delta_current[i]
 
-        if type(l2_reg) == float:
+        if isinstance(l2_reg, float):
             reg_matrix = l2_reg * np.eye(constrain.n_control_coils)
         else:
             reg_matrix = np.diag(l2_reg)
-        mat = np.linalg.inv(np.matmul(self.dbdI.T, self.dbdI) + reg_matrix)
-        Newton_delta_current = np.dot(mat, np.dot(self.dbdI.T, -b0))
-        loss = np.linalg.norm(b0 + np.dot(self.dbdI, Newton_delta_current))
+
+        if constrain.coil_current_limits is not None:
+            Newton_delta_current, loss = constrain.optimize_currents_quadratic(
+                currents, reg_matrix, A=self.dbdI, b=-b0
+            )
+        else:
+            Newton_delta_current = np.linalg.solve(
+                self.dbdI.T @ self.dbdI + reg_matrix, self.dbdI.T @ -b0
+            )
+            loss = np.linalg.norm(b0 + np.dot(self.dbdI, Newton_delta_current))
 
         return Newton_delta_current, loss
 

@@ -93,6 +93,8 @@ class Inverse_optimizer:
             ]
 
         self.coil_current_limits = coil_current_limits
+        self.mu_coils = 1e5
+        """The penalty applied to violations of the coil current limit"""
 
     def prepare_for_solve(self, eq):
         """To be called after object is instantiated.
@@ -430,7 +432,7 @@ class Inverse_optimizer:
         full_currents_vec,
         reg_matrix,
         *,
-        mu_coils=1e5,
+        mu_coils=None,
         A=None,
         b=None,
     ):
@@ -444,8 +446,9 @@ class Inverse_optimizer:
         reg_matrix : numpy array
             A matrix that is n_control_coils x n_control_coils that encodes
             the regularisation of the coils.
-        mu_coils : float
+        mu_coils : float | None
             Scales the amount by which slack in the coil limit bound is penalised.
+            If not set, uses self.mu_coils which defaults to 1e5.
         A : numpy array
             The sensitivity matrix for the least squares problem. If None, uses self.A
         b : numpy array
@@ -467,7 +470,9 @@ class Inverse_optimizer:
             coil_limits_upper_slack = cvxpy.Variable(self.n_control_coils, nonneg=True)
             coil_limits_lower_slack = cvxpy.Variable(self.n_control_coils, nonneg=True)
 
-            coil_limit_slack_scale = mu_coils * np.diag(A.T @ A).max()
+            coil_limit_slack_scale = (mu_coils or self.mu_coils) * np.diag(
+                A.T @ A
+            ).max()
             coil_upper_limits, coil_lower_limits = self.coil_current_limits
             for coil_index, ul in enumerate(coil_upper_limits):
                 if ul is not None:

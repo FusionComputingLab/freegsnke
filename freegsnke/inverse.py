@@ -203,14 +203,11 @@ class Inverse_optimizer:
             )
 
         if self.psi_vals is not None:
-            R_1d = eq.R.reshape(-1)
-            Z_1d = eq.Z.reshape(-1)
-
             if (
-                self.psi_vals[0].shape == R_1d.shape
-                and self.psi_vals[1].shape == Z_1d.shape
-                and np.all(self.psi_vals[0] == R_1d)
-                and np.all(self.psi_vals[1] == Z_1d)
+                self.psi_vals[0].shape == eq.R_1D.shape
+                and self.psi_vals[1].shape == eq.Z_1D.shape
+                and np.all(self.psi_vals[0] == eq.R_1D)
+                and np.all(self.psi_vals[1] == eq.Z_1D)
             ):
                 self.full_grid = True
                 self.G = np.copy(eq._vgreen).reshape((self.n_coils, -1))

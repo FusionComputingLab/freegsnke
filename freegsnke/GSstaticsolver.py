@@ -137,6 +137,9 @@ class NKGSsolver:
         # RHS/Jtor
         self.rhs_before_jtor = -freegs4e.gradshafranov.mu0 * eq.R
 
+        # random seed for reproducibility
+        self.rng = np.random.default_rng(seed=42)
+
     def freeboundary(self, plasma_psi, tokamak_psi, profiles):
         """Imposes boundary conditions on set of boundary points.
 
@@ -557,16 +560,14 @@ class NKGSsolver:
                         # Generate a random Krylov vector to continue the exploration
                         # This is arbitrary and can be improved
                         starting_direction = np.sin(
-                            np.linspace(0, 2 * np.pi, self.nx)
-                            * 1.5
-                            * np.random.random()
+                            np.linspace(0, 2 * np.pi, self.nx) * 1.5 * self.rng.random()
                         )[:, np.newaxis]
                         starting_direction = (
                             starting_direction
                             * np.sin(
                                 np.linspace(0, 2 * np.pi, self.ny)
                                 * 1.5
-                                * np.random.random()
+                                * self.rng.random()
                             )[np.newaxis, :]
                         )
                         starting_direction = starting_direction.reshape(-1)

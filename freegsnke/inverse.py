@@ -33,6 +33,7 @@ class Inverse_optimizer:
         self,
         isoflux_set=None,
         null_points=None,
+        null_points_2nd_order=None,
         psi_vals=None,
         curr_vals=None,
         coil_current_limits=None,
@@ -48,6 +49,10 @@ class Inverse_optimizer:
         null_points : list or np.array, optional
             structure [Rcoords, Zcoords], with Rcoords and Zcoords being 1D lists
             Sets the coordinates of the desired null points, including both Xpoints and Opoints
+        null_points_2nd_order : list or np.array, optional
+            structure [Rcoords, Zcoords], with Rcoords and Zcoords being 1D lists
+            Sets the coordinates of the desired 2nd order null points (typically used for making snowflake divertors).
+            Do not repeat these (R,Z) coords in the 'null_points' input, keep seperate.
         psi_vals : list or np.array, optional
             structure [Rcoords, Zcoords, psi_values]
             with Rcoords, Zcoords and psi_values having the same shape
@@ -74,6 +79,10 @@ class Inverse_optimizer:
         self.null_points = null_points
         if self.null_points is not None:
             self.null_points = np.array(self.null_points)
+
+        self.null_points_2nd_order = null_points_2nd_order
+        if self.null_points_2nd_order is not None:
+            self.null_points_2nd_order = np.array(self.null_points_2nd_order)
 
         self.psi_vals = psi_vals
         if self.psi_vals is not None:
@@ -208,6 +217,20 @@ class Inverse_optimizer:
                 R=self.null_points[0], Z=self.null_points[1]
             )
 
+        if self.null_points_2nd_order is not None:
+            self.Gbr_2nd_order = eq.tokamak.createBrGreensVec(
+                R=self.null_points_2nd_order[0], Z=self.null_points_2nd_order[1]
+            )
+            self.Gbz_2nd_order = eq.tokamak.createBzGreensVec(
+                R=self.null_points_2nd_order[0], Z=self.null_points_2nd_order[1]
+            )
+            self.Gdbrdr_2nd_order = eq.tokamak.createdBrdrGreensVec(
+                R=self.null_points_2nd_order[0], Z=self.null_points_2nd_order[1]
+            )
+            self.Gdbzdz_2nd_order = eq.tokamak.createdBzdzGreensVec(
+                R=self.null_points_2nd_order[0], Z=self.null_points_2nd_order[1]
+            )
+
         if self.psi_vals is not None:
             if np.all(self.psi_vals[0] == eq.R.reshape(-1)) and np.all(
                 self.psi_vals[1] == eq.Z.reshape(-1)
@@ -221,7 +244,7 @@ class Inverse_optimizer:
 
     def build_plasma_vals(self, trial_plasma_psi):
         """Builds and stores all the values relative to the plasma,
-        based on the provided plasma_psi
+        based on the provided plasma_psi.
 
         Parameters
         ----------
@@ -233,6 +256,7 @@ class Inverse_optimizer:
             self.eqR[:, 0], self.eqZ[0, :], trial_plasma_psi
         )
 
+        # calculate values of constraint (for plasma flux) at 1st order null point locations
         if self.null_points is not None:
             self.brp = (
                 -psi_func(self.null_points[0], self.null_points[1], dy=1, grid=False)
@@ -243,6 +267,40 @@ class Inverse_optimizer:
                 / self.null_points[0]
             )
 
+        # calculate values of constraint (for plasma flux) at 2nd order null point locations
+        if self.null_points_2nd_order is not None:
+            dpsidr = psi_func(
+                self.null_points_2nd_order[0],
+                self.null_points_2nd_order[1],
+                dx=1,
+                grid=False,
+            )
+            dpsidz = psi_func(
+                self.null_points_2nd_order[0],
+                self.null_points_2nd_order[1],
+                dy=1,
+                grid=False,
+            )
+            d2psidrdz = psi_func(
+                self.null_points_2nd_order[0],
+                self.null_points_2nd_order[1],
+                dx=1,
+                dy=1,
+                grid=False,
+            )
+
+            # Br(R,Z)
+            self.Brp_2nd_order = -dpsidz / self.null_points_2nd_order[0]
+            # Bz(R,Z)
+            self.Bzp_2nd_order = dpsidr / self.null_points_2nd_order[0]
+            # dBrdr(R,Z)
+            self.dBrdrp_2nd_order = (
+                (dpsidz / self.null_points_2nd_order[0]) - d2psidrdz
+            ) / self.null_points_2nd_order[0]
+            # dBzdz(R,Z)
+            self.dBzdzp_2nd_order = d2psidrdz / self.null_points_2nd_order[0]
+
+        # calculate flux values
         if self.isoflux_set is not None:
             self.d_psi_plasma_vals_iso = []
             for i, isoflux in enumerate(self.isoflux_set):
@@ -306,6 +364,52 @@ class Inverse_optimizer:
         b = -np.concatenate((b_r, b_z), axis=0)
         return A, b, loss
 
+    def build_null_points_2nd_order_lsq(self, full_currents_vec):
+        """Builds for the ordinary least sq problem associated to the 2nd order null points.
+
+        Parameters
+        ----------
+        full_currents_vec : np.array
+            Full vector of all coil current values. For example as returned by eq.tokamak.getCurrentsVec()
+
+        """
+
+        # Br field constraint
+        A_r = self.Gbr_2nd_order[self.control_mask].T
+        b_r = np.sum(
+            self.Gbr_2nd_order * full_currents_vec[:, np.newaxis], axis=0
+        )  # coils contribution
+        b_r += self.Brp_2nd_order  # plasma contribution
+        loss = [np.linalg.norm(b_r)]
+
+        # Bz field constraint
+        A_z = self.Gbz_2nd_order[self.control_mask].T
+        b_z = np.sum(
+            self.Gbz_2nd_order * full_currents_vec[:, np.newaxis], axis=0
+        )  # coils contribution
+        b_z += self.Bzp_2nd_order  # plasma contribution
+        loss.append(np.linalg.norm(b_z))
+
+        # dBrdr field constraint
+        A_r_deriv = self.Gdbrdr_2nd_order[self.control_mask].T
+        b_r_deriv = np.sum(
+            self.Gdbrdr_2nd_order * full_currents_vec[:, np.newaxis], axis=0
+        )  # coils contribution
+        b_r_deriv += self.dBrdrp_2nd_order  # plasma contribution
+        loss.append(np.linalg.norm(b_r_deriv))
+
+        # dBzdz field constraint
+        A_z_deriv = self.Gdbzdz_2nd_order[self.control_mask].T
+        b_z_deriv = np.sum(
+            self.Gdbzdz_2nd_order * full_currents_vec[:, np.newaxis], axis=0
+        )  # coils contribution
+        b_z_deriv += self.dBzdzp_2nd_order  # plasma contribution
+        loss.append(np.linalg.norm(b_z_deriv))
+
+        A = np.concatenate((A_r, A_z, A_r_deriv, A_z_deriv), axis=0)
+        b = -np.concatenate((b_r, b_z, b_r_deriv, b_z_deriv), axis=0)
+        return A, b, loss
+
     def build_psi_vals_lsq(self, full_currents_vec):
         """Builds for the ordinary least sq problem associated to the psi values
 
@@ -367,6 +471,14 @@ class Inverse_optimizer:
             A = np.concatenate((A, A_np), axis=0)
             b = np.concatenate((b, b_np), axis=0)
             self.nullp_dim = len(b)
+            loss = loss + l
+        if self.null_points_2nd_order is not None:
+            A_np_2nd_order, b_np_2nd_order, l = self.build_null_points_2nd_order_lsq(
+                full_currents_vec
+            )
+            A = np.concatenate((A, A_np_2nd_order), axis=0)
+            b = np.concatenate((b, b_np_2nd_order), axis=0)
+            self.nullp_2nd_order_dim = len(b)
             loss = loss + l
         if self.psi_vals is not None:
             A_pv, b_pv, l = self.build_psi_vals_lsq(full_currents_vec)
@@ -518,6 +630,7 @@ class Inverse_optimizer:
         trial_plasma_psi,
         isoflux_weight=1.0,
         null_points_weight=1.0,
+        null_points_2nd_order_weight=1.0,
         psi_vals_weight=1.0,
         current_weight=1.0,
     ):
@@ -548,6 +661,11 @@ class Inverse_optimizer:
         if self.null_points is not None:
             b_weighted[idx : idx + self.nullp_dim] *= null_points_weight
             idx += self.nullp_dim
+        if self.null_points_2nd_order is not None:
+            b_weighted[
+                idx : idx + self.nullp_2nd_order_dim
+            ] *= null_points_2nd_order_weight
+            idx += self.nullp_dim_2nd_order
         if self.psi_vals is not None:
             b_weighted[idx : idx + self.psiv_dim] *= psi_vals_weight
             idx += self.psiv_dim

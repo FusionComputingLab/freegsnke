@@ -47,6 +47,7 @@ class NKGSsolver:
         eq,
         l2_reg=1e-6,
         collinearity_reg=1e-6,
+        seed=42,
     ):
         """Instantiates the solver object.
         Based on the domain grid of the input equilibrium object, it prepares
@@ -66,6 +67,8 @@ class NKGSsolver:
             Tychonoff regularization coeff used by the nonlinear solver
         collinearity_reg : float
             Tychonoff regularization coeff which further penalizes collinear terms used by the nonlinear solver
+        seed : int
+            Integer used to create random seed.
 
         """
 
@@ -138,7 +141,7 @@ class NKGSsolver:
         self.rhs_before_jtor = -freegs4e.gradshafranov.mu0 * eq.R
 
         # random seed for reproducibility
-        self.rng = np.random.default_rng(seed=42)
+        self.rng = np.random.default_rng(seed=seed)
 
     def freeboundary(self, plasma_psi, tokamak_psi, profiles):
         """Imposes boundary conditions on set of boundary points.

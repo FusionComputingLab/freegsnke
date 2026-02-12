@@ -47,6 +47,7 @@ class NKGSsolver:
         eq,
         l2_reg=1e-6,
         collinearity_reg=1e-6,
+        seed=42,
     ):
         """Instantiates the solver object.
         Based on the domain grid of the input equilibrium object, it prepares
@@ -66,6 +67,8 @@ class NKGSsolver:
             Tychonoff regularization coeff used by the nonlinear solver
         collinearity_reg : float
             Tychonoff regularization coeff which further penalizes collinear terms used by the nonlinear solver
+        seed : int
+            Integer used to create random seed.
 
         """
 
@@ -136,6 +139,9 @@ class NKGSsolver:
 
         # RHS/Jtor
         self.rhs_before_jtor = -freegs4e.gradshafranov.mu0 * eq.R
+
+        # random seed for reproducibility
+        self.rng = np.random.default_rng(seed=seed)
 
     def freeboundary(self, plasma_psi, tokamak_psi, profiles):
         """Imposes boundary conditions on set of boundary points.
@@ -557,16 +563,14 @@ class NKGSsolver:
                         # Generate a random Krylov vector to continue the exploration
                         # This is arbitrary and can be improved
                         starting_direction = np.sin(
-                            np.linspace(0, 2 * np.pi, self.nx)
-                            * 1.5
-                            * np.random.random()
+                            np.linspace(0, 2 * np.pi, self.nx) * 1.5 * self.rng.random()
                         )[:, np.newaxis]
                         starting_direction = (
                             starting_direction
                             * np.sin(
                                 np.linspace(0, 2 * np.pi, self.ny)
                                 * 1.5
-                                * np.random.random()
+                                * self.rng.random()
                             )[np.newaxis, :]
                         )
                         starting_direction = starting_direction.reshape(-1)
@@ -784,13 +788,20 @@ class NKGSsolver:
             )
             self.dbdI[:, i] = (constrain.b - b0) / delta_current[i]
 
-        if type(l2_reg) == float:
+        if isinstance(l2_reg, float):
             reg_matrix = l2_reg * np.eye(constrain.n_control_coils)
         else:
             reg_matrix = np.diag(l2_reg)
-        mat = np.linalg.inv(np.matmul(self.dbdI.T, self.dbdI) + reg_matrix)
-        Newton_delta_current = np.dot(mat, np.dot(self.dbdI.T, -b0))
-        loss = np.linalg.norm(b0 + np.dot(self.dbdI, Newton_delta_current))
+
+        if constrain.coil_current_limits is not None:
+            Newton_delta_current, loss = constrain.optimize_currents_quadratic(
+                currents, reg_matrix, A=self.dbdI, b=-b0
+            )
+        else:
+            Newton_delta_current = np.linalg.solve(
+                self.dbdI.T @ self.dbdI + reg_matrix, self.dbdI.T @ -b0
+            )
+            loss = np.linalg.norm(b0 + np.dot(self.dbdI, Newton_delta_current))
 
         return Newton_delta_current, loss
 

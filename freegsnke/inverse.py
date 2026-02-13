@@ -218,16 +218,24 @@ class Inverse_optimizer:
             )
 
         if self.null_points_2nd_order is not None:
+            # for first order null
             self.Gbr_2nd_order = eq.tokamak.createBrGreensVec(
                 R=self.null_points_2nd_order[0], Z=self.null_points_2nd_order[1]
             )
             self.Gbz_2nd_order = eq.tokamak.createBzGreensVec(
                 R=self.null_points_2nd_order[0], Z=self.null_points_2nd_order[1]
             )
+            # for second order null
             self.Gdbrdr_2nd_order = eq.tokamak.createdBrdrGreensVec(
                 R=self.null_points_2nd_order[0], Z=self.null_points_2nd_order[1]
             )
             self.Gdbzdz_2nd_order = eq.tokamak.createdBzdzGreensVec(
+                R=self.null_points_2nd_order[0], Z=self.null_points_2nd_order[1]
+            )
+            self.Gdbrdz_2nd_order = eq.tokamak.createdBrdzGreensVec(
+                R=self.null_points_2nd_order[0], Z=self.null_points_2nd_order[1]
+            )
+            self.Gdbzdr_2nd_order = eq.tokamak.createdBzdrGreensVec(
                 R=self.null_points_2nd_order[0], Z=self.null_points_2nd_order[1]
             )
 
@@ -273,11 +281,13 @@ class Inverse_optimizer:
                 self.null_points_2nd_order[0],
                 self.null_points_2nd_order[1],
                 dx=1,
+                dy=0,
                 grid=False,
             )
             dpsidz = psi_func(
                 self.null_points_2nd_order[0],
                 self.null_points_2nd_order[1],
+                dx=0,
                 dy=1,
                 grid=False,
             )
@@ -286,6 +296,20 @@ class Inverse_optimizer:
                 self.null_points_2nd_order[1],
                 dx=1,
                 dy=1,
+                grid=False,
+            )
+            d2psidr2 = psi_func(
+                self.null_points_2nd_order[0],
+                self.null_points_2nd_order[1],
+                dx=2,
+                dy=0,
+                grid=False,
+            )
+            d2psidz2 = psi_func(
+                self.null_points_2nd_order[0],
+                self.null_points_2nd_order[1],
+                dx=0,
+                dy=2,
                 grid=False,
             )
 
@@ -299,6 +323,12 @@ class Inverse_optimizer:
             ) / self.null_points_2nd_order[0]
             # dBzdz(R,Z)
             self.dBzdzp_2nd_order = d2psidrdz / self.null_points_2nd_order[0]
+            # dBrdz(R,Z)
+            self.dBrdzp_2nd_order = -d2psidz2 / self.null_points_2nd_order[0]
+            # dBzdr(R,Z)
+            self.dBzdrp_2nd_order = (
+                -(dpsidr / self.null_points_2nd_order[0]) + d2psidr2
+            ) / self.null_points_2nd_order[0]
 
         # calculate flux values
         if self.isoflux_set is not None:
@@ -406,8 +436,28 @@ class Inverse_optimizer:
         b_z_deriv += self.dBzdzp_2nd_order  # plasma contribution
         loss.append(np.linalg.norm(b_z_deriv))
 
-        A = np.concatenate((A_r, A_z, A_r_deriv, A_z_deriv), axis=0)
-        b = -np.concatenate((b_r, b_z, b_r_deriv, b_z_deriv), axis=0)
+        # dBrdz field constraint
+        A_r_deriv_cross = self.Gdbrdz_2nd_order[self.control_mask].T
+        b_r_deriv_cross = np.sum(
+            self.Gdbrdz_2nd_order * full_currents_vec[:, np.newaxis], axis=0
+        )  # coils contribution
+        b_r_deriv_cross += self.dBrdzp_2nd_order  # plasma contribution
+        loss.append(np.linalg.norm(b_r_deriv_cross))
+
+        # dBzdr field constraint
+        A_z_deriv_cross = self.Gdbzdr_2nd_order[self.control_mask].T
+        b_z_deriv_cross = np.sum(
+            self.Gdbzdr_2nd_order * full_currents_vec[:, np.newaxis], axis=0
+        )  # coils contribution
+        b_z_deriv_cross += self.dBzdrp_2nd_order  # plasma contribution
+        loss.append(np.linalg.norm(b_z_deriv_cross))
+
+        A = np.concatenate(
+            (A_r, A_z, A_r_deriv, A_z_deriv, A_r_deriv_cross, A_z_deriv_cross), axis=0
+        )
+        b = -np.concatenate(
+            (b_r, b_z, b_r_deriv, b_z_deriv, b_r_deriv_cross, b_z_deriv_cross), axis=0
+        )
         return A, b, loss
 
     def build_psi_vals_lsq(self, full_currents_vec):

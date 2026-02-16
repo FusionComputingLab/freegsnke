@@ -91,6 +91,7 @@ def build_tokamak_R_and_M(tokamak):
                         coords_i[1][np.newaxis, :],
                         coords_j[0][:, np.newaxis],
                         coords_j[1][:, np.newaxis],
+                        limit_threading=True,
                     )
 
                     # recalculate the diagonal terms of green_m using self_ind_circular_loop

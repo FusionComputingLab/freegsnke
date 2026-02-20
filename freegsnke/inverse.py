@@ -36,6 +36,7 @@ class Inverse_optimizer:
         psi_vals=None,
         curr_vals=None,
         coil_current_limits=None,
+        psi_norm_limits=None,
     ):
         """Instantiates the object and sets all magnetic constraints to be used.
 
@@ -57,6 +58,10 @@ class Inverse_optimizer:
         coil_current_limits : list, optional
             A list of [coil upper limits, coil lower limits] where the limits are a list with the length of the number of actively
             controlled coils. E.g. [[upper limit coil 1, None, None, None], [None, None, lower limit coil 3, lower limit coil 4]].
+        psi_norm_limits : list or np.ndarray, optional
+            structure [Rcoord, Zcoord, normalised_psi_value, constraint_sign]
+            Attempts to constrain the normalised psi to be greater/less than to the normalised_psi_values at (Rcoord, Zcoord)
+            If constraint_sign = 1, the constraint is greater than or equal to, otherwise less than or equal to.
         """
 
         self.isoflux_set = isoflux_set
@@ -95,6 +100,13 @@ class Inverse_optimizer:
         self.coil_current_limits = coil_current_limits
         self.mu_coils = 1e5
         """The penalty applied to violations of the coil current limit"""
+
+        self.mu_psi_norm = 1e6
+        """The penalty applied to violations of the normalised psi limit"""
+
+        self.psi_norm_limits = (
+            None if psi_norm_limits is None else np.array(psi_norm_limits)
+        )
 
     def prepare_for_solve(self, eq):
         """To be called after object is instantiated.
@@ -221,6 +233,11 @@ class Inverse_optimizer:
                 self.G = eq.tokamak.createPsiGreensVec(
                     R=self.psi_vals[0], Z=self.psi_vals[1]
                 )
+
+        if self.psi_norm_limits is not None:
+            self.G_psi_norm = eq.tokamak.createPsiGreensVec(
+                R=self.psi_norm_limits[:, 0], Z=self.psi_norm_limits[:, 1]
+            )
 
     def build_plasma_vals(self, trial_plasma_psi):
         """Builds and stores all the values relative to the plasma,
@@ -388,7 +405,9 @@ class Inverse_optimizer:
         self.loss = np.array(loss)
         # return A, b, loss
 
-    def optimize_currents(self, full_currents_vec, trial_plasma_psi, l2_reg):
+    def optimize_currents(
+        self, eq, profiles, full_currents_vec, trial_plasma_psi, l2_reg
+    ):
         """Solves the least square problem. Tikhonov regularization is applied.
 
         Parameters
@@ -416,9 +435,9 @@ class Inverse_optimizer:
                 )
             reg_matrix = np.diag(l2_reg)
 
-        if self.coil_current_limits is not None:
+        if self.coil_current_limits is not None or self.psi_norm_limits is not None:
             delta_current, loss = self.optimize_currents_quadratic(
-                full_currents_vec, reg_matrix
+                eq, profiles, full_currents_vec, reg_matrix
             )
         else:
             # TODO: should we just use the quadratic solver all the time, regardless
@@ -432,10 +451,13 @@ class Inverse_optimizer:
 
     def optimize_currents_quadratic(
         self,
+        eq,
+        profiles,
         full_currents_vec,
         reg_matrix,
         *,
         mu_coils=None,
+        mu_psi_norm=None,
         A=None,
         b=None,
     ):
@@ -495,6 +517,44 @@ class Inverse_optimizer:
 
             slack_variables.append(coil_limit_slack_scale * coil_limits_upper_slack)
             slack_variables.append(coil_limit_slack_scale * coil_limits_lower_slack)
+
+        if self.psi_norm_limits is not None:
+            # ensure eq object is up-to-date
+            eq._updatePlasmaPsi(eq.plasma_psi)
+            eq.psi_bndry = profiles.psi_bndry
+
+            psi_norm_slack = cvxpy.Variable(self.psi_norm_limits.shape[0], nonneg=True)
+
+            psi_norm_slack_scale = (mu_psi_norm or self.mu_psi_norm) * np.diag(
+                A.T @ A
+            ).max()
+
+            psi_norm_A = self.G_psi_norm[self.control_mask].T
+            # apply chain rule because G_psi_norm is greens wrt to psi, not psi_norm
+            psi_norm_A /= eq.psi_bndry - eq.psi_axis
+            psi_norm_b = self.psi_norm_limits[:, 2] - eq.psiNRZ(
+                self.psi_norm_limits[:, 0], self.psi_norm_limits[:, 1]
+            )
+
+            for psin_limit_idx in range(self.psi_norm_limits.shape[0]):
+                psin_con_sign = self.psi_norm_limits[psin_limit_idx, 3]
+                lhs = psi_norm_A[psin_limit_idx, :] @ delta
+                if psin_con_sign == 1:
+                    constraints.append(
+                        lhs
+                        >= psi_norm_b[psin_limit_idx] - psi_norm_slack[psin_limit_idx]
+                    )
+                elif psin_con_sign == -1:
+                    constraints.append(
+                        lhs
+                        <= psi_norm_b[psin_limit_idx] + psi_norm_slack[psin_limit_idx]
+                    )
+                else:
+                    raise ValueError(
+                        f"Unexpected psi norm constraint sign {psin_con_sign}. Expected 1 or -1."
+                    )
+
+            slack_variables.append(psi_norm_slack_scale * psi_norm_slack)
 
         # Minimise the objectives (the least squares objective + regularisation + slack variables)
         minimisation_expression = cvxpy.sum_squares(A @ delta - b) + cvxpy.quad_form(

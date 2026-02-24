@@ -36,12 +36,18 @@ class Inverse_optimizer:
         psi_vals=None,
         coil_current_limits=None,
         psi_norm_limits=None,
+        *,
+        weight_isoflux=1.0,
+        weight_nulls=1.0,
+        weight_psi=1.0,
+        mu_coils=1e5,
+        mu_psi_norm=1e6
     ):
         """
         Initialise magnetic constraint definitions for inverse equilibrium optimisation.
 
         This object stores magnetic configuration constraints that are enforced
-        during inverse Grad–Shafranov optimisation.
+        during inverse Grad-Shafranov optimisation.
 
         Constraints supported include:
 
@@ -122,8 +128,23 @@ class Inverse_optimizer:
                     ψ_norm ≤ ψ_target
 
             Normalised flux is defined:
-                ψ_norm = (ψ − ψ_axis) / (ψ_boundary − ψ_axis)
+                ψ_norm = (ψ - ψ_axis) / (ψ_boundary - ψ_axis)
 
+        weight_isoflux : float
+            The weight of the isoflux constraints in the least-squares optimisation problem (default = 1.0).
+        weight_nulls : float
+            The weight of the null point (X-point) constraints in the least-squares optimisation problem (default = 1.0).
+        weight_psi : float
+            The weight of the psi value constraints in the least-squares optimisation problem (default = 1.0).
+        mu_coils : float
+            A penalty factor applied to violation of the coil current limits (default = 1e5).
+        mu_psi_norm : float
+            A penalty factor applied to violation of the normalised psi limits (default = 1e5).
+
+        Notes
+        -----
+        Increasing the weights/penalty factors causes the least-squares optimisation to proritise satisfying the
+        higher-weighted/penaltied constraints.
         """
 
         # ------------------------------------------------------------
@@ -183,7 +204,7 @@ class Inverse_optimizer:
         # Coil current bounds and penalty regularisation weights
         # ------------------------------------------------------------
         self.coil_current_limits = coil_current_limits
-        self.mu_coils = 1e5
+        self.mu_coils = mu_coils
 
         # ------------------------------------------------------------
         # Normalised psi bounds and penalty regularisation weights
@@ -191,7 +212,14 @@ class Inverse_optimizer:
         self.psi_norm_limits = (
             None if psi_norm_limits is None else np.array(psi_norm_limits)
         )
-        self.mu_psi_norm = 1e6
+        self.mu_psi_norm = mu_psi_norm
+
+        # ------------------------------------------------------------
+        # Weighting equality constraint classes 
+        # ------------------------------------------------------------
+        self.weight_isoflux = weight_isoflux
+        self.weight_nulls = weight_nulls
+        self.weight_psi = weight_psi
 
     def prepare_for_solve(self, eq):
         """
@@ -945,7 +973,7 @@ class Inverse_optimizer:
         if self.isoflux_set is not None:
             A_i, b_i, l = self.build_isoflux_lsq(full_currents_vec)
             A = np.concatenate(A_i, axis=0)
-            b = np.concatenate(b_i, axis=0)
+            b = np.concatenate(b_i, axis=0) * self.weight_isoflux
             self.isoflux_dim = len(b)
             loss = loss + l
 
@@ -953,7 +981,7 @@ class Inverse_optimizer:
         if self.null_points is not None:
             A_np, b_np, l = self.build_null_points_lsq(full_currents_vec)
             A = np.concatenate((A, A_np), axis=0)
-            b = np.concatenate((b, b_np), axis=0)
+            b = np.concatenate((b, b_np), axis=0) * self.weight_nulls
             self.nullp_dim = len(b)
             loss = loss + l
 
@@ -961,7 +989,7 @@ class Inverse_optimizer:
         if self.psi_vals is not None:
             A_pv, b_pv, l = self.build_psi_vals_lsq(full_currents_vec)
             A = np.concatenate((A, A_pv), axis=0)
-            b = np.concatenate((b, b_pv), axis=0)
+            b = np.concatenate((b, b_pv), axis=0) * self.weight_psi
             self.psiv_dim = len(b)
             loss = loss + l
 
@@ -1177,11 +1205,7 @@ class Inverse_optimizer:
             coil_limits_upper_slack = cvxpy.Variable(self.n_control_coils, nonneg=True)
             coil_limits_lower_slack = cvxpy.Variable(self.n_control_coils, nonneg=True)
 
-            # Scale slack penalty relative to curvature of LS problem.
-            # Using max diagonal of AᵀA gives magnitude comparable to system Hessian.
-            coil_limit_slack_scale = (mu_coils or self.mu_coils) * np.diag(
-                A.T @ A
-            ).max()
+            coil_limit_slack_scale = self.mu_coils * np.diag(A.T @ A).max()
             coil_upper_limits, coil_lower_limits = self.coil_current_limits
 
             # upper bound constraints

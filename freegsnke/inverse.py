@@ -19,6 +19,8 @@ You should have received a copy of the GNU Lesser General Public License
 along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.  
 """
 
+import itertools
+
 import cvxpy
 import numpy as np
 from scipy import interpolate
@@ -66,11 +68,13 @@ class Inverse_optimizer:
             Collection of isoflux constraint objects.
 
             Each isoflux constraint is specified as:
-                [Rcoords, Zcoords]
+                [Rcoords, Zcoords, weights]
 
             where:
                 Rcoords : 1D array of radial coordinates
                 Zcoords : 1D array of vertical coordinates
+                weights : (optional, array of 1's if not provided)1D array of weights to increase/decrease
+                        the influence of the constraint on the solution.
 
             All specified points within each set are required to share
             the same poloidal flux value.
@@ -151,7 +155,7 @@ class Inverse_optimizer:
         # Isoflux constraint processing
         # ------------------------------------------------------------
         self.isoflux_set = isoflux_set
-
+        self.isoflux_weight = []
         if isoflux_set is not None:
 
             # Test if structure is already nested numeric arrays
@@ -161,10 +165,17 @@ class Inverse_optimizer:
                 type(self.isoflux_set[0][0][0])
                 self.isoflux_set = []
                 for isoflux in isoflux_set:
-                    self.isoflux_set.append(np.array(isoflux))
+                    iso_set, weights = self._extract_isoflux_constraints_weights(
+                        np.array(isoflux)
+                    )
+                    self.isoflux_set.append(iso_set)
+                    self.isoflux_weight.append(weights)
             # rebuild as list of numpy arrays for numerical stability
-            except:
+            except TypeError:
                 self.isoflux_set = np.array(self.isoflux_set)[np.newaxis]
+                self.isoflux_weight = np.ones(self.isoflux_set.shape[1])[np.newaxis]
+            # number of isoflux points per constraint set
+            self.isoflux_set_n = [len(isoflux[0]) for isoflux in self.isoflux_set]
 
             # number of isoflux points per constraint set
             self.isoflux_set_n = [len(isoflux[0]) for isoflux in self.isoflux_set]
@@ -220,6 +231,18 @@ class Inverse_optimizer:
         self.weight_isoflux = weight_isoflux
         self.weight_nulls = weight_nulls
         self.weight_psi = weight_psi
+
+    @staticmethod
+    def _extract_isoflux_constraints_weights(isoflux_set: np.ndarray):
+
+        if isoflux_set.shape[0] == 3:
+            return isoflux_set[0:2, :], isoflux_set[2, :]
+        elif isoflux_set.shape[0] == 2:
+            return isoflux_set, np.ones(isoflux_set.shape[1])
+
+        raise ValueError(
+            f"Expected isoflux set to be of shape (2, N) or (3, N) not {isoflux_set.shape}"
+        )
 
     def prepare_for_solve(self, eq):
         """
@@ -744,6 +767,12 @@ class Inverse_optimizer:
             # add the plasma flux contribution
             b_val += self.d_psi_plasma_vals_iso[i]
 
+            # isoflux constraint violation are for pairs of constraints within the isoflux set
+            # e.g. 8 isoflux constraints means b has 28 elements (28 choose 2).
+            # We weight the element of b by the minimum weight of the two constraints that make the pair
+            b_val *= np.array(
+                list(itertools.combinations(self.isoflux_weight[i], 2))
+            ).min(axis=1)
             # total
             b.append(-b_val)
 

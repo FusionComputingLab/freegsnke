@@ -36,6 +36,11 @@ class Inverse_optimizer:
         psi_vals=None,
         curr_vals=None,
         coil_current_limits=None,
+        *,
+        weight_isoflux=1.0,
+        weight_nulls=1.0,
+        weight_psi=1.0,
+        mu_coils=1e5,
     ):
         """Instantiates the object and sets all magnetic constraints to be used.
 
@@ -57,6 +62,20 @@ class Inverse_optimizer:
         coil_current_limits : list, optional
             A list of [coil upper limits, coil lower limits] where the limits are a list with the length of the number of actively
             controlled coils. E.g. [[upper limit coil 1, None, None, None], [None, None, lower limit coil 3, lower limit coil 4]].
+
+        weight_isoflux : float
+            The weight of the isoflux constraints in the least-squares optimisation problem (default = 1.0).
+        weight_nulls : float
+            The weight of the null point (X-point) constraints in the least-squares optimisation problem (default = 1.0).
+        weight_psi : float
+            The weight of the psi value constraints in the least-squares optimisation problem (default = 1.0).
+        mu_coils : float
+            A penalty factor applied to violation of the coil current limits (default = 1e5).
+
+        Notes
+        -----
+        Increasing the weights/penalty factors causes the least-squares optimisation to proritise satisfying the
+        higher-weighted/penaltied constraints.
         """
 
         self.isoflux_set = isoflux_set
@@ -93,8 +112,11 @@ class Inverse_optimizer:
             ]
 
         self.coil_current_limits = coil_current_limits
-        self.mu_coils = 1e5
-        """The penalty applied to violations of the coil current limit"""
+
+        self.mu_coils = mu_coils
+        self.weight_isoflux = weight_isoflux
+        self.weight_nulls = weight_nulls
+        self.weight_psi = weight_psi
 
     def prepare_for_solve(self, eq):
         """To be called after object is instantiated.
@@ -362,19 +384,19 @@ class Inverse_optimizer:
         if self.isoflux_set is not None:
             A_i, b_i, l = self.build_isoflux_lsq(full_currents_vec)
             A = np.concatenate(A_i, axis=0)
-            b = np.concatenate(b_i, axis=0)
+            b = np.concatenate(b_i, axis=0) * self.weight_isoflux
             self.isoflux_dim = len(b)
             loss = loss + l
         if self.null_points is not None:
             A_np, b_np, l = self.build_null_points_lsq(full_currents_vec)
             A = np.concatenate((A, A_np), axis=0)
-            b = np.concatenate((b, b_np), axis=0)
+            b = np.concatenate((b, b_np), axis=0) * self.weight_nulls
             self.nullp_dim = len(b)
             loss = loss + l
         if self.psi_vals is not None:
             A_pv, b_pv, l = self.build_psi_vals_lsq(full_currents_vec)
             A = np.concatenate((A, A_pv), axis=0)
-            b = np.concatenate((b, b_pv), axis=0)
+            b = np.concatenate((b, b_pv), axis=0) * self.weight_psi
             self.psiv_dim = len(b)
             loss = loss + l
         if self.curr_vals is not None:
@@ -435,7 +457,6 @@ class Inverse_optimizer:
         full_currents_vec,
         reg_matrix,
         *,
-        mu_coils=None,
         A=None,
         b=None,
     ):
@@ -473,9 +494,7 @@ class Inverse_optimizer:
             coil_limits_upper_slack = cvxpy.Variable(self.n_control_coils, nonneg=True)
             coil_limits_lower_slack = cvxpy.Variable(self.n_control_coils, nonneg=True)
 
-            coil_limit_slack_scale = (mu_coils or self.mu_coils) * np.diag(
-                A.T @ A
-            ).max()
+            coil_limit_slack_scale = self.mu_coils * np.diag(A.T @ A).max()
             coil_upper_limits, coil_lower_limits = self.coil_current_limits
             for coil_index, ul in enumerate(coil_upper_limits):
                 if ul is not None:

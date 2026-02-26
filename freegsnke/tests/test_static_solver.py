@@ -207,7 +207,7 @@ def test_static_solver_rejects_invalid_operator_order(create_machine):
 
     from freegsnke import GSstaticsolver
 
-    with pytest.raises(ValueError, match="gs_operator_order"):
+    with pytest.raises(ValueError, match="order"):
         GSstaticsolver.NKGSsolver(eq, gs_operator_order=3)
 
 @pytest.mark.skip(reason="not currently using the masked/reduced version")

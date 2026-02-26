@@ -24,6 +24,8 @@ from copy import deepcopy
 import freegs4e
 import numpy as np
 from freegs4e.gradshafranov import Greens
+from freegs4e.gs_solver import GSDSTSolver, GSLUSolver
+from freegs4e.multigrid import createMultigridSolver
 
 from . import nk_solver_H as nk_solver
 
@@ -75,6 +77,8 @@ class NKGSsolver:
         seed=42,
         gs_operator_order=4,
         cache_greens=True,
+        solver_type="LUsparse",
+        mg_kwargs=None,
     ):
         """
         Initialise the Grad–Shafranov nonlinear solver.
@@ -112,11 +116,21 @@ class NKGSsolver:
                 • Krylov perturbation generation
                 • Directional exploration in nonlinear solve
 
-        gs_operator_order : {2, 4}, optional (default=4)
+        gs_operator_order : {2, 4}, optional (default=None)
             Finite-difference order of the linear Grad-Shafranov operator.
-            Fourth order is more accurate; second order reduces sparse matrix
-            construction and factorisation costs when that accuracy trade-off
-            is acceptable.
+            Fourth order is more accurate; second order may reduce execution
+            time. Default is the highest value supported by `solver_type`. It
+            is STRONGLY recommended to leave the default value.
+
+        solver_type: str (default='LUsparse')
+            The type of linear solver to use for the GS equation. Supported
+            options are 'LUsparse', 'DST', 'multigrid'. 'LUsparse' supports
+            order 2,4. The 'DST' solver is faster, but only supports order 2.
+            Use of 'multigrid' is discouraged and is planned to be deprecated.
+
+        mg_kwargs
+            dict with optional kwargs to pass to `freegs4e.multigrid.createMultigridSolver` during multigrid
+            solver initialization. Ignored whenever `solver_type` != 'multigrid'.
 
         Attributes
         ----------
@@ -168,14 +182,6 @@ class NKGSsolver:
         dZ = Z[0, 1] - Z[0, 0]
         self.dRdZ = dR * dZ
 
-        if gs_operator_order == 2:
-            gs_operator = freegs4e.gradshafranov.GSsparse
-        elif gs_operator_order == 4:
-            gs_operator = freegs4e.gradshafranov.GSsparse4thOrder
-        else:
-            raise ValueError("gs_operator_order must be either 2 or 4")
-        self.gs_operator_order = gs_operator_order
-
         # nonlinear solver backend
         self.nksolver = nk_solver.nksolver(
             problem_dimension=self.nx * self.ny,
@@ -183,16 +189,8 @@ class NKGSsolver:
             collinearity_reg=collinearity_reg,
         )
 
-        # linear GS solver used inside nonlinear iteration
-        self.linear_GS_solver = freegs4e.multigrid.createVcycle(
-            nx,
-            ny,
-            gs_operator(eq.R[0, 0], eq.R[-1, 0], eq.Z[0, 0], eq.Z[0, -1]),
-            nlevels=1,
-            ncycle=1,
-            niter=2,
-            direct=True,
-        )
+        # define the GS linear solver (del*Psi=RHS with fixed RHS)
+        self.configureLinearSolver(solver_type, gs_operator_order, mg_kwargs)
 
         # collect boundary grid indices for Dirichlet conditions
         bndry_indices = np.concatenate(
@@ -287,6 +285,59 @@ class NKGSsolver:
     def _boundary_flux_from_jtor(self, jtor):
         """Return boundary flux from plasma current inside the limiter."""
         return self.greenfunc @ jtor[self.plasma_source_mask]
+
+    def configureLinearSolver(self, solver_type, order, mg_kwargs):
+        """
+        Creates and assigns the linear solver `self.linear_GS_solver` using the arguments provided.
+
+        Also sets the attribute `self.gs_operator_order`.
+
+        Parameters
+        ----------
+        solver_type: str
+            The type of linear solver to use for the GS equation. Supported options are 'LUsparse',
+            'DST', 'multigrid'.
+        order : int
+            Order of differential operators used in calculations.
+            Must be either 2 or 4.
+        mg_kwargs
+            dict with kwargs to pass to `freegs4e.multigrid.createMultigridSolver` during multigrid solver
+            initialization. Ignored whenever `solver_type` != 'multigrid'.
+        """
+
+        if solver_type == "LUsparse":
+            if order is None:
+                order = 4
+            self.linear_GS_solver = GSLUSolver(self.R, self.Z, order=order)
+
+        elif solver_type == "DST":
+            if order is None:
+                order = 2
+            self.linear_GS_solver = GSDSTSolver(self.R, self.Z, order=order)
+
+        elif solver_type == "multigrid":
+
+            if order is None:
+                order = 4
+            if mg_kwargs is None:
+                mg_kwargs = {}
+            elif not isinstance(mg_kwargs, dict):
+                raise TypeError("mg_kwargs needs to be of type dict")
+
+            self.linear_GS_solver = createMultigridSolver(
+                nx=self.nx,
+                ny=self.ny,
+                order=order,
+                **mg_kwargs,
+            )
+
+        else:
+            raise ValueError(f"Solver type {solver_type} not recognized")
+
+        self.gs_operator_order = order
+
+        return self.linear_GS_solver
+
 
     def freeboundary(self, plasma_psi, tokamak_psi, profiles):
         """

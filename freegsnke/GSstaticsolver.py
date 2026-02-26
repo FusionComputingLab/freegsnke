@@ -98,17 +98,12 @@ class NKGSsolver:
         )
 
         # linear solver for del*Psi=RHS with fixed RHS
-        self.linear_GS_solver = freegs4e.multigrid.createVcycle(
-            nx,
-            ny,
-            freegs4e.gradshafranov.GSsparse4thOrder(
-                eq.R[0, 0], eq.R[-1, 0], eq.Z[0, 0], eq.Z[0, -1]
-            ),
-            nlevels=1,
-            ncycle=1,
-            niter=2,
-            direct=True,
-        )
+
+        # TODO: two options for inheriting the solver from eq
+        # either save the ._solver property (solver here independent of changes in eq)
+        # or save a reference to the wrapper method (solver changes when solver in eq is changed)
+
+        self.linear_GS_solver = eq._solver  # or eq.callSolver (read note above)
 
         # List of indices on the boundary
         bndry_indices = np.concatenate(

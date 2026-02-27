@@ -946,20 +946,29 @@ class NKGSsolver:
         constrain.prepare_for_solve(eq)
 
         check_equilibrium = False
-        GS_residual = self.F_function(
-            tokamak_psi=self.tokamak_psi.reshape(-1),
-            plasma_psi=eq.plasma_psi.reshape(-1),
-            profiles=profiles,
-        )
-        if verbose:
-            print("Initial guess for plasma_psi successful, residual found.")
-        rel_change_full, del_psi = self.relative_del_residual(
-            GS_residual, eq.plasma_psi
-        )
-        if rel_change_full < threshold_val:
-            check_equilibrium = True
-        if profiles.diverted_core_mask is not None:
-            check_core_mask = True
+
+        # try to find initial residual of GS equationusing the initial guesses for plasma and tokamak flux
+        try:
+            GS_residual = self.F_function(
+                tokamak_psi=self.tokamak_psi.reshape(-1),
+                plasma_psi=eq.plasma_psi.reshape(-1),
+                profiles=profiles,
+            )
+            if verbose:
+                print(
+                    "Successfully computed GS residual using initial plasma_psi and tokamak_psi guesses."
+                )
+            rel_change_full, del_psi = self.relative_del_residual(
+                GS_residual, eq.plasma_psi
+            )
+            if rel_change_full < threshold_val:
+                check_equilibrium = True
+            if profiles.diverted_core_mask is not None:
+                check_core_mask = True
+        except Exception as e:
+            raise RuntimeError(
+                "FAILED to compute GS residual. Try modifying initial guess for plasma_psi or change some coil currents."
+            ) from e
 
         if verbose:
             print(f"Initial relative error = {rel_change_full:.2e}")

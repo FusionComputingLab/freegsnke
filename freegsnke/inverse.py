@@ -19,6 +19,8 @@ You should have received a copy of the GNU Lesser General Public License
 along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.  
 """
 
+import itertools
+
 import cvxpy
 import numpy as np
 from scipy import interpolate
@@ -36,15 +38,26 @@ class Inverse_optimizer:
         psi_vals=None,
         curr_vals=None,
         coil_current_limits=None,
+        *,
+        weight_isoflux=1.0,
+        weight_nulls=1.0,
+        weight_psi=1.0,
+        mu_coils=1e5,
     ):
         """Instantiates the object and sets all magnetic constraints to be used.
 
         Parameters
         ----------
         isoflux_set : list or np.array, optional
-            list of isoflux objects, each with structure
-            [Rcoords, Zcoords]
-            with Rcoords and Zcoords being 1D lists of the coords of all points that are requested to have the same flux value
+            list of isoflux sets [<isoflux set 1>, <isoflux set 2>, ...] where each isoflux set is structured as
+            [Rcoords, Zcoords] where Rcoords and Zcoords are lists of R and Z locations of isoflux points (points that
+            have the same flux). The individual isoflux constraints can be weighted by providing an optional weights array
+            such as [Rcoords, Zcoords, weights] where len(Rcoords) = len(Zcoords) = len(weights).
+            E.g. isoflux_set = [[[R1, R2], [Z1, Z2], [W1, W2]], [[R3, R4, R5], [Z3, Z4, Z5], [W3, W4, W5]]]
+            - The locations (R1, Z1) and (R2, Z2) will have the same flux.
+            - The locations (R3, Z3), (R4, Z4), and (R5, Z5) will have the same flux.
+            - The constraints will be weighted by the corresponding W entry (defaults to 1 if no array is provided)
+            which allows certain isoflux constraints to be prioritised (increasing W) or deprioritised (decreasing W).
         null_points : list or np.array, optional
             structure [Rcoords, Zcoords], with Rcoords and Zcoords being 1D lists
             Sets the coordinates of the desired null points, including both Xpoints and Opoints
@@ -57,19 +70,38 @@ class Inverse_optimizer:
         coil_current_limits : list, optional
             A list of [coil upper limits, coil lower limits] where the limits are a list with the length of the number of actively
             controlled coils. E.g. [[upper limit coil 1, None, None, None], [None, None, lower limit coil 3, lower limit coil 4]].
+
+        weight_isoflux : float
+            The weight of the isoflux constraints in the least-squares optimisation problem (default = 1.0).
+        weight_nulls : float
+            The weight of the null point (X-point) constraints in the least-squares optimisation problem (default = 1.0).
+        weight_psi : float
+            The weight of the psi value constraints in the least-squares optimisation problem (default = 1.0).
+        mu_coils : float
+            A penalty factor applied to violation of the coil current limits (default = 1e5).
+
+        Notes
+        -----
+        Increasing the weights/penalty factors causes the least-squares optimisation to proritise satisfying the
+        higher-weighted/penaltied constraints.
         """
 
         self.isoflux_set = isoflux_set
+        self.isoflux_weight = []
         if isoflux_set is not None:
             try:
                 type(self.isoflux_set[0][0][0])
                 self.isoflux_set = []
                 for isoflux in isoflux_set:
-                    self.isoflux_set.append(np.array(isoflux))
-            except:
+                    iso_set, weights = self._extract_isoflux_constraints_weights(
+                        np.array(isoflux)
+                    )
+                    self.isoflux_set.append(iso_set)
+                    self.isoflux_weight.append(weights)
+            except TypeError:
                 self.isoflux_set = np.array(self.isoflux_set)[np.newaxis]
+                self.isoflux_weight = np.ones(self.isoflux_set.shape[1])[np.newaxis]
             self.isoflux_set_n = [len(isoflux[0]) for isoflux in self.isoflux_set]
-            # self.isoflux_set_n = [n * (n - 1) / 2 for n in self.isoflux_set_n]
 
         self.null_points = null_points
         if self.null_points is not None:
@@ -93,8 +125,23 @@ class Inverse_optimizer:
             ]
 
         self.coil_current_limits = coil_current_limits
-        self.mu_coils = 1e5
-        """The penalty applied to violations of the coil current limit"""
+
+        self.mu_coils = mu_coils
+        self.weight_isoflux = weight_isoflux
+        self.weight_nulls = weight_nulls
+        self.weight_psi = weight_psi
+
+    @staticmethod
+    def _extract_isoflux_constraints_weights(isoflux_set: np.ndarray):
+
+        if isoflux_set.shape[0] == 3:
+            return isoflux_set[0:2, :], isoflux_set[2, :]
+        elif isoflux_set.shape[0] == 2:
+            return isoflux_set, np.ones(isoflux_set.shape[1])
+
+        raise ValueError(
+            f"Expected isoflux set to be of shape (2, N) or (3, N) not {isoflux_set.shape}"
+        )
 
     def prepare_for_solve(self, eq):
         """To be called after object is instantiated.
@@ -278,6 +325,13 @@ class Inverse_optimizer:
             A.append(self.dG_set[i][self.control_mask].T)
             b_val = np.sum(self.dG_set[i] * full_currents_vec[:, np.newaxis], axis=0)
             b_val += self.d_psi_plasma_vals_iso[i]
+
+            # isoflux constraint violation are for pairs of constraints within the isoflux set
+            # e.g. 8 isoflux constraints means b has 28 elements (28 choose 2).
+            # We weight the element of b by the minimum weight of the two constraints that make the pair
+            b_val *= np.array(
+                list(itertools.combinations(self.isoflux_weight[i], 2))
+            ).min(axis=1)
             b.append(-b_val)
 
             loss.append(np.linalg.norm(b_val))
@@ -362,19 +416,19 @@ class Inverse_optimizer:
         if self.isoflux_set is not None:
             A_i, b_i, l = self.build_isoflux_lsq(full_currents_vec)
             A = np.concatenate(A_i, axis=0)
-            b = np.concatenate(b_i, axis=0)
+            b = np.concatenate(b_i, axis=0) * self.weight_isoflux
             self.isoflux_dim = len(b)
             loss = loss + l
         if self.null_points is not None:
             A_np, b_np, l = self.build_null_points_lsq(full_currents_vec)
             A = np.concatenate((A, A_np), axis=0)
-            b = np.concatenate((b, b_np), axis=0)
+            b = np.concatenate((b, b_np), axis=0) * self.weight_nulls
             self.nullp_dim = len(b)
             loss = loss + l
         if self.psi_vals is not None:
             A_pv, b_pv, l = self.build_psi_vals_lsq(full_currents_vec)
             A = np.concatenate((A, A_pv), axis=0)
-            b = np.concatenate((b, b_pv), axis=0)
+            b = np.concatenate((b, b_pv), axis=0) * self.weight_psi
             self.psiv_dim = len(b)
             loss = loss + l
         if self.curr_vals is not None:
@@ -435,7 +489,6 @@ class Inverse_optimizer:
         full_currents_vec,
         reg_matrix,
         *,
-        mu_coils=None,
         A=None,
         b=None,
     ):
@@ -473,9 +526,7 @@ class Inverse_optimizer:
             coil_limits_upper_slack = cvxpy.Variable(self.n_control_coils, nonneg=True)
             coil_limits_lower_slack = cvxpy.Variable(self.n_control_coils, nonneg=True)
 
-            coil_limit_slack_scale = (mu_coils or self.mu_coils) * np.diag(
-                A.T @ A
-            ).max()
+            coil_limit_slack_scale = self.mu_coils * np.diag(A.T @ A).max()
             coil_upper_limits, coil_lower_limits = self.coil_current_limits
             for coil_index, ul in enumerate(coil_upper_limits):
                 if ul is not None:

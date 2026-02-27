@@ -1,5 +1,5 @@
 """
-Defines the FreeGSNKE equilibrium Object, which inherits from the FreeGS4E equilibrium object. 
+Defines the FreeGSNKE equilibrium Object, which inherits from the FreeGS4E equilibrium object.
 
 Copyright 2025 UKAEA, UKRI-STFC, and The Authors, as per the COPYRIGHT and README files.
 
@@ -14,20 +14,22 @@ FreeGSNKE is free software: you can redistribute it and/or modify
 it under the terms of the GNU Lesser General Public License as published by
 the Free Software Foundation, either version 3 of the License, or
 (at your option) any later version.
-  
+
 You should have received a copy of the GNU Lesser General Public License
-along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.  
+along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 import os
 import pickle
 
-import freegs4e
+import freegs4e.equilibrium
 import numpy as np
 from freegs4e import critical
 from scipy import interpolate
 
-from . import limiter_func, virtual_circuits
+from . import limiter_func
+from .build_machine import copy_tokamak
+from .copying import copy_into
 
 
 class Equilibrium(freegs4e.equilibrium.Equilibrium):
@@ -61,6 +63,70 @@ class Equilibrium(freegs4e.equilibrium.Equilibrium):
         self.mask_outside_limiter = 2 * np.logical_not(self.mask_inside_limiter).astype(
             float
         )
+
+    def create_auxiliary_equilibrium(self):
+        """Creates the auxiliary equilibrium object.
+
+        The auxiliary object returned from this method is essentially
+        a copy of the equilibrium object (self) however it is manually
+        setup and so won't contain all attributes on self (especially custom
+        attributes). It is NOT _guaranteed_ to be the same as a deepcopy, or even
+        a shallow copy.
+        """
+        # __new__ stops __init__ being called.
+        # This is necessary because the __init__ method does expensive
+        # calculations which we can just copy the results of
+        equilibrium = Equilibrium.__new__(Equilibrium)
+
+        # attributes that FreeGS4e sets
+        equilibrium.tokamak = copy_tokamak(self.tokamak)
+        equilibrium.Rmin = self.Rmin
+        equilibrium.Rmax = self.Rmax
+        equilibrium.Zmin = self.Zmin
+        equilibrium.Zmax = self.Zmax
+        equilibrium.nx = self.nx
+        equilibrium.ny = self.ny
+        equilibrium.dR = self.dR
+        equilibrium.dZ = self.dZ
+        equilibrium._applyBoundary = self._applyBoundary
+        equilibrium._current = self._current
+        equilibrium.order = self.order
+        equilibrium._solver = self._solver
+
+        # attributes the FreeGSNKE sets
+        equilibrium.solved = self.solved
+        equilibrium.psi_func_interp = self.psi_func_interp
+        equilibrium.nxh = self.nxh
+        equilibrium.nyh = self.nyh
+        equilibrium.Rnxh = self.Rnxh
+        equilibrium.Znyh = self.Znyh
+        equilibrium.limiter_handler = self.limiter_handler  # should be safe not to copy
+
+        # attributes that actually need to be copied
+        equilibrium.R_1D = np.copy(self.R_1D)
+        equilibrium.Z_1D = np.copy(self.Z_1D)
+        equilibrium.R = np.copy(self.R)
+        equilibrium.Z = np.copy(self.Z)
+        equilibrium.tokamak_psi = np.copy(self.tokamak_psi)
+        equilibrium.plasma_psi = np.copy(self.plasma_psi)
+        equilibrium.mask_inside_limiter = np.copy(self.mask_inside_limiter)
+        equilibrium.mask_outside_limiter = np.copy(self.mask_outside_limiter)
+        equilibrium._pgreen = self._pgreen.copy()
+        equilibrium._vgreen = self._vgreen.copy()
+        copy_into(self, equilibrium, "current_vec", mutable=True, strict=False)
+
+        copy_into(
+            self, equilibrium, "opt", mutable=True, strict=False, allow_deepcopy=True
+        )
+        copy_into(
+            self, equilibrium, "xpt", mutable=True, strict=False, allow_deepcopy=True
+        )
+        copy_into(self, equilibrium, "psi_bndry", strict=False)
+
+        if hasattr(self, "_profiles"):
+            equilibrium._profiles = self._profiles.copy()
+
+        return equilibrium
 
     def adjust_psi_plasma(
         self,

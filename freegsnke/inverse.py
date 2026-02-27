@@ -19,9 +19,7 @@ You should have received a copy of the GNU Lesser General Public License
 along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.  
 """
 
-from copy import deepcopy
-
-import freegs4e
+import cvxpy
 import numpy as np
 from scipy import interpolate
 
@@ -37,6 +35,7 @@ class Inverse_optimizer:
         null_points=None,
         psi_vals=None,
         curr_vals=None,
+        coil_current_limits=None,
     ):
         """Instantiates the object and sets all magnetic constraints to be used.
 
@@ -55,6 +54,9 @@ class Inverse_optimizer:
             Sets the desired values of psi for a set of coordinates, possibly an entire map
         curr_vals : list, optional
             structure [[coil indexes in the array of coils available for control], [coil current values]]
+        coil_current_limits : list, optional
+            A list of [coil upper limits, coil lower limits] where the limits are a list with the length of the number of actively
+            controlled coils. E.g. [[upper limit coil 1, None, None, None], [None, None, lower limit coil 3, lower limit coil 4]].
         """
 
         self.isoflux_set = isoflux_set
@@ -89,6 +91,10 @@ class Inverse_optimizer:
                 np.array(self.curr_vals[0]).astype(int),
                 np.array(self.curr_vals[1]).astype(float),
             ]
+
+        self.coil_current_limits = coil_current_limits
+        self.mu_coils = 1e5
+        """The penalty applied to violations of the coil current limit"""
 
     def prepare_for_solve(self, eq):
         """To be called after object is instantiated.
@@ -203,8 +209,11 @@ class Inverse_optimizer:
             )
 
         if self.psi_vals is not None:
-            if np.all(self.psi_vals[0] == eq.R.reshape(-1)) and np.all(
-                self.psi_vals[1] == eq.Z.reshape(-1)
+            if (
+                self.psi_vals[0].shape == eq.R_1D.shape
+                and self.psi_vals[1].shape == eq.Z_1D.shape
+                and np.all(self.psi_vals[0] == eq.R_1D)
+                and np.all(self.psi_vals[1] == eq.Z_1D)
             ):
                 self.full_grid = True
                 self.G = np.copy(eq._vgreen).reshape((self.n_coils, -1))
@@ -398,7 +407,7 @@ class Inverse_optimizer:
         # build the matrices that define the optimization
         self.build_lsq(full_currents_vec)
 
-        if type(l2_reg) == float:
+        if isinstance(l2_reg, float):
             reg_matrix = l2_reg * np.eye(self.n_control_coils)
         else:
             if len(l2_reg) != self.n_control_coils:
@@ -406,10 +415,105 @@ class Inverse_optimizer:
                     f"Expected l2_reg to have length equal to number of coils being controlled ({self.n_control_coils}), but got {len(l2_reg)}."
                 )
             reg_matrix = np.diag(l2_reg)
-        mat = np.linalg.inv(np.matmul(self.A.T, self.A) + reg_matrix)
-        delta_current = np.dot(mat, np.dot(self.A.T, self.b))
 
-        return delta_current, np.linalg.norm(self.loss)
+        if self.coil_current_limits is not None:
+            delta_current, loss = self.optimize_currents_quadratic(
+                full_currents_vec, reg_matrix
+            )
+        else:
+            # TODO: should we just use the quadratic solver all the time, regardless
+            # of whether coil limits are specified?
+            delta_current = np.linalg.solve(
+                self.A.T @ self.A + reg_matrix, self.A.T @ self.b
+            )
+            loss = np.linalg.norm(self.loss)
+
+        return delta_current, loss
+
+    def optimize_currents_quadratic(
+        self,
+        full_currents_vec,
+        reg_matrix,
+        *,
+        mu_coils=None,
+        A=None,
+        b=None,
+    ):
+        """Calculates the requested current change via the least squares that are solved using a
+        convex solver.
+
+        Parameters
+        ----------
+        full_currents_vec : numpy array
+            A vector of all of the currents in all coils
+        reg_matrix : numpy array
+            A matrix that is n_control_coils x n_control_coils that encodes
+            the regularisation of the coils.
+        mu_coils : float | None
+            Scales the amount by which slack in the coil limit bound is penalised.
+            If not set, uses self.mu_coils which defaults to 1e5.
+        A : numpy array
+            The sensitivity matrix for the least squares problem. If None, uses self.A
+        b : numpy array
+            The target vector for the least least squares problem. If None, uses self.b
+
+        """
+        A = self.A if A is None else A
+        b = self.b if b is None else b
+
+        delta = cvxpy.Variable(self.n_control_coils)
+        slack_variables = []
+        constraints = []
+
+        # Setup the coil limits slack variables and constraints
+        # Slack variables allow the coil limit to be violated by the solver
+        # however it is penalised in the objective function; this is useful
+        # to allow coil limits be violated 'on the path' to a solution.
+        if self.coil_current_limits is not None:
+            coil_limits_upper_slack = cvxpy.Variable(self.n_control_coils, nonneg=True)
+            coil_limits_lower_slack = cvxpy.Variable(self.n_control_coils, nonneg=True)
+
+            coil_limit_slack_scale = (mu_coils or self.mu_coils) * np.diag(
+                A.T @ A
+            ).max()
+            coil_upper_limits, coil_lower_limits = self.coil_current_limits
+            for coil_index, ul in enumerate(coil_upper_limits):
+                if ul is not None:
+                    constraints.append(
+                        (full_currents_vec[self.control_mask][coil_index] / 1000)
+                        + (delta[coil_index] / 1000)
+                        <= (ul / 1000) + coil_limits_upper_slack[coil_index]
+                    )
+
+            for coil_index, ll in enumerate(coil_lower_limits):
+                if ll is not None:
+                    constraints.append(
+                        (full_currents_vec[self.control_mask][coil_index] / 1000)
+                        + (delta[coil_index] / 1000)
+                        >= (ll / 1000) - coil_limits_lower_slack[coil_index]
+                    )
+
+            slack_variables.append(coil_limit_slack_scale * coil_limits_upper_slack)
+            slack_variables.append(coil_limit_slack_scale * coil_limits_lower_slack)
+
+        # Minimise the objectives (the least squares objective + regularisation + slack variables)
+        minimisation_expression = cvxpy.sum_squares(A @ delta - b) + cvxpy.quad_form(
+            delta, reg_matrix
+        )
+        for expr in slack_variables:
+            minimisation_expression += cvxpy.sum_squares(expr)
+
+        problem = cvxpy.Problem(
+            cvxpy.Minimize(minimisation_expression), constraints or None
+        )
+        problem.solve(solver=cvxpy.CLARABEL, tol_infeas_abs=1e-12, tol_infeas_rel=1e-10)
+
+        slack_loss = sum([i.value.sum() for i in slack_variables])
+
+        return (
+            delta.value,
+            np.linalg.norm(self.loss) + slack_loss,
+        )
 
     def optimize_currents_grad(
         self,

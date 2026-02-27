@@ -20,13 +20,10 @@ You should have received a copy of the GNU Lesser General Public License
 along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 """
 
-import warnings
 from copy import deepcopy
 
 import freegs4e
-import matplotlib.pyplot as plt
 import numpy as np
-import scipy as sp
 from freegs4e.gradshafranov import Greens
 
 from . import nk_solver_H as nk_solver
@@ -50,6 +47,7 @@ class NKGSsolver:
         eq,
         l2_reg=1e-6,
         collinearity_reg=1e-6,
+        seed=42,
     ):
         """Instantiates the solver object.
         Based on the domain grid of the input equilibrium object, it prepares
@@ -69,6 +67,8 @@ class NKGSsolver:
             Tychonoff regularization coeff used by the nonlinear solver
         collinearity_reg : float
             Tychonoff regularization coeff which further penalizes collinear terms used by the nonlinear solver
+        seed : int
+            Integer used to create random seed.
 
         """
 
@@ -140,6 +140,9 @@ class NKGSsolver:
         # RHS/Jtor
         self.rhs_before_jtor = -freegs4e.gradshafranov.mu0 * eq.R
 
+        # random seed for reproducibility
+        self.rng = np.random.default_rng(seed=seed)
+
     def freeboundary(self, plasma_psi, tokamak_psi, profiles):
         """Imposes boundary conditions on set of boundary points.
 
@@ -168,7 +171,10 @@ class NKGSsolver:
 
         # calculates and imposes the boundary conditions
         self.psi_boundary = np.zeros_like(self.R)
-        psi_bnd = np.sum(self.greenfunc * self.jtor[np.newaxis, :, :], axis=(-1, -2))
+        # weighted sum over the last two axes.
+        # "contract" axis 1 of greenfunc with axis 0 of jtor
+        # contract axis 2 of greenfunc with axis 1 of jtor
+        psi_bnd = np.tensordot(self.greenfunc, self.jtor, axes=([1, 2], [0, 1]))
 
         self.psi_boundary[:, 0] = psi_bnd[: self.nx]
         self.psi_boundary[:, -1] = psi_bnd[self.nx : 2 * self.nx]
@@ -233,7 +239,7 @@ class NKGSsolver:
         eq.flag_limiter = profiles.flag_limiter
 
         eq._current = np.sum(profiles.jtor) * self.dRdZ
-        eq._profiles = deepcopy(profiles)
+        eq._profiles = profiles.copy()
 
         try:
             eq.tokamak_psi = self.tokamak_psi.reshape(self.nx, self.ny)
@@ -418,7 +424,6 @@ class NKGSsolver:
         while (rel_change > target_relative_tolerance) * (
             iterations < max_solving_iterations
         ):
-
             if rel_change > Picard_handover:
                 log.append("Picard iteration: " + str(iterations))
                 # using Picard instead of NK
@@ -558,16 +563,14 @@ class NKGSsolver:
                         # Generate a random Krylov vector to continue the exploration
                         # This is arbitrary and can be improved
                         starting_direction = np.sin(
-                            np.linspace(0, 2 * np.pi, self.nx)
-                            * 1.5
-                            * np.random.random()
+                            np.linspace(0, 2 * np.pi, self.nx) * 1.5 * self.rng.random()
                         )[:, np.newaxis]
                         starting_direction = (
                             starting_direction
                             * np.sin(
                                 np.linspace(0, 2 * np.pi, self.ny)
                                 * 1.5
-                                * np.random.random()
+                                * self.rng.random()
                             )[np.newaxis, :]
                         )
                         starting_direction = starting_direction.reshape(-1)
@@ -762,16 +765,15 @@ class NKGSsolver:
         # print(delta_current)
 
         for i in range(constrain.n_control_coils):
-
             if verbose:
                 print(
-                    f" - calculating derivatives for coil {i+1}/{constrain.n_control_coils}"
+                    f" - calculating derivatives for coil {i + 1}/{constrain.n_control_coils}"
                 )
 
             currents = np.copy(self.dummy_current)
             currents[i] = 1.0 * delta_current[i]
             currents = full_current_vec + constrain.rebuild_full_current_vec(currents)
-            self.eq2 = deepcopy(eq)
+            self.eq2 = eq.create_auxiliary_equilibrium()
             self.eq2.tokamak.set_all_coil_currents(currents)
             self.forward_solve(
                 eq=self.eq2,
@@ -786,13 +788,20 @@ class NKGSsolver:
             )
             self.dbdI[:, i] = (constrain.b - b0) / delta_current[i]
 
-        if type(l2_reg) == float:
+        if isinstance(l2_reg, float):
             reg_matrix = l2_reg * np.eye(constrain.n_control_coils)
         else:
             reg_matrix = np.diag(l2_reg)
-        mat = np.linalg.inv(np.matmul(self.dbdI.T, self.dbdI) + reg_matrix)
-        Newton_delta_current = np.dot(mat, np.dot(self.dbdI.T, -b0))
-        loss = np.linalg.norm(b0 + np.dot(self.dbdI, Newton_delta_current))
+
+        if constrain.coil_current_limits is not None:
+            Newton_delta_current, loss = constrain.optimize_currents_quadratic(
+                currents, reg_matrix, A=self.dbdI, b=-b0
+            )
+        else:
+            Newton_delta_current = np.linalg.solve(
+                self.dbdI.T @ self.dbdI + reg_matrix, self.dbdI.T @ -b0
+            )
+            loss = np.linalg.norm(b0 + np.dot(self.dbdI, Newton_delta_current))
 
         return Newton_delta_current, loss
 
@@ -960,12 +969,10 @@ class NKGSsolver:
             (rel_change_full > target_relative_tolerance)
             + (previous_rel_delta_psit > target_relative_psit_update)
         ) * (iterations < max_solving_iterations):
-
             if verbose:
                 print("Iteration: " + str(iterations))
 
             if check_equilibrium:
-
                 # this_max_rel_psit = min(max_rel_psit, np.mean(self.rel_psit_updates[-6:]))
                 this_max_rel_psit = np.mean(self.rel_psit_updates[-6:])
                 this_max_rel_update_size = 1.0 * max_rel_update_size

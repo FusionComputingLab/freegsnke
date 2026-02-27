@@ -27,6 +27,7 @@ from freegs4e.coil import Coil
 from freegs4e.machine import Circuit, Wall
 from freegs4e.multi_coil import MultiCoil
 
+from .copying import copy_into
 from .machine_config import build_tokamak_R_and_M
 from .machine_update import Machine
 from .magnetic_probes import Probes
@@ -595,6 +596,10 @@ def copy_tokamak(tokamak: Machine):
     new_tokamak.n_active_coils = tokamak.n_active_coils
     new_tokamak.n_passive_coils = tokamak.n_passive_coils
     new_tokamak.n_coils = tokamak.n_coils
+
+    copy_into(tokamak, new_tokamak, "coil_resist", mutable=True, strict=False)
+    copy_into(tokamak, new_tokamak, "coil_self_ind", mutable=True, strict=False)
+    copy_into(tokamak, new_tokamak, "current_vec", mutable=True, strict=False)
 
     # add probe object attribute to tokamak (not strictly required)
     new_tokamak.probes = tokamak.probes

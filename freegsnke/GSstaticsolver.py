@@ -749,6 +749,8 @@ class NKGSsolver:
             suppress=True,
         )
         delta_current, loss = constrain.optimize_currents(
+            eq=eq,
+            profiles=profiles,
             full_currents_vec=full_current_vec,
             trial_plasma_psi=eq.plasma_psi,
             l2_reg=1e-12,
@@ -782,6 +784,8 @@ class NKGSsolver:
                 suppress=True,
             )
             constrain.optimize_currents(
+                eq=eq,
+                profiles=profiles,
                 full_currents_vec=currents,
                 trial_plasma_psi=self.eq2.plasma_psi,
                 l2_reg=1e-12,
@@ -793,9 +797,12 @@ class NKGSsolver:
         else:
             reg_matrix = np.diag(l2_reg)
 
-        if constrain.coil_current_limits is not None:
+        if (
+            constrain.coil_current_limits is not None
+            or constrain.psi_norm_limits is not None
+        ):
             Newton_delta_current, loss = constrain.optimize_currents_quadratic(
-                currents, reg_matrix, A=self.dbdI, b=-b0
+                eq, profiles, currents, reg_matrix, A=self.dbdI, b=-b0
             )
         else:
             Newton_delta_current = np.linalg.solve(
@@ -1032,6 +1039,8 @@ class NKGSsolver:
                     )
                 # use Greens as Jacobian: i.e. psi_plasma is assumed fixed
                 delta_current, loss = constrain.optimize_currents(
+                    eq=eq,
+                    profiles=profiles,
                     full_currents_vec=full_currents_vec,
                     trial_plasma_psi=eq.plasma_psi,
                     l2_reg=this_l2_reg,

@@ -20,8 +20,10 @@ jobs:
         uses: './.github/actions/cicd-setup'
       - name: Check build tokamak machine notebook
         run: jupyter nbconvert --execute --to notebook --inplace "examples/example00 - build_tokamak_machine.ipynb"
-      - name: Check static inverse solve MAST-U notebook
-        run: jupyter nbconvert --execute --to notebook --inplace "examples/example01 - static_inverse_solve_MASTU.ipynb"
+      - name: Check static inverse solve MAST-U notebook (1a)
+        run: jupyter nbconvert --execute --to notebook --inplace "examples/example01a - static_inverse_solve_MASTU"
+      - name: Check static inverse solve MAST-U notebook (1b)
+        run: jupyter nbconvert --execute --to notebook --inplace "examples/example01b - advanced_static_inverse_solve"
       - name: Check static forward solve MAST-U notebook
         run: jupyter nbconvert --execute --to notebook --inplace "examples/example02 - static_forward_solve_MASTU.ipynb"
       - name: Check extracting equilibrium quantities notebook

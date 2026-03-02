@@ -118,7 +118,7 @@ class Inverse_optimizer:
                 If constraint_sign = 1:
                     ψ_norm ≥ ψ_target
 
-                If constraint_sign ≠ 1:
+                If constraint_sign = -1:
                     ψ_norm ≤ ψ_target
 
             Normalised flux is defined:

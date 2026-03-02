@@ -1758,8 +1758,7 @@ class NKGSsolver:
             # apply damping and cap relative flux change
             if this_max_rel_psit:
                 # resize update to the control currents so to limit the relative change of the tokamak flux to this_max_rel_psit
-                if constrain.curr_loss < 1:
-                    damping *= damping_factor
+                damping *= damping_factor
                 adj_factor = damping * min(1, this_max_rel_psit / rel_delta_psit)
             else:
                 adj_factor = 1.0

@@ -43,7 +43,7 @@ class Inverse_optimizer:
         weight_nulls=1.0,
         weight_psi=1.0,
         mu_coils=1e5,
-        mu_psi_norm=1e6
+        mu_psi_norm=1e6,
     ):
         """
         Initialise magnetic constraint definitions for inverse equilibrium optimisation.
@@ -226,7 +226,7 @@ class Inverse_optimizer:
         self.mu_psi_norm = mu_psi_norm
 
         # ------------------------------------------------------------
-        # Weighting equality constraint classes 
+        # Weighting equality constraint classes
         # ------------------------------------------------------------
         self.weight_isoflux = weight_isoflux
         self.weight_nulls = weight_nulls

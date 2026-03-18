@@ -25,6 +25,8 @@ from copy import deepcopy
 import freegs4e
 import numpy as np
 from freegs4e.gradshafranov import Greens
+from freegs4e.gs_solver import GSDSTSolver, GSLUSolver
+from freegs4e.multigrid import createMultigridSolver
 
 from . import nk_solver_H as nk_solver
 
@@ -48,6 +50,9 @@ class NKGSsolver:
         l2_reg=1e-6,
         collinearity_reg=1e-6,
         cache_greens=True,
+        solver_type="LUsparse",
+        order=None,
+        mg_kwargs=None,
     ):
         """Instantiates the solver object.
         Based on the domain grid of the input equilibrium object, it prepares
@@ -67,6 +72,15 @@ class NKGSsolver:
             Tychonoff regularization coeff used by the nonlinear solver
         collinearity_reg : float
             Tychonoff regularization coeff which further penalizes collinear terms used by the nonlinear solver
+        solver_type: str
+            The type of linear solver to use for the GS equation. Supported options are 'LUsparse',
+            'DST', 'multigrid'.
+        order : int
+            Order of differential operators used in calculations. Must be either 2 or 4. Default is the highest
+            value supported by `solver_type`.
+        mg_kwargs
+            dict with optional kwargs to pass to `freegs4e.multigrid.createMultigridSolver` during multigrid
+            solver initialization. Ignored whenever `solver_type` != 'multigrid'.
 
         """
 
@@ -97,13 +111,8 @@ class NKGSsolver:
             collinearity_reg=collinearity_reg,
         )
 
-        # linear solver for del*Psi=RHS with fixed RHS
-
-        # TODO: two options for inheriting the solver from eq
-        # either save the ._solver property (solver here independent of changes in eq)
-        # or save a reference to the wrapper method (solver changes when solver in eq is changed)
-
-        self.linear_GS_solver = eq._solver  # or eq.callSolver (read note above)
+        # define the GS linear solver (del*Psi=RHS with fixed RHS)
+        self.configureLinearSolver(solver_type, order, mg_kwargs)
 
         # List of indices on the boundary
         bndry_indices = np.concatenate(
@@ -158,6 +167,53 @@ class NKGSsolver:
 
         # RHS/Jtor
         self.rhs_before_jtor = -freegs4e.gradshafranov.mu0 * eq.R
+
+    def configureLinearSolver(self, solver_type, order, mg_kwargs):
+        """Creates and assigns the linear solver 'self.linear_GS_solver' using the arguments provided
+
+        Parameters
+        ----------
+        solver_type: str
+            The type of linear solver to use for the GS equation. Supported options are 'LUsparse',
+            'DST', 'multigrid'.
+        order : int
+            Order of differential operators used in calculations.
+            Must be either 2 or 4.
+        mg_kwargs
+            dict with kwargs to pass to `freegs4e.multigrid.createMultigridSolver` during multigrid solver
+            initialization. Ignored whenever `solver_type` != 'multigrid'.
+        """
+
+        if solver_type == "LUsparse":
+            if order is None:
+                order = 4
+            self.linear_GS_solver = GSLUSolver(self.R, self.Z, order=order)
+
+        elif solver_type == "DST":
+            if order is None:
+                order = 2
+            self.linear_GS_solver = GSDSTSolver(self.R, self.Z, order=order)
+
+        elif solver_type == "multigrid":
+
+            if order is None:
+                order = 4
+            if mg_kwargs is None:
+                mg_kwargs = {}
+            elif not isinstance(mg_kwargs, dict):
+                raise TypeError("mg_kwargs needs to be of type dict")
+
+            self.linear_GS_solver = createMultigridSolver(
+                nx=self.nx,
+                ny=self.ny,
+                order=order,
+                **mg_kwargs,
+            )
+
+        else:
+            raise ValueError(f"Solver type {solver_type} not recognized")
+
+        return self.linear_GS_solver
 
     def freeboundary(self, plasma_psi, tokamak_psi, profiles):
         """Imposes boundary conditions on set of boundary points.

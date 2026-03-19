@@ -132,9 +132,7 @@ class NKGSsolver:
             n_bndry_nodes = bndry_indices.shape[0]
 
             # matrices of responses of boundary locations to each grid position
-            greenfunc = np.ones(
-                (n_bndry_nodes, R.shape[0], R.shape[1])
-            )  # initialize as a "mask" of 1s
+            greenfunc = np.empty((n_bndry_nodes, R.shape[0], R.shape[1]))
 
             # fill up the array sequentially (to limit memory usage), by calling Greens on different ranges
             # of boundary nodes
@@ -149,19 +147,18 @@ class NKGSsolver:
                     end if i != num_slices - 1 else n_bndry_nodes
                 )  # last slice gets the remainder
 
-                # filter out Greens(x,y;x,y), to prevent infinity/NaNs
-                greenfunc[start:end, bndry_indices[:, 0], bndry_indices[:, 1]] = 0
-
-                # multiply in-place by the actual Green's function value, to obtain the filtered result
-                # greenfunc(x,y;x0,y0) = Greens(x,y,x0,y0) | x0 != x or y0 != y
-                greenfunc[start:end, :, :] *= Greens(
+                # fill up slice of greenfunc in-place
+                Greens(
                     R[np.newaxis, :, :],
                     Z[np.newaxis, :, :],
                     R_1D[bndry_indices[:, 0]][start:end, np.newaxis, np.newaxis],
                     Z_1D[bndry_indices[:, 1]][start:end, np.newaxis, np.newaxis],
+                    scale_factor=self.dRdZ,
+                    out=greenfunc[start:end, :, :],
                 )
 
-            greenfunc *= self.dRdZ
+                # filter out Greens(x,y;x,y), to prevent infinity/NaNs
+                greenfunc[start:end, bndry_indices[:, 0], bndry_indices[:, 1]] = 0
 
             self.greenfunc = greenfunc
 

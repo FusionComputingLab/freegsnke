@@ -168,9 +168,6 @@ class NKGSsolver:
         self.R = R
         self.Z = Z
 
-        R_1D = R[:, 0]
-        Z_1D = Z[0, :]
-
         # number of grid points
         nx, ny = np.shape(R)
         self.nx = nx
@@ -203,23 +200,94 @@ class NKGSsolver:
         )
         self.bndry_indices = bndry_indices
 
-        self.__cache_greens = cache_greens
+        # Cache Greens function if necessary
+        if cache_greens:
+            self.greenfunc = self._build_full_boundary_greens()
+        else:
+            self.greenfunc = None
 
-#        self.plasma_source_mask = np.asarray(
-#            eq.limiter_handler.mask_inside_limiter, dtype=bool
-#        )
-#        self.greenfunc = self._build_boundary_green(self.plasma_source_mask)
+        # Precompute geometric RHS coefficient
+        # Comes from GS equation:
+        # Δψ = - μ₀ R Jtor
+        self.rhs_before_jtor = -freegs4e.gradshafranov.mu0 * eq.R
 
-        # matrices of responses of boundary locations to each grid position
-        if self.__cache_greens:
+        # random generator used for NK search direction exploration
+        self.rng = np.random.default_rng(seed=seed)
 
+
+    def _build_full_boundary_greens(self):
+        """
+        Calculates the Greens function giving the responses of boundary nodes to internal nodes: Jtor(R',Z') → ψ_boundary(R,Z)
+
+        Fills the array sequentially to optimize memory usage.
+        """
+
+        bndry_indices = self.bndry_indices
+        n_bndry_nodes = bndry_indices.shape[0]
+
+        R_1D = self.R[:, 0]
+        Z_1D = self.Z[0, :]
+
+        # Pre-allocate full array
+        greenfunc = np.empty(
+            (n_bndry_nodes, self.R.shape[0], self.R.shape[1]),
+        )
+
+        num_slices = 10  # fine-tuned to balance memory vs. compute needs
+        step = n_bndry_nodes // num_slices
+
+        for i in range(num_slices):
+
+            start = i * step
+            end = start + step
+            end = (
+                end if i != num_slices - 1 else n_bndry_nodes
+            )  # last slice gets the remainder
+
+            # Fill up slice of greenfunc in-place. Applies dRdZ factor automatically.
+            Greens(
+                self.R[np.newaxis, :, :],
+                self.Z[np.newaxis, :, :],
+                R_1D[bndry_indices[:, 0]][start:end, np.newaxis, np.newaxis],
+                Z_1D[bndry_indices[:, 1]][start:end, np.newaxis, np.newaxis],
+                scale_factor=self.dRdZ,
+                out=greenfunc[start:end, :, :],
+            )
+
+            # filter out Greens(x,y;x,y), to prevent infinity/NaNs
+            greenfunc[start:end, bndry_indices[:, 0], bndry_indices[:, 1]] = 0
+
+        return greenfunc
+
+    def _calculate_boundary_flux(self):
+        """
+        Compute boundary flux via Green's function convolution: psi_bnd = ∫ G(R,Z; R',Z') Jtor(R',Z') dR'dZ'
+
+        Implemented using tensor contraction.
+
+        If Green's function was precomputed, uses the cached version. Otherwise, computes it on the fly.
+
+        Returns
+        -------
+            Boundary flux vector as a flattened array
+        """
+
+        # Implemented using tensor contraction:
+        # Contract:
+        #  greenfunc axis (1,2) with jtor axis (0,1)
+
+        if self.greenfunc is not None:
+            psi_bnd = np.tensordot(self.greenfunc, self.jtor, axes=([1, 2], [0, 1]))
+
+        else:
+
+            bndry_indices = self.bndry_indices
             n_bndry_nodes = bndry_indices.shape[0]
 
-            # matrices of responses of boundary locations to each grid position
-            greenfunc = np.empty((n_bndry_nodes, R.shape[0], R.shape[1]))
+            R_1D = self.R[:, 0]
+            Z_1D = self.Z[0, :]
 
-            # fill up the array sequentially (to limit memory usage), by calling Greens on different ranges
-            # of boundary nodes
+            psi_bnd = np.empty(n_bndry_nodes)
 
             num_slices = 10
             step = n_bndry_nodes // num_slices
@@ -231,30 +299,27 @@ class NKGSsolver:
                     end if i != num_slices - 1 else n_bndry_nodes
                 )  # last slice gets the remainder
 
-                # fill up slice of greenfunc in-place
-                Greens(
-                    R[np.newaxis, :, :],
-                    Z[np.newaxis, :, :],
+                # Calculate greenfunc for these boundary nodes. Applies dRdZ factor automatically.
+                greenfunc = Greens(
+                    self.R[np.newaxis, :, :],
+                    self.Z[np.newaxis, :, :],
                     R_1D[bndry_indices[:, 0]][start:end, np.newaxis, np.newaxis],
                     Z_1D[bndry_indices[:, 1]][start:end, np.newaxis, np.newaxis],
                     scale_factor=self.dRdZ,
-                    out=greenfunc[start:end, :, :],
                 )
 
-                # filter out Greens(x,y;x,y), to prevent infinity/NaNs
-                greenfunc[start:end, bndry_indices[:, 0], bndry_indices[:, 1]] = 0
+                # filter out values at boundary Greens(x,y;x,y), to prevent infinity/NaNs
+                greenfunc[:, bndry_indices[:, 0], bndry_indices[:, 1]] = 0
 
-            self.greenfunc = greenfunc
+                # weighted sum over the last two axes.
+                psi_bnd[start:end] = np.tensordot(
+                    greenfunc, self.jtor, axes=([1, 2], [0, 1])
+                )
 
-        # Precompute geometric RHS coefficient
-        # Comes from GS equation:
-        # Δψ = - μ₀ R Jtor
-        self.rhs_before_jtor = -freegs4e.gradshafranov.mu0 * eq.R
+        return psi_bnd
 
-        # random generator used for NK search direction exploration
-        self.rng = np.random.default_rng(seed=seed)
 
-    def _build_boundary_green(self, source_mask):
+    def _build_masked_boundary_greens(self, source_mask):
         """Build the boundary Green matrix for a selected set of source points."""
         source_indices = np.flatnonzero(source_mask)
         boundary_indices = np.ravel_multi_index(
@@ -279,7 +344,7 @@ class NKGSsolver:
         greenfunc[np.flatnonzero(matches), positions[matches]] = 0.0
         return np.ascontiguousarray(greenfunc * self.dRdZ)
 
-    def _boundary_flux_from_jtor(self, jtor):
+    def _calculate_masked_boundary_flux(self, jtor):
         """Return boundary flux from plasma current inside the limiter."""
         return self.greenfunc @ jtor[self.plasma_source_mask]
 
@@ -409,70 +474,17 @@ class NKGSsolver:
         # rhs_before_jtor already contains geometric operators
         self.rhs = self.rhs_before_jtor * self.jtor
 
+
         # ------------------------------------------------------------
-        # Compute boundary flux via Green's function convolution
-        #
-        # psi_boundary = ∫ G(R,Z; R',Z') Jtor(R',Z') dR'dZ'
-        #
-        # Implemented using tensor contraction:
-        #
-        # Contract:
-        #   greenfunc axis (1,2) with jtor axis (0,1)
-        #
-        # Result is flattened boundary flux vector.
-        #
-        # If Greens was precomputed, use the cached version. Otherwise, compute on the fly
+        # Calculate boundary flux (flat array)
         # ------------------------------------------------------------
-        self.psi_boundary = np.zeros_like(self.R)
-
-
-        if self.__cache_greens:
-
-            # weighted sum over the last two axes.
-            # "contract" axis 1 of greenfunc with axis 0 of jtor
-            # contract axis 2 of greenfunc with axis 1 of jtor
-            psi_bnd = np.tensordot(self.greenfunc, self.jtor, axes=([1, 2], [0, 1]))
-
-        else:
-
-            n_bndry_nodes = self.bndry_indices.shape[0]
-            psi_bnd = np.zeros(n_bndry_nodes)
-
-            R_1D = self.R[:, 0]
-            Z_1D = self.Z[0, :]
-
-            num_slices = 10
-            step = n_bndry_nodes // num_slices
-            for i in range(num_slices):
-
-                start = i * step
-                end = start + step
-                end = (
-                    end if i != num_slices - 1 else n_bndry_nodes
-                )  # last slice gets the remainder
-
-                # multiply in-place by the actual Green's function value, to obtain the filtered result
-                # greenfunc(x,y;x0,y0) = Greens(x,y,x0,y0) | x0 != x or y0 != y
-                greenfunc = Greens(
-                    self.R[np.newaxis, :, :],
-                    self.Z[np.newaxis, :, :],
-                    R_1D[self.bndry_indices[:, 0]][start:end, np.newaxis, np.newaxis],
-                    Z_1D[self.bndry_indices[:, 1]][start:end, np.newaxis, np.newaxis],
-                )
-
-                # filter out values at boundary Greens(x,y;x,y), to prevent infinity/NaNs
-                greenfunc[:, self.bndry_indices[:, 0], self.bndry_indices[:, 1]] = 0
-
-                greenfunc *= self.dRdZ
-
-                # weighted sum over the last two axes
-                psi_bnd[start:end] = np.tensordot(
-                    greenfunc, self.jtor, axes=([1, 2], [0, 1])
-                )
+        psi_bnd = self._calculate_boundary_flux()
 
         # ------------------------------------------------------------
         # Map flattened Green's solution back to boundary grid
         # ------------------------------------------------------------
+        self.psi_boundary = np.zeros_like(self.R)
+
         # Vertical boundaries
         self.psi_boundary[:, 0] = psi_bnd[: self.nx]
         self.psi_boundary[:, -1] = psi_bnd[self.nx : 2 * self.nx]

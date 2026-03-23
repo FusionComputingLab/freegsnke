@@ -92,8 +92,6 @@ class NKGSsolver:
         Z = eq.Z
         self.R = R
         self.Z = Z
-        R_1D = R[:, 0]
-        Z_1D = Z[0, :]
 
         # for reshaping
         nx, ny = np.shape(R)
@@ -125,17 +123,80 @@ class NKGSsolver:
         )
         self.bndry_indices = bndry_indices
 
-        self.__cache_greens = cache_greens
+        # Cache Greens function if necessary
+        if cache_greens:
+            self.greenfunc = self.calculate_full_greenfunc()
+        else:
+            self.greenfunc = None
 
-        if self.__cache_greens:
+        # RHS/Jtor
+        self.rhs_before_jtor = -freegs4e.gradshafranov.mu0 * eq.R
 
+    def calculate_full_greenfunc(self):
+        """
+        Calculates the Greens function giving the responses of boundary nodes to internal nodes.
+
+        Fills the array sequentially to optimize memory usage.
+        """
+
+        bndry_indices = self.bndry_indices
+        n_bndry_nodes = bndry_indices.shape[0]
+
+        R_1D = self.R[:, 0]
+        Z_1D = self.Z[0, :]
+
+        # Pre-allocate full array
+        greenfunc = np.empty(
+            (n_bndry_nodes, self.R.shape[0], self.R.shape[1]),
+        )
+
+        num_slices = 10  # fine-tuned to balance memory vs. compute needs
+        step = n_bndry_nodes // num_slices
+
+        for i in range(num_slices):
+
+            start = i * step
+            end = start + step
+            end = (
+                end if i != num_slices - 1 else n_bndry_nodes
+            )  # last slice gets the remainder
+
+            # Fill up slice of greenfunc in-place. Applies dRdZ factor automatically.
+            Greens(
+                self.R[np.newaxis, :, :],
+                self.Z[np.newaxis, :, :],
+                R_1D[bndry_indices[:, 0]][start:end, np.newaxis, np.newaxis],
+                Z_1D[bndry_indices[:, 1]][start:end, np.newaxis, np.newaxis],
+                scale_factor=self.dRdZ,
+                out=greenfunc[start:end, :, :],
+            )
+
+            # filter out Greens(x,y;x,y), to prevent infinity/NaNs
+            greenfunc[start:end, bndry_indices[:, 0], bndry_indices[:, 1]] = 0
+
+        return greenfunc
+
+    def calculate_boundary_condition(self):
+        """
+        Calculates the values of psi at the boundary. Uses the cached Greens function if available,
+        otherwise calculates it on-the-fly.
+        """
+
+        if self.greenfunc is not None:
+            # weighted sum over the last two axes.
+            # "contract" axis 1 of greenfunc with axis 0 of jtor
+            # contract axis 2 of greenfunc with axis 1 of jtor
+            psi_bnd = np.tensordot(self.greenfunc, self.jtor, axes=([1, 2], [0, 1]))
+
+        else:
+
+            bndry_indices = self.bndry_indices
             n_bndry_nodes = bndry_indices.shape[0]
 
-            # matrices of responses of boundary locations to each grid position
-            greenfunc = np.empty((n_bndry_nodes, R.shape[0], R.shape[1]))
+            R_1D = self.R[:, 0]
+            Z_1D = self.Z[0, :]
 
-            # fill up the array sequentially (to limit memory usage), by calling Greens on different ranges
-            # of boundary nodes
+            psi_bnd = np.empty(n_bndry_nodes)
 
             num_slices = 10
             step = n_bndry_nodes // num_slices
@@ -147,23 +208,24 @@ class NKGSsolver:
                     end if i != num_slices - 1 else n_bndry_nodes
                 )  # last slice gets the remainder
 
-                # fill up slice of greenfunc in-place
-                Greens(
-                    R[np.newaxis, :, :],
-                    Z[np.newaxis, :, :],
+                # Calculate greenfunc for these boundary nodes. Applies dRdZ factor automatically.
+                greenfunc = Greens(
+                    self.R[np.newaxis, :, :],
+                    self.Z[np.newaxis, :, :],
                     R_1D[bndry_indices[:, 0]][start:end, np.newaxis, np.newaxis],
                     Z_1D[bndry_indices[:, 1]][start:end, np.newaxis, np.newaxis],
                     scale_factor=self.dRdZ,
-                    out=greenfunc[start:end, :, :],
                 )
 
-                # filter out Greens(x,y;x,y), to prevent infinity/NaNs
-                greenfunc[start:end, bndry_indices[:, 0], bndry_indices[:, 1]] = 0
+                # filter out values at boundary Greens(x,y;x,y), to prevent infinity/NaNs
+                greenfunc[:, bndry_indices[:, 0], bndry_indices[:, 1]] = 0
 
-            self.greenfunc = greenfunc
+                # weighted sum over the last two axes.
+                psi_bnd[start:end] = np.tensordot(
+                    greenfunc, self.jtor, axes=([1, 2], [0, 1])
+                )
 
-        # RHS/Jtor
-        self.rhs_before_jtor = -freegs4e.gradshafranov.mu0 * eq.R
+        return psi_bnd
 
     def configureLinearSolver(self, solver_type, order, mg_kwargs):
         """Creates and assigns the linear solver 'self.linear_GS_solver' using the arguments provided
@@ -241,52 +303,7 @@ class NKGSsolver:
         # calculates and imposes the boundary conditions
         self.psi_boundary = np.zeros_like(self.R)
 
-        # Get psi_bnd using Greens function
-        # If Greens was precomputed, use the cached version. Otherwise, compute on the fly
-
-        if self.__cache_greens:
-
-            # weighted sum over the last two axes.
-            # "contract" axis 1 of greenfunc with axis 0 of jtor
-            # contract axis 2 of greenfunc with axis 1 of jtor
-            psi_bnd = np.tensordot(self.greenfunc, self.jtor, axes=([1, 2], [0, 1]))
-
-        else:
-
-            n_bndry_nodes = self.bndry_indices.shape[0]
-            psi_bnd = np.zeros(n_bndry_nodes)
-
-            R_1D = self.R[:, 0]
-            Z_1D = self.Z[0, :]
-
-            num_slices = 10
-            step = n_bndry_nodes // num_slices
-            for i in range(num_slices):
-
-                start = i * step
-                end = start + step
-                end = (
-                    end if i != num_slices - 1 else n_bndry_nodes
-                )  # last slice gets the remainder
-
-                # multiply in-place by the actual Green's function value, to obtain the filtered result
-                # greenfunc(x,y;x0,y0) = Greens(x,y,x0,y0) | x0 != x or y0 != y
-                greenfunc = Greens(
-                    self.R[np.newaxis, :, :],
-                    self.Z[np.newaxis, :, :],
-                    R_1D[self.bndry_indices[:, 0]][start:end, np.newaxis, np.newaxis],
-                    Z_1D[self.bndry_indices[:, 1]][start:end, np.newaxis, np.newaxis],
-                )
-
-                # filter out values at boundary Greens(x,y;x,y), to prevent infinity/NaNs
-                greenfunc[:, self.bndry_indices[:, 0], self.bndry_indices[:, 1]] = 0
-
-                greenfunc *= self.dRdZ
-
-                # weighted sum over the last two axes
-                psi_bnd[start:end] = np.tensordot(
-                    greenfunc, self.jtor, axes=([1, 2], [0, 1])
-                )
+        psi_bnd = self.calculate_boundary_condition()
 
         self.psi_boundary[:, 0] = psi_bnd[: self.nx]
         self.psi_boundary[:, -1] = psi_bnd[self.nx : 2 * self.nx]

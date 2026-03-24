@@ -137,6 +137,10 @@ class mode_decomposition:
             Can be found at eq._vgreen. np.shape(eq_vgreen)=(n_coils, nx, ny)
         """
 
-        grid_shape = eq_vgreen.shape[1:]
-        physical_greens = eq_vgreen.reshape(self.n_coils, -1)
-        return (self.Pmatrix.T @ physical_greens).reshape(self.n_coils, *grid_shape)
+#        grid_shape = eq_vgreen.shape[1:]
+#        physical_greens = eq_vgreen.reshape(self.n_coils, -1)
+#        dgreen = (self.Pmatrix.T @ physical_greens).reshape(self.n_coils, *grid_shape)
+
+        dgreen = np.tensordot(self.Pmatrix, eq_vgreen, axes=([0],[0]))
+
+        return dgreen

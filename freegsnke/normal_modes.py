@@ -124,10 +124,7 @@ class mode_decomposition:
             Can be found at eq._vgreen. np.shape(eq_vgreen)=(n_coils, nx, ny)
         """
 
-        dgreen = np.sum(
-            eq_vgreen[np.newaxis, :, :, :]
-            * self.Pmatrix_inverse[:, :, np.newaxis, np.newaxis],
-            axis=1,
-        )
+        # contracts axis 1 of Pmatrix_inverse with axis 0 of eq_vgreen
+        dgreen = np.tensordot(self.Pmatrix_inverse, eq_vgreen, axes=([1], [0]))
 
         return dgreen

@@ -211,7 +211,7 @@ class Inverse_optimizer:
         self.null_points_2nd_order = null_points_2nd_order
         if self.null_points_2nd_order is not None:
             self.null_points_2nd_order = np.array(self.null_points_2nd_order)
-            
+
         # ------------------------------------------------------------
         # Direct flux value constraints
         # These impose ψ(R,Z) = ψ_target at specified locations
@@ -588,7 +588,6 @@ class Inverse_optimizer:
                 R=self.null_points[0], Z=self.null_points[1]
             )
 
-
         # ------------------------------------------------------------
         # Magnetic null point Green's functions (for second-order nulls)
         # ------------------------------------------------------------
@@ -614,7 +613,7 @@ class Inverse_optimizer:
             self.Gdbzdr_2nd_order = eq.tokamak.createdBzdrGreensVec(
                 R=self.null_points_2nd_order[0], Z=self.null_points_2nd_order[1]
             )
-            
+
         # ------------------------------------------------------------
         # Flux value constraint Green's functions
         # ------------------------------------------------------------
@@ -789,7 +788,7 @@ class Inverse_optimizer:
             self.dBzdrp_2nd_order = (
                 -(dpsidr / self.null_points_2nd_order[0]) + d2psidr2
             ) / self.null_points_2nd_order[0]
-            
+
         # ------------------------------------------------------------
         # Isoflux contour constraint evaluation
         #
@@ -996,7 +995,6 @@ class Inverse_optimizer:
         b = -np.concatenate((b_r, b_z), axis=0)
 
         return A, b, loss
-
 
     def build_psi_vals_lsq(self, full_currents_vec):
         """
@@ -1269,7 +1267,7 @@ class Inverse_optimizer:
             b = np.concatenate((b, b_pv), axis=0) * self.weight_psi
             self.psiv_dim = len(b)
             loss = loss + l
-            
+
         # direct flux value constraints
         if self.null_points_2nd_order is not None:
             A_np_2nd_order, b_np_2nd_order, l = self.build_null_points_2nd_order_lsq(
@@ -1279,7 +1277,7 @@ class Inverse_optimizer:
             b = np.concatenate((b, b_np_2nd_order), axis=0)
             self.nullp_2nd_order_dim = len(b)
             loss = loss + l
-            
+
         # assemble the full system
         self.A = np.copy(A)
         self.b = np.copy(b)
@@ -1887,7 +1885,7 @@ class Inverse_optimizer:
         self.A_plasma = np.concatenate(A, axis=0)
         self.b_plasma = np.concatenate(b, axis=0)
         self.loss_plasma = np.linalg.norm(loss)
-        
+
     def build_null_points_2nd_order_lsq(self, full_currents_vec):
         """
         Construct the linear least-squares system enforcing second-order null point constraints.
@@ -2009,7 +2007,7 @@ class Inverse_optimizer:
             (b_r, b_z, b_r_deriv, b_z_deriv, b_r_deriv_cross, b_z_deriv_cross), axis=0
         )
         return A, b, loss
-    
+
     def optimize_plasma_psi(self, full_currents_vec, trial_plasma_psi, l2_reg):
         """
         Solve the regularised least-squares problem for plasma parameters.

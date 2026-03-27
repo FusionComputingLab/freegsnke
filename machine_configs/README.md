@@ -7,5 +7,5 @@ Here we store a number of **machine description** files in pickle format that de
 | test | A test tokamak used in the FreeGSNKE unit tests. | N\A
 | example | A simple toy tokamak. | Example0 notebook
 | MAST-U | A **MAST-U-like** tokamak. | UKAEA
-| SPARC | A **SPARC-U-like** tokamak. | [Link](https://github.com/cfs-energy/SPARCPublic)
+| SPARC | A **SPARC-like** tokamak. | [Link](https://github.com/cfs-energy/SPARCPublic)
 | ITER | An **ITER-like** tokamak. | [Link](https://github.com/ProjectTorreyPines/FUSE.jl)

@@ -8,7 +8,6 @@ from freegsnke import GSstaticsolver, build_machine, equilibrium_update
 from freegsnke.inverse import Inverse_optimizer
 from freegsnke.jtor_update import ConstrainPaxisIp
 
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
 TEST_DATA_DIR = REPO_ROOT / "freegsnke" / "tests"
 MACHINE_CONFIG_DIR = REPO_ROOT / "machine_configs" / "MAST-U"

@@ -34,15 +34,15 @@ class VirtualCircuitsController:
     A controller class for managing virtual circuit control matrices and coil current reference
     waveforms.
 
-    This class supports both spline-based and step-based interpolation of control signals
-    for coils and plasma shaping targets. It optionally integrates with an emulated virtual
+    This class supports both spline-based (linear) and step-based interpolation of control signals
+    for coils and plasma shaping parameters. It optionally integrates with an emulated virtual
     circuit provider for enhanced control capabilities.
 
     Parameters
     ----------
     data : dict
-        A nested dictionary containing control waveforms for each target to be controlled.
-        Each target's dictionary must include keys for both spline-based and step-based parameters:
+        A nested dictionary containing control waveforms for each shape parameter to be controlled.
+        Each shape parameter's dictionary must include keys for both spline-based and step-based parameters:
             - Spline keys: typically of the form '<coil>_ref'
             - Step keys: typically shape target and plasma target names
         Each key should map to a dictionary suitable for interpolation, with keys:
@@ -53,10 +53,10 @@ class VirtualCircuitsController:
         The list of active coils being controlled.
 
     ctrl_targets : list of str
-        The list of shape targets being managed.
+        The list of shape parameters being managed.
 
     plasma_target : list of str
-        The list of plasma targets being managed.
+        The list of plasma parameters being managed.
 
     vc_generator : object, optional
         An optional class object for applying emulated virtual circuits. If not
@@ -64,7 +64,7 @@ class VirtualCircuitsController:
 
     vc_update_rate : float, optional
         Optional argument to specify how often, in seconds, new VCs are computed with vc_generator.
-        If None provided, defaults to zero and new VC computed at every iterration.
+        If None provided, defaults to zero and new VC computed at every time step.
 
     """
 
@@ -78,15 +78,19 @@ class VirtualCircuitsController:
         vc_update_rate=None,
     ):
 
-        # coils list
+        # active coils list (used for shape control)
         self.ctrl_coils = ctrl_coils
+
+        # ordering of the ctrl coils in the virtual circuit matrices
         self.vc_coil_order = data["coil_order"]
         self.vc_coil_order_index = {
             coil: i for i, coil in enumerate(self.vc_coil_order)
         }
 
-        # targets list
+        # shape parameter list to be controlled
         self.ctrl_targets = ctrl_targets
+
+        # name of plasma parameter to be controlled
         self.plasma_target = plasma_target
 
         # check correct data is input and in correct format
@@ -105,22 +109,21 @@ class VirtualCircuitsController:
 
         # store emulated VCs class if present
         self.vc_generator = vc_generator
+
+        # how often to update emulated VCs (in seconds)
         if vc_update_rate is None:
             vc_update_rate = 0.0
         self.vc_update_rate = vc_update_rate
-        # set holders for most recent vcs
+
+        # set placeholders for most recent VCs
         self.latest_vc_time = None
         self.latest_vc = None
 
-        # store emulated VC's that were used
+        # store emulated VCs that were used
+        self.emulated_jacobian_list = []
         self.emulated_vc_list = []
         self.emulated_vc_times = []
-
-        # store first vc matrix
-        # t0 = min(data)
-        # self.present_shape_vc_matrix = self.extract_values(
-        #     t=t, targets=self.ctrl_targets
-        # )
+        self.full_vc_matrix = []
 
     def update_interpolants(self):
         """
@@ -249,15 +252,18 @@ class VirtualCircuitsController:
                     targets_calc=emulated_VC_targets_calc,
                     coils=self.ctrl_coils,
                     coils_calc=emulator_coils_calc,
-                    input_data=emu_inputs,  # This may be temporary and removed at some point.
+                    input_data=emu_inputs,
                 )
                 # update latest vcs/times
                 self.latest_vc_time = 1.0 * t
                 self.latest_vc = VC_shape_emu
 
+            # calculate time since last VC update
             delta_t_vc = t - self.latest_vc_time
+
+            # update with new VCs if required
             if delta_t_vc >= self.vc_update_rate:
-                # compute new emulated VCs
+
                 if verbose:
                     print("...updating the emulated VCs being used.")
                 VC_shape_emu = self.vc_generator.get_vc(
@@ -265,13 +271,16 @@ class VirtualCircuitsController:
                     targets_calc=emulated_VC_targets_calc,
                     coils=self.ctrl_coils,
                     coils_calc=emulator_coils_calc,
-                    input_data=emu_inputs,  # This may be temporary and removed at some point.
+                    input_data=emu_inputs,
                 )
-                # update latest vcs/times
+
+                # update latest VCs and times
                 self.latest_vc_time = 1.0 * t
                 self.latest_vc = VC_shape_emu
-                # store VC's
-                self.emulated_vc_list.append(VC_shape_emu)
+
+                # store sensitivity matrix (Jacobian) and VCs
+                self.emulated_jacobian_list.append(self.vc_generator.jacobian_matrix)
+                self.emulated_vc_list.append(self.vc_generator.vc_matrix)
                 self.emulated_vc_times.append(t)
 
             else:
@@ -288,6 +297,7 @@ class VirtualCircuitsController:
 
         # unapproved coil currents rates of change
         dI_dt_unapproved = dI_dt_ref + (dT_dt @ VC_shape) + (dip_dt * VC_plasma)
+        self.full_vc_matrix.append(np.concatenate((VC_shape, VC_plasma), axis=0))
 
         # unapproved coil currents (by simple Euler integration)
         I_unapproved = I_approved_prev + (dI_dt_unapproved * dt)

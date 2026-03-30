@@ -1,6 +1,6 @@
 # Examples
 
-These example Jupyter notebooks are intended to be the **first port of call for new users** trying to get up to speed with the basics of simulating Grad-Shafranov equilibria using FreeGSNKE (the numberings represent approximately increasing complexity!). Most examples will use a MAST-U-like tokamak machine, unless otherwise specified. 
+These example Jupyter notebooks are intended to be the **first port of call for new users** trying to get up to speed with the basics of simulating Grad-Shafranov (GS) equilibria using FreeGSNKE (the numberings represent approximately increasing complexity!). Most examples will use a MAST-U-like tokamak machine, unless otherwise specified. 
 
 | Example notebook | Purpose | Who can use it? |
 | ------ | ------ | ------ | 
@@ -10,11 +10,14 @@ These example Jupyter notebooks are intended to be the **first port of call for 
 | Example 02 | Learn how to use the static forward solver. | Anyone |
 | Example 03 | Learn how to extract results from a calculated equilibrium. | Anyone |
 | Example 04 | Learn how to use the magnetic probes object. | Anyone |
-| Example 05 | Learn how to use the evolutive solver to simulate time-dependent equilibria. | Anyone |
+| Example 05a | Learn how to use the nonlinear and linear (with GS) evolutive solver to simulate time-dependent equilibria. | Anyone |
+| Example 05b | Learn how to use the linear evolutive solver without solving GS at each timestep. | Anyone |
+| Example 05c | Learn how to use the linear evolutive solver (with or without solving GS) with automatic relinearisation enabled. | Anyone |
 | Example 06a/b | Simulate (static) MAST-U equilibria over an entire shot using inputs from EFIT++ (requires internal UKAEA MAST-U database). | UKAEA employees + collaborators |
 | Example 07 | Static inverse solve in a SPARC-like tokamak. | Anyone |
 | Example 08 | Static inverse solve in an ITER-like tokamak. | Anyone |
 | Example 09 | Learn how to use and build virtual circuits for plasma shape control. | Anyone |
 | Example 10 | Learn how to calculate growth rates associated with vertically unstable modes. | Anyone |
+| Example 11 | Learn how to use the evolutive solver alongside a virtual plasma control system (FreeGSNKE Pulse Design Tool). | Anyone |
 
 If a new example has been created, please add a new line to the table explaining its purpose!

@@ -53,3 +53,6 @@ examples/.virtual_documents/*
 .virtual_documents/
 # Local Netlify folder
 .netlify
+
+examples/control_pickles/*
+freegsnke/control_loop/control_test_files/*

@@ -5,3 +5,4 @@ h5py~=3.13.0
 deepdiff~=7.0.1
 scikit-image~=0.25.2
 notebook~=7.4.2
+cvxpy~=1.7.5

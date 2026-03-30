@@ -597,30 +597,9 @@ def copy_tokamak(tokamak: Machine):
     new_tokamak.n_passive_coils = tokamak.n_passive_coils
     new_tokamak.n_coils = tokamak.n_coils
 
-    copy_into(
-        tokamak,
-        new_tokamak,
-        "coil_resist",
-        mutable=True,
-        strict=False,
-        allow_deepcopy=False,
-    )
-    copy_into(
-        tokamak,
-        new_tokamak,
-        "coil_self_ind",
-        mutable=True,
-        strict=False,
-        allow_deepcopy=False,
-    )
-    copy_into(
-        tokamak,
-        new_tokamak,
-        "current_vec",
-        mutable=True,
-        strict=False,
-        allow_deepcopy=False,
-    )
+    copy_into(tokamak, new_tokamak, "coil_resist", mutable=True, strict=False)
+    copy_into(tokamak, new_tokamak, "coil_self_ind", mutable=True, strict=False)
+    copy_into(tokamak, new_tokamak, "current_vec", mutable=True, strict=False)
 
     # add probe object attribute to tokamak (not strictly required)
     new_tokamak.probes = tokamak.probes

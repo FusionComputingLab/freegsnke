@@ -9,7 +9,7 @@ from freegsnke.inverse import Inverse_optimizer
 from freegsnke.jtor_update import ConstrainPaxisIp
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-TEST_DATA_DIR = REPO_ROOT / "freegsnke" / "tests"
+TEST_DATA_DIR = Path(__file__).resolve().parent / "baselines"
 MACHINE_CONFIG_DIR = REPO_ROOT / "machine_configs" / "MAST-U"
 
 INVERSE_CURRENT_BASELINE = TEST_DATA_DIR / "test_inverse_control_currents.npy"

@@ -12,7 +12,6 @@ from matplotlib.widgets import Slider
 
 from freegsnke import build_machine
 
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
 TEST_DATA_DIR = Path(__file__).resolve().parent / "baselines"
 MACHINE_CONFIG_DIR = REPO_ROOT / "machine_configs" / "test"

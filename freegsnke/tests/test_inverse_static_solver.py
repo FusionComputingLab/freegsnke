@@ -17,6 +17,13 @@ INVERSE_PSI_BASELINE = TEST_DATA_DIR / "test_inverse_psi.npy"
 
 
 def _build_diverted_inverse_case():
+    """Construct a diverted inverse-solve test case based on the MAST-U example machine.
+
+    The returned objects define a static Grad-Shafranov inverse problem with a
+    diverted plasma target, constrained pressure/current profile parameters, a
+    fixed solenoid current, and explicit current limits for the active control
+    coils.
+    """
     tokamak = build_machine.tokamak(
         active_coils_path=str(MACHINE_CONFIG_DIR / "MAST-U_like_active_coils.pickle"),
         passive_coils_path=str(MACHINE_CONFIG_DIR / "MAST-U_like_passive_coils.pickle"),
@@ -104,6 +111,13 @@ def diverted_inverse_case():
 
 
 def test_inverse_static_diverted_solve_regression(diverted_inverse_case):
+    """Regression test for the diverted inverse static solve.
+
+    Solves the MAST-U-like diverted equilibrium, compares the resulting control
+    currents and psi map against stored baselines, checks the magnetic axis and
+    X-point locations, and verifies that the final coil currents respect the
+    configured limits.
+    """
     eq, profiles, constrain, coil_current_limits = diverted_inverse_case
 
     solver = GSstaticsolver.NKGSsolver(eq=eq)

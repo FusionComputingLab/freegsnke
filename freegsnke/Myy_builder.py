@@ -200,6 +200,7 @@ class Myy_handler:
             i.e. the smallest rectangular domain around limiter mask
             (same size as self.mask_inside_limiter_red)
         """
+
         self.myy_mask_red = mask
         self.outside_myy_mask = np.logical_not(mask)
 
@@ -207,16 +208,25 @@ class Myy_handler:
 
         self.idxs_myy_mask_red = self.extract_index_mask(mask)
 
-        r_idxs = np.tile(
-            self.idxs_myy_mask_red[0][:, np.newaxis],
-            (1, nmask),
-        )
-        dz_idxs = np.abs(
-            self.idxs_myy_mask_red[1][np.newaxis, :]
-            - self.idxs_myy_mask_red[1][:, np.newaxis]
-        )
+        dz_idxs = self.idxs_myy_mask_red[1]
+        r_idxs = self.idxs_myy_mask_red[0]
 
-        self.myy = self.gg[r_idxs, r_idxs.T, dz_idxs]
+        self.myy = np.empty((nmask, nmask))
+
+        d1, d2, d3 = self.gg.shape
+        d23 = d2 * d3
+
+        # important to keep this as a python loop, instead of relying on numpy internals
+        for i in range(nmask):
+
+            idxs1 = r_idxs
+            idxs2 = r_idxs[i]
+
+            idxs3 = np.abs(dz_idxs[i] - dz_idxs)
+            idcs = idxs1 * d23 + idxs2 * d3 + idxs3
+
+            # same as self.myy[i,:] = self.gg.reshape(-1)[idcs] but faster
+            np.take(self.gg, idcs, out=self.myy[i, :], mode="wrap")
 
     def force_build_Myy(self, hatIy):
         """Builds the Myy matrix only including domain points in the input vector (not necessarily a mask)

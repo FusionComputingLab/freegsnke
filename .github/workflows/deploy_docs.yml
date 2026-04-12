@@ -19,5 +19,10 @@ jobs:
     - name: Build docs
       run: cd docs && bash build_documentation.sh
 
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
     - name: Deploy docs to netlify
-      run: cd docs && netlify deploy --site ${{ secrets.NETLIFY_SITE_ID }}  --auth ${{ secrets.NETLIFY_DOCS_DEPLOY_API_TOKEN }} --prod --dir _build/html
+      run: cd docs && npx --yes netlify-cli deploy --site ${{ secrets.NETLIFY_SITE_ID }} --auth ${{ secrets.NETLIFY_DOCS_DEPLOY_API_TOKEN }} --prod --dir _build/html

@@ -154,6 +154,21 @@ pre-commit install
 ```
 Several tests have been built using [pytest](https://docs.pytest.org/en) and are run as part of the CI/CD pipelines, but you can run these locally before submitting a merge request if you wish. These must pass in order for the merge request to be approved, so please fix any errors that pop up if you see them. 
 
+Run the tests from the root `freegsnke/` directory because several test fixtures load files from `machine_configs/` using repository-relative paths. To run the full test suite, use:
+
+```shell
+python -m pytest -v
+```
+
+If you only want to run a specific test module while working on a change, use (for example):
+
+```shell
+python -m pytest -v freegsnke/tests/test_static_solver.py
+python -m pytest -v freegsnke/tests/test_inverse_static_solver.py
+```
+
+You can also filter down to a single test with `-k` or a node id if you want faster feedback during development.
+
 If your bug fix or feature addition includes a change to how FreeGSNKE fundamentally works or requires a change to the API, be sure to document this appropriately in the user documentation, API documentation, and by writing/changing the notebook examples where appropriate. Also be sure to fully justify why such changes are needed.
 
 Any Jupyter notebooks tracked by the repository should **not** include cell outputs so that we can keep the size of the repository reasonable. Please clear these manually in the notebook itself before submitting merge requests. The following command does just this:

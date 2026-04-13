@@ -68,11 +68,15 @@ FreeGSNKE is constantly evolving and so we hope to provide users with more advan
 
 ## Installation
 
-Building from source is currently the only supported installation method.
+FreeGSNKE can be installed using pip or built from source.
 
-### Stage one: set up a Python environment
+### Installing with pip
 
-The recommended way to install FreeGSNKE is inside a virtual environment, for example using conda or venv. The following instructions will set up a conda environment:
+The following stages describe how to set up a virtual environment and install FreeGSNKE with pip.
+
+#### Stage one: set up a Python environment
+
+The recommended way to install FreeGSNKE is inside a virtual environment, for example using conda or venv. The instructions in this stage will set up a conda environment:
 
 1. Install the latest [Miniforge](https://github.com/conda-forge/miniforge) distribution for your operating system.
 
@@ -87,7 +91,7 @@ The recommended way to install FreeGSNKE is inside a virtual environment, for ex
    conda activate freegsnke
    ```
 
-### Stage two: install FreeGSNKE
+#### Stage two: install FreeGSNKE
 
    ```shell
    pip install "freegsnke[freegs4e]"
@@ -97,7 +101,7 @@ The extra `freegs4e` dependency installs [FreeGS4E](https://github.com/FusionCom
 
 If you are planning to develop FreeGSNKE, see the below section on [contributing](#contributing) code.
 
-#### Installing FreeGSNKE with UDA
+### Installing FreeGSNKE with UDA
 
 FreeGSNKE also interfaces with [UDA](https://github.com/ukaea/UDA), for example, to simulate past MAST-U shots. See examples 6a, 6b and 6c for more information. If you require this functionality and have the necessary privileges, follow these steps to install the required packages:
 
@@ -105,6 +109,10 @@ FreeGSNKE also interfaces with [UDA](https://github.com/ukaea/UDA), for example,
 2. Establish a connection to the UKAEA VPN.
 3. When installing FreeGSNKE, specify the `uda` extra: `pip install freegsnke[uda]`.
 4. Finally, install the uda-mast package: `pip install "uda-mast @ git+ssh://git@git.ccfe.ac.uk/MAST-U/mastcodes.git@1.3.10#subdirectory=uda/python"`.
+
+### Building from source
+
+See the section on [contributing code](#contributing-code) for instructions on how to build from source.
 
 ## Contributing
 

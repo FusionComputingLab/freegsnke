@@ -156,6 +156,7 @@ class VirtualCircuitsController:
         emulated_VC_targets_calc=None,
         emulator_coils_calc=None,
         emu_inputs=None,
+        tikhonov_lambda=None,
         verbose=False,
     ):
         """
@@ -253,6 +254,7 @@ class VirtualCircuitsController:
                     coils=self.ctrl_coils,
                     coils_calc=emulator_coils_calc,
                     input_data=emu_inputs,
+                    tikhonov_lambda=tikhonov_lambda,
                 )
                 # update latest vcs/times
                 self.latest_vc_time = 1.0 * t
@@ -272,6 +274,7 @@ class VirtualCircuitsController:
                     coils=self.ctrl_coils,
                     coils_calc=emulator_coils_calc,
                     input_data=emu_inputs,
+                    tikhonov_lambda=tikhonov_lambda,
                 )
 
                 # update latest VCs and times

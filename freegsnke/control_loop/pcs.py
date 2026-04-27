@@ -184,6 +184,7 @@ class PlasmaControlSystem:
         emulator_coils_calc=None,
         emu_inputs=None,
         vc_update_rate=None,
+        tikhonov_lambda=None,
         verbose=False,
     ):
         """
@@ -248,6 +249,10 @@ class PlasmaControlSystem:
 
         emulator_coils_calc : list of str, optional
             List of coils to use in emulated VC compuation. These are coils to use in computing shape sensitivity matrix.
+
+        tikhonov_lambda : numpy.ndarray , optional
+            Array of regularisation values for Tikhonov regularisation in emualted VC matrix inversion.
+            Must be same length as emulator_coils_calc.
 
         verbose : bool, optional
             If True, prints diagnostic information from subsystem controllers.
@@ -322,6 +327,7 @@ class PlasmaControlSystem:
                     emulated_VC_targets_calc=emulated_VC_targets_calc,
                     emulator_coils_calc=emulator_coils_calc,
                     emu_inputs=emu_inputs,
+                    tikhonov_lambda=tikhonov_lambda,
                 )
             )
 

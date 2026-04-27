@@ -183,7 +183,6 @@ class PlasmaControlSystem:
         emulated_VC_targets_calc=None,
         emulator_coils_calc=None,
         emu_inputs=None,
-        vc_update_rate=None,
         tikhonov_lambda=None,
         verbose=False,
     ):

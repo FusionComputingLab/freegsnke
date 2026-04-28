@@ -286,8 +286,9 @@ class VirtualCircuitsController:
                 self.latest_vc = VC_shape_emu
 
                 # store sensitivity matrix (Jacobian)
-                self.emulated_jacobian_list.append(self.vc_generator.jacobian_matrix)
-                self.emulated_vc_list.append(self.vc_generator.vc_matrix)
+                # self.emulated_jacobian_list.append(self.vc_generator.jacobian_matrix)
+                # self.emulated_vc_list.append(self.vc_generator.vc_matrix)
+                self.emulated_vc_list.append(self.latest_vc)
                 self.emulated_vc_times.append(t)
 
             else:

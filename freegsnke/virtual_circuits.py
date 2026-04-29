@@ -314,6 +314,71 @@ class VirtualCircuitHandling:
 
         return dtargets / final_dI
 
+    @staticmethod
+    def calculate_matrix_inverse(
+        matrix: np.ndarray, tikhonov_lambda: np.ndarray = None
+    ):
+        """
+        Compute inverse of a generically non-square matrix
+        By default Moore Penrose inverse is used (np.pinv).
+        If Tikhonov_lambda is provided then Tikhonov regularisation is applied
+        and inv = [M^T M + diag(lambda)]^-1 M^T
+
+        Inputs:
+        -------
+        matrix : np.ndarray
+            matrix to be inverted
+
+        tikhonov_lambda : np.ndarray, optional
+            1d array of tikhonov coefficients, or 2d diagonal matrix of coefficients.
+            Must have size/shape consistent with matrix.shape[1].
+
+
+        Returns:
+        --------
+        inverse : np.ndarray
+            inverse of matrix
+        """
+        matrix = np.asarray(matrix)  # convert tensorflow to numpy.
+        if tikhonov_lambda is None:
+            # use regular moore-penrose pseudo inverse
+            print("Computing Moore-Penrose pseudoinverse")
+            inverse = np.linalg.pinv(matrix)
+
+        else:
+            print("Computing Tikhonov regularised inverse")
+            tikhonov_lambda = np.asarray(tikhonov_lambda)
+            n_cols = matrix.shape[1]
+
+            if tikhonov_lambda.ndim == 1:
+                if tikhonov_lambda.shape[0] != n_cols:
+                    raise ValueError(
+                        f"tikhonov_lambda length {tikhonov_lambda.shape[0]} "
+                        f"must match matrix column count {n_cols}."
+                    )
+                tikhonov_matrix = np.diag(tikhonov_lambda)
+
+            elif tikhonov_lambda.ndim == 2:
+                if tikhonov_lambda.shape != (n_cols, n_cols):
+                    raise ValueError(
+                        f"tikhonov_lambda shape {tikhonov_lambda.shape} "
+                        f"must be ({n_cols}, {n_cols}) to match matrix column count."
+                    )
+                if not np.allclose(tikhonov_lambda, np.diag(np.diag(tikhonov_lambda))):
+                    raise ValueError(
+                        "tikhonov_lambda 2d array must be a diagonal matrix."
+                    )
+                tikhonov_matrix = tikhonov_lambda
+
+            else:
+                raise ValueError(
+                    f"tikhonov_lambda must be 1d or 2d, got {tikhonov_lambda.ndim}d."
+                )
+
+            inverse = np.linalg.inv(matrix.T @ matrix + tikhonov_matrix) @ matrix.T
+
+        return inverse
+
     def calculate_VC(
         self,
         eq,
@@ -325,6 +390,7 @@ class VirtualCircuitHandling:
         starting_dI=None,
         min_starting_dI=50,
         verbose=False,
+        tikhonov_lambda=None,
         name=None,
     ):
         """
@@ -454,15 +520,18 @@ class VirtualCircuitHandling:
         print("Inverting the shape matrix to get the virtual circuit matrix.")
         print(f"VC object stored under name: '{name}'.")
 
+        # vc matrix is pseudo inverse of shape matrix
+        vc_matrix = self.calculate_matrix_inverse(
+            shape_matrix, tikhonov_lambda=tikhonov_lambda
+        )
+
         # store the VC object dynamically
         store_VC = VirtualCircuit(
             name=name,
             eq=eq,
             profiles=profiles,
             shape_matrix=shape_matrix,
-            VCs_matrix=np.linalg.pinv(
-                shape_matrix
-            ),  # "virtual circuits" are the pseudo-inverse of the shape matrix
+            VCs_matrix=vc_matrix,
             target_names=target_names,
             coils=coils,
             target_calculator=target_calculator,

@@ -14,9 +14,9 @@ FreeGSNKE is free software: you can redistribute it and/or modify
 it under the terms of the GNU Lesser General Public License as published by
 the Free Software Foundation, either version 3 of the License, or
 (at your option) any later version.
-  
+
 You should have received a copy of the GNU Lesser General Public License
-along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.  
+along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 import itertools
@@ -990,118 +990,118 @@ class Inverse_optimizer:
 
         return A, b, loss
 
-    def build_psi_vals_lsq(self, full_currents_vec):
-        """
-        Construct a least-squares system enforcing direct flux value constraints.
+    # def build_psi_vals_lsq(self, full_currents_vec):
+    #     """
+    #     Construct a least-squares system enforcing direct flux value constraints.
 
-        This method builds the optimisation system:
+    #     This method builds the optimisation system:
 
-            A I_control ≈ b
+    #         A I_control ≈ b
 
-        where:
+    #     where:
 
-            ψ_model(R_i, Z_i) = ψ_target(R_i, Z_i)
+    #         ψ_model(R_i, Z_i) = ψ_target(R_i, Z_i)
 
-        is enforced by matching magnetic flux values at specified locations.
+    #     is enforced by matching magnetic flux values at specified locations.
 
-        The optimisation residual is defined as:
+    #     The optimisation residual is defined as:
 
-            b = ψ_tokamak(I) + ψ_plasma
-                - ψ_target
-                - ⟨b⟩
+    #         b = ψ_tokamak(I) + ψ_plasma
+    #             - ψ_target
+    #             - ⟨b⟩
 
-        Mean flux removal is applied to remove arbitrary vertical flux offsets,
-        since the Grad–Shafranov equation is invariant under constant flux shifts.
+    #     Mean flux removal is applied to remove arbitrary vertical flux offsets,
+    #     since the Grad–Shafranov equation is invariant under constant flux shifts.
 
-        Parameters
-        ----------
-        full_currents_vec : ndarray
-            Full coil current vector.
+    #     Parameters
+    #     ----------
+    #     full_currents_vec : ndarray
+    #         Full coil current vector.
 
-            Example:
-                eq.tokamak.getCurrentsVec()
+    #         Example:
+    #             eq.tokamak.getCurrentsVec()
 
-        Returns
-        -------
-        A : ndarray
-            Jacobian matrix mapping coil current perturbations → flux changes.
+    #     Returns
+    #     -------
+    #     A : ndarray
+    #         Jacobian matrix mapping coil current perturbations → flux changes.
 
-        b : ndarray
-            Flux mismatch residual vector.
+    #     b : ndarray
+    #         Flux mismatch residual vector.
 
-        normalised_loss : list of float
-            Normalised constraint violation magnitude.
+    #     normalised_loss : list of float
+    #         Normalised constraint violation magnitude.
 
-        Notes
-        -----
-        This constraint formulation is commonly used for:
+    #     Notes
+    #     -----
+    #     This constraint formulation is commonly used for:
 
-            • Magnetic axis pinning
-            • Boundary flux matching
-            • Profile shape control
+    #         • Magnetic axis pinning
+    #         • Boundary flux matching
+    #         • Profile shape control
 
-        Mathematical formulation
-        ------------------------
-        Solve:
+    #     Mathematical formulation
+    #     ------------------------
+    #     Solve:
 
-            min_I || G I + ψ_plasma − ψ_target ||²
-        """
+    #         min_I || G I + ψ_plasma − ψ_target ||²
+    #     """
 
-        # flux response wrt coil currents
-        A_r = self.Gbr_2nd_order[self.control_mask].T
-        b_r = np.sum(
-            self.Gbr_2nd_order * full_currents_vec[:, np.newaxis], axis=0
-        )  # coils contribution
-        b_r += self.Brp_2nd_order  # plasma contribution
-        loss = [np.linalg.norm(b_r)]
+    #     # flux response wrt coil currents
+    #     A_r = self.Gbr_2nd_order[self.control_mask].T
+    #     b_r = np.sum(
+    #         self.Gbr_2nd_order * full_currents_vec[:, np.newaxis], axis=0
+    #     )  # coils contribution
+    #     b_r += self.Brp_2nd_order  # plasma contribution
+    #     loss = [np.linalg.norm(b_r)]
 
-        # Bz field constraint
-        A_z = self.Gbz_2nd_order[self.control_mask].T
-        b_z = np.sum(
-            self.Gbz_2nd_order * full_currents_vec[:, np.newaxis], axis=0
-        )  # coils contribution
-        b_z += self.Bzp_2nd_order  # plasma contribution
-        loss.append(np.linalg.norm(b_z))
+    #     # Bz field constraint
+    #     A_z = self.Gbz_2nd_order[self.control_mask].T
+    #     b_z = np.sum(
+    #         self.Gbz_2nd_order * full_currents_vec[:, np.newaxis], axis=0
+    #     )  # coils contribution
+    #     b_z += self.Bzp_2nd_order  # plasma contribution
+    #     loss.append(np.linalg.norm(b_z))
 
-        # dBrdr field constraint
-        A_r_deriv = self.Gdbrdr_2nd_order[self.control_mask].T
-        b_r_deriv = np.sum(
-            self.Gdbrdr_2nd_order * full_currents_vec[:, np.newaxis], axis=0
-        )  # coils contribution
-        b_r_deriv += self.dBrdrp_2nd_order  # plasma contribution
-        loss.append(np.linalg.norm(b_r_deriv))
+    #     # dBrdr field constraint
+    #     A_r_deriv = self.Gdbrdr_2nd_order[self.control_mask].T
+    #     b_r_deriv = np.sum(
+    #         self.Gdbrdr_2nd_order * full_currents_vec[:, np.newaxis], axis=0
+    #     )  # coils contribution
+    #     b_r_deriv += self.dBrdrp_2nd_order  # plasma contribution
+    #     loss.append(np.linalg.norm(b_r_deriv))
 
-        # dBzdz field constraint
-        A_z_deriv = self.Gdbzdz_2nd_order[self.control_mask].T
-        b_z_deriv = np.sum(
-            self.Gdbzdz_2nd_order * full_currents_vec[:, np.newaxis], axis=0
-        )  # coils contribution
-        b_z_deriv += self.dBzdzp_2nd_order  # plasma contribution
-        loss.append(np.linalg.norm(b_z_deriv))
+    #     # dBzdz field constraint
+    #     A_z_deriv = self.Gdbzdz_2nd_order[self.control_mask].T
+    #     b_z_deriv = np.sum(
+    #         self.Gdbzdz_2nd_order * full_currents_vec[:, np.newaxis], axis=0
+    #     )  # coils contribution
+    #     b_z_deriv += self.dBzdzp_2nd_order  # plasma contribution
+    #     loss.append(np.linalg.norm(b_z_deriv))
 
-        # dBrdz field constraint
-        A_r_deriv_cross = self.Gdbrdz_2nd_order[self.control_mask].T
-        b_r_deriv_cross = np.sum(
-            self.Gdbrdz_2nd_order * full_currents_vec[:, np.newaxis], axis=0
-        )  # coils contribution
-        b_r_deriv_cross += self.dBrdzp_2nd_order  # plasma contribution
-        loss.append(np.linalg.norm(b_r_deriv_cross))
+    #     # dBrdz field constraint
+    #     A_r_deriv_cross = self.Gdbrdz_2nd_order[self.control_mask].T
+    #     b_r_deriv_cross = np.sum(
+    #         self.Gdbrdz_2nd_order * full_currents_vec[:, np.newaxis], axis=0
+    #     )  # coils contribution
+    #     b_r_deriv_cross += self.dBrdzp_2nd_order  # plasma contribution
+    #     loss.append(np.linalg.norm(b_r_deriv_cross))
 
-        # dBzdr field constraint
-        A_z_deriv_cross = self.Gdbzdr_2nd_order[self.control_mask].T
-        b_z_deriv_cross = np.sum(
-            self.Gdbzdr_2nd_order * full_currents_vec[:, np.newaxis], axis=0
-        )  # coils contribution
-        b_z_deriv_cross += self.dBzdrp_2nd_order  # plasma contribution
-        loss.append(np.linalg.norm(b_z_deriv_cross))
+    #     # dBzdr field constraint
+    #     A_z_deriv_cross = self.Gdbzdr_2nd_order[self.control_mask].T
+    #     b_z_deriv_cross = np.sum(
+    #         self.Gdbzdr_2nd_order * full_currents_vec[:, np.newaxis], axis=0
+    #     )  # coils contribution
+    #     b_z_deriv_cross += self.dBzdrp_2nd_order  # plasma contribution
+    #     loss.append(np.linalg.norm(b_z_deriv_cross))
 
-        A = np.concatenate(
-            (A_r, A_z, A_r_deriv, A_z_deriv, A_r_deriv_cross, A_z_deriv_cross), axis=0
-        )
-        b = -np.concatenate(
-            (b_r, b_z, b_r_deriv, b_z_deriv, b_r_deriv_cross, b_z_deriv_cross), axis=0
-        )
-        return A, b, loss
+    #     A = np.concatenate(
+    #         (A_r, A_z, A_r_deriv, A_z_deriv, A_r_deriv_cross, A_z_deriv_cross), axis=0
+    #     )
+    #     b = -np.concatenate(
+    #         (b_r, b_z, b_r_deriv, b_z_deriv, b_r_deriv_cross, b_z_deriv_cross), axis=0
+    #     )
+    #     return A, b, loss
 
     def build_psi_vals_lsq(self, full_currents_vec):
         """
@@ -1254,7 +1254,8 @@ class Inverse_optimizer:
             b = np.concatenate((b, b_np), axis=0) * self.weight_nulls
             self.nullp_dim = len(b)
             loss = loss + l
-        # second order null point constraints
+
+        # direct flux value constraints
         if self.psi_vals is not None:
             A_pv, b_pv, l = self.build_psi_vals_lsq(full_currents_vec)
             A = np.concatenate((A, A_pv), axis=0)
@@ -1262,7 +1263,7 @@ class Inverse_optimizer:
             self.psiv_dim = len(b)
             loss = loss + l
 
-        # direct flux value constraints
+        # second order null point constraints
         if self.null_points_2nd_order is not None:
             A_np_2nd_order, b_np_2nd_order, l = self.build_null_points_2nd_order_lsq(
                 full_currents_vec

@@ -74,8 +74,8 @@ class Inverse_optimizer:
             where:
                 Rcoords : 1D array of radial coordinates
                 Zcoords : 1D array of vertical coordinates
-                weights : (optional, array of 1's if not provided)1D array of weights to increase/decrease
-                        the influence of the constraint on the solution.
+                weights : (optional, array of 1's if not provided) 1D array of weights
+                        to increase/decrease the influence of the constraint on the solution.
 
             All specified points within each set are required to share
             the same poloidal flux value.
@@ -90,6 +90,17 @@ class Inverse_optimizer:
                 • X-points
                 • O-points (magnetic axes)
 
+        null_points_2nd_order : list or ndarray, optional
+            Second-order magnetic null point constraints.
+
+            Structure:
+                [Rcoords, Zcoords]
+
+            Specifies coordinates of desired 2nd-order null points, typically
+            used for snowflake divertor configurations.
+
+            Note: Do not repeat coordinates already provided in ``null_points``.
+
         psi_vals : list or ndarray, optional
             Direct flux value constraints.
 
@@ -101,37 +112,16 @@ class Inverse_optimizer:
 
             Used to enforce ψ(R,Z) = ψ_target at specified locations.
 
-        isoflux_set : list or np.array, optional
-            list of isoflux objects, each with structure
-            [Rcoords, Zcoords]
-            with Rcoords and Zcoords being 1D lists of the coords of all points that are requested to have the same flux value
-        null_points : list or np.array, optional
-            structure [Rcoords, Zcoords], with Rcoords and Zcoords being 1D lists
-            Sets the coordinates of the desired null points, including both Xpoints and Opoints
-        null_points_2nd_order : list or np.array, optional
-            structure [Rcoords, Zcoords], with Rcoords and Zcoords being 1D lists
-            Sets the coordinates of the desired 2nd order null points (typically used for making snowflake divertors).
-            Do not repeat these (R,Z) coords in the 'null_points' input, keep seperate.
-        psi_vals : list or np.array, optional
-            structure [Rcoords, Zcoords, psi_values]
-            with Rcoords, Zcoords and psi_values having the same shape
-            Sets the desired values of psi for a set of coordinates, possibly an entire map
-        curr_vals : list, optional
-            structure [[coil indexes in the array of coils available for control], [coil current values]]
         coil_current_limits : list, optional
             Hard inequality bounds on coil currents.
 
             Structure:
                 [upper_limits, lower_limits]
 
-            Each entry is a list with length equal to the number of
-            controllable coils.
+            Each entry is a list with length equal to the number of controllable coils.
 
             Example:
-                [
-                    [Imax1, Imax2, ...],
-                    [Imin1, Imin2, ...]
-                ]
+                [ [Imax1, Imax2, ...], [Imin1, Imin2, ...] ]
 
             Use None to indicate no bound.
 
@@ -142,33 +132,37 @@ class Inverse_optimizer:
                 [Rcoord, Zcoord, normalised_psi_value, constraint_sign]
 
             Constraint form:
-
-                If constraint_sign = 1:
-                    ψ_norm ≥ ψ_target
-
-                If constraint_sign = -1:
-                    ψ_norm ≤ ψ_target
+                If constraint_sign =  1: ψ_norm ≥ ψ_target
+                If constraint_sign = -1: ψ_norm ≤ ψ_target
 
             Normalised flux is defined:
                 ψ_norm = (ψ - ψ_axis) / (ψ_boundary - ψ_axis)
 
         weight_isoflux : float
-            The weight of the isoflux constraints in the least-squares optimisation problem (default = 1.0).
+            The weight of the isoflux constraints in the least-squares optimisation
+            problem (default = 1.0).
+
         weight_nulls : float
-            The weight of the null point (X-point) constraints in the least-squares optimisation problem (default = 1.0).
+            The weight of the null point (X-point) constraints in the least-squares
+            optimisation problem (default = 1.0).
+
         weight_psi : float
-            The weight of the psi value constraints in the least-squares optimisation problem (default = 1.0).
+            The weight of the psi value constraints in the least-squares optimisation
+            problem (default = 1.0).
+
         mu_coils : float
-            A penalty factor applied to violation of the coil current limits (default = 1e5).
+            A penalty factor applied to violation of the coil current limits
+            (default = 1e5).
+
         mu_psi_norm : float
-            A penalty factor applied to violation of the normalised psi limits (default = 1e5).
+            A penalty factor applied to violation of the normalised psi limits
+            (default = 1e6).
 
         Notes
         -----
-        Increasing the weights/penalty factors causes the least-squares optimisation to proritise satisfying the
-        higher-weighted/penaltied constraints.
+        Increasing the weights/penalty factors causes the least-squares optimisation
+        to prioritise satisfying the higher-weighted/penalised constraints.
         """
-
         # ------------------------------------------------------------
         # Isoflux constraint processing
         # ------------------------------------------------------------

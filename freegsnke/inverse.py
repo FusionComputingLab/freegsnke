@@ -28,7 +28,7 @@ from scipy import interpolate
 
 class Inverse_optimizer:
     """This class implements a gradient based optimiser for the coil currents,
-    used to perform (static) inverse GS solves.
+    used to perform (static) inverse Grad-Shafranov solves.
     """
 
     def __init__(

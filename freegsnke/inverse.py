@@ -14,9 +14,9 @@ FreeGSNKE is free software: you can redistribute it and/or modify
 it under the terms of the GNU Lesser General Public License as published by
 the Free Software Foundation, either version 3 of the License, or
 (at your option) any later version.
-  
+
 You should have received a copy of the GNU Lesser General Public License
-along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.  
+along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 import itertools
@@ -28,13 +28,14 @@ from scipy import interpolate
 
 class Inverse_optimizer:
     """This class implements a gradient based optimiser for the coil currents,
-    used to perform (static) inverse GS solves.
+    used to perform (static) inverse Grad-Shafranov solves.
     """
 
     def __init__(
         self,
         isoflux_set=None,
         null_points=None,
+        null_points_2nd_order=None,
         psi_vals=None,
         coil_current_limits=None,
         psi_norm_limits=None,
@@ -73,8 +74,8 @@ class Inverse_optimizer:
             where:
                 Rcoords : 1D array of radial coordinates
                 Zcoords : 1D array of vertical coordinates
-                weights : (optional, array of 1's if not provided)1D array of weights to increase/decrease
-                        the influence of the constraint on the solution.
+                weights : (optional, array of 1's if not provided) 1D array of weights
+                        to increase/decrease the influence of the constraint on the solution.
 
             All specified points within each set are required to share
             the same poloidal flux value.
@@ -88,6 +89,17 @@ class Inverse_optimizer:
             Specifies coordinates of:
                 • X-points
                 • O-points (magnetic axes)
+
+        null_points_2nd_order : list or ndarray, optional
+            Second-order magnetic null point constraints.
+
+            Structure:
+                [Rcoords, Zcoords]
+
+            Specifies coordinates of desired 2nd-order null points, typically
+            used for snowflake divertor configurations.
+
+            Note: Do not repeat coordinates already provided in ``null_points``.
 
         psi_vals : list or ndarray, optional
             Direct flux value constraints.
@@ -106,14 +118,10 @@ class Inverse_optimizer:
             Structure:
                 [upper_limits, lower_limits]
 
-            Each entry is a list with length equal to the number of
-            controllable coils.
+            Each entry is a list with length equal to the number of controllable coils.
 
             Example:
-                [
-                    [Imax1, Imax2, ...],
-                    [Imin1, Imin2, ...]
-                ]
+                [ [Imax1, Imax2, ...], [Imin1, Imin2, ...] ]
 
             Use None to indicate no bound.
 
@@ -124,33 +132,37 @@ class Inverse_optimizer:
                 [Rcoord, Zcoord, normalised_psi_value, constraint_sign]
 
             Constraint form:
-
-                If constraint_sign = 1:
-                    ψ_norm ≥ ψ_target
-
-                If constraint_sign = -1:
-                    ψ_norm ≤ ψ_target
+                If constraint_sign =  1: ψ_norm ≥ ψ_target
+                If constraint_sign = -1: ψ_norm ≤ ψ_target
 
             Normalised flux is defined:
                 ψ_norm = (ψ - ψ_axis) / (ψ_boundary - ψ_axis)
 
         weight_isoflux : float
-            The weight of the isoflux constraints in the least-squares optimisation problem (default = 1.0).
+            The weight of the isoflux constraints in the least-squares optimisation
+            problem (default = 1.0).
+
         weight_nulls : float
-            The weight of the null point (X-point) constraints in the least-squares optimisation problem (default = 1.0).
+            The weight of the null point (X-point) constraints in the least-squares
+            optimisation problem (default = 1.0).
+
         weight_psi : float
-            The weight of the psi value constraints in the least-squares optimisation problem (default = 1.0).
+            The weight of the psi value constraints in the least-squares optimisation
+            problem (default = 1.0).
+
         mu_coils : float
-            A penalty factor applied to violation of the coil current limits (default = 1e5).
+            A penalty factor applied to violation of the coil current limits
+            (default = 1e5).
+
         mu_psi_norm : float
-            A penalty factor applied to violation of the normalised psi limits (default = 1e5).
+            A penalty factor applied to violation of the normalised psi limits
+            (default = 1e6).
 
         Notes
         -----
-        Increasing the weights/penalty factors causes the least-squares optimisation to proritise satisfying the
-        higher-weighted/penaltied constraints.
+        Increasing the weights/penalty factors causes the least-squares optimisation
+        to prioritise satisfying the higher-weighted/penalised constraints.
         """
-
         # ------------------------------------------------------------
         # Isoflux constraint processing
         # ------------------------------------------------------------
@@ -188,9 +200,17 @@ class Inverse_optimizer:
             self.null_points = np.array(self.null_points)
 
         # ------------------------------------------------------------
+        # Second-order null point constraints (snowflakes)
+        # ------------------------------------------------------------
+        self.null_points_2nd_order = null_points_2nd_order
+        if self.null_points_2nd_order is not None:
+            self.null_points_2nd_order = np.array(self.null_points_2nd_order)
+
+        # ------------------------------------------------------------
         # Direct flux value constraints
         # These impose ψ(R,Z) = ψ_target at specified locations
         # ------------------------------------------------------------
+
         self.psi_vals = psi_vals
         if self.psi_vals is not None:
 
@@ -563,9 +583,34 @@ class Inverse_optimizer:
             )
 
         # ------------------------------------------------------------
-        # Flux value constraint Green's functions
+        # Magnetic null point Green's functions (for second-order nulls)
         # ------------------------------------------------------------
 
+        if self.null_points_2nd_order is not None:
+            # for first order null
+            self.Gbr_2nd_order = eq.tokamak.createBrGreensVec(
+                R=self.null_points_2nd_order[0], Z=self.null_points_2nd_order[1]
+            )
+            self.Gbz_2nd_order = eq.tokamak.createBzGreensVec(
+                R=self.null_points_2nd_order[0], Z=self.null_points_2nd_order[1]
+            )
+            # for second order null
+            self.Gdbrdr_2nd_order = eq.tokamak.createdBrdrGreensVec(
+                R=self.null_points_2nd_order[0], Z=self.null_points_2nd_order[1]
+            )
+            self.Gdbzdz_2nd_order = eq.tokamak.createdBzdzGreensVec(
+                R=self.null_points_2nd_order[0], Z=self.null_points_2nd_order[1]
+            )
+            self.Gdbrdz_2nd_order = eq.tokamak.createdBrdzGreensVec(
+                R=self.null_points_2nd_order[0], Z=self.null_points_2nd_order[1]
+            )
+            self.Gdbzdr_2nd_order = eq.tokamak.createdBzdrGreensVec(
+                R=self.null_points_2nd_order[0], Z=self.null_points_2nd_order[1]
+            )
+
+        # ------------------------------------------------------------
+        # Flux value constraint Green's functions
+        # ------------------------------------------------------------
         if self.psi_vals is not None:
 
             # detect if psi constraints are defined on full grid
@@ -654,6 +699,89 @@ class Inverse_optimizer:
                 psi_func(self.null_points[0], self.null_points[1], dx=1, grid=False)
                 / self.null_points[0]
             )
+
+        # ------------------------------------------------------------
+        # Magnetic field evaluation (and derivatives) at null points
+        #
+        # We evaluate the poloidal magnetic field components (B_R, B_Z)
+        # and their spatial derivatives at the identified null points
+        # using the Grad–Shafranov relations:
+        #
+        #   B_R(R,Z) = - (1/R) ∂ψ/∂Z
+        #   B_Z(R,Z) =   (1/R) ∂ψ/∂R
+        #
+        # where ψ(R,Z) is the poloidal flux function.
+        #
+        # The callable `psi_func` provides ψ and its derivatives:
+        #   dx = order of derivative with respect to R
+        #   dy = order of derivative with respect to Z
+        #
+        # e.g.
+        #   dx=1, dy=0 → ∂ψ/∂R
+        #   dx=0, dy=1 → ∂ψ/∂Z
+        #   dx=1, dy=1 → ∂²ψ/(∂R∂Z)
+        #
+        # These are then used to construct:
+        #   - Magnetic field components (B_R, B_Z)
+        #   - First spatial derivatives of the field:
+        #       ∂B_R/∂R, ∂B_R/∂Z, ∂B_Z/∂R, ∂B_Z/∂Z
+        #
+        # All quantities are evaluated at the null point locations
+        # stored in `self.null_points_2nd_order = (R, Z)`.
+        # ------------------------------------------------------------
+        if self.null_points_2nd_order is not None:
+            dpsidr = psi_func(
+                self.null_points_2nd_order[0],
+                self.null_points_2nd_order[1],
+                dx=1,
+                dy=0,
+                grid=False,
+            )
+            dpsidz = psi_func(
+                self.null_points_2nd_order[0],
+                self.null_points_2nd_order[1],
+                dx=0,
+                dy=1,
+                grid=False,
+            )
+            d2psidrdz = psi_func(
+                self.null_points_2nd_order[0],
+                self.null_points_2nd_order[1],
+                dx=1,
+                dy=1,
+                grid=False,
+            )
+            d2psidr2 = psi_func(
+                self.null_points_2nd_order[0],
+                self.null_points_2nd_order[1],
+                dx=2,
+                dy=0,
+                grid=False,
+            )
+            d2psidz2 = psi_func(
+                self.null_points_2nd_order[0],
+                self.null_points_2nd_order[1],
+                dx=0,
+                dy=2,
+                grid=False,
+            )
+
+            # Br(R,Z)
+            self.Brp_2nd_order = -dpsidz / self.null_points_2nd_order[0]
+            # Bz(R,Z)
+            self.Bzp_2nd_order = dpsidr / self.null_points_2nd_order[0]
+            # dBrdr(R,Z)
+            self.dBrdrp_2nd_order = (
+                (dpsidz / self.null_points_2nd_order[0]) - d2psidrdz
+            ) / self.null_points_2nd_order[0]
+            # dBzdz(R,Z)
+            self.dBzdzp_2nd_order = d2psidrdz / self.null_points_2nd_order[0]
+            # dBrdz(R,Z)
+            self.dBrdzp_2nd_order = -d2psidz2 / self.null_points_2nd_order[0]
+            # dBzdr(R,Z)
+            self.dBzdrp_2nd_order = (
+                -(dpsidr / self.null_points_2nd_order[0]) + d2psidr2
+            ) / self.null_points_2nd_order[0]
 
         # ------------------------------------------------------------
         # Isoflux contour constraint evaluation
@@ -1022,6 +1150,16 @@ class Inverse_optimizer:
             self.psiv_dim = len(b)
             loss = loss + l
 
+        # second order null point constraints
+        if self.null_points_2nd_order is not None:
+            A_np_2nd_order, b_np_2nd_order, l = self.build_null_points_2nd_order_lsq(
+                full_currents_vec
+            )
+            A = np.concatenate((A, A_np_2nd_order), axis=0)
+            b = np.concatenate((b, b_np_2nd_order), axis=0)
+            self.nullp_2nd_order_dim = len(b)
+            loss = loss + l
+
         # assemble the full system
         self.A = np.copy(A)
         self.b = np.copy(b)
@@ -1334,6 +1472,7 @@ class Inverse_optimizer:
         trial_plasma_psi,
         isoflux_weight=1.0,
         null_points_weight=1.0,
+        null_points_2nd_order_weight=1.0,
         psi_vals_weight=1.0,
     ):
         """
@@ -1398,6 +1537,11 @@ class Inverse_optimizer:
         if self.null_points is not None:
             b_weighted[idx : idx + self.nullp_dim] *= null_points_weight
             idx += self.nullp_dim
+        if self.null_points_2nd_order is not None:
+            b_weighted[
+                idx : idx + self.nullp_2nd_order_dim
+            ] *= null_points_2nd_order_weight
+            idx += self.nullp_dim_2nd_order
         if self.psi_vals is not None:
             b_weighted[idx : idx + self.psiv_dim] *= psi_vals_weight
             idx += self.psiv_dim
@@ -1623,6 +1767,128 @@ class Inverse_optimizer:
         self.A_plasma = np.concatenate(A, axis=0)
         self.b_plasma = np.concatenate(b, axis=0)
         self.loss_plasma = np.linalg.norm(loss)
+
+    def build_null_points_2nd_order_lsq(self, full_currents_vec):
+        """
+        Construct the linear least-squares system enforcing second-order null point constraints.
+
+        This method assembles a linear system of the form:
+
+            A ΔI = b
+
+        where ΔI represents corrections to the *control coil currents*, such that
+        the magnetic field and its first spatial derivatives vanish (or match
+        desired values) at the specified second-order null points.
+
+        The constraints enforced at each null point are:
+
+            - B_R = 0
+            - B_Z = 0
+            - ∂B_R/∂R = 0
+            - ∂B_Z/∂Z = 0
+            - ∂B_R/∂Z = 0
+            - ∂B_Z/∂R = 0
+
+        Each constraint is written as a linear combination of coil currents using
+        precomputed Green's function matrices (G* terms), with an additional
+        contribution from the plasma.
+
+        The right-hand side vector `b` represents the *negative residual* of the
+        total field (coil + plasma) at the null points, so that solving the system
+        drives the residuals toward zero.
+
+        Parameters
+        ----------
+        full_currents_vec : np.ndarray
+            Array of shape (n_coils,) containing the full set of coil currents.
+            This includes both controlled and fixed coils, e.g. as returned by
+            `eq.tokamak.getCurrentsVec()`.
+
+        Returns
+        -------
+        A : np.ndarray
+            Least-squares matrix of shape (n_constraints, n_control_coils),
+            mapping control coil current corrections to changes in the magnetic
+            field quantities at the null points.
+
+        b : np.ndarray
+            Right-hand side vector of shape (n_constraints,), representing the
+            negative residuals of the current field configuration (coil + plasma).
+
+        loss : list of float
+            List of L2 norms of each individual constraint residual before solving.
+            The entries correspond to:
+                [||B_R||, ||B_Z||,
+                ||∂B_R/∂R||, ||∂B_Z/∂Z||,
+                ||∂B_R/∂Z||, ||∂B_Z/∂R||]
+
+        Notes
+        -----
+        - The matrices `G*` encode the linear response of the magnetic field (and
+        its derivatives) to coil currents.
+        - Contributions are split into:
+            * coil contribution: G * I
+            * plasma contribution: precomputed field values at null points
+        - Only coils selected by `self.control_mask` are treated as control variables.
+        - The system is typically overdetermined and intended to be solved in a
+        least-squares sense.
+        """
+
+        # Br field constraint
+        A_r = self.Gbr_2nd_order[self.control_mask].T
+        b_r = np.sum(
+            self.Gbr_2nd_order * full_currents_vec[:, np.newaxis], axis=0
+        )  # coils contribution
+        b_r += self.Brp_2nd_order  # plasma contribution
+        loss = [np.linalg.norm(b_r)]
+
+        # Bz field constraint
+        A_z = self.Gbz_2nd_order[self.control_mask].T
+        b_z = np.sum(
+            self.Gbz_2nd_order * full_currents_vec[:, np.newaxis], axis=0
+        )  # coils contribution
+        b_z += self.Bzp_2nd_order  # plasma contribution
+        loss.append(np.linalg.norm(b_z))
+
+        # dBrdr field constraint
+        A_r_deriv = self.Gdbrdr_2nd_order[self.control_mask].T
+        b_r_deriv = np.sum(
+            self.Gdbrdr_2nd_order * full_currents_vec[:, np.newaxis], axis=0
+        )  # coils contribution
+        b_r_deriv += self.dBrdrp_2nd_order  # plasma contribution
+        loss.append(np.linalg.norm(b_r_deriv))
+
+        # dBzdz field constraint
+        A_z_deriv = self.Gdbzdz_2nd_order[self.control_mask].T
+        b_z_deriv = np.sum(
+            self.Gdbzdz_2nd_order * full_currents_vec[:, np.newaxis], axis=0
+        )  # coils contribution
+        b_z_deriv += self.dBzdzp_2nd_order  # plasma contribution
+        loss.append(np.linalg.norm(b_z_deriv))
+
+        # dBrdz field constraint
+        A_r_deriv_cross = self.Gdbrdz_2nd_order[self.control_mask].T
+        b_r_deriv_cross = np.sum(
+            self.Gdbrdz_2nd_order * full_currents_vec[:, np.newaxis], axis=0
+        )  # coils contribution
+        b_r_deriv_cross += self.dBrdzp_2nd_order  # plasma contribution
+        loss.append(np.linalg.norm(b_r_deriv_cross))
+
+        # dBzdr field constraint
+        A_z_deriv_cross = self.Gdbzdr_2nd_order[self.control_mask].T
+        b_z_deriv_cross = np.sum(
+            self.Gdbzdr_2nd_order * full_currents_vec[:, np.newaxis], axis=0
+        )  # coils contribution
+        b_z_deriv_cross += self.dBzdrp_2nd_order  # plasma contribution
+        loss.append(np.linalg.norm(b_z_deriv_cross))
+
+        A = np.concatenate(
+            (A_r, A_z, A_r_deriv, A_z_deriv, A_r_deriv_cross, A_z_deriv_cross), axis=0
+        )
+        b = -np.concatenate(
+            (b_r, b_z, b_r_deriv, b_z_deriv, b_r_deriv_cross, b_z_deriv_cross), axis=0
+        )
+        return A, b, loss
 
     def optimize_plasma_psi(self, full_currents_vec, trial_plasma_psi, l2_reg):
         """

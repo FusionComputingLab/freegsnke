@@ -21,7 +21,7 @@ FreeGSNKE can solve:
 | --- | --- | --- |
 | **Static forward** | **Solve for the plasma equilibrium** using user-defined poloidal field coil currents, passive structure currents, and plasma current density profiles. | Plasma scenario design and shape control. Equilibrium library generation (for emulation). Initial condition generation for evolutive simulations. Vitual circuit design. |
 | **Static inverse** | **Estimate poloidal field coil currents** using user-defined constraints (e.g. isoflux and X-point locations) and plasma current density profiles for a desired plasma equilibrium shape. | Plasma scenario design. Optimisation of poloidal field coil or magnetic probe locations. |
-| **Evolutive forward** | **Solve simultaneously for the plasma equilibrium, the poloidal field coil (and passive structure) currents, and the total plasma current over time from an initial equilibrium** using user-defined time-dependent poloidal field coil voltages and plasma current density profile parameters. | Full shot simulations. Vertical stability analysis. |
+| **Evolutive forward** | **Solve simultaneously for the plasma equilibrium, the poloidal field coil (and passive structure) currents, and the total plasma current over time from an initial equilibrium** using user-defined time-dependent poloidal field coil voltages and plasma current density profile parameters. | Full shot simulations (with or without control). Vertical stability analysis. |
 
 These problems can be solved in a **user-specified tokamak geometry** that can include:
 
@@ -38,7 +38,7 @@ Static Grad-Shafranov problems are solved using **fourth-order accurate finite d
 <video autoplay width="650" src="https://github.com/user-attachments/assets/0f0207f9-1c5e-451e-b45e-24e7c9589154" />
 </div>
 
-In the left panel above we show an example of a dynamic equilibrium calculated using FreeGSNKE's forward solver, simulating the flat-phase of a **MAST-U** plasma discharge.On the right is the sequence of equilibrium reconstructions for the actual MAST-U shot. The agreement between the simulation and the real shot is very good in both the plasma shape targets and the currents in the poloidal field coils, illustrating FreeGSNKE's accuracy. The contours represent constant poloidal flux and the different tokamak features are plotted in various colours (refer back to table above). 
+In the left panel above we show an example of a dynamic equilibrium calculated using FreeGSNKE's forward solver, simulating the flat-phase of a **MAST-U** plasma discharge. On the right is the sequence of EFIT equilibrium reconstructions from the actual MAST-U shot (re-plotted using FreeGSNKE). We can see clear agreement between the simulation and the reconstructions in both the plasma shape and the currents in the poloidal field coils, illustrating FreeGSNKE's accuracy. The contours represent constant poloidal flux and the different tokamak features are plotted in various colours (refer back to table above - noting magnetic probes not shown here).
 
 ## Feature roadmap
 FreeGSNKE is constantly evolving and so we hope to provide users with more advanced features over time:
@@ -210,6 +210,10 @@ Here are a list of FreeGSNKE papers that describe or use the code:
 - A. Agnello et al, "Emulation techniques for scenario and classical control design of tokamak plasmas", Physics of Plasmas, **31**, 043091 (2024). DOI: [10.1063/5.0187822](https://doi.org/10.1063/5.0187822).
 - K. Pentland et al, "Validation of the static forward Grad-Shafranov equilibrium solvers in FreeGSNKE and Fiesta using EFIT++ reconstructions from MAST-U", Physica Scripta, **100**, 025608 (2025). DOI: [10.1088/1402-4896/ada192](https://iopscience.iop.org/article/10.1088/1402-4896/ada192).
 - K. Pentland et al, "Multiple solutions to the static forward free-boundary Grad-Shafranov problem on MAST-U", Nuclear Fusion (2025). DOI: [10.1088/1741-4326/adf3cc](https://iopscience.iop.org/article/10.1088/1741-4326/adf3cc). 
+- P. Cavestany et al, "Real-time applicability of emulated virtual circuits for tokamak plasma shape control", 2025 IEEE Conference on Control Technology and Applications (2025). DOI: [10.1109/CCTA53793.2025.11151371](https://ieeexplore.ieee.org/document/11151371).
+- K. Pentland et al, "The FreeGSNKE Pulse Design Tool (FPDT): a computational framework for evolutive plasma scenario and control design", arXiv (2026). arXiv:[2603.28513](https://arxiv.org/abs/2603.28513).
+- A. Ross et al, "Real-time virtual circuits for plasma shape control via neural network emulators", arXiv (2026). arXiv:[2605.14939](https://arxiv.org/abs/2605.14939).
+- K. Pentland et al, "Real-time virtual circuits for plasma shape control via neural network surrogates: dynamic validation in closed-loop simulations", arXiv (2026). arXiv:[2604.00781](https://arxiv.org/abs/2604.00781).
 
 If you would like your FreeGSNKE-related paper to be added, please let us know!
 

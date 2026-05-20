@@ -20,79 +20,12 @@ You should have received a copy of the GNU Lesser General Public License
 along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>. 
 """
 
+import os
+
+import numexpr as ne
 import numpy as np
 from freegs4e.gradshafranov import Greens
-
-# class plasma_current:
-#     """Implements the plasma circuit equation in projection on $I_{y}^T$:
-
-#     $$I_{y}^T/I_p (M_{yy} \dot{I_y} + M_{ye} \dot{I_e} + R_p I_y) = 0$$
-#     """
-
-#     def __init__(self, plasma_pts, Rm1, P, plasma_resistance_1d, Mye):
-#         """Implements the object dealing with the plasma circuit equation in projection on $I_y$,
-#         I_y being the plasma toroidal current density distribution:
-
-#         $$I_{y}^T/I_p (M_{yy} \dot{I_y} + M_{ye} \dot{I_e} + R_p I_y) = 0$$
-
-#         Parameters
-#         ----------
-#         plasma_pts : freegsnke.limiter_handler.plasma_pts
-#             Domain points in the domain that are included in the evolutive calculations.
-#             A typical choice would be all domain points inside the limiter. Defaults to None.
-#         Rm1 : np.ndarray
-#             The diagonal matrix of all metal vessel resistances to the power of -1 ($R^{-1}$).
-#         P : np.ndarray
-#             Matrix used to change basis from normal mode currents to vessel metal currents.
-#         plasma_resistance_1d : np.ndarray
-#             Vector of plasma resistance values for all grid points in the reduced plasma domain.
-#             plasma_resistance_1d = 2pi resistivity R/dA for all plasma_pts
-#         Mye : np.ndarray
-#             Matrix of mutual inductances between plasma grid points and all vessel coils.
-
-#         """
-
-#         self.plasma_pts = plasma_pts
-#         self.Rm1 = Rm1
-#         self.P = P
-#         self.Mye = Mye
-#         self.Ryy = plasma_resistance_1d
-#         self.Myy_matrix = self.Myy()
-
-#     def reset_modes(self, P):
-#         """Allows a reset of the attributes set up at initialization time following a change
-#         in the properties of the selected normal modes for the passive structures.
-
-#         Parameters
-#         ----------
-#         P : np.ndarray
-#             New change of basis matrix.
-#         """
-#         self.P = P
-
-
-#     def Myy(
-#         plasma_pts,
-#     ):
-#         """Calculates the matrix of mutual inductances between all plasma grid points
-
-#         Parameters
-#         ----------
-#         plasma_pts : np.ndarray
-#             Array with R and Z coordinates of all the points inside the limiter
-
-#         Returns
-#         -------
-#         Myy : np.ndarray
-#             Array of mutual inductances between plasma grid points
-#         """
-#         greenm = Greens(
-#             plasma_pts[:, np.newaxis, 0],
-#             plasma_pts[:, np.newaxis, 1],
-#             plasma_pts[np.newaxis, :, 0],
-#             plasma_pts[np.newaxis, :, 1],
-#         )
-#         return 2 * np.pi * greenm
+from freegs4e.parallel_funcs import threaded_take
 
 
 class Myy_handler:
@@ -104,7 +37,7 @@ class Myy_handler:
 
     """
 
-    def __init__(self, limiter_handler, layer_size=5, tolerance=3):
+    def __init__(self, limiter_handler, layer_size=5, tolerance=3, cache_myy=True):
         """Instantiates the object
 
         Parameters
@@ -142,6 +75,8 @@ class Myy_handler:
 
         self.layer_size = layer_size
         self.tolerance = tolerance
+
+        self.cache_myy = cache_myy
 
     def grid_greens(self, R, Z):
         """Calculates and stores the green function values on the minimal rectangular
@@ -208,25 +143,26 @@ class Myy_handler:
 
         self.idxs_myy_mask_red = self.extract_index_mask(mask)
 
-        dz_idxs = self.idxs_myy_mask_red[1]
-        r_idxs = self.idxs_myy_mask_red[0]
+        if self.cache_myy:
+            dz_idxs = self.idxs_myy_mask_red[1]
+            r_idxs = self.idxs_myy_mask_red[0]
 
-        self.myy = np.empty((nmask, nmask))
+            self.myy = np.empty((nmask, nmask))
 
-        d1, d2, d3 = self.gg.shape
-        d23 = d2 * d3
+            d1, d2, d3 = self.gg.shape
+            d23 = d2 * d3
 
-        # important to keep this as a python loop, instead of relying on numpy internals
-        for i in range(nmask):
+            # important to keep this as a python loop, do not try to vectorize
+            for i in range(nmask):
 
-            idxs1 = r_idxs
-            idxs2 = r_idxs[i]
+                idxs1 = r_idxs
+                idxs2 = r_idxs[i]
 
-            idxs3 = np.abs(dz_idxs[i] - dz_idxs)
-            idcs = idxs1 * d23 + idxs2 * d3 + idxs3
+                idxs3 = np.abs(dz_idxs[i] - dz_idxs)
+                idcs = idxs1 * d23 + idxs2 * d3 + idxs3
 
-            # same as self.myy[i,:] = self.gg.reshape(-1)[idcs] but faster
-            np.take(self.gg, idcs, out=self.myy[i, :], mode="wrap")
+                # same as self.myy[i] = self.gg.reshape(-1)[idcs] but faster
+                np.take(self.gg, idcs, out=self.myy[i], mode="wrap")
 
     def force_build_Myy(self, hatIy):
         """Builds the Myy matrix only including domain points in the input vector (not necessarily a mask)
@@ -278,7 +214,7 @@ class Myy_handler:
         hatIy_myy_red = hatIy_rect_red[self.myy_mask_red]
 
         # perform the dot product
-        result = np.dot(self.myy, hatIy_myy_red)
+        result = self._myy_dot(hatIy_myy_red)
 
         # bring result back to the reduced plasma domain
         result_rect_red = self.rebuild_map2d(
@@ -287,3 +223,62 @@ class Myy_handler:
         result_red = result_rect_red[self.mask_inside_limiter_red]
 
         return result_red
+
+    def _myy_dot(self, hatIy_myy_red):
+
+        if self.cache_myy:
+            return np.dot(self.myy, hatIy_myy_red)
+
+        else:
+            nmask = np.sum(self.myy_mask_red)
+
+            inshape = hatIy_myy_red.shape
+
+            if len(inshape) > 1:
+                outshape = (nmask, *inshape[:-2], inshape[-1])
+            else:
+                outshape = (nmask,)
+
+            dz_idxs = self.idxs_myy_mask_red[1]
+            r_idxs = self.idxs_myy_mask_red[0]
+
+            d1, d2, d3 = self.gg.shape
+            d23 = d2 * d3
+
+            num_slices = 20  # TODO: perhaps instead of fixing the number of slices, fix the block size?
+            step = (nmask - 1) // num_slices + 1
+
+            idcs = np.empty((step, nmask), dtype=np.int64)
+            myy_buff = np.empty(idcs.shape)
+            result = np.empty(outshape)
+
+            for i in range(num_slices):
+
+                start = i * step
+                end = start + step
+                end = min(end, nmask)
+
+                idxs1 = r_idxs[np.newaxis]
+                idxs2 = r_idxs[start:end, np.newaxis]
+                idxs3a = dz_idxs[start:end, np.newaxis]
+                idxs3b = dz_idxs[np.newaxis]
+
+                # idcs is flattened version of (idxs1,idxs2,idxs3)
+                # TODO: check why there are casting issues with abs()
+                ne.evaluate(
+                    "idxs1*d23 + idxs2*d3 + abs(idxs3a-idxs3b)",
+                    out=idcs[: end - start],
+                    casting="unsafe",
+                )
+
+                # same as self.myy_buff[:end-start] = self.gg.reshape(-1)[idcs_slice] but faster
+                threaded_take(
+                    self.gg,
+                    idcs[: end - start],
+                    out=myy_buff[: end - start],
+                    mode="wrap",
+                )
+
+                np.dot(myy_buff[: end - start], hatIy_myy_red, out=result[start:end])
+
+            return result

@@ -70,9 +70,13 @@ class nl_solver:
     - Interfaces to Newton–Krylov solvers for plasma flux and circuit equations
     """
 
+
     _MAX_STARTING_DI_RATIO = np.sqrt(10.0)
     _MAX_REUSED_STARTING_DI_RATIO = 4.0 / 3.0
 
+
+    # TODO: would be wise to make these kwargs kw-only, to prevent users from using
+    # them as positional, which risks human error and regression bugs
     def __init__(
         self,
         profiles,
@@ -103,6 +107,7 @@ class nl_solver:
         plasma_descriptor_function=None,
         mode_selection="coupling",
         n_linearization_workers=1,
+        cache_myy=True,
     ):
         """
         Initialize the nonlinear solver.
@@ -191,6 +196,8 @@ class nl_solver:
             Number of worker processes used to build independent ``dIydI`` and
             ``dIydtheta`` columns during initial and later linearisations. A value
             of 1 retains the serial calculation.
+        cache_myy: bool, default=True
+            Controls whether the Myy matrix is cached at initialization or rebuilt for every product.
         """
         print("-----")
 
@@ -266,7 +273,7 @@ class nl_solver:
         self.nIy = np.linalg.norm(self.Iy)
 
         # instantiate the Myy_handler object
-        self.handleMyy = Myy_handler(eq.limiter_handler)
+        self.handleMyy = Myy_handler(eq.limiter_handler, cache_myy=cache_myy)
 
         # Extract relevant information on the type of profiles function used and on the actual value of associated parameters
         self.get_profiles_values(profiles)

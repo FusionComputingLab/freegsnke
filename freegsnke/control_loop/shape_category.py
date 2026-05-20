@@ -95,7 +95,7 @@ class ShapeController:
 
             # inputs required for this algorithm
             self.keys_to_spline = ["ff", "ref", "blend"]
-            self.keys_to_step = ["k_prop", "k_int", "damping"]
+            self.keys_to_step = ["k_prop", "k_int", "k_deriv", "damping"]
 
         elif mode == "PID_with_scaled_out_damping":
             # select control algorithm
@@ -196,6 +196,7 @@ class ShapeController:
         T_blend = self.extract_values(t=t, targets=self.ctrl_targets, key="blend")
         k_prop = self.extract_values(t=t, targets=self.ctrl_targets, key="k_prop")
         k_int = self.extract_values(t=t, targets=self.ctrl_targets, key="k_int")
+        k_deriv = self.extract_values(t=t, targets=self.ctrl_targets, key="k_deriv")
         alpha_inv = 1.0 / self.extract_values(
             t=t, targets=self.ctrl_targets, key="damping"
         )
@@ -206,6 +207,9 @@ class ShapeController:
         # integral term
         T_int = T_hist_prev + (0.5 * T_err * dt)
 
+        # derivative term
+        T_deriv = (T_err - T_err_prev) / dt
+
         # update hist
         T_hist = T_hist_prev + (T_err * dt)
 
@@ -213,10 +217,10 @@ class ShapeController:
         T_fb_deriv = PID(
             error_prop=T_err,
             error_int=T_int,
-            error_deriv=None,
+            error_deriv=T_deriv,
             k_prop=k_prop,
             k_int=k_int,
-            k_deriv=0.0,
+            k_deriv=k_deriv,
         )
 
         # time deriv of shape target requests
@@ -532,6 +536,8 @@ class ShapeController:
                 ax.set_ylabel(rf"{key} [$1/s$]")
             elif key == "k_int":
                 ax.set_ylabel(rf"{key} [$1/s^2$]")
+            elif key == "k_deriv":
+                ax.set_ylabel(rf"{key} [No units]")
             else:
                 ax.set_ylabel(key)
 

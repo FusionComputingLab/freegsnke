@@ -1,5 +1,5 @@
 """
-Defines the plasma_current Object, which handles the lumped parameter model 
+Defines the plasma_current Object, which handles the lumped parameter models
 used as an effective circuit equation for the plasma.
 
 Copyright 2025 UKAEA, UKRI-STFC, and The Authors, as per the COPYRIGHT and README files.
@@ -15,12 +15,10 @@ FreeGSNKE is free software: you can redistribute it and/or modify
 it under the terms of the GNU Lesser General Public License as published by
 the Free Software Foundation, either version 3 of the License, or
 (at your option) any later version.
-  
-You should have received a copy of the GNU Lesser General Public License
-along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>. 
-"""
 
-import os
+You should have received a copy of the GNU Lesser General Public License
+along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
+"""
 
 import numexpr as ne
 import numpy as np
@@ -282,3 +280,116 @@ class Myy_handler:
                 np.dot(myy_buff[: end - start], hatIy_myy_red, out=result[start:end])
 
             return result
+
+
+class fft_Myy:
+    """Object handling all operations which involve the Myy matrix,
+    i.e. the mututal inductance matrix of all domain grid points.
+    To reduce memory usage, the domain on which myy is built and stored
+    is set adaptively, so to cover the plasma. This object handles this
+    adaptive aspect.
+
+    """
+
+    def __init__(self, limiter_handler, layer_size=None, tolerance=None):
+        """Instantiates the object
+
+        Parameters
+        ----------
+        limiter_handler : FreeGSNKE limiter object, i.e. eq.limiter_handler
+            Sets the properties of the domain grid and those of the limiter
+        layer_size : int, optional
+            Used when recalculating myy.
+            A layer of layer_size pixels is added to envelop the mask defined by the
+            plasma. This 'broadened' mask defines the pixels included in the myy matrix
+            By default 5
+        tolerance : int, optional
+            Used to check if myy needs recalculating. Myy is not recalculated if
+            the mask defined by the plasma region, broadened by tolerance pixels,
+            is fully contained in the domain of the current myy matrix,
+            By default 3
+        """
+
+        self.up_project = limiter_handler.up_project
+        self.down_project = limiter_handler.down_project
+
+        eqR = limiter_handler.eqR
+        eqZ = limiter_handler.eqZ
+
+        nR = eqR.shape[0]
+        nZ = eqZ.shape[1]
+
+        dz = eqZ[0, 1] - eqZ[0, 0]
+        Z_1D = np.arange(0, dz * nZ, dz)
+        R_1D = eqR[:, 0]
+
+        # Linear convolution length: L = 2*nZ - 1
+        L = 2 * nZ - 1
+        # L_fft = L // 2 + 1  # rFFT length
+
+        # h[i,j,k] = 2π * Greens(R_i, Z_k, R_j, 0)
+        h_full = np.empty((nR, nR, nZ))
+
+        num_slices = 10  # fine-tuned to balance memory vs. compute needs
+        step = nR // num_slices
+
+        for i in range(num_slices):
+
+            start = i * step
+            end = start + step
+            end = end if i != num_slices - 1 else nR  # last slice gets the remainder
+
+            # Fill up slice of h_full in-place. Applies 2π factor automatically.
+            Greens(
+                R_1D[start:end, np.newaxis, np.newaxis],
+                Z_1D[np.newaxis, np.newaxis, :],
+                R_1D[np.newaxis, :, np.newaxis],
+                0.0,
+                scale_factor=2.0 * np.pi,
+                out=h_full[start:end, :, :],
+            )
+
+        # build symmetric kernel g of length L for *linear* Toeplitz convolution:
+        #    g[..., k]   = h[..., k]       for k=0..nZ-1
+        #    g[..., L-k] = h[..., k]       for k=1..nZ-1
+        g = np.zeros((nR, nR, L), dtype=h_full.dtype)
+        k = np.arange(1, nZ)
+
+        g[:, :, 0] = h_full[:, :, 0]
+        g[:, :, k] = h_full[:, :, k]
+        g[:, :, L - k] = h_full[:, :, k]
+
+        # Perform rFFT of g along Z, and cache
+        self.gg_fft = np.fft.rfft(g, axis=2)  # (nR, nR, L_fft)
+
+    def check_Myy(self, hatIy):
+        return False
+
+    def force_build_Myy(self, hatIy):
+        pass
+
+    def dot(self, hatIy):
+        up_hatIy = self.up_project(hatIy)
+        Myy_hatIy = self._myy_dot(up_hatIy)
+        reduced_prod = self.down_project(Myy_hatIy)
+        return reduced_prod
+
+    def _myy_dot(self, x):
+
+        nR, nZ = self.gg_fft.shape[1], self.gg_fft.shape[2]
+        x = x.reshape(nR, nZ)
+
+        # Zero-pad vec along Z to length L
+        L = 2 * nZ - 1
+        pad_width = L - nZ  # equals nZ - 1
+        x_padded = np.pad(x, ((0, 0), (0, pad_width)))  # (nR, L)
+
+        # rFFT of padded vec
+        x_fft = np.fft.rfft(x_padded, axis=1)  # (nR, L_fft)
+
+        conv_fft = self.gg_fft * x_fft[np.newaxis, :, :]
+        conv_fft = conv_fft.sum(axis=1)
+        y_full = np.fft.irfft(conv_fft, n=L, axis=1)
+        y_full = y_full[:, :nZ]  # .reshape(-1)
+
+        return y_full

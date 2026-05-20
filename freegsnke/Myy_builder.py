@@ -20,19 +20,124 @@ You should have received a copy of the GNU Lesser General Public License
 along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 """
 
+import abc
+
 import numexpr as ne
 import numpy as np
 from freegs4e.gradshafranov import Greens
 from freegs4e.parallel_funcs import threaded_take
 
 
-class Myy_handler:
+def make_Myy_handler(
+    domain_type, limiter_handler, layer_size=None, tolerance=None, cache_myy=None
+):
+    """Returns an Myy_handler object of appropriate type given the domain_type specified.
+
+    Parameters
+    ----------
+    domain_type: str
+        Type of domain to define Myy over. Supported values: "reduced", "fft".
+    limiter_handler : FreeGSNKE limiter object, i.e. eq.limiter_handler
+        Sets the properties of the domain grid and those of the limiter
+    layer_size : int, optional
+        (for reduced domain only)
+        Used when recalculating myy.
+        A layer of layer_size pixels is added to envelop the mask defined by the
+        plasma. This 'broadened' mask defines the pixels included in the myy matrix
+        By default 5
+    tolerance : int, optional
+        (for reduced domain only)
+        Used to check if myy needs recalculating. Myy is not recalculated if
+        the mask defined by the plasma region, broadened by tolerance pixels,
+        is fully contained in the domain of the current myy matrix,
+        By default 3
+
+    """
+
+    # TODO: perhaps replace `domain_type` with something more generic that directly distinguishes
+    # between cached and otf reduced Myy. This may be a good idea depending on how the GPU version
+    # is coupled. (options: "real_cached", "real_otf", "fft", "gpu")
+
+    if domain_type == "reduced":
+
+        # Apply defaults
+        layer_size = 5 if layer_size is None else layer_size
+        tolerance = 3 if tolerance is None else tolerance
+        cache_myy = True if cache_myy is None else cache_myy
+
+        return Reduced_Myy_handler(limiter_handler, layer_size, tolerance, cache_myy)
+
+    elif domain_type == "fft":
+        return FFT_Myy_handler(limiter_handler)
+
+    else:
+        raise ValueError(f"Domain type {domain_type} not recognized.")
+
+
+class Myy_handler(abc.ABC):
+    """Abstract base class for objects handling all operations which involve the Myy matrix,
+    i.e. the mututal inductance matrix of all domain grid points.
+    """
+
+    def make_1D(self, R, Z):
+
+        dz = Z[0, 1] - Z[0, 0]
+        nZ = Z.shape[1]
+        Z_1D = np.arange(0, dz * nZ, dz)
+        R_1D = R[:, 0]
+
+        return R_1D, Z_1D
+
+    @abc.abstractmethod
+    def grid_greens(self, R_1D, Z_1D):
+        """Calculates and stores the Green's function values in the corresponding Myy domain.
+
+        Parameters
+        ----------
+        R_1D : np.ndarray
+            Array of dim=1 representing the R values of the grid in the appropriate Myy domain.
+        Z_1D : np.ndarray
+            Array of dim=1 representing the Z values of the grid in the appropriate Myy domain.
+        """
+        pass
+
+    @abc.abstractmethod
+    def check_Myy(self, hatIy):
+        """As defined in Reduced_Myy_handler. Definition enforced for compatibility with
+        non_linear_solver"""
+        pass
+
+    @abc.abstractmethod
+    def force_build_Myy(self, hatIy):
+        """As defined in Reduced_Myy_handler. Definition enforced for compatibility with
+        non_linear_solver"""
+        pass
+
+    @abc.abstractmethod
+    def dot(self, hatIy):
+        """Performs the product with a vector defined on the reduced plasma domain, i.e. inside the
+        limiter, independently of the domain of Myy. Returns a vector on the input domain.
+
+        Parameters
+        ----------
+        hatIy : np.ndarray
+            1d vector on reduced plasma domain, e.g. inside the limiter
+        """
+        pass
+
+    @abc.abstractmethod
+    def _myy_dot(self, vector):
+        """Performs the dot product Myy@vector for a vector already projected to the domain
+        in which Myy is defined. Returns a vector on the input domain."""
+        pass
+
+
+class Reduced_Myy_handler(Myy_handler):
     """Object handling all operations which involve the Myy matrix,
     i.e. the mututal inductance matrix of all domain grid points.
     To reduce memory usage, the domain on which myy is built and stored
     is set adaptively, so to cover the plasma. This object handles this
     adaptive aspect.
-
     """
 
     def __init__(self, limiter_handler, layer_size=5, tolerance=3, cache_myy=True):
@@ -66,41 +171,46 @@ class Myy_handler:
 
         self.idxs_mask_red = self.extract_index_mask(self.mask_inside_limiter_red)
 
-        self.gg = self.grid_greens(
-            self.reduce_rect_domain(limiter_handler.eqR),
-            self.reduce_rect_domain(limiter_handler.eqZ),
-        )
+        R_red = self.reduce_rect_domain(limiter_handler.eqR)
+        Z_red = self.reduce_rect_domain(limiter_handler.eqZ)
+        R_1D, Z_1D = self.make_1D(R_red, Z_red)
+
+        self.gg = self.grid_greens(R_1D, Z_1D)
 
         self.layer_size = layer_size
         self.tolerance = tolerance
 
         self.cache_myy = cache_myy
 
-    def grid_greens(self, R, Z):
-        """Calculates and stores the green function values on the minimal rectangular
-        region that fully encompasses the limiter. Uses that the green functions are invariant
-        for vertical translations.
+    def grid_greens(self, R_1D, Z_1D):
+        """Calculates the Green's function values on the minimal rectangular region that fully
+        encompasses the limiter. Uses that the green functions are invariant for vertical
+        translations.
 
         Parameters
         ----------
-        R : np.ndarray
-            Like eq.R, but on the rectangular reduced domain,
-            i.e. self.reduce_rect_domain(limiter_handler.eqR)
+        R_1D : np.ndarray
+            Like eq.R, but on the rectangular reduced domain and only in 1D
+            i.e. self.make_1D(self.reduce_rect_domain(limiter_handler.eqR),...)
         Z : np.ndarray
-            Like eq.Z, but on the rectangular reduced domain
+            Like eq.Z, but on the rectangular reduced domain and only in 1D
+
+        Returns
+        -------
+        ggreens: np.ndarray
+            Array of shape (nR,nR,nZ) containing the values of the Green's function in the reduced
+            rectangular domain.
         """
 
-        dz = Z[0, 1] - Z[0, 0]
-        nZ = np.shape(Z)[1]
-
         ggreens = Greens(
-            R[:, 0][:, np.newaxis, np.newaxis],
-            dz * np.arange(nZ)[np.newaxis, np.newaxis, :],
-            R[:, 0][np.newaxis, :, np.newaxis],
+            R_1D[:, np.newaxis, np.newaxis],
+            Z_1D[np.newaxis, np.newaxis, :],
+            R_1D[np.newaxis, :, np.newaxis],
             0,
+            scale_factor=2.0 * np.pi,
         )
 
-        return 2 * np.pi * ggreens
+        return ggreens
 
     def build_mask_from_hatIy(self, hatIy, layer_size):
         """Builds the mask that will be used by build_myy_from_mask
@@ -198,7 +308,7 @@ class Myy_handler:
 
     def dot(self, hatIy):
         """Performs the product with a vector defined on the reduced domain, i.e. inside the limiter.
-        Returns a vector on the same domain.
+        Returns a vector on the input domain.
 
         Parameters
         ----------
@@ -222,15 +332,29 @@ class Myy_handler:
 
         return result_red
 
-    def _myy_dot(self, hatIy_myy_red):
+    def _myy_dot(self, vector):
+        """Performs the dot product Myy@vector for a vector already projected onto the reduced
+        rectangular domain in which Myy is defined.
+
+        If myy is cached, np.dot is called directly. Otherwise, the product is batch-computed using
+        an on-the-fly calculation for blocks of myy (myy calculation is parallelized).
+
+        Returns a vector on the input domain.
+
+        Parameters
+        ----------
+        vector: np.ndarray
+            1d vector projected onto the reduced rectangular domain of Myy
+
+        """
 
         if self.cache_myy:
-            return np.dot(self.myy, hatIy_myy_red)
+            return np.dot(self.myy, vector)
 
         else:
             nmask = np.sum(self.myy_mask_red)
 
-            inshape = hatIy_myy_red.shape
+            inshape = vector.shape
 
             if len(inshape) > 1:
                 outshape = (nmask, *inshape[:-2], inshape[-1])
@@ -277,55 +401,61 @@ class Myy_handler:
                     mode="wrap",
                 )
 
-                np.dot(myy_buff[: end - start], hatIy_myy_red, out=result[start:end])
+                np.dot(myy_buff[: end - start], vector, out=result[start:end])
 
             return result
 
 
-class fft_Myy:
+class FFT_Myy_handler(Myy_handler):
     """Object handling all operations which involve the Myy matrix,
     i.e. the mututal inductance matrix of all domain grid points.
-    To reduce memory usage, the domain on which myy is built and stored
-    is set adaptively, so to cover the plasma. This object handles this
-    adaptive aspect.
-
+    To reduce memory usage, the Green's function is computed in Fourier
+    space, which reduces the size scaling from quartic to cubic.
     """
 
-    def __init__(self, limiter_handler, layer_size=None, tolerance=None):
+    def __init__(self, limiter_handler):
         """Instantiates the object
 
         Parameters
         ----------
         limiter_handler : FreeGSNKE limiter object, i.e. eq.limiter_handler
             Sets the properties of the domain grid and those of the limiter
-        layer_size : int, optional
-            Used when recalculating myy.
-            A layer of layer_size pixels is added to envelop the mask defined by the
-            plasma. This 'broadened' mask defines the pixels included in the myy matrix
-            By default 5
-        tolerance : int, optional
-            Used to check if myy needs recalculating. Myy is not recalculated if
-            the mask defined by the plasma region, broadened by tolerance pixels,
-            is fully contained in the domain of the current myy matrix,
-            By default 3
         """
 
         self.up_project = limiter_handler.up_project
         self.down_project = limiter_handler.down_project
 
-        eqR = limiter_handler.eqR
-        eqZ = limiter_handler.eqZ
+        R_1D, Z_1D = self.make_1D(limiter_handler.eqR, limiter_handler.eqZ)
 
-        nR = eqR.shape[0]
-        nZ = eqZ.shape[1]
+        self.gg = self.grid_greens(R_1D, Z_1D)  # in Fourier space, (nR, nR, L_fft)
 
-        dz = eqZ[0, 1] - eqZ[0, 0]
-        Z_1D = np.arange(0, dz * nZ, dz)
-        R_1D = eqR[:, 0]
+    def grid_greens(self, R_1D, Z_1D):
+        """Calculates the Green's function values on the Fourier space of the full geometric
+        domain defined by the limiter. Uses that the green functions are invariant for vertical
+        translations.
+
+        Parameters
+        ----------
+        R : np.ndarray
+            Like eq.R, but only in 1D
+            i.e. self.make_1D(limiter_handler.eqR,...)
+        Z : np.ndarray
+            Like eq.Z, but only in 1D
+
+        Returns
+        -------
+        gg_fft: np.ndarray
+            Array of shape (nR,nR,L_fft) containing the values of the Green's function in Fourier
+            space. (L_fft = (2*nZ - 1) // 2 + 1)
+        """
+
+        # TODO: worth evaluating whether L_fft is ever different from nZ
+
+        nR = len(R_1D)
+        nZ = len(Z_1D)
 
         # Linear convolution length: L = 2*nZ - 1
         L = 2 * nZ - 1
-        # L_fft = L // 2 + 1  # rFFT length
 
         # h[i,j,k] = 2π * Greens(R_i, Z_k, R_j, 0)
         h_full = np.empty((nR, nR, nZ))
@@ -346,7 +476,7 @@ class fft_Myy:
                 R_1D[np.newaxis, :, np.newaxis],
                 0.0,
                 scale_factor=2.0 * np.pi,
-                out=h_full[start:end, :, :],
+                out=h_full[start:end],
             )
 
         # build symmetric kernel g of length L for *linear* Toeplitz convolution:
@@ -359,25 +489,47 @@ class fft_Myy:
         g[:, :, k] = h_full[:, :, k]
         g[:, :, L - k] = h_full[:, :, k]
 
-        # Perform rFFT of g along Z, and cache
-        self.gg_fft = np.fft.rfft(g, axis=2)  # (nR, nR, L_fft)
+        # Perform rFFT of g along Z, and return result
+        gg_fft = np.fft.rfft(g, axis=2)
+
+        return gg_fft  # (nR, nR, L_fft)
 
     def check_Myy(self, hatIy):
+        """Dummy, always returns False. Defined only for compatibility with non_linear_solver"""
         return False
 
     def force_build_Myy(self, hatIy):
+        """Ignored. Defined only for compatibility with non_linear_solver"""
         pass
 
     def dot(self, hatIy):
+        """Performs the product with a vector defined on the reduced domain, i.e. inside the limiter.
+        Returns a vector on the input domain.
+
+        Parameters
+        ----------
+        hatIy: np.ndarray
+            1d vector on reduced plasma domain, e.g. inside the limiter
+        """
         up_hatIy = self.up_project(hatIy)
         Myy_hatIy = self._myy_dot(up_hatIy)
         reduced_prod = self.down_project(Myy_hatIy)
         return reduced_prod
 
-    def _myy_dot(self, x):
+    def _myy_dot(self, vector):
+        """Performs the dot product Myy@vector for a vector that has already been up-projected onto
+        the full grid domain (where Myy is defined), but NOT yet transformed into Fourier space.
 
-        nR, nZ = self.gg_fft.shape[1], self.gg_fft.shape[2]
-        x = x.reshape(nR, nZ)
+        Returns a vector on the input domain.
+
+        Parameters
+        ----------
+        vector: np.ndarray
+            1d vector on the full domain, in real space
+        """
+
+        nR, nZ = self.gg.shape[1], self.gg.shape[2]
+        x = vector.reshape(nR, nZ)
 
         # Zero-pad vec along Z to length L
         L = 2 * nZ - 1
@@ -387,8 +539,10 @@ class fft_Myy:
         # rFFT of padded vec
         x_fft = np.fft.rfft(x_padded, axis=1)  # (nR, L_fft)
 
-        conv_fft = self.gg_fft * x_fft[np.newaxis, :, :]
-        conv_fft = conv_fft.sum(axis=1)
+        gg_fft = self.gg
+        x_fft = x_fft[np.newaxis, :, :]
+        conv_fft = ne.evaluate("sum(gg_fft*x_fft, axis=1)")
+
         y_full = np.fft.irfft(conv_fft, n=L, axis=1)
         y_full = y_full[:, :nZ]  # .reshape(-1)
 

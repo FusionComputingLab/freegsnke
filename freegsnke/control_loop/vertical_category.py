@@ -39,8 +39,8 @@ class VerticalController:
     data : dict
         A nested dictionary containing control waveforms for the vertical controller.
         The required keys for both spline-based and step-based waveforms are:
-            - Spline keys: "z_ref", "k_prop", "k_deriv"
-            - Step keys:
+            - Spline keys: "z_ref"
+            - Step keys: "k_prop", "k_deriv"
         Each key should map to a waveform dictionary suitable for interpolation with keys:
             - 'times': 1D array of time points
             - 'vals': 1D array of values at those time points (same length).
@@ -68,8 +68,8 @@ class VerticalController:
     ):
 
         # check correct data is input and in correct format
-        self.keys_to_spline = ["z_ref", "k_prop", "k_deriv"]
-        self.keys_to_step = []
+        self.keys_to_spline = ["z_ref"]
+        self.keys_to_step = ["k_prop", "k_deriv"]
         for key in self.keys_to_spline + self.keys_to_step:
             check_data_entry(data=data, key=key, controller_name="VerticalController")
 

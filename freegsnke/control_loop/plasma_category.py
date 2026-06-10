@@ -40,7 +40,7 @@ class PlasmaController:
         A dictionary containing waveforms for the plasma current controller. The required keys
         for both spline-based and step-based waveforms are:
             - Spline keys: "ip_ref", "ip_blend", "vloop_ff"
-            - Step keys: "k_prop", "k_int", "M_solenoid"
+            - Step keys: "k_prop", "k_int", "k_deriv", "M_solenoid"
         Each key should map to a waveform dictionary suitable for interpolation with keys:
             - 'times': 1D array of time points
             - 'vals': 1D array of values at those time points (same length).
@@ -69,7 +69,7 @@ class PlasmaController:
 
         # check correct data is input and in correct format
         self.keys_to_spline = ["ip_ref", "ip_blend", "vloop_ff"]
-        self.keys_to_step = ["k_prop", "k_int", "M_solenoid"]
+        self.keys_to_step = ["k_prop", "k_int", "k_deriv", "M_solenoid"]
         for key in self.keys_to_spline + self.keys_to_step:
             check_data_entry(data=data, key=key, controller_name="PlasmaController")
 
@@ -107,6 +107,7 @@ class PlasmaController:
         dt,
         ip_meas,
         ip_hist_prev,
+        ip_err_prev,
     ):
         """
         Computes the time derivative of the plasma current request (`dip_dt`) and updates the
@@ -123,6 +124,8 @@ class PlasmaController:
             Measured plasma current at time `t` [A].
         ip_hist_prev : float
             Previous value of the integrated plasma current error [A.s].
+        ip_err_prev : float
+            Previous value of the plasma current error [A].
 
         Returns:
         -------
@@ -134,7 +137,7 @@ class PlasmaController:
         Notes:
         ------
         - The control law uses time-dependent interpolants for reference current (`ip_ref`),
-        proportional gain (`k_prop`), integral gain (`k_int`), blend factor (`ip_blend`),
+        proportional gain (`k_prop`), integral gain (`k_int`), integral gain (`k_deriv`), blend factor (`ip_blend`),
         feedforward voltage (`vloop_ff`), and solenoid inductance (`M_solenoid`).
         - The blend factor determines the weighting between feedback and feedforward control.
         - The integral term is computed using the trapezoidal rule for numerical integration.
@@ -144,6 +147,7 @@ class PlasmaController:
         ip_ref = self.interpolants["ip_ref"](t)
         k_prop = self.interpolants["k_prop"](t)
         k_int = self.interpolants["k_int"](t)
+        k_deriv = self.interpolants["k_deriv"](t)
         blend = self.interpolants["ip_blend"](t)
         vloop_ff = self.interpolants["vloop_ff"](t)
         M_solenoid = self.interpolants["M_solenoid"](t)
@@ -154,14 +158,17 @@ class PlasmaController:
         # integral term
         ip_int = ip_hist_prev + (0.5 * ip_err * dt)
 
+        # derivative term
+        ip_deriv = (ip_err - ip_err_prev) / dt
+
         # FB term
         dip_dt_FB = PID(
             error_prop=ip_err,
             error_int=ip_int,
-            error_deriv=None,
+            error_deriv=ip_deriv,
             k_prop=k_prop,
             k_int=k_int,
-            k_deriv=0.0,
+            k_deriv=k_deriv,
         )
 
         # FF term
@@ -173,7 +180,7 @@ class PlasmaController:
         # update ip_hist
         ip_hist = ip_hist_prev + (ip_err * dt)
 
-        return dip_dt, ip_hist
+        return dip_dt, ip_hist, ip_err
 
     def plot_data(self, tmin=-1.0, tmax=1.0, nt=1001):
         """
@@ -265,6 +272,8 @@ class PlasmaController:
                 ax.set_ylabel(rf"{key} [$1/s$]")
             elif key == "k_int":
                 ax.set_ylabel(rf"{key} [$1/s^2$]")
+            elif key == "k_deriv":
+                ax.set_ylabel(rf"{key} [No units]")
             elif key == "M_solenoid":
                 ax.set_ylabel(rf"{key} [$V.s/A$]")
             else:

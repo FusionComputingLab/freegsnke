@@ -1,7 +1,5 @@
-import os
-import sys
-import time
 from copy import deepcopy
+from pathlib import Path
 
 import freegs4e
 import matplotlib.pyplot as plt
@@ -13,6 +11,13 @@ from IPython.display import clear_output, display
 from matplotlib.widgets import Slider
 
 from freegsnke import build_machine
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+TEST_DATA_DIR = Path(__file__).resolve().parent / "baselines"
+MACHINE_CONFIG_DIR = REPO_ROOT / "machine_configs" / "test"
+
+STATIC_CURRENT_BASELINE = TEST_DATA_DIR / "test_controlCurrents.npy"
+STATIC_PSI_BASELINE = TEST_DATA_DIR / "test_psi.npy"
 
 
 @pytest.fixture()
@@ -28,11 +33,11 @@ def create_machine():
 
     # build machine
     tokamak = build_machine.tokamak(
-        active_coils_path=f"./machine_configs/test/active_coils.pickle",
-        passive_coils_path=f"./machine_configs/test/passive_coils.pickle",
-        limiter_path=f"./machine_configs/test/limiter.pickle",
-        wall_path=f"./machine_configs/test/wall.pickle",
-        magnetic_probe_path=f"./machine_configs/test/magnetic_probes.pickle",
+        active_coils_path=str(MACHINE_CONFIG_DIR / "active_coils.pickle"),
+        passive_coils_path=str(MACHINE_CONFIG_DIR / "passive_coils.pickle"),
+        limiter_path=str(MACHINE_CONFIG_DIR / "limiter.pickle"),
+        wall_path=str(MACHINE_CONFIG_DIR / "wall.pickle"),
+        magnetic_probe_path=str(MACHINE_CONFIG_DIR / "magnetic_probes.pickle"),
     )
 
     # Creates equilibrium object and initializes it with
@@ -119,12 +124,12 @@ def create_test_files_static_solve(create_machine):
     eq.tokamak["Solenoid"].control = False
     eq.tokamak.set_coil_current("Solenoid", 15000)
 
-    controlCurrents = np.load("./freegsnke/tests/test_controlCurrents.npy")
+    controlCurrents = np.load(STATIC_CURRENT_BASELINE)
     eq.tokamak.setControlCurrents(controlCurrents)
 
     NK.forward_solve(eq, profiles, 1e-8)
 
-    test_psi = np.load("./freegsnke/tests/test_psi.npy")
+    test_psi = np.load(STATIC_PSI_BASELINE)
 
 
 def test_static_solve(create_machine):
@@ -160,12 +165,12 @@ def test_static_solve(create_machine):
     #     picard=False,
     # )
 
-    controlCurrents = np.load("./freegsnke/tests/test_controlCurrents.npy")
+    controlCurrents = np.load(STATIC_CURRENT_BASELINE)
     eq.tokamak.setControlCurrents(controlCurrents)
 
     NK.forward_solve(eq, profiles, 1e-8)
 
-    test_psi = np.load("./freegsnke/tests/test_psi.npy")
+    test_psi = np.load(STATIC_PSI_BASELINE)
 
     assert np.allclose(
         eq.psi(), test_psi, atol=(np.max(test_psi) - np.min(test_psi)) * 0.003

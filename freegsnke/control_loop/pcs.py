@@ -169,6 +169,7 @@ class PlasmaControlSystem:
         dt,
         ip_meas,
         ip_hist_prev,
+        ip_err_prev,
         T_meas,
         T_err_prev,
         T_hist_prev,
@@ -207,6 +208,9 @@ class PlasmaControlSystem:
 
         ip_hist_prev : float
             Previous value of the integrated plasma current error [A.s].
+
+        ip_err_prev : float
+            Previous value of the plasma current error [A].
 
         T_meas : np.ndarray
             Measured values of the shape targets at the current time [m].
@@ -264,6 +268,9 @@ class PlasmaControlSystem:
         ip_hist : list of float
             Updated integrated plasma current error [A.s].
 
+        ip_err : list of float
+            Updated plasma current error [A].
+
         T_err : numpy.ndarray
             Updated shape target filtered error signal (used for damping) [m].
 
@@ -291,15 +298,17 @@ class PlasmaControlSystem:
         for i in range(0, n):
 
             # plasma category
-            self.dip_dt, ip_hist = self.PlasmaController.run_control(
+            self.dip_dt, ip_hist, ip_err = self.PlasmaController.run_control(
                 t=t + (i * dt),
                 dt=dt,
                 ip_meas=ip_meas,
                 ip_hist_prev=ip_hist_prev,
+                ip_err_prev=ip_err_prev,
             )
 
             # update "history" terms
             ip_hist_prev = ip_hist.copy()
+            ip_err_prev = ip_err.copy()
 
             # shape category
             self.dT_dt, T_err, T_hist = self.ShapeController.run_control(
@@ -386,4 +395,4 @@ class PlasmaControlSystem:
         # average the requested voltages for use in simulator
         V_active = np.mean(V_actives, axis=0)
 
-        return V_active, ip_hist, T_err, T_hist, self.I_approved, coil_resists
+        return V_active, ip_hist, ip_err, T_err, T_hist, self.I_approved, coil_resists

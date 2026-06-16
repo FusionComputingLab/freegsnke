@@ -1641,6 +1641,39 @@ def load_currents_voltages_and_TS_signals(
     coil_list = np.sort(list(att_dict.keys()))
 
     def get_voltages(shotn):
+        """
+        Retrieve coil voltage signals for a given shot number.
+
+        This function queries an external data source for voltage signals
+        associated with a set of actuators defined in `att_dict`. Depending
+        on the actuator type, it fetches either PS coil voltages or generic
+        output voltages.
+
+        The returned data is organised into a dictionary keyed by actuator name.
+
+        Parameters
+        ----------
+        shotn : int
+            Shot number identifying the discharge for which voltage data is
+            requested.
+
+        Returns
+        -------
+        outdict : dict
+            Dictionary of voltage signals. Each key corresponds to an actuator
+            name and maps to a dictionary with:
+
+            - data : ndarray
+                Voltage time series
+            - times : ndarray
+                Time base associated with the signal
+            - units : str
+                Physical units of the voltage signal
+
+        Notes
+        -----
+        Missing signals are silently ignored.
+        """
         outdict = {}
         for attk in att_dict:
             tinner = att_dict[attk]
@@ -1659,6 +1692,39 @@ def load_currents_voltages_and_TS_signals(
         return outdict
 
     def get_req_voltages(shotn):
+        """
+        Retrieve requested (reference/commanded) coil voltages for a given shot.
+
+        This function queries an external data source for the prescribed voltage
+        waveforms associated with each actuator defined in `att_dict`.
+
+        If a signal cannot be retrieved, a default placeholder signal is returned
+        and a warning message is printed.
+
+        Parameters
+        ----------
+        shotn : int
+            Shot number identifying the discharge for which voltage data is
+            requested.
+
+        Returns
+        -------
+        outdict : dict
+            Dictionary of requested voltage signals. Each key corresponds to a
+            coil name and maps to a dictionary with:
+
+            - data : ndarray
+                Requested voltage time series (or placeholder if missing)
+            - times : ndarray
+                Time base associated with the signal (or placeholder if missing)
+            - units : str
+                Physical units of the signal
+
+        Notes
+        -----
+        Missing signals are replaced with a default placeholder array and a
+        warning is printed to standard output.
+        """
         outdict = {}
         for coil in att_dict:
             tinner = att_dict[coil]
@@ -1679,6 +1745,36 @@ def load_currents_voltages_and_TS_signals(
         return outdict
 
     def get_coilcurrs_AMC(shotn):
+        """
+        Retrieve AMC Rogowski coil current measurements for a given shot.
+
+        This function queries an external data source for measured coil currents
+        from AMC Rogowski sensors. Data is organised hierarchically by actuator
+        group and individual coil channel.
+
+        Parameters
+        ----------
+        shotn : int
+            Shot number identifying the discharge for which current data is
+            requested.
+
+        Returns
+        -------
+        outdict : dict
+            Nested dictionary of coil current signals structured as:
+
+            outdict[actuator_group][coil_name] -> dict with:
+                - data : ndarray
+                    Measured current time series
+                - times : ndarray
+                    Time base associated with the signal
+                - units : str
+                    Physical units of the measurement
+
+        Notes
+        -----
+        Missing coil signals are silently ignored.
+        """
         outdict = {}
         for attk in att_dict:
             outdict[attk] = {}
@@ -1696,6 +1792,39 @@ def load_currents_voltages_and_TS_signals(
         return outdict
 
     def get_coilcurrs(shotn):
+        """
+        Retrieve measured coil currents for a given shot.
+
+        This function queries an external data source for coil current measurements,
+        selecting the appropriate signal path depending on actuator type.
+
+        For PS coils, currents are retrieved from the standard CURRENT signal.
+        For non-PS coils, the signal path depends on the actuator configuration,
+        with a special case for coil 'P6'.
+
+        Parameters
+        ----------
+        shotn : int
+            Shot number identifying the discharge for which coil current data is
+            requested.
+
+        Returns
+        -------
+        outdict : dict
+            Dictionary of coil current signals. Each key corresponds to a coil
+            name and maps to a dictionary containing:
+
+            - data : ndarray
+                Current time series
+            - times : ndarray
+                Time base associated with the signal
+            - units : str
+                Physical units of the signal
+
+        Notes
+        -----
+        Missing signals are silently ignored.
+        """
         outdict = {}
         for attk in att_dict:
             tinner = att_dict[attk]
@@ -1718,6 +1847,39 @@ def load_currents_voltages_and_TS_signals(
         return outdict
 
     def get_rogs(shotn):
+        """
+        Retrieve Rogowski coil measurements (external and internal) for a given shot.
+
+        This function queries AMC Rogowski diagnostics and returns both external
+        (ROGEXT) and internal (ROGINT) signals where available. Data is organised
+        hierarchically by actuator group and Rogowski channel.
+
+        Parameters
+        ----------
+        shotn : int
+            Shot number identifying the discharge for which Rogowski data is
+            requested.
+
+        Returns
+        -------
+        outdict : dict
+            Nested dictionary containing Rogowski coil data:
+
+            outdict[actuator_group]["rogext"][channel] -> dict
+                External Rogowski signals:
+                    - data : ndarray
+                    - times : ndarray
+
+            outdict[actuator_group]["rogint"][channel] -> dict (if available)
+                Internal Rogowski signals:
+                    - data : ndarray
+                    - times : ndarray
+
+        Notes
+        -----
+        Missing channels are silently ignored. Internal Rogowski data is only
+        included if available for the given actuator.
+        """
         outdict = {}
         for attk in att_dict:
             outdict[attk] = {}

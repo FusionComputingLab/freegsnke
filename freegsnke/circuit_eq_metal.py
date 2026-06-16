@@ -28,6 +28,28 @@ from .normal_modes import mode_decomposition
 
 
 class metal_currents:
+    """
+    Time evolution model for electrical currents in conducting structures
+    within a tokamak (active coils, passive vessel, and optional plasma coupling).
+
+    This class solves the dynamical circuit equations for metallic components
+    using an implicit-Euler time integrator. It can operate in multiple modes:
+
+    - Coil-only (vacuum vessel response)
+    - Vessel eigenmode representation of passive structures
+    - Fully coupled plasma–metal system (optional)
+
+    The system evolves currents in a reduced basis determined by:
+    - physical active coil currents
+    - vessel eigenmodes (if enabled)
+    - optional plasma current coupling
+
+    Key features:
+    - Construction of resistance and inductance operators
+    - Optional diagonalisation of passive vessel dynamics
+    - Optional coupling to plasma current evolution
+    - Support for multi-step implicit time integration
+    """
 
     def __init__(
         self,
@@ -336,6 +358,24 @@ class metal_currents:
             self.forcing_term = self.forcing_term_eig_no_plasma
 
     def reset_active_coil_resistances(self, active_coil_resistances):
+        """
+        Update the resistances of the active coils and rebuild derived system matrices.
+
+        This method replaces the active-coil portion of the full resistance vector
+        while keeping passive/vessel resistances unchanged. It then updates all
+        dependent operators used in the circuit evolution model.
+
+        The update triggers a rebuild of:
+        - the full resistance vector
+        - the inverse resistance matrix
+        - the resistance–inductance coupling operator
+        - the reduced system matrix used in vessel mode dynamics
+
+        Parameters
+        ----------
+        active_coil_resistances : ndarray
+            Updated resistances for the active coils only (length = n_active_coils).
+        """
         self.coil_resist = np.concatenate(
             (active_coil_resistances, self.coil_resist[self.n_active_coils :])
         )

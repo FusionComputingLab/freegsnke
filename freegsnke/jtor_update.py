@@ -32,11 +32,44 @@ from .copying import copy_into
 
 
 class Jtor_universal:
+    """
+    Wrapper class providing a unified interface for toroidal current density (Jtor)
+    evaluation, with optional refinement.
+
+    This class selects between two implementations of the toroidal current density
+    model depending on whether refinement is enabled:
+
+    - Unrefined Jtor: fast, standard evaluation
+    - Refined Jtor: higher-resolution or corrected evaluation using additional
+      numerical processing
+
+    The interface ensures that downstream code can call `Jtor()` without needing
+    to know which implementation is being used.
+    """
+
     def __init__(self, refine_jtor=False):
         """Sets default unrefined Jtor."""
         self._refine_jtor = refine_jtor
 
     def Jtor(self, *args, **kwargs):
+        """
+        Evaluate toroidal current density (Jtor), dispatching to either the
+        refined or unrefined implementation.
+
+        This method acts as a unified interface:
+        - If `_refine_jtor` is True, it calls `Jtor_refined`
+        - Otherwise, it calls `Jtor_unrefined`
+
+        Parameters
+        ----------
+        *args, **kwargs
+            Arguments passed directly to the selected Jtor implementation.
+
+        Returns
+        -------
+        ndarray
+            Toroidal current density evaluated on the plasma grid.
+        """
         if self._refine_jtor:
             return self.Jtor_refined(*args, **kwargs)
         else:

@@ -26,10 +26,23 @@ from .implicit_euler import implicit_euler_solver
 
 
 class linear_solver:
-    """Interface between the linearised system of circuit equations and the implicit-Euler
-    time stepper. Calculates the linear growth rate and solves the linearised dynamical problem.
-    It needs the Jacobian of the plasma current distribution with respect to all of the
-    independent currents, dIy/dI.
+    """
+    Linearised plasma–metal circuit solver.
+
+    This class provides the interface between the linearised system of
+    coupled plasma and metal circuit equations and the implicit-Euler
+    time integrator. It constructs the matrices required for time
+    integration, computes linear growth rates, and advances the
+    linearised dynamical system in time.
+
+    The metal circuit equations are expressed in a reduced basis defined
+    by the mode decomposition matrix ``P``, in which the active coils
+    remain in the physical current basis and the passive structures are
+    represented by vessel eigenmodes.
+
+    The solver requires the Jacobian of the plasma current distribution
+    with respect to the independent current variables, ``dIy/dI``, which
+    determines the linear plasma response.
     """
 
     def __init__(
@@ -45,38 +58,45 @@ class linear_solver:
         max_internal_timestep=0.0001,
         full_timestep=0.0001,
     ):
-        """Instantiates the linear_solver object, with inputs computed mostly
-        within the circuit_equation_metals object.
-        Based on the input plasma properties and coupling matrices, it prepares:
-        - an instance of the implicit Euler solver implicit_euler_solver()
-        - internal time-stepper for the implicit-Euler
+        """
+        Initialise the linearised circuit solver.
+
+        Precomputes matrices describing the coupling between plasma currents
+        and metal circuits in the reduced modal basis, and creates the
+        implicit-Euler integrator used to advance the linearised system.
 
         Parameters
         ----------
-        eq : class
-            FreeGSNKE equilibrium object.
-        Lambdam1: np.array
-            State matrix of the circuit equations for the metal in normal mode form:
-            P is the identity on the active coils and diagonalises the isolated dynamics
-            of the passive coils, R^{-1}L_{passive}
-        P: np.array
-            change of basis matrix, as defined above, with modes appropriately removed
-        Pm1: np.array
-            Inverse of the change of basis matrix, as defined above, with modes appropriately removed
-        Rm1: np.array
-            matrix of all metal resitances to the power of -1. Diagonal.
-        Mey: np.array
-            matrix of inductance values between grid points in the reduced plasma domain and all metal coils
-            (active coils and passive-structure filaments)
-            Calculated by the metal_currents object
-        plasma_norm_factor: float
-            an overall factor to work with a rescaled plasma current, so that
-            it's within a comparable range with metal currents
-        max_internal_timestep: float
-            internal integration timestep of the implicit-Euler solver, to be used
-            as substeps over the <<full_timestep>> interval
-        full_timestep: float
-            full timestep requested to the implicit-Euler solver
+        coil_numbers : tuple[int, int]
+            Tuple ``(n_active_coils, n_coils)`` giving the number of active
+            coils and the total number of conducting elements.
+        Lambdam1 : ndarray
+            State matrix of the metal circuit equations in the reduced basis.
+            Active coils remain in the physical current basis, while passive
+            structures are represented by vessel eigenmodes.
+        P : ndarray
+            Change-of-basis matrix mapping currents from the reduced modal
+            basis to the physical conductor basis.
+        Pm1 : ndarray
+            Inverse of ``P``, mapping currents from the physical conductor
+            basis to the reduced modal basis.
+        Rm1 : ndarray
+            Inverse resistance matrix of all conducting elements. This is
+            typically diagonal.
+        Mey : ndarray
+            Mutual inductance matrix between plasma current elements and
+            metal conductors (active coils and passive structures).
+        plasma_norm_factor : float
+            Scaling factor applied to the plasma current variable to improve
+            conditioning and keep its magnitude comparable to metal currents.
+        plasma_resistance_1d : ndarray
+            Effective plasma resistance associated with each plasma current
+            element in the reduced plasma domain.
+        max_internal_timestep : float, optional
+            Maximum timestep used internally by the implicit-Euler solver.
+            Longer requested timesteps are subdivided into smaller steps.
+        full_timestep : float, optional
+            External timestep associated with a single solver advance.
         """
 
         self.max_internal_timestep = max_internal_timestep
@@ -127,26 +147,36 @@ class linear_solver:
         self.profiles_forcing = np.zeros(self.n_independent_vars + 1)
 
     def reset_plasma_resistivity(self, plasma_resistance_1d):
-        """Resets the value of the plasma resistivity,
-        throught the vector of 'geometric restistances' in the plasma domain
+        """
+        Update the plasma resistivity profile used by the linearised solver.
+
+        Replaces the vector of effective plasma resistances associated with
+        the reduced plasma domain. This automatically invalidates the current
+        linearisation point so that system matrices will be rebuilt using the
+        updated resistivity.
 
         Parameters
         ----------
         plasma_resistance_1d : ndarray
-            Vector of 2pi resistivity R/dA for all domain grid points in the reduced plasma domain
+            Vector of effective plasma resistance coefficients for all grid
+            points in the reduced plasma domain. Each entry represents the
+            geometric resistance factor (2π * resistivity divided by cell area).
         """
         self.plasma_resistance_1d = plasma_resistance_1d
         self.set_linearization_point(None, None, None, None)
 
     def reset_timesteps(self, max_internal_timestep, full_timestep):
-        """Resets the integration timesteps, calling self.solver.set_timesteps
+        """
+        Update the timesteps used by the implicit-Euler integrator.
 
         Parameters
         ----------
         max_internal_timestep : float
-            integration substep of the ciruit equation, calling an implicit-Euler solver
+            Maximum internal timestep used by the implicit-Euler solver.
+            Larger timesteps are subdivided into steps no larger than this value.
         full_timestep : float
-            integration timestep of the circuit equation
+            External timestep associated with a single advance of the
+            circuit equations.
         """
         self.max_internal_timestep = max_internal_timestep
         self.full_timestep = full_timestep
@@ -155,24 +185,38 @@ class linear_solver:
         )
 
     def set_linearization_point(self, dIydI, dIydtheta, hatIy0, Myy_hatIy0):
-        """Initialises an implicit-Euler solver with the appropriate matrices for the linearised dynamic problem.
+        """
+        Set or update the linearisation point for the coupled plasma–metal system.
+
+        This method defines the equilibrium state around which the system is
+        linearised and rebuilds the system matrices used by the implicit-Euler
+        solver.
 
         Parameters
         ----------
-        dIydI : np.array
-            partial derivatives of plasma-cell currents on the reduced plasma domain with respect to all intependent metal currents
-            (active coil currents, vessel normal modes, total plasma current divided by plasma_norm_factor).
-            These would typically come from having solved the forward Grad-Shafranov problem. Finite difference Jacobian.
-            Calculated by the nl_solver object
-        dIydtheta : np.array
-            partial derivatives of plasma-cell currents on the reduced plasma domain with respect to all plasma current density
-            profile parameters
-        hatIy0 : np.array
-            Plasma current distribution on the reduced plasma domain (1d) of the equilibrium around which the dynamics is linearised.
-            This is normalised by the total plasma current, so that this vector sums to 1.
-        Myy_hatIy0 : np.array
-            The matrix product np.dot(Myy, hatIy0) in the same reduced domain as hatIy0
-            This is provided by Myy_handler
+        dIydI : ndarray or None
+            Jacobian of plasma cell currents with respect to independent metal
+            currents (active coils, vessel modes, and normalised total plasma
+            current). Typically computed from a Grad–Shafranov solve using finite
+            differences.
+        dIydtheta : ndarray or None
+            Jacobian of plasma cell currents with respect to plasma profile
+            parameterisation variables.
+        hatIy0 : ndarray or None
+            Normalised equilibrium plasma current distribution over the reduced
+            plasma domain. This vector is scaled to sum to one.
+        Myy_hatIy0 : ndarray or None
+            Precomputed product of the plasma–plasma coupling matrix with the
+            equilibrium current distribution, provided by the plasma coupling
+            handler.
+
+        Notes
+        -----
+        Any argument set to None is left unchanged from the previous linearisation
+        point.
+
+        This call rebuilds the system matrix and reinitialises the implicit-Euler
+        solver using the updated linearised dynamics.
         """
         if dIydI is not None:
             self.dIydI = dIydI
@@ -278,6 +322,11 @@ class linear_solver:
             voltages applied to the active coils
         dtheta_dt : np.array
             Vector of plasma current density profile parameters derivateives with respect to t.
+
+        Returns
+        -------
+        Itpdt : ndarray
+            Updated state vector after one full implicit-Euler timestep.
         """
 
         # baseline forcing term (from the active coil voltages)

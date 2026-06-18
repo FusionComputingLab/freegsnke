@@ -64,6 +64,188 @@ class Equilibrium(freegs4e.equilibrium.Equilibrium):
             float
         )
 
+    def update_machine_description(
+        self,
+        active_coils_data=None,
+        passive_coils_data=None,
+        limiter_data=None,
+        wall_data=None,
+        magnetic_probe_data=None,
+        active_coils_path=None,
+        passive_coils_path=None,
+        limiter_path=None,
+        wall_path=None,
+        magnetic_probe_path=None,
+        refine_mode="G",
+        preserve_currents=True,
+    ):
+        """
+        Update the equilibrium's tokamak directly and refresh machine-dependent caches.
+
+        The computational domain, plasma current, and plasma flux are left in place.
+        Coil Greens functions, tokamak flux, limiter masks, and probe descriptions
+        are rebuilt for the updated machine.
+
+        Parameters
+        ----------
+        active_coils_data : dict, optional
+            Dictionary containing the active coil description.
+        passive_coils_data : list, optional
+            List containing passive structure descriptions. If omitted, no
+            passive structures are added.
+        limiter_data : list, optional
+            List of limiter boundary points.
+        wall_data : list, optional
+            List of wall boundary points. If omitted, the limiter is used as the
+            wall.
+        magnetic_probe_data : dict, optional
+            Dictionary containing magnetic probe descriptions.
+        active_coils_path : str, optional
+            Path to a pickle file containing the active coil description.
+        passive_coils_path : str, optional
+            Path to a pickle file containing passive structure descriptions.
+        limiter_path : str, optional
+            Path to a pickle file containing limiter boundary points.
+        wall_path : str, optional
+            Path to a pickle file containing wall boundary points.
+        magnetic_probe_path : str, optional
+            Path to a pickle file containing magnetic probe descriptions.
+        refine_mode : str, optional
+            Refinement mode for extended passive structures. Defaults to ``"G"``.
+        preserve_currents : bool, optional
+            If True, currents for labels that are present in both the old and new
+            machine descriptions are copied onto the updated coil objects.
+
+        Returns
+        -------
+        Equilibrium
+            This equilibrium object, updated in place.
+
+        Notes
+        -----
+        This method refreshes equilibrium-level data derived from the tokamak,
+        but it does not update existing solver objects. Reinstantiate static or
+        nonlinear solvers after changing machine geometry.
+        """
+
+        self.tokamak.set_machine_description(
+            active_coils_data=active_coils_data,
+            passive_coils_data=passive_coils_data,
+            limiter_data=limiter_data,
+            wall_data=wall_data,
+            magnetic_probe_data=magnetic_probe_data,
+            active_coils_path=active_coils_path,
+            passive_coils_path=passive_coils_path,
+            limiter_path=limiter_path,
+            wall_path=wall_path,
+            magnetic_probe_path=magnetic_probe_path,
+            refine_mode=refine_mode,
+            preserve_currents=preserve_currents,
+        )
+        self.refresh_machine_dependent_state()
+        return self
+
+    def update_active_coil(self, coil_name, active_coil_data, preserve_current=True):
+        """
+        Update one active coil/circuit and refresh equilibrium-level coil caches.
+
+        Parameters
+        ----------
+        coil_name : str
+            Existing active coil/circuit label to replace.
+        active_coil_data : dict
+            Machine-description entry for ``coil_name``.
+        preserve_current : bool, optional
+            If True, the old current on ``coil_name`` is copied onto the
+            replacement coil/circuit. Defaults to True.
+
+        Returns
+        -------
+        Equilibrium
+            This equilibrium object, updated in place.
+
+        Notes
+        -----
+        This method refreshes only the Greens functions affected by the updated
+        coil when the coil ordering is unchanged. Limiter masks are reused
+        because the limiter geometry is not modified by an active-coil update.
+        Existing solver objects should still be reinstantiated after a geometry
+        change because they cache machine-dependent matrices and mode data.
+        """
+
+        self.tokamak.update_active_coil(
+            coil_name=coil_name,
+            active_coil_data=active_coil_data,
+            preserve_current=preserve_current,
+        )
+        self.refresh_machine_dependent_state(refresh_limiter=False)
+        return self
+
+    def refresh_machine_dependent_state(self, refresh_limiter=True):
+        """
+        Refresh cached data derived from the current tokamak description.
+
+        Rebuilds the coil Greens functions on this equilibrium grid for changed
+        coil labels only when possible, updates the tokamak flux from the
+        refreshed Greens functions and current vector, and optionally recreates
+        the limiter handler and inside/outside-limiter masks. A full Greens
+        rebuild is used when the coil ordering or number of coils changed, or
+        when no previous cached Greens functions are available.
+
+        Parameters
+        ----------
+        refresh_limiter : bool, optional
+            If True, rebuild the limiter handler and limiter masks. Set to False
+            for coil-only updates that leave limiter geometry unchanged.
+
+        Returns
+        -------
+        Equilibrium
+            This equilibrium object, refreshed in place.
+        """
+
+        changed_coils = getattr(
+            self.tokamak, "_last_machine_update_changed_coils", None
+        )
+        topology_changed = getattr(
+            self.tokamak, "_last_machine_update_topology_changed", True
+        )
+        can_update_partially = (
+            not topology_changed
+            and changed_coils is not None
+            and hasattr(self, "_pgreen")
+            and hasattr(self, "_vgreen")
+            and np.shape(self._vgreen)[0] == self.tokamak.n_coils
+        )
+
+        if can_update_partially:
+            self._pgreen = self._pgreen.copy()
+            self._vgreen = np.copy(self._vgreen)
+            for label in changed_coils:
+                if label not in self.tokamak.coil_order:
+                    continue
+                coil = self.tokamak[label]
+                self._pgreen[label] = coil.createPsiGreens(self.R, self.Z)
+                self._vgreen[self.tokamak.coil_order[label]] = coil.createPsiGreensVec(
+                    self.R, self.Z
+                )
+        else:
+            self._pgreen = self.tokamak.createPsiGreens(self.R, self.Z)
+            self._vgreen = self.tokamak.createPsiGreensVec(self.R, self.Z)
+
+        self.tokamak_psi = self.tokamak.calcPsiFromGreens(pgreen=self._pgreen)
+
+        if refresh_limiter:
+            self.limiter_handler = limiter_func.Limiter_handler(
+                self, self.tokamak.limiter
+            )
+            self.mask_inside_limiter = 1.0 * self.limiter_handler.mask_inside_limiter
+            self.mask_outside_limiter = 2 * np.logical_not(
+                self.mask_inside_limiter
+            ).astype(float)
+
+        return self
+
     def create_auxiliary_equilibrium(self):
         """Creates the auxiliary equilibrium object.
 

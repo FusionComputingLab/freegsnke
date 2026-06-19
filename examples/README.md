@@ -5,6 +5,7 @@ These example Jupyter notebooks are intended to be the **first port of call for 
 | Example notebook | Purpose | Who can use it? |
 | ------ | ------ | ------ | 
 | Example 00 | Learn how to build a generic tokamak object. | Anyone |
+| Example 00b | Learn how to subdivide quadrilateral passive polygons while keeping non-quadrilateral passives unchanged. | Anyone |
 | Example 01a | Learn how to use the static inverse solver. | Anyone |
 | Example 01b | Learn how to use more advacned features of the static inverse solver. | Anyone |
 | Example 02 | Learn how to use the static forward solver. | Anyone |

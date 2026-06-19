@@ -804,8 +804,99 @@ def load_efit_times_and_status_splines(client, shot=45425):
 
 # ------------
 # ------------
+def load_passive_coils(passive_coils_path=None, passive_coils_data=None):
+    """
+    Load passive coil descriptions from either a pickle path or direct data.
+
+    Parameters
+    ----------
+    passive_coils_path : str, optional
+        Path to a passive coils pickle file.
+    passive_coils_data : list of dict, optional
+        Passive coils machine description supplied directly.
+
+    Returns
+    -------
+    list of dict
+        Passive coil descriptions.
+
+    Raises
+    ------
+    ValueError
+        If both or neither of ``passive_coils_path`` and ``passive_coils_data``
+        are provided.
+    """
+
+    if passive_coils_path is not None and passive_coils_data is not None:
+        raise ValueError(
+            "Provide only one of 'passive_coils_path' or 'passive_coils_data'."
+        )
+    if passive_coils_data is not None:
+        return passive_coils_data
+    if passive_coils_path is None:
+        raise ValueError("Provide one of 'passive_coils_path' or 'passive_coils_data'.")
+
+    with open(passive_coils_path, "rb") as file:
+        return pickle.load(file)
+
+
+def passive_currents_from_efit(
+    passive_coils,
+    current_labels,
+    currents_values,
+    zero_passives=False,
+):
+    """
+    Build passive-structure currents from EFIT++ circuit current data.
+
+    Each passive structure is mapped to its EFIT++ group through ``efitGroup``
+    when present, otherwise through ``element``. The reconstructed group
+    current is multiplied by the passive description's ``current_multiplier``.
+    This is the same mapping used in example 6, and subdivision preserves the
+    parent current when child multipliers sum to the parent's multiplier.
+
+    Parameters
+    ----------
+    passive_coils : list of dict
+        Passive coil descriptions.
+    current_labels : array-like
+        EFIT++ current labels.
+    currents_values : ndarray
+        EFIT++ current values with shape ``(n_times, n_labels)``.
+    zero_passives : bool, optional
+        If True, all passive currents are set to zero.
+
+    Returns
+    -------
+    dict
+        Dictionary mapping passive coil names to current arrays.
+    """
+
+    labels = (
+        current_labels.tolist() if hasattr(current_labels, "tolist") else current_labels
+    )
+    passive_currents = {}
+    for coil in passive_coils:
+        if zero_passives:
+            passive_currents[coil["name"]] = 0.0
+            continue
+
+        group_name = coil["efitGroup"] if "efitGroup" in coil else coil["element"]
+        ind = labels.index(group_name)
+        passive_currents[coil["name"]] = (
+            currents_values[:, ind] * coil["current_multiplier"]
+        )
+
+    return passive_currents
+
+
 def load_static_solver_inputs(
-    client, active_coils_path, passive_coils_path, shot=45425, zero_passives=False
+    client,
+    active_coils_path,
+    passive_coils_path=None,
+    shot=45425,
+    zero_passives=False,
+    passive_coils_data=None,
 ):
     """
     Extract the key (magnetics-only) EFIT++ reconstruction data at each time slice so that
@@ -817,8 +908,12 @@ def load_static_solver_inputs(
         The pyUDA client.
     active_coils_path : str
         Path to active coils pickle.
-    passive_coils_path : str
+    passive_coils_path : str, optional
         Path to passive coils pickle.
+    passive_coils_data : list of dict, optional
+        Passive coils machine description supplied directly. Provide this
+        instead of ``passive_coils_path`` when the passive description has been
+        refined or otherwise updated in memory.
     shot : int
         MAST-U shot number.
     zero_passives : bool
@@ -926,43 +1021,18 @@ def load_static_solver_inputs(
             else:
                 currents[active_coil_name] = None
 
-    # passive structures
-    with open(passive_coils_path, "rb") as file:
-        passive_coils = pickle.load(file)
-
-    # Passive structures
-    for i in range(0, len(passive_coils)):
-        coil = passive_coils[i]
-
-        if "efitGroup" in coil:
-            group_name = coil["efitGroup"]
-            ind = current_labels.tolist().index(group_name)
-
-            if zero_passives:
-                currents[coil["name"]] = 0.0
-                currents_nonsym[coil["name"]] = 0.0
-            else:
-                currents[coil["name"]] = (
-                    currents_values[:, ind] * coil["current_multiplier"]
-                )
-                currents_nonsym[coil["name"]] = (
-                    currents_values[:, ind] * coil["current_multiplier"]
-                )
-                # currents[coil["name"]] = efit_currents['currents_input'][t,ind]
-        else:
-            group_name = coil["element"]
-            ind = current_labels.tolist().index(group_name)
-            if zero_passives:
-                currents[coil["name"]] = 0.0
-                currents_nonsym[coil["name"]] = 0.0
-            else:
-                currents[coil["name"]] = (
-                    currents_values[:, ind] * coil["current_multiplier"]
-                )
-                currents_nonsym[coil["name"]] = (
-                    currents_values[:, ind] * coil["current_multiplier"]
-                )
-                # currents[coil["name"]] = efit_currents['currents_input'][t,ind]
+    passive_coils = load_passive_coils(
+        passive_coils_path=passive_coils_path,
+        passive_coils_data=passive_coils_data,
+    )
+    passive_currents = passive_currents_from_efit(
+        passive_coils,
+        current_labels,
+        currents_values,
+        zero_passives=zero_passives,
+    )
+    currents.update(passive_currents)
+    currents_nonsym.update(passive_currents)
 
     return (
         Ip,
@@ -980,7 +1050,12 @@ def load_static_solver_inputs(
 # ------------
 # ------------
 def load_static_solver_inputs_splines(
-    client, active_coils_path, passive_coils_path, shot=45425, zero_passives=False
+    client,
+    active_coils_path,
+    passive_coils_path=None,
+    shot=45425,
+    zero_passives=False,
+    passive_coils_data=None,
 ):
     """
     Extract the key (magnetics + motional stark effect) EFIT++ reconstruction data at each
@@ -992,8 +1067,12 @@ def load_static_solver_inputs_splines(
         The pyUDA client.
     active_coils_path : str
         Path to active coils pickle.
-    passive_coils_path : str
+    passive_coils_path : str, optional
         Path to passive coils pickle.
+    passive_coils_data : list of dict, optional
+        Passive coils machine description supplied directly. Provide this
+        instead of ``passive_coils_path`` when the passive description has been
+        refined or otherwise updated in memory.
     shot : int
         MAST-U shot number.
     zero_passives : bool
@@ -1130,43 +1209,18 @@ def load_static_solver_inputs_splines(
             else:
                 currents[active_coil_name] = None
 
-    # passive structures
-    with open(passive_coils_path, "rb") as file:
-        passive_coils = pickle.load(file)
-
-    # Passive structures
-    for i in range(0, len(passive_coils)):
-        coil = passive_coils[i]
-
-        if "efitGroup" in coil:
-            group_name = coil["efitGroup"]
-            ind = current_labels.tolist().index(group_name)
-
-            if zero_passives:
-                currents[coil["name"]] = 0.0
-                currents_nonsym[coil["name"]] = 0.0
-            else:
-                currents[coil["name"]] = (
-                    currents_values[:, ind] * coil["current_multiplier"]
-                )
-                currents_nonsym[coil["name"]] = (
-                    currents_values[:, ind] * coil["current_multiplier"]
-                )
-                # currents[coil["name"]] = efit_currents['currents_input'][t,ind]
-        else:
-            group_name = coil["element"]
-            ind = current_labels.tolist().index(group_name)
-            if zero_passives:
-                currents[coil["name"]] = 0.0
-                currents_nonsym[coil["name"]] = 0.0
-            else:
-                currents[coil["name"]] = (
-                    currents_values[:, ind] * coil["current_multiplier"]
-                )
-                currents_nonsym[coil["name"]] = (
-                    currents_values[:, ind] * coil["current_multiplier"]
-                )
-                # currents[coil["name"]] = efit_currents['currents_input'][t,ind]
+    passive_coils = load_passive_coils(
+        passive_coils_path=passive_coils_path,
+        passive_coils_data=passive_coils_data,
+    )
+    passive_currents = passive_currents_from_efit(
+        passive_coils,
+        current_labels,
+        currents_values,
+        zero_passives=zero_passives,
+    )
+    currents.update(passive_currents)
+    currents_nonsym.update(passive_currents)
 
     return (
         Ip,

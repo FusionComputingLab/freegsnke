@@ -80,8 +80,11 @@ def tokamak(
     magnetic_probe_path : str, optional
         Path to the pickle file containing the magnetic probe data.
     refine_mode : str, optional
-        Choose the refinement mode for extended passive structures (input as polygons), by default
-        'G' for 'grid' (use 'LH' for alternative mode using a Latin Hypercube implementation).
+        Choose the refinement mode for extended passive structures input as
+        polygons. Defaults to ``"G"`` for grid sampling; ``"LH"`` uses Latin
+        Hypercube sampling and ``"GQ"`` uses weighted Gauss-Legendre quadrature
+        on four-vertex polygons. If any polygon passive has more or fewer than
+        four vertices, use ``"G"`` or ``"LH"``.
 
     Returns
     -------
@@ -163,7 +166,9 @@ def build_tokamak_components(
     magnetic_probe_path : str, optional
         Path to a pickle file containing magnetic probe descriptions.
     refine_mode : str, optional
-        Refinement mode for extended passive structures. Defaults to ``"G"``.
+        Refinement mode for extended passive structures. Defaults to ``"G"``;
+        ``"LH"`` and ``"GQ"`` are also supported. ``"GQ"`` requires every
+        polygon passive to have four vertices.
 
     Returns
     -------
@@ -623,7 +628,9 @@ def update_tokamak(
     magnetic_probe_path : str, optional
         Path to a pickle file containing magnetic probe descriptions.
     refine_mode : str, optional
-        Refinement mode for extended passive structures. Defaults to ``"G"``.
+        Refinement mode for extended passive structures. Defaults to ``"G"``;
+        ``"LH"`` and ``"GQ"`` are also supported. ``"GQ"`` requires every
+        polygon passive to have four vertices.
     preserve_currents : bool, optional
         If True, currents for labels that are present in both the old and new
         machine descriptions are copied onto the updated coil objects.
@@ -887,8 +894,11 @@ def build_passives(
     coil_names : list
         List of circuit/coil names and passive structures.
     refine_mode : str, optional
-        Choose the refinement mode for extended passive structures (input as polygons), by default
-        'G' for 'grid' (use 'LH' for alternative mode using a Latin Hypercube implementation).
+        Choose the refinement mode for extended passive structures input as
+        polygons. Defaults to ``"G"`` for grid sampling; ``"LH"`` uses Latin
+        Hypercube sampling and ``"GQ"`` uses weighted Gauss-Legendre quadrature
+        on four-vertex polygons. If any polygon passive has more or fewer than
+        four vertices, use ``"G"`` or ``"LH"``.
 
     Returns
     -------
@@ -960,7 +970,7 @@ def build_passives(
                 coil["resistivity"] / coils_dict[name]["area"]
             )
             # multiplier is used to distribute current over the passive structure
-            coils_dict[name]["multiplier"] = np.array([1 / len(ps.filaments)])
+            coils_dict[name]["multiplier"] = np.copy(ps.filament_weights)
 
         # if vertices not provided, build passive structure as individual filament
         else:

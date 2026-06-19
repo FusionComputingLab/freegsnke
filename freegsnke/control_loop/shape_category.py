@@ -41,6 +41,7 @@ class ShapeController:
         dictionary must include keys for both spline-based and step-based parameters:
             - Spline keys: "ff", "ref", "blend"
             - Step keys: "k_prop", "k_int", "damping"
+            - Optional step keys: "k_deriv" (defaults to zero when omitted)
         Each key should map to a waveform dictionary suitable for interpolation with keys:
             - 'times': 1D array of time points
             - 'vals': 1D array of values at those time points (same length).
@@ -83,6 +84,7 @@ class ShapeController:
         self.ctrl_targets = ctrl_targets
 
         # create an internal copy of the data
+        data = {target: dict(entry) for target, entry in data.items()}
         self.data = data
 
         # choose controller to use (more can be added)
@@ -112,6 +114,12 @@ class ShapeController:
             # inputs required for this algorithm
             self.keys_to_spline = ["ff", "ref", "blend"]
             self.keys_to_step = ["k_prop", "k_int", "k_deriv"]
+
+        if "k_deriv" in self.keys_to_step:
+            for targ in self.ctrl_targets:
+                data[targ].setdefault(
+                    "k_deriv", {"times": np.array([0.0]), "vals": np.array([0.0])}
+                )
 
         # check correct data is input and in correct format
         for targ in self.ctrl_targets:

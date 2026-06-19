@@ -5,6 +5,7 @@ make clean
 echo "Copying notebook files"
 mkdir -p notebooks
 cp "../examples/example00 - build_tokamak_machine.ipynb" notebooks
+cp "../examples/example00b - passive_polygon_subdivision.ipynb" notebooks
 cp "../examples/example01a - static_inverse_solve_MASTU.ipynb" notebooks
 cp "../examples/example01b - advanced_static_inverse_solve.ipynb" notebooks
 cp "../examples/example02 - static_forward_solve_MASTU.ipynb" notebooks

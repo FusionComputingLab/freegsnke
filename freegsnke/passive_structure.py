@@ -1,6 +1,7 @@
 """
 Implements the FreeGSNKE object used to deal with extended vessel structures.
-Current is distributed uniformly over each extended structure.
+Current is distributed over each extended structure using normalized filament
+weights.
 
 Copyright 2025 UKAEA, UKRI-STFC, and The Authors, as per the COPYRIGHT and README files.
 
@@ -32,9 +33,9 @@ from .refine_passive import find_area, generate_refinement
 class PassiveStructure(freegs4e.coil.Coil):
     """Inherits from freegs4e.coil.Coil.
     Object to implement passive structures.
-    Rather than listing large number of filaments it averages the
-    relevant green functions so that currents are distributed over
-    the structure -- uniformly.
+    Rather than exposing the refining filaments as separate coils, it evaluates
+    and area-weights their Green's functions so that a single structure current
+    is distributed over the polygon.
     """
 
     def __init__(
@@ -54,8 +55,11 @@ class PassiveStructure(freegs4e.coil.Coil):
         Z : array
             List of vertex coordinates, defining a passive structure polygon.
         refine_mode : str, optional
-            refinement mode for passive structures inputted as polygons, by default 'G' for 'grid'
-            Use 'LH' for alternative mode using a Latin Hypercube implementation.
+            Refinement mode for passive structures inputted as polygons, by
+            default ``"G"`` for grid sampling. Use ``"LH"`` for Latin Hypercube
+            sampling or ``"GQ"`` for weighted Gauss-Legendre quadrature on
+            four-vertex polygons. General polygons should use ``"G"`` or
+            ``"LH"``.
         """
 
         res = find_area(R, Z, 1e3)
@@ -79,7 +83,9 @@ class PassiveStructure(freegs4e.coil.Coil):
         self.n_refine = int(
             max(1, self.area * min_refine_per_area, self.Len * min_refine_per_length)
         )
-        self.filaments = self.build_refining_filaments()
+        self.filaments, self.filament_weights, self.area = (
+            self.build_refining_filaments()
+        )
 
         self.greens = {}
 
@@ -103,6 +109,7 @@ class PassiveStructure(freegs4e.coil.Coil):
         new_obj.polygon = self.polygon
         new_obj.n_refine = self.n_refine
         new_obj.filaments = self.filaments
+        new_obj.filament_weights = self.filament_weights
 
         # This performs a shallow copy of the greens dictionary.
         # This implicitly assumes that the dictionary might be modified
@@ -131,12 +138,16 @@ class PassiveStructure(freegs4e.coil.Coil):
     def build_refining_filaments(
         self,
     ):
-        """Builds the grid used for the refinement"""
+        """Build the filament coordinates and normalized area weights."""
 
-        filaments, area = generate_refinement(
-            self.Rpolygon, self.Zpolygon, self.n_refine, self.refine_mode
+        filaments, area, weights = generate_refinement(
+            self.Rpolygon,
+            self.Zpolygon,
+            self.n_refine,
+            self.refine_mode,
+            return_weights=True,
         )
-        return filaments
+        return filaments, weights, area
 
     def build_control_psi(self, R, Z):
         """Builds controlPsi for a new set of R, Z grids.
@@ -155,7 +166,7 @@ class PassiveStructure(freegs4e.coil.Coil):
             R[np.newaxis],
             Z[np.newaxis],
         )
-        greens_psi = np.mean(greens_psi, axis=0)
+        greens_psi = np.tensordot(self.filament_weights, greens_psi, axes=(0, 0))
 
         RZ_key = self.create_RZ_key(R, Z)
         try:
@@ -180,7 +191,7 @@ class PassiveStructure(freegs4e.coil.Coil):
             R[np.newaxis],
             Z[np.newaxis],
         )
-        greens_br = np.mean(greens_br, axis=0)
+        greens_br = np.tensordot(self.filament_weights, greens_br, axes=(0, 0))
 
         RZ_key = self.create_RZ_key(R, Z)
         try:
@@ -205,7 +216,7 @@ class PassiveStructure(freegs4e.coil.Coil):
             R[np.newaxis],
             Z[np.newaxis],
         )
-        greens_bz = np.mean(greens_bz, axis=0)
+        greens_bz = np.tensordot(self.filament_weights, greens_bz, axes=(0, 0))
 
         RZ_key = self.create_RZ_key(R, Z)
         try:

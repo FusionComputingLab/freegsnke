@@ -19,16 +19,70 @@ You should have received a copy of the GNU Lesser General Public License
 along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 """
 
+from dataclasses import dataclass
+
 import freegs4e.jtor
 import numpy as np
 from freegs4e.gradshafranov import mu0
 from matplotlib.path import Path
 from scipy.ndimage import maximum_filter
+from scipy.optimize import least_squares
 from skimage import measure
 
 from . import jtor_refinement
 from . import switch_profile as swp
 from .copying import copy_into
+
+
+@dataclass
+class LaoBetapLiFitResult:
+    """Result returned by :func:`fit_lao85_betap_li_ip`.
+
+    Attributes
+    ----------
+    alpha : ndarray
+        The two fitted Lao pressure coefficients supplied to ``Lao85`` before
+        any ``alpha_logic`` boundary coefficient is appended.
+    beta : ndarray
+        The two fitted Lao FF' coefficients supplied to ``Lao85`` before any
+        ``beta_logic`` boundary coefficient is appended.
+    effective_alpha : ndarray
+        Full pressure coefficient vector used by the returned ``Lao85`` object,
+        including the appended boundary coefficient when ``alpha_logic`` is true.
+    effective_beta : ndarray
+        Full FF' coefficient vector used by the returned ``Lao85`` object,
+        including the appended boundary coefficient when ``beta_logic`` is true.
+    target_betap, final_betap : float
+        Requested and achieved poloidal beta. The definition is the same as
+        ``ConstrainBetapIp`` and ``Equilibrium.poloidalBeta1``.
+    target_li, final_li : float
+        Requested and achieved internal inductance using ``li_method``.
+    li_method : str
+        Name of the equilibrium method used to evaluate internal inductance.
+    metric_jacobian : ndarray or None
+        Physical Jacobian ``d[beta_p, li] / d[alpha0, alpha1, beta0, beta1]``
+        used by the optimiser, or calculated by it when an explicit metric
+        Jacobian was requested.
+    optimizer_result : scipy.optimize.OptimizeResult
+        Raw optimiser result from ``scipy.optimize.least_squares``.
+    evaluations : list of dict
+        Per-objective-call diagnostics, including failed static solves.
+    """
+
+    alpha: np.ndarray
+    beta: np.ndarray
+    effective_alpha: np.ndarray
+    effective_beta: np.ndarray
+    alpha_logic: bool
+    beta_logic: bool
+    target_betap: float
+    final_betap: float
+    target_li: float
+    final_li: float
+    li_method: str
+    metric_jacobian: object
+    optimizer_result: object
+    evaluations: list
 
 
 class Jtor_universal:
@@ -69,7 +123,8 @@ class Jtor_universal:
         copy_into(self, obj, "limiter_mask_out", mutable=True)
         copy_into(self, obj, "limiter_mask_for_plotting", mutable=True)
         copy_into(self, obj, "edge_mask", mutable=True)
-        obj.inputs = self.inputs[::]  # shallow copy suffices
+        if hasattr(self, "inputs"):
+            obj.inputs = self.inputs[::]  # shallow copy suffices
 
         # *Should* not be necessary to copy this
         obj.limiter_handler = self.limiter_handler
@@ -678,7 +733,7 @@ class ConstrainBetapIp(freegs4e.jtor.ConstrainBetapIp, Jtor_universal):
         copy_into(self, obj, "alpha_n")
         copy_into(self, obj, "Raxis")
         copy_into(self, obj, "fast")
-        copy_into(self, obj, "L")
+        copy_into(self, obj, "L", strict=False)
         copy_into(self, obj, "Beta0")
 
         return obj
@@ -747,7 +802,7 @@ class ConstrainPaxisIp(freegs4e.jtor.ConstrainPaxisIp, Jtor_universal):
         copy_into(self, obj, "alpha_n")
         copy_into(self, obj, "Raxis")
         copy_into(self, obj, "fast")
-        copy_into(self, obj, "L")
+        copy_into(self, obj, "L", strict=False)
         copy_into(self, obj, "Beta0")
 
         return obj
@@ -884,7 +939,7 @@ class Lao85(freegs4e.jtor.Lao85, Jtor_universal):
         copy_into(self, obj, "Raxis")
         copy_into(self, obj, "fast")
         copy_into(self, obj, "Ip_logic")
-        copy_into(self, obj, "L")
+        copy_into(self, obj, "L", strict=False)
         copy_into(self, obj, "alpha", mutable=True)
         copy_into(self, obj, "beta", mutable=True)
         copy_into(self, obj, "alpha_exp", mutable=True)
@@ -923,6 +978,349 @@ class Lao85(freegs4e.jtor.Lao85, Jtor_universal):
         )
 
         return pars
+
+
+def fit_lao85_betap_li_ip(
+    eq,
+    static_solver,
+    Ip,
+    fvac,
+    betap,
+    li,
+    alpha=None,
+    beta=None,
+    alpha_logic=True,
+    beta_logic=True,
+    li_method="internalInductance2",
+    Raxis=1,
+    target_relative_tolerance=1e-8,
+    max_solving_iterations=100,
+    solve_kwargs=None,
+    optimizer_kwargs=None,
+    residual_scales=None,
+    regularization_weight=1e-6,
+    coefficient_scales=None,
+    use_metric_jacobian=False,
+    metric_jacobian=None,
+    jacobian_rel_step=1e-4,
+):
+    """Fit a four-coefficient Lao85 profile to static ``Ip``, ``betap`` and ``li``.
+
+    The fitted profile uses two pressure coefficients and two FF' coefficients:
+
+    ``alpha = [alpha0, alpha1]`` and ``beta = [beta0, beta1]``.
+
+    These are the coefficients supplied to :class:`Lao85`. If ``alpha_logic`` or
+    ``beta_logic`` is true, the standard Lao boundary coefficient is appended by
+    :class:`Lao85` so that the corresponding profile vanishes at the plasma edge.
+
+    The total plasma current is enforced by the usual ``Lao85(Ip_logic=True)``
+    global normalisation. The fitted targets are therefore:
+
+    - ``betap``, evaluated with ``eq.poloidalBeta1()``, matching the definition
+      used by ``ConstrainBetapIp``;
+    - ``li``, evaluated with ``getattr(eq, li_method)()``. The default
+      ``internalInductance2`` follows the EFIT/A-EQDSK-style normalisation by the
+      average poloidal field around the plasma boundary.
+
+    Four coefficients are fitted to two scalar targets, after the global current
+    normalisation has removed one scale direction. The remaining freedom is
+    resolved by a small regularisation term that favours coefficients close to
+    the supplied initial ``alpha`` and ``beta`` values.
+
+    Parameters
+    ----------
+    eq : FreeGSNKE equilibrium
+        Equilibrium object to solve. It is updated in-place to the final fitted
+        static equilibrium.
+    static_solver : freegsnke.GSstaticsolver.NKGSsolver
+        Static Grad-Shafranov solver compatible with ``eq``.
+    Ip : float
+        Target total plasma current [A].
+    fvac : float
+        Vacuum toroidal field parameter ``R * B_tor`` [T m].
+    betap : float
+        Target poloidal beta using the ``ConstrainBetapIp`` definition.
+    li : float
+        Target internal inductance using ``li_method``.
+    alpha, beta : array-like of length 2, optional
+        Initial Lao coefficients before optional boundary coefficients are
+        appended. Defaults are chosen to give a smooth edge-vanishing profile
+        when the logic flags are true.
+    alpha_logic, beta_logic : bool, optional
+        Whether to append the standard Lao boundary coefficient for p' or FF'.
+    li_method : str, optional
+        Name of the equilibrium method used to evaluate internal inductance.
+    Raxis : float, optional
+        Radial scaling parameter passed to :class:`Lao85`.
+    target_relative_tolerance : float, optional
+        Static solve tolerance used for each trial profile.
+    max_solving_iterations : int, optional
+        Maximum static solve iterations used for each trial profile.
+    solve_kwargs : dict, optional
+        Additional keyword arguments forwarded to ``static_solver.forward_solve``.
+    optimizer_kwargs : dict, optional
+        Additional keyword arguments forwarded to ``scipy.optimize.least_squares``.
+    residual_scales : sequence of two floats, optional
+        Scaling applied to the beta_p and li residuals. Defaults to the absolute
+        targets, with a small positive floor for targets near zero.
+    regularization_weight : float, optional
+        Weight applied to the coefficient regularisation residual. Set to zero
+        to disable regularisation.
+    coefficient_scales : sequence of four floats, optional
+        Scaling applied to the coefficient regularisation residual. Defaults to
+        ``max(abs(initial_coefficient), 1)`` per coefficient.
+    use_metric_jacobian : bool, optional
+        If true, pass an explicit central-finite-difference Jacobian to
+        ``scipy.optimize.least_squares``. Each Jacobian evaluation perturbs the
+        four Lao coefficients and re-solves the static Grad-Shafranov problem,
+        so this is more expensive but gives the optimiser a local derivative of
+        the fully solved ``beta_p`` and ``li`` metrics.
+    metric_jacobian : array-like, optional
+        Reusable physical Jacobian ``d[beta_p, li] / d[alpha0, alpha1, beta0,
+        beta1]``. If supplied, this constant Jacobian is used instead of
+        rebuilding the finite-difference metric Jacobian.
+    jacobian_rel_step : float, optional
+        Relative coefficient perturbation used by the explicit metric Jacobian.
+
+    Returns
+    -------
+    profiles : Lao85
+        Fitted Lao profile object after a final static solve.
+    result : LaoBetapLiFitResult
+        Fit diagnostics and raw optimiser result.
+    """
+
+    alpha = _validate_lao_pair("alpha", [1.0, -0.5] if alpha is None else alpha)
+    beta = _validate_lao_pair("beta", [1.0, -0.5] if beta is None else beta)
+
+    if not hasattr(eq, li_method):
+        raise ValueError(f"Equilibrium object has no li method '{li_method}'.")
+
+    solve_kwargs = {} if solve_kwargs is None else dict(solve_kwargs)
+    optimizer_kwargs = {} if optimizer_kwargs is None else dict(optimizer_kwargs)
+
+    x0 = np.concatenate((alpha, beta)).astype(float)
+    if residual_scales is None:
+        residual_scales = np.array([max(abs(betap), 1e-12), max(abs(li), 1e-12)])
+    else:
+        residual_scales = np.asarray(residual_scales, dtype=float)
+        if residual_scales.shape != (2,):
+            raise ValueError("residual_scales must contain two values.")
+        if np.any(residual_scales <= 0):
+            raise ValueError("residual_scales entries must be positive.")
+
+    if coefficient_scales is None:
+        coefficient_scales = np.maximum(np.abs(x0), 1.0)
+    else:
+        coefficient_scales = np.asarray(coefficient_scales, dtype=float)
+        if coefficient_scales.shape != (4,):
+            raise ValueError("coefficient_scales must contain four values.")
+        if np.any(coefficient_scales <= 0):
+            raise ValueError("coefficient_scales entries must be positive.")
+
+    evaluations = []
+    calculated_metric_jacobian = [None]
+    if metric_jacobian is not None:
+        metric_jacobian = np.asarray(metric_jacobian, dtype=float)
+        if metric_jacobian.shape != (2, 4):
+            raise ValueError("metric_jacobian must have shape (2, 4).")
+
+    def build_profiles(coefficients):
+        coefficients = np.asarray(coefficients, dtype=float)
+        return Lao85(
+            eq,
+            Ip=Ip,
+            fvac=fvac,
+            alpha=coefficients[:2],
+            beta=coefficients[2:],
+            alpha_logic=alpha_logic,
+            beta_logic=beta_logic,
+            Raxis=Raxis,
+            Ip_logic=True,
+        )
+
+    def evaluate_metric_residual(coefficients, record=True):
+        profiles = build_profiles(coefficients)
+        try:
+            static_solver.forward_solve(
+                eq,
+                profiles,
+                target_relative_tolerance,
+                max_solving_iterations=max_solving_iterations,
+                suppress=True,
+                **solve_kwargs,
+            )
+            _sync_profile_flux_normalisation(eq, profiles)
+            current_betap = eq.poloidalBeta1()
+            current_li = getattr(eq, li_method)()
+            profile_residual = np.array(
+                [current_betap - betap, current_li - li], dtype=float
+            )
+            scaled_residual = profile_residual / residual_scales
+            if record:
+                evaluations.append(
+                    {
+                        "coefficients": np.asarray(coefficients, dtype=float).copy(),
+                        "betap": current_betap,
+                        "li": current_li,
+                        "failed": False,
+                    }
+                )
+        except Exception as exc:
+            scaled_residual = np.array([1e6, 1e6], dtype=float)
+            if record:
+                evaluations.append(
+                    {
+                        "coefficients": np.asarray(coefficients, dtype=float).copy(),
+                        "betap": None,
+                        "li": None,
+                        "failed": True,
+                        "error": repr(exc),
+                    }
+                )
+
+        return scaled_residual
+
+    def objective(coefficients):
+        scaled_residual = evaluate_metric_residual(coefficients)
+        if regularization_weight:
+            regularization = (
+                np.sqrt(regularization_weight)
+                * (np.asarray(coefficients, dtype=float) - x0)
+                / coefficient_scales
+            )
+            return np.concatenate((scaled_residual, regularization))
+
+        return scaled_residual
+
+    def append_regularization_jacobian(scaled_metric_jacobian):
+        if regularization_weight:
+            regularization_jacobian = np.sqrt(regularization_weight) * np.diag(
+                1.0 / coefficient_scales
+            )
+            return np.vstack((scaled_metric_jacobian, regularization_jacobian))
+
+        return scaled_metric_jacobian
+
+    def constant_metric_jacobian(coefficients):
+        scaled_metric_jacobian = metric_jacobian / residual_scales[:, np.newaxis]
+        return append_regularization_jacobian(scaled_metric_jacobian)
+
+    def finite_difference_metric_jacobian(coefficients):
+        coefficients = np.asarray(coefficients, dtype=float)
+        scaled_metric_jacobian = np.zeros((2, len(coefficients)))
+
+        # Use the same starting equilibrium for all perturbations in this local
+        # derivative so the finite difference measures coefficient sensitivity
+        # rather than the order in which trial equilibria were solved.
+        base_plasma_psi = np.copy(eq.plasma_psi)
+        base_solved = getattr(eq, "solved", None)
+
+        for i, coefficient in enumerate(coefficients):
+            step = jacobian_rel_step * max(abs(coefficient), coefficient_scales[i])
+            if step == 0:
+                step = jacobian_rel_step
+
+            plus = coefficients.copy()
+            plus[i] += step
+            _restore_equilibrium_solver_state(eq, base_plasma_psi, base_solved)
+            plus_residual = evaluate_metric_residual(plus, record=False)
+
+            minus = coefficients.copy()
+            minus[i] -= step
+            _restore_equilibrium_solver_state(eq, base_plasma_psi, base_solved)
+            minus_residual = evaluate_metric_residual(minus, record=False)
+
+            scaled_metric_jacobian[:, i] = (plus_residual - minus_residual) / (
+                2.0 * step
+            )
+
+        _restore_equilibrium_solver_state(eq, base_plasma_psi, base_solved)
+        calculated_metric_jacobian[0] = (
+            scaled_metric_jacobian * residual_scales[:, np.newaxis]
+        )
+
+        return append_regularization_jacobian(scaled_metric_jacobian)
+
+    optimizer_kwargs.setdefault("max_nfev", 30)
+    if metric_jacobian is not None:
+        optimizer_kwargs.setdefault("jac", constant_metric_jacobian)
+    elif use_metric_jacobian:
+        optimizer_kwargs.setdefault("jac", finite_difference_metric_jacobian)
+    optimizer_result = least_squares(objective, x0, **optimizer_kwargs)
+
+    profiles = build_profiles(optimizer_result.x)
+    static_solver.forward_solve(
+        eq,
+        profiles,
+        target_relative_tolerance,
+        max_solving_iterations=max_solving_iterations,
+        suppress=True,
+        **solve_kwargs,
+    )
+    _sync_profile_flux_normalisation(eq, profiles)
+
+    result = LaoBetapLiFitResult(
+        alpha=optimizer_result.x[:2].copy(),
+        beta=optimizer_result.x[2:].copy(),
+        effective_alpha=profiles.alpha.copy(),
+        effective_beta=profiles.beta.copy(),
+        alpha_logic=alpha_logic,
+        beta_logic=beta_logic,
+        target_betap=betap,
+        final_betap=eq.poloidalBeta1(),
+        target_li=li,
+        final_li=getattr(eq, li_method)(),
+        li_method=li_method,
+        metric_jacobian=(
+            metric_jacobian
+            if metric_jacobian is not None
+            else calculated_metric_jacobian[0]
+        ),
+        optimizer_result=optimizer_result,
+        evaluations=evaluations,
+    )
+
+    return profiles, result
+
+
+def _validate_lao_pair(name, values):
+    """Return a validated two-coefficient Lao parameter vector."""
+    values = np.asarray(values, dtype=float)
+    if values.shape != (2,):
+        raise ValueError(
+            f"{name} must contain exactly two coefficients before Lao logic is applied."
+        )
+    return values
+
+
+def _sync_profile_flux_normalisation(eq, profiles):
+    """Ensure solved profile copies retain flux-axis normalisation fields."""
+    if hasattr(profiles, "inputs"):
+        psi_axis = profiles.inputs[0]
+        psi_bndry = profiles.inputs[1]
+    else:
+        psi_axis = getattr(profiles, "psi_axis", getattr(eq, "psi_axis", None))
+        psi_bndry = getattr(profiles, "psi_bndry", getattr(eq, "psi_bndry", None))
+
+    for target in (profiles, getattr(eq, "_profiles", None)):
+        if target is None:
+            continue
+        if psi_axis is not None and not hasattr(target, "psi_axis"):
+            target.psi_axis = psi_axis
+        if psi_bndry is not None and not hasattr(target, "psi_bndry"):
+            target.psi_bndry = psi_bndry
+
+    if hasattr(eq, "_profiles"):
+        eq._profiles = profiles.copy()
+
+
+def _restore_equilibrium_solver_state(eq, plasma_psi, solved):
+    """Restore the minimal equilibrium state that static solves mutate."""
+    eq.plasma_psi = np.copy(plasma_psi)
+    if solved is not None:
+        eq.solved = solved
 
 
 class TensionSpline(freegs4e.jtor.TensionSpline, Jtor_universal):

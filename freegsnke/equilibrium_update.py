@@ -269,9 +269,6 @@ class Equilibrium(freegs4e.equilibrium.Equilibrium):
             > 1e-5
         )
         if check:
-            print(
-                "Dicrepancy between psi_func and plasma_psi detected. psi_func has been re-set."
-            )
             # redefine interpolating function
             self.psi_func_interp = interpolate.RectBivariateSpline(
                 self.R[:, 0], self.Z[0, :], self.plasma_psi

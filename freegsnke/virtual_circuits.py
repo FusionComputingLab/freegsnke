@@ -23,6 +23,8 @@ from datetime import datetime
 
 import numpy as np
 
+from .jtor_update import fit_lao85_betap_li_ip
+
 
 class VirtualCircuit:
     """
@@ -40,6 +42,7 @@ class VirtualCircuit:
         target_names,
         coils,
         target_calculator,
+        profile_adjuster=None,
     ):
         """
         Store the key quantities from the VirtualCircuitHandling calculations.
@@ -64,6 +67,10 @@ class VirtualCircuit:
             The list of coils used to calculate the shape_matrix and VCs_matrix.
         target_calculator : function
             Function returning an array of the shape targets (VC will be calculated for ALL of these targets).
+        profile_adjuster : callable, optional
+            Callable used while building or applying the VC to update the profile
+            object after coil currents have been changed. This is useful for VCs
+            at fixed profile-derived quantities, such as fixed beta_p and li.
         """
 
         self.name = name
@@ -74,6 +81,141 @@ class VirtualCircuit:
         self.target_names = target_names
         self.coils = coils
         self.target_calculator = target_calculator
+        self.profile_adjuster = profile_adjuster
+
+
+def make_lao85_betap_li_profile_adjuster(
+    reference_eq,
+    betap=None,
+    li=None,
+    li_method="internalInductance2",
+    alpha=None,
+    beta=None,
+    target_relative_tolerance=None,
+    max_solving_iterations=100,
+    optimizer_kwargs=None,
+    use_metric_jacobian=True,
+    reuse_metric_jacobian=True,
+    jacobian_rel_step=1e-4,
+    regularization_weight=1e-6,
+):
+    """
+    Build a profile adjuster for virtual circuits at fixed beta_p and li.
+
+    The returned callable is suitable for the ``profile_adjuster`` argument of
+    :meth:`VirtualCircuitHandling.calculate_VC` and
+    :meth:`VirtualCircuitHandling.apply_VC`. After each coil-current
+    perturbation, it refits the supplied Lao85 profile coefficients so that the
+    new static equilibrium preserves:
+
+    - ``poloidalBeta1()``, matching the ``ConstrainBetapIp`` beta_p definition;
+    - ``getattr(eq, li_method)()``, defaulting to ``internalInductance2``.
+
+    Parameters
+    ----------
+    reference_eq : object
+        Solved equilibrium defining the fixed targets. If ``betap`` or ``li``
+        are not supplied, they are read from this equilibrium.
+    betap, li : float, optional
+        Explicit target values. Defaults to ``reference_eq.poloidalBeta1()`` and
+        ``getattr(reference_eq, li_method)()``.
+    li_method : str, optional
+        Equilibrium method used to evaluate internal inductance.
+    alpha, beta : array-like of length 2, optional
+        Initial Lao coefficients used by the fitter. If omitted, the first two
+        coefficients from the current profile object are used at each call.
+    target_relative_tolerance : float, optional
+        Static solve tolerance used inside the fitter. If omitted, the VC
+        builder's tolerance is used.
+    max_solving_iterations : int, optional
+        Maximum static solve iterations for each fitted trial profile.
+    optimizer_kwargs : dict, optional
+        Additional keyword arguments passed to ``scipy.optimize.least_squares``.
+    use_metric_jacobian : bool, optional
+        Whether to build an explicit finite-difference Jacobian of the solved
+        beta_p and li metrics with respect to the Lao coefficients.
+    reuse_metric_jacobian : bool, optional
+        Whether to reuse the first calculated metric Jacobian for subsequent VC
+        perturbation solves. This is usually appropriate for local VC
+        construction, where all perturbations stay close to the reference
+        equilibrium. Set false to rebuild the Jacobian for each profile fit.
+    jacobian_rel_step : float, optional
+        Relative perturbation used by the explicit metric Jacobian.
+    regularization_weight : float, optional
+        Coefficient regularisation weight passed to ``fit_lao85_betap_li_ip``.
+
+    Returns
+    -------
+    callable
+        Callback returning ``(profiles, True)`` because it solves the static GS
+        problem as part of the fit.
+    """
+
+    target_betap = reference_eq.poloidalBeta1() if betap is None else betap
+    target_li = getattr(reference_eq, li_method)() if li is None else li
+    optimizer_kwargs = {} if optimizer_kwargs is None else dict(optimizer_kwargs)
+    fit_results = []
+    reusable_metric_jacobian = [None]
+
+    def adjuster(eq, profiles, solver, vc_target_relative_tolerance):
+        fit_alpha = _first_two_lao_coefficients(profiles.alpha, alpha, "alpha")
+        fit_beta = _first_two_lao_coefficients(profiles.beta, beta, "beta")
+        fit_tolerance = (
+            vc_target_relative_tolerance
+            if target_relative_tolerance is None
+            else target_relative_tolerance
+        )
+
+        fitted_profiles, fit_result = fit_lao85_betap_li_ip(
+            eq,
+            solver,
+            Ip=profiles.Ip,
+            fvac=profiles.fvac(),
+            betap=target_betap,
+            li=target_li,
+            alpha=fit_alpha,
+            beta=fit_beta,
+            alpha_logic=profiles.alpha_logic,
+            beta_logic=profiles.beta_logic,
+            li_method=li_method,
+            Raxis=profiles.Raxis,
+            target_relative_tolerance=fit_tolerance,
+            max_solving_iterations=max_solving_iterations,
+            optimizer_kwargs=optimizer_kwargs,
+            regularization_weight=regularization_weight,
+            use_metric_jacobian=use_metric_jacobian,
+            metric_jacobian=reusable_metric_jacobian[0],
+            jacobian_rel_step=jacobian_rel_step,
+        )
+        if (
+            reuse_metric_jacobian
+            and reusable_metric_jacobian[0] is None
+            and fit_result.metric_jacobian is not None
+        ):
+            reusable_metric_jacobian[0] = fit_result.metric_jacobian
+        fit_results.append(fit_result)
+        return fitted_profiles, True
+
+    adjuster.betap = target_betap
+    adjuster.li = target_li
+    adjuster.li_method = li_method
+    adjuster.fit_results = fit_results
+    adjuster.reusable_metric_jacobian = reusable_metric_jacobian
+
+    return adjuster
+
+
+def _first_two_lao_coefficients(profile_coefficients, override, name):
+    """Return the two Lao coefficients supplied before logic terms are appended."""
+    if override is not None:
+        coefficients = np.asarray(override, dtype=float)
+    else:
+        coefficients = np.asarray(profile_coefficients[:2], dtype=float)
+
+    if coefficients.shape != (2,):
+        raise ValueError(f"{name} must contain exactly two Lao coefficients.")
+
+    return coefficients
 
 
 class VirtualCircuitHandling:
@@ -188,16 +330,77 @@ class VirtualCircuitHandling:
         # assign currents
         self.assign_currents(currents_vec, coils, eq=self._eq2)
 
-        # solve for equilibrium
-        try:
-            self.solver.forward_solve(
-                self._eq2,
-                self._profiles2,
-                target_relative_tolerance=target_relative_tolerance,
-                # suppress=True,
+        # solve for equilibrium, optionally first adjusting profile parameters
+        self._profiles2 = self.solve_GS_with_profile_adjuster(
+            self._eq2,
+            self._profiles2,
+            target_relative_tolerance,
+            profile_adjuster=self.profile_adjuster,
+            suppress=False,
+        )
+
+    def solve_GS_with_profile_adjuster(
+        self,
+        eq,
+        profiles,
+        target_relative_tolerance,
+        profile_adjuster=None,
+        suppress=True,
+    ):
+        """
+        Solve a static GS problem, optionally updating the profile first.
+
+        ``profile_adjuster`` is called after any caller-side current changes and
+        before the final target evaluation. It may either return a profile object
+        that still needs solving, or ``(profile, solved)`` where ``solved=True``
+        indicates that the adjuster has already run a static solve.
+
+        Parameters
+        ----------
+        eq : object
+            Equilibrium object to solve.
+        profiles : object
+            Profile object used by the static solve.
+        target_relative_tolerance : float
+            Target relative tolerance to be met by the solver.
+        profile_adjuster : callable, optional
+            Optional callback with signature ``(eq, profiles, solver,
+            target_relative_tolerance)``.
+        suppress : bool, optional
+            Whether to suppress static solver output when this method performs
+            the solve itself.
+
+        Returns
+        -------
+        object
+            The profile object associated with the solved equilibrium.
+        """
+
+        solved_by_adjuster = False
+        if profile_adjuster is not None:
+            adjusted = profile_adjuster(
+                eq,
+                profiles,
+                self.solver,
+                target_relative_tolerance,
             )
-        except AttributeError:
-            raise AttributeError("Solver not defined. Call define_solver() first.")
+            if isinstance(adjusted, tuple):
+                profiles, solved_by_adjuster = adjusted
+            elif adjusted is not None:
+                profiles = adjusted
+
+        if not solved_by_adjuster:
+            try:
+                self.solver.forward_solve(
+                    eq,
+                    profiles,
+                    target_relative_tolerance=target_relative_tolerance,
+                    suppress=suppress,
+                )
+            except AttributeError:
+                raise AttributeError("Solver not defined. Call define_solver() first.")
+
+        return profiles
 
     def prepare_build_dIydI_j(
         self, j, coils, target_dIy, starting_dI, min_curr=1e-4, max_curr=300
@@ -326,6 +529,7 @@ class VirtualCircuitHandling:
         min_starting_dI=50,
         verbose=False,
         name=None,
+        profile_adjuster=None,
     ):
         """
         Calculate the "virtual circuits" matrix:
@@ -361,6 +565,13 @@ class VirtualCircuitHandling:
             Display output (or not).
         name: str
             Name to store the VC under (in the 'VirtualCircuit' class).
+        profile_adjuster : callable, optional
+            Optional callback used to update profile parameters after each coil
+            current perturbation and before target derivatives are evaluated.
+            The callback receives ``(eq, profiles, solver,
+            target_relative_tolerance)`` and returns either an updated profile
+            object or ``(updated_profile, solved)``. If ``solved`` is true, the
+            callback is assumed to have already solved the static GS problem.
 
         Returns
         -------
@@ -388,16 +599,15 @@ class VirtualCircuitHandling:
             )
         self.target_names = target_names
 
+        self.profile_adjuster = profile_adjuster
+
         # solve static GS problem (it's already solved?)
-        try:
-            self.solver.forward_solve(
-                eq=eq,
-                profiles=profiles,
-                target_relative_tolerance=self.target_relative_tolerance,
-                suppress=True,
-            )
-        except AttributeError:
-            raise AttributeError("Solver not defined. Call define_solver() first.")
+        profiles = self.solve_GS_with_profile_adjuster(
+            eq=eq,
+            profiles=profiles,
+            target_relative_tolerance=self.target_relative_tolerance,
+            profile_adjuster=profile_adjuster,
+        )
 
         # store the flattened plasma current vector (and its norm)
         self.Iy = eq.limiter_handler.Iy_from_jtor(profiles.jtor).copy()
@@ -466,6 +676,7 @@ class VirtualCircuitHandling:
             target_names=target_names,
             coils=coils,
             target_calculator=target_calculator,
+            profile_adjuster=profile_adjuster,
         )
         setattr(self, name, store_VC)
 
@@ -476,6 +687,7 @@ class VirtualCircuitHandling:
         VC_object,
         requested_target_shifts,
         verbose=False,
+        profile_adjuster=None,
     ):
         """
         Here we apply the VC matrix V to requested shifts in the target quantities (dT),
@@ -499,6 +711,10 @@ class VirtualCircuitHandling:
             Same order as VC_object.target_names.
         verbose: bool
             Display output (or not).
+        profile_adjuster : callable, optional
+            Optional callback used to update profile parameters after applying
+            the VC coil-current shifts. If omitted, the adjuster stored on the
+            ``VC_object`` is used.
 
         Returns
         -------
@@ -530,16 +746,16 @@ class VirtualCircuitHandling:
             print(f"Currents shifts from VCs:")
             print(f"{VC_object.coils} = {current_shifts}.")
 
+        if profile_adjuster is None:
+            profile_adjuster = getattr(VC_object, "profile_adjuster", None)
+
         # re-solve static GS problem (to make sure it's solved already)
-        try:
-            self.solver.forward_solve(
-                eq=eq,
-                profiles=profiles,
-                target_relative_tolerance=self.target_relative_tolerance,
-                suppress=True,
-            )
-        except AttributeError:
-            raise AttributeError("Solver not defined. Call define_solver() first.")
+        profiles = self.solve_GS_with_profile_adjuster(
+            eq=eq,
+            profiles=profiles,
+            target_relative_tolerance=self.target_relative_tolerance,
+            profile_adjuster=profile_adjuster,
+        )
 
         # calculate the targets
         # if not hasattr(self, "target_calculator"):
@@ -558,15 +774,12 @@ class VirtualCircuitHandling:
         self.assign_currents(new_currents, VC_object.coils, eq=eq_new)
 
         # solve for the new equilibrium
-        try:
-            self.solver.forward_solve(
-                eq_new,
-                profiles_new,
-                target_relative_tolerance=self.target_relative_tolerance,
-                suppress=True,
-            )
-        except AttributeError:
-            raise AttributeError("Solver not defined. Call define_solver() first.")
+        profiles_new = self.solve_GS_with_profile_adjuster(
+            eq=eq_new,
+            profiles=profiles_new,
+            target_relative_tolerance=self.target_relative_tolerance,
+            profile_adjuster=profile_adjuster,
+        )
 
         # calculate new target values and the difference vs. the old
         new_target_values = VC_object.target_calculator(eq_new)

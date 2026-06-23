@@ -1,12 +1,12 @@
 # Examples
 
-These example Jupyter notebooks are intended to be the **first port of call for new users** trying to get up to speed with the basics of simulating Grad-Shafranov equilibria using FreeGSNKE (the numberings represent approximately increasing complexity!). Most examples will use a MAST-U-like tokamak machine, unless otherwise specified. 
+These example Jupyter notebooks are intended to be the **first port of call for new users** trying to get up to speed with the basics of simulating Grad-Shafranov equilibria using FreeGSNKE (the numbering represents approximately increasing complexity!). Most examples will use a MAST-U-like tokamak machine, unless otherwise specified.
 
 | Example notebook | Purpose | Who can use it? |
-| ------ | ------ | ------ | 
+| ------ | ------ | ------ |
 | Example 00 | Learn how to build a generic tokamak object. | Anyone |
 | Example 01a | Learn how to use the static inverse solver. | Anyone |
-| Example 01b | Learn how to use more advacned features of the static inverse solver. | Anyone |
+| Example 01b | Learn how to use more advanced features of the static inverse solver. | Anyone |
 | Example 02 | Learn how to use the static forward solver. | Anyone |
 | Example 03 | Learn how to extract results from a calculated equilibrium. | Anyone |
 | Example 04 | Learn how to use the magnetic probes object. | Anyone |

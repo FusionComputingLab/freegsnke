@@ -21,6 +21,9 @@ along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 from copy import deepcopy
+import json
+import os
+from pathlib import Path
 
 import freegs4e
 import numpy as np
@@ -53,6 +56,10 @@ class NKGSsolver:
         solver_type="LUsparse",
         order=None,
         mg_kwargs=None,
+        greenfunc_memmap_path=None,
+        greenfunc_chunk_dir=None,
+        greenfunc_dtype=np.float64,
+        greenfunc_num_slices=10,
     ):
         """Instantiates the solver object.
         Based on the domain grid of the input equilibrium object, it prepares
@@ -123,56 +130,118 @@ class NKGSsolver:
         )
         self.bndry_indices = bndry_indices
 
-        # Cache Greens function if necessary
+        self.greenfunc_is_memmap = greenfunc_memmap_path is not None
+        self.greenfunc_is_chunked = greenfunc_chunk_dir is not None
+        if self.greenfunc_is_memmap and self.greenfunc_is_chunked:
+            raise ValueError("Use either greenfunc_memmap_path or greenfunc_chunk_dir, not both")
+        self.greenfunc_num_slices = int(greenfunc_num_slices)
+        if self.greenfunc_num_slices < 1:
+            raise ValueError("greenfunc_num_slices must be >= 1")
+
+        # Cache Greens function if necessary. Large grids can either stream
+        # this tensor from disk or recompute slices on demand.
         if cache_greens:
-            self.greenfunc = self.calculate_full_greenfunc()
+            self.greenfunc = self.calculate_full_greenfunc(
+                memmap_path=greenfunc_memmap_path,
+                chunk_dir=greenfunc_chunk_dir,
+                dtype=greenfunc_dtype,
+            )
         else:
             self.greenfunc = None
 
         # RHS/Jtor
         self.rhs_before_jtor = -freegs4e.gradshafranov.mu0 * eq.R
 
-    def calculate_full_greenfunc(self):
+    def _greenfunc_chunks(self, n_bndry_nodes):
+        step = max(1, int(np.ceil(n_bndry_nodes / self.greenfunc_num_slices)))
+        for start in range(0, n_bndry_nodes, step):
+            yield start, min(start + step, n_bndry_nodes)
+
+    def calculate_full_greenfunc(self, memmap_path=None, chunk_dir=None, dtype=np.float64):
         """
         Calculates the Greens function giving the responses of boundary nodes to internal nodes.
 
-        Fills the array sequentially to optimize memory usage.
+        The result can be cached in memory, in a single memmap file, or as a directory of
+        chunked .npy arrays plus metadata.json.
         """
 
         bndry_indices = self.bndry_indices
         n_bndry_nodes = bndry_indices.shape[0]
+        dtype = np.dtype(dtype)
 
         R_1D = self.R[:, 0]
         Z_1D = self.Z[0, :]
 
-        # Pre-allocate full array
-        greenfunc = np.empty(
-            (n_bndry_nodes, self.R.shape[0], self.R.shape[1]),
-        )
+        chunk_paths = None
+        if chunk_dir is not None:
+            chunk_dir = Path(chunk_dir)
+            metadata_path = chunk_dir / "metadata.json"
+            if metadata_path.exists():
+                metadata = json.loads(metadata_path.read_text())
+                expected_shape = [int(n_bndry_nodes), int(self.nx), int(self.ny)]
+                if metadata.get("shape") != expected_shape or np.dtype(metadata.get("dtype")) != dtype:
+                    raise ValueError(
+                        f"Existing Green's chunk metadata in {chunk_dir} does not match "
+                        f"this grid/dtype: {metadata.get('shape')} {metadata.get('dtype')}"
+                    )
+                return [
+                    (int(item["start"]), int(item["end"]), Path(item["path"]))
+                    for item in metadata["chunks"]
+                ]
+            chunk_dir.mkdir(parents=True, exist_ok=True)
+            greenfunc = None
+            chunk_paths = []
+        elif memmap_path is None:
+            greenfunc = np.empty((n_bndry_nodes, self.nx, self.ny), dtype=dtype)
+        else:
+            memmap_path = Path(memmap_path)
+            memmap_path.parent.mkdir(parents=True, exist_ok=True)
+            greenfunc = np.memmap(
+                memmap_path,
+                dtype=dtype,
+                mode="w+",
+                shape=(n_bndry_nodes, self.nx, self.ny),
+            )
 
-        num_slices = 10  # fine-tuned to balance memory vs. compute needs
-        step = n_bndry_nodes // num_slices
+        for start, end in self._greenfunc_chunks(n_bndry_nodes):
+            if chunk_paths is not None:
+                chunk = np.empty((end - start, self.nx, self.ny), dtype=dtype)
+            else:
+                chunk = greenfunc[start:end, :, :]
 
-        for i in range(num_slices):
-
-            start = i * step
-            end = start + step
-            end = (
-                end if i != num_slices - 1 else n_bndry_nodes
-            )  # last slice gets the remainder
-
-            # Fill up slice of greenfunc in-place. Applies dRdZ factor automatically.
             Greens(
                 self.R[np.newaxis, :, :],
                 self.Z[np.newaxis, :, :],
                 R_1D[bndry_indices[:, 0]][start:end, np.newaxis, np.newaxis],
                 Z_1D[bndry_indices[:, 1]][start:end, np.newaxis, np.newaxis],
                 scale_factor=self.dRdZ,
-                out=greenfunc[start:end, :, :],
+                out=chunk,
             )
 
             # filter out Greens(x,y;x,y), to prevent infinity/NaNs
-            greenfunc[start:end, bndry_indices[:, 0], bndry_indices[:, 1]] = 0
+            local = np.arange(end - start)
+            chunk[local, bndry_indices[start:end, 0], bndry_indices[start:end, 1]] = 0
+
+            if chunk_paths is not None:
+                chunk_path = chunk_dir / f"greenfunc_{start:06d}_{end:06d}.npy"
+                np.save(chunk_path, chunk)
+                chunk_paths.append((start, end, chunk_path))
+            elif isinstance(greenfunc, np.memmap):
+                greenfunc.flush()
+
+            del chunk
+
+        if chunk_paths is not None:
+            metadata = {
+                "shape": [int(n_bndry_nodes), int(self.nx), int(self.ny)],
+                "dtype": str(dtype),
+                "chunks": [
+                    {"start": int(start), "end": int(end), "path": str(path)}
+                    for start, end, path in chunk_paths
+                ],
+            }
+            (chunk_dir / "metadata.json").write_text(json.dumps(metadata, indent=2))
+            return chunk_paths
 
         return greenfunc
 
@@ -182,48 +251,61 @@ class NKGSsolver:
         otherwise calculates it on-the-fly.
         """
 
+        bndry_indices = self.bndry_indices
+        n_bndry_nodes = bndry_indices.shape[0]
+        psi_bnd = np.empty(n_bndry_nodes)
+
         if self.greenfunc is not None:
-            # weighted sum over the last two axes.
-            # "contract" axis 1 of greenfunc with axis 0 of jtor
-            # contract axis 2 of greenfunc with axis 1 of jtor
-            psi_bnd = np.tensordot(self.greenfunc, self.jtor, axes=([1, 2], [0, 1]))
+            if self.greenfunc_is_chunked:
+                for start, end, chunk_path in self.greenfunc:
+                    chunk = np.load(chunk_path, mmap_mode="r")
+                    psi_bnd[start:end] = np.tensordot(
+                        chunk,
+                        self.jtor,
+                        axes=([1, 2], [0, 1]),
+                    )
+                    mmap_obj = getattr(chunk, "_mmap", None)
+                    del chunk
+                    if mmap_obj is not None:
+                        mmap_obj.close()
+                    if hasattr(os, "posix_fadvise"):
+                        fd = os.open(chunk_path, os.O_RDONLY)
+                        try:
+                            os.posix_fadvise(fd, 0, 0, os.POSIX_FADV_DONTNEED)
+                        finally:
+                            os.close(fd)
+                return psi_bnd
 
-        else:
+            if not self.greenfunc_is_memmap:
+                return np.tensordot(self.greenfunc, self.jtor, axes=([1, 2], [0, 1]))
 
-            bndry_indices = self.bndry_indices
-            n_bndry_nodes = bndry_indices.shape[0]
-
-            R_1D = self.R[:, 0]
-            Z_1D = self.Z[0, :]
-
-            psi_bnd = np.empty(n_bndry_nodes)
-
-            num_slices = 10
-            step = n_bndry_nodes // num_slices
-            for i in range(num_slices):
-
-                start = i * step
-                end = start + step
-                end = (
-                    end if i != num_slices - 1 else n_bndry_nodes
-                )  # last slice gets the remainder
-
-                # Calculate greenfunc for these boundary nodes. Applies dRdZ factor automatically.
-                greenfunc = Greens(
-                    self.R[np.newaxis, :, :],
-                    self.Z[np.newaxis, :, :],
-                    R_1D[bndry_indices[:, 0]][start:end, np.newaxis, np.newaxis],
-                    Z_1D[bndry_indices[:, 1]][start:end, np.newaxis, np.newaxis],
-                    scale_factor=self.dRdZ,
-                )
-
-                # filter out values at boundary Greens(x,y;x,y), to prevent infinity/NaNs
-                greenfunc[:, bndry_indices[:, 0], bndry_indices[:, 1]] = 0
-
-                # weighted sum over the last two axes.
+            for start, end in self._greenfunc_chunks(n_bndry_nodes):
                 psi_bnd[start:end] = np.tensordot(
-                    greenfunc, self.jtor, axes=([1, 2], [0, 1])
+                    np.asarray(self.greenfunc[start:end, :, :]),
+                    self.jtor,
+                    axes=([1, 2], [0, 1]),
                 )
+            return psi_bnd
+
+        R_1D = self.R[:, 0]
+        Z_1D = self.Z[0, :]
+
+        for start, end in self._greenfunc_chunks(n_bndry_nodes):
+            greenfunc = Greens(
+                self.R[np.newaxis, :, :],
+                self.Z[np.newaxis, :, :],
+                R_1D[bndry_indices[:, 0]][start:end, np.newaxis, np.newaxis],
+                Z_1D[bndry_indices[:, 1]][start:end, np.newaxis, np.newaxis],
+                scale_factor=self.dRdZ,
+            )
+
+            # filter out Greens(x,y;x,y), to prevent infinity/NaNs
+            local = np.arange(end - start)
+            greenfunc[local, bndry_indices[start:end, 0], bndry_indices[start:end, 1]] = 0
+
+            psi_bnd[start:end] = np.tensordot(
+                greenfunc, self.jtor, axes=([1, 2], [0, 1])
+            )
 
         return psi_bnd
 

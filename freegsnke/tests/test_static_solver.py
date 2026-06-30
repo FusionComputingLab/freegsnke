@@ -170,3 +170,82 @@ def test_static_solve(create_machine):
     assert np.allclose(
         eq.psi(), test_psi, atol=(np.max(test_psi) - np.min(test_psi)) * 0.003
     ), "Psi map differs significantly from the test map"
+
+
+
+def test_boundary_green_storage_modes_match(tmp_path):
+    """Boundary Green's evaluation is identical across storage modes."""
+
+    from types import SimpleNamespace
+
+    from freegsnke import GSstaticsolver
+
+    r = np.linspace(0.2, 1.4, 17)
+    z = np.linspace(-0.8, 0.8, 19)
+    R, Z = np.meshgrid(r, z, indexing="ij")
+    eq = SimpleNamespace(R=R, Z=Z)
+    jtor = np.sin(2.0 * eq.R) + 0.25 * np.cos(3.0 * eq.Z)
+
+    cached = GSstaticsolver.NKGSsolver(eq, greenfunc_num_slices=5)
+    cached.jtor = jtor
+    expected = cached.calculate_boundary_condition()
+
+    memmap_path = tmp_path / "boundary_greens_float64_memmap.dat"
+    memmapped = GSstaticsolver.NKGSsolver(
+        eq,
+        greenfunc_memmap_path=memmap_path,
+        greenfunc_num_slices=5,
+    )
+    memmapped.jtor = jtor
+    assert memmap_path.exists()
+    assert np.allclose(memmapped.calculate_boundary_condition(), expected)
+
+    chunk_dir = tmp_path / "boundary_greens_float64_chunks"
+    chunked = GSstaticsolver.NKGSsolver(
+        eq,
+        greenfunc_chunk_dir=chunk_dir,
+        greenfunc_num_slices=5,
+    )
+    chunked.jtor = jtor
+    assert (chunk_dir / "metadata.json").exists()
+    assert len(list(chunk_dir.glob("greenfunc_*.npy"))) == 5
+    assert np.allclose(chunked.calculate_boundary_condition(), expected)
+
+    reused_chunked = GSstaticsolver.NKGSsolver(
+        eq,
+        greenfunc_chunk_dir=chunk_dir,
+        greenfunc_num_slices=3,
+    )
+    reused_chunked.jtor = jtor
+    assert np.allclose(reused_chunked.calculate_boundary_condition(), expected)
+
+    on_demand = GSstaticsolver.NKGSsolver(
+        eq,
+        cache_greens=False,
+        greenfunc_num_slices=5,
+    )
+    on_demand.jtor = jtor
+    assert np.allclose(on_demand.calculate_boundary_condition(), expected)
+
+
+def test_boundary_green_storage_mode_validation(tmp_path):
+    """Invalid Green's cache mode combinations fail early."""
+
+    from types import SimpleNamespace
+
+    from freegsnke import GSstaticsolver
+
+    r = np.linspace(0.2, 1.4, 17)
+    z = np.linspace(-0.8, 0.8, 19)
+    R, Z = np.meshgrid(r, z, indexing="ij")
+    eq = SimpleNamespace(R=R, Z=Z)
+
+    with pytest.raises(ValueError, match="Use either greenfunc_memmap_path"):
+        GSstaticsolver.NKGSsolver(
+            eq,
+            greenfunc_memmap_path=tmp_path / "greens.dat",
+            greenfunc_chunk_dir=tmp_path / "greens_chunks",
+        )
+
+    with pytest.raises(ValueError, match="greenfunc_num_slices"):
+        GSstaticsolver.NKGSsolver(eq, greenfunc_num_slices=0)

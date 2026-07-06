@@ -83,6 +83,7 @@ class Jtor_universal:
         copy_into(self, obj, "psi_axis", strict=False)
         copy_into(self, obj, "psi_axis", strict=False)
         copy_into(self, obj, "flag_limiter", strict=False)
+        copy_into(self, obj, "has_relevant_xpoint", strict=False)
         copy_into(self, obj, "Ip_logic", strict=False)
 
         copy_into(self, obj, "psi_map", mutable=True, strict=False)
@@ -500,14 +501,11 @@ class Jtor_universal:
         )
 
         if diverted_core_mask is None:
-            # print('no xpt')
-            psi_bndry, limiter_core_mask, flag_limiter = (
-                self.diverted_psi_bndry,
-                None,
-                False,
-            )
-            # psi_bndry = np.amin(psi[self.limiter_mask_out])
-            # diverted_core_mask = np.copy(self.mask_inside_limiter)
+            psi_on_limiter = self.limiter_handler.psi_on_limiter_boundary(psi)
+            psi_bndry = np.amax(psi_on_limiter)
+            limiter_core_mask = (psi > psi_bndry) * self.mask_inside_limiter
+            flag_limiter = True
+            has_relevant_xpoint = False
 
         else:
             psi_bndry, limiter_core_mask, flag_limiter = core_mask_limiter(
@@ -519,8 +517,10 @@ class Jtor_universal:
             if np.sum(limiter_core_mask * self.mask_inside_limiter) == 0:
                 limiter_core_mask = diverted_core_mask * self.mask_inside_limiter
                 psi_bndry = 1.0 * self.diverted_psi_bndry
+            has_relevant_xpoint = len(xpt) > 0
 
         self.inputs = [opt[0][2], psi_bndry, limiter_core_mask]
+        self.has_relevant_xpoint = has_relevant_xpoint
 
         jtor = Jtor_part2(R, Z, psi, opt[0][2], psi_bndry, limiter_core_mask)
         return (

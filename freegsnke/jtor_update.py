@@ -23,6 +23,7 @@ import freegs4e.jtor
 import numpy as np
 from freegs4e.gradshafranov import mu0
 from matplotlib.path import Path
+from scipy.interpolate import UnivariateSpline
 from scipy.ndimage import maximum_filter
 from skimage import measure
 
@@ -1028,20 +1029,58 @@ class GeneralPprimeFFprime(freegs4e.jtor.GeneralPprimeFFprime, Jtor_universal):
     - deal with limiter plasma configurations
     """
 
-    def __init__(self, eq, *args, **kwargs):
+    def __init__(self, eq, *args, interpolation="spline", **kwargs):
         """Instantiates the object.
 
         Parameters
         ----------
         eq : FreeGSNKE Equilibrium object
             Specifies the domain properties
+        interpolation : {"spline", "linear"}, optional
+            Interpolation used for point-data pprime/ffprime profiles.
         """
 
+        self.interpolation = interpolation
         freegs4e.jtor.GeneralPprimeFFprime.__init__(self, *args, **kwargs)
         Jtor_universal.__init__(self)
 
         self.profile_parameter = []
         self.set_masks(eq=eq)
+
+    def initialize_profile(self):
+        """Build profile interpolants with selectable interpolation behavior."""
+        interpolation = getattr(self, "interpolation", "spline")
+        if interpolation not in {"spline", "linear"}:
+            raise ValueError("interpolation must be either 'spline' or 'linear'")
+
+        spline_kwargs = {"k": 1, "s": 0} if interpolation == "linear" else {}
+
+        self.pprime_func = None
+        self.p_func = None
+        if self.pprime_data is not None:
+            self.pprime_func = UnivariateSpline(
+                self.psi_n, self.pprime_data, **spline_kwargs
+            )
+        if self.p_data is not None:
+            self.p_func = UnivariateSpline(self.psi_n, self.p_data, **spline_kwargs)
+        if self.pprime_func is None and self.p_func is not None:
+            self.pprime_func = self.p_func.derivative(n=1)
+        elif self.pprime_func is None and self.p_func is None:
+            raise ValueError("Need to provide either 'pprime_data' or 'p_data'")
+
+        self.ffprime_func = None
+        self.f_func = None
+        if self.ffprime_data is not None:
+            self.ffprime_func = UnivariateSpline(
+                self.psi_n, self.ffprime_data, **spline_kwargs
+            )
+        if self.f_data is not None:
+            self.f_func = UnivariateSpline(self.psi_n, self.f_data, **spline_kwargs)
+        if self.ffprime_func is None and self.f_func is not None:
+            fprime_func = self.f_func.derivative(n=1)
+            self.ffprime_func = lambda x: self.f_func(x) * fprime_func(x)
+        elif self.ffprime_func is None and self.f_func is None:
+            raise ValueError("Need to provide either 'ffprime_data' or 'f_data'")
 
     def copy(self):
         obj = super().copy()
@@ -1053,6 +1092,7 @@ class GeneralPprimeFFprime(freegs4e.jtor.GeneralPprimeFFprime, Jtor_universal):
         copy_into(self, obj, "Ip_logic")
         copy_into(self, obj, "L")
         copy_into(self, obj, "fast")
+        copy_into(self, obj, "interpolation")
         copy_into(self, obj, "psi_n", mutable=True)
         copy_into(self, obj, "pprime_data", mutable=True)
         copy_into(self, obj, "ffprime_data", mutable=True)

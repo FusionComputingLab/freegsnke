@@ -209,7 +209,7 @@ def generate_fixed_schedule(
         list of targets to provide to PCS
     targets_ctrl : list[str]
         list of targets that are going to be controlled, with non-zero
-        VC arrays. Must be a subset of ``targets_all``.
+        VC arrays. Must be a subset of ``targets_all`` and ``targets_calc``.
     targets_calc : list[str]
         list of targets used in VC computation (sensitivity calculation
         and inversion). Must be a superset of ``targets_all``.
@@ -229,8 +229,56 @@ def generate_fixed_schedule(
             "vals" : np.ndarray, shape (len(times), len(coils_all))
                 that target's coil coefficients at each scheduled time
         Targets not in ``targets_ctrl`` are left with all-zero "vals".
+
+    Raises:
+    -------
+    ValueError
+        If ``targets_ctrl`` is not a subset of ``targets_all`` or of
+        ``targets_calc``; if ``targets_all`` is not a subset of
+        ``targets_calc``; if ``coils_calc`` is not a subset of
+        ``coils_all``; or if ``eqi_list``/``profile_list`` do not match
+        ``times`` in length.
     """
+    targets_all_set = set(targets_all)
+    targets_ctrl_set = set(targets_ctrl)
+    targets_calc_set = set(targets_calc)
+    coils_all_set = set(coils_all)
+    coils_calc_set = set(coils_calc)
+
+    if not targets_ctrl_set.issubset(targets_all_set):
+        raise ValueError(
+            "`targets_ctrl` must be a subset of `targets_all`; "
+            f"found targets not in targets_all: {sorted(targets_ctrl_set - targets_all_set)}"
+        )
+
+    if not targets_ctrl_set.issubset(targets_calc_set):
+        raise ValueError(
+            "`targets_ctrl` must be a subset of `targets_calc`; "
+            f"found targets not in targets_calc: {sorted(targets_ctrl_set - targets_calc_set)}"
+        )
+
+    if not targets_all_set.issubset(targets_calc_set):
+        raise ValueError(
+            "`targets_all` must be a subset of `targets_calc`; "
+            f"found targets not in targets_calc: {sorted(targets_all_set - targets_calc_set)}"
+        )
+
+    if not coils_calc_set.issubset(coils_all_set):
+        raise ValueError(
+            "`coils_calc` must be a subset of `coils_all`; "
+            f"found coils not in coils_all: {sorted(coils_calc_set - coils_all_set)}"
+        )
+
     n_times = len(times)
+    if len(eqi_list) != n_times:
+        raise ValueError(
+            f"`eqi_list` must have the same length as `times` ({n_times}), got {len(eqi_list)}"
+        )
+    if len(profile_list) != n_times:
+        raise ValueError(
+            f"`profile_list` must have the same length as `times` ({n_times}), got {len(profile_list)}"
+        )
+
     n_coils = len(coils_all)
 
     # initialise: all-zero coil-coefficient arrays for every target;

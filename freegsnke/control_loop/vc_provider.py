@@ -1,9 +1,7 @@
 """
-Defines the base class, `VirtualCircuitProvider`, for a Virtual Circuit provider. Such
-a provider promises to provide a Virtual Circuit given a timestamp and a means to
-extract observables regarding the equilibrium. The mechanism by which the Virtual
-Circuit is produced, and the observables that are or are not requested for the purpose
-of Virtual Circuit construction is not constrained.
+Module to compute VCs and interface with PCS class in a simulation
+Compute a VC at a given time in simulation, computed with built in FreeGSNKE VirtualCircuit functionality, for 'real time updates'.
+Generate a fixed schedule of VC's to pass to PCS class, using a custom but fixed scheduled approach.
 
 Copyright 2025 UKAEA, UKRI-STFC, and The Authors, as per the COPYRIGHT and README files.
 
@@ -23,13 +21,9 @@ You should have received a copy of the GNU Lesser General Public License
 along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 """
 
-import abc
-import time
-from copy import deepcopy
-
 import numpy as np
 
-from freegsnke.virtual_circuits import VirtualCircuit, VirtualCircuitHandling
+from freegsnke.virtual_circuits import VirtualCircuitHandling
 
 
 class VCGenerator:

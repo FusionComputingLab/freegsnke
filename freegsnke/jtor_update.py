@@ -69,7 +69,7 @@ class Jtor_universal:
         copy_into(self, obj, "limiter_mask_out", mutable=True)
         copy_into(self, obj, "limiter_mask_for_plotting", mutable=True)
         copy_into(self, obj, "edge_mask", mutable=True)
-        obj.inputs = self.inputs[::]  # shallow copy suffices
+        copy_into(self, obj, "inputs", mutable=True, strict=False)
 
         # *Should* not be necessary to copy this
         obj.limiter_handler = self.limiter_handler

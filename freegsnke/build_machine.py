@@ -25,6 +25,7 @@ from copy import deepcopy
 
 import numpy as np
 from freegs4e.coil import Coil
+from freegs4e.gradshafranov import Greens, GreensBr, GreensBz
 from freegs4e.machine import Circuit, Wall
 from freegs4e.multi_coil import MultiCoil
 
@@ -34,6 +35,259 @@ from .machine_update import Machine
 from .magnetic_probes import Probes
 from .passive_structure import PassiveStructure
 from .refine_passive import generate_refinement
+
+
+class ActiveQuadratureMultiCoil(MultiCoil):
+    """
+    MultiCoil variant that distributes active winding elements over samples.
+
+    The ``filament_weights`` array stores the fraction of one original winding
+    element carried by each generated sample. The samples generated from one
+    winding element have weights that sum to one, so existing circuit currents
+    and coil multipliers keep their usual meaning. Set
+    ``active_quadrature=None`` in the machine description to use the standard
+    FreeGS4E ``MultiCoil`` instead.
+    """
+
+    def __init__(self, R, Z, filament_weights=None, *args, **kwargs):
+        super().__init__(R, Z, *args, **kwargs)
+        if filament_weights is None:
+            filament_weights = np.ones(len(self.Rfil))
+        self.filament_weights = np.asarray(filament_weights, dtype=float)
+        if len(self.filament_weights) != len(self.Rfil):
+            raise ValueError("filament_weights must match active coil sample count.")
+
+    def copy(self):
+        """Return a copy while preserving quadrature weights and plot metadata."""
+        new_obj = type(self)(
+            np.copy(self.Rfil),
+            np.copy(self.Zfil),
+            np.copy(self.filament_weights),
+            self.current,
+            self.turns,
+            self.control,
+            self.mirror,
+            self.polarity,
+            self.area,
+        )
+
+        for key in ["rectangle", "resistivity", "dR", "dZ"]:
+            try:
+                setattr(new_obj, key, getattr(self, key))
+            except AttributeError:
+                pass
+
+        return new_obj
+
+    def _weighted_greens(self, greens_func, R, Z):
+        result = 0.0
+        for R_fil, Z_fil, weight in zip(self.Rfil, self.Zfil, self.filament_weights):
+            result += weight * greens_func(R_fil, Z_fil, R, Z) * self.polarity[0]
+
+        if self.mirror:
+            for R_fil, Z_fil, weight in zip(
+                self.Rfil, self.Zfil, self.filament_weights
+            ):
+                result += weight * greens_func(R_fil, -Z_fil, R, Z) * self.polarity[1]
+        return result
+
+    def controlPsi(self, R, Z):
+        """Calculate poloidal flux at ``(R, Z)`` due to unit active-coil current."""
+        return self._weighted_greens(Greens, R, Z)
+
+    def controlBr(self, R, Z):
+        """Calculate radial field at ``(R, Z)`` due to unit active-coil current."""
+        return self._weighted_greens(GreensBr, R, Z)
+
+    def controlBz(self, R, Z):
+        """Calculate vertical field at ``(R, Z)`` due to unit active-coil current."""
+        return self._weighted_greens(GreensBz, R, Z)
+
+
+def _as_active_arrays(coil_data):
+    """Return active-coil centre coordinates as one-dimensional arrays."""
+
+    R = np.asarray(coil_data["R"], dtype=float)
+    Z = np.asarray(coil_data["Z"], dtype=float)
+    if R.ndim == 0:
+        R = R[np.newaxis]
+    if Z.ndim == 0:
+        Z = Z[np.newaxis]
+    if len(R) != len(Z):
+        raise ValueError("Active coil R and Z arrays must have the same length.")
+    return R, Z
+
+
+def _active_reference_points(active_coils):
+    """Collect original active winding centres used by automatic quadrature."""
+
+    reference_points = []
+    for name in active_coils:
+        if "R" in active_coils[name] or "Z" in active_coils[name]:
+            coil_entries = [active_coils[name]]
+        else:
+            coil_entries = [active_coils[name][ind] for ind in active_coils[name]]
+
+        for coil_data in coil_entries:
+            R, Z = _as_active_arrays(coil_data)
+            reference_points.extend(zip(R, Z))
+
+    return np.asarray(reference_points, dtype=float)
+
+
+def _auto_active_quadrature_shape(coil_data, reference_points=None):
+    """
+    Choose a conservative active-coil quadrature grid from nearby active coils.
+
+    Each sample cell is kept smaller than ``active_quadrature_auto_fraction`` of
+    the nearest other original active winding centre, capped by
+    ``active_quadrature_auto_max`` samples per direction. This makes close,
+    extended windings refine while leaving isolated or already fine windings as
+    single point filaments.
+    """
+
+    if reference_points is None or len(reference_points) < 2:
+        return 1, 1
+
+    R, Z = _as_active_arrays(coil_data)
+    centres = np.column_stack((R, Z))
+    distances = np.sqrt(
+        (centres[:, np.newaxis, 0] - reference_points[np.newaxis, :, 0]) ** 2
+        + (centres[:, np.newaxis, 1] - reference_points[np.newaxis, :, 1]) ** 2
+    )
+    distances = distances[distances > 1.0e-12]
+    if len(distances) == 0:
+        return 1, 1
+
+    fraction = float(coil_data.get("active_quadrature_auto_fraction", 0.25))
+    max_samples = int(coil_data.get("active_quadrature_auto_max", 4))
+    if fraction <= 0.0:
+        raise ValueError("active_quadrature_auto_fraction must be positive.")
+    if max_samples < 1:
+        raise ValueError("active_quadrature_auto_max must be a positive integer.")
+
+    max_cell_size = fraction * np.min(distances)
+    nR = int(np.ceil(float(coil_data["dR"]) / max_cell_size - 1.0e-12))
+    nZ = int(np.ceil(float(coil_data["dZ"]) / max_cell_size - 1.0e-12))
+    return max(1, min(max_samples, nR)), max(1, min(max_samples, nZ))
+
+
+def _active_quadrature_shape(coil_data, reference_points=None):
+    """
+    Return the equal-area quadrature shape requested for an active coil entry.
+
+    The optional ``active_quadrature`` field can be omitted or set to ``None``
+    for the legacy point-filament representation, set to an integer ``n`` for
+    an ``n`` by ``n`` subdivision, set to ``(nR, nZ)``, or set to ``"auto"`` to
+    choose a grid from active-coil geometry.
+    """
+
+    setting = coil_data.get("active_quadrature", None)
+    if setting is None:
+        return 1, 1
+    if isinstance(setting, str):
+        if setting.lower() == "auto":
+            return _auto_active_quadrature_shape(coil_data, reference_points)
+        raise ValueError('active_quadrature must be an int, a pair, or "auto".')
+
+    if np.isscalar(setting):
+        n = int(setting)
+        nR, nZ = n, n
+    else:
+        if len(setting) != 2:
+            raise ValueError("active_quadrature must be an int or a length-2 sequence.")
+        nR, nZ = (int(setting[0]), int(setting[1]))
+
+    if nR < 1 or nZ < 1:
+        raise ValueError("active_quadrature entries must be positive integers.")
+    return nR, nZ
+
+
+def _active_quadrature_points(coil_data, reference_points=None):
+    """
+    Expand active-coil winding elements into equal-area quadrature samples.
+
+    Returns
+    -------
+    tuple
+        ``(R, Z, weights, sample_dR, sample_dZ)``. For each original winding
+        element, generated sample weights sum to one.
+    """
+
+    R, Z = _as_active_arrays(coil_data)
+    dR = float(coil_data["dR"])
+    dZ = float(coil_data["dZ"])
+    nR, nZ = _active_quadrature_shape(coil_data, reference_points)
+    if nR == 1 and nZ == 1:
+        return R, Z, np.ones(len(R)), dR, dZ
+
+    offsets_R = ((np.arange(nR) + 0.5) / nR - 0.5) * dR
+    offsets_Z = ((np.arange(nZ) + 0.5) / nZ - 0.5) * dZ
+    sample_R, sample_Z = np.meshgrid(offsets_R, offsets_Z, indexing="ij")
+    sample_R = sample_R.reshape(-1)
+    sample_Z = sample_Z.reshape(-1)
+
+    expanded_R = (R[:, np.newaxis] + sample_R[np.newaxis, :]).reshape(-1)
+    expanded_Z = (Z[:, np.newaxis] + sample_Z[np.newaxis, :]).reshape(-1)
+    weights = np.full(len(expanded_R), 1.0 / (nR * nZ))
+
+    return expanded_R, expanded_Z, weights, dR / nR, dZ / nZ
+
+
+def _build_active_multicoil(coil_data, reference_points=None):
+    """Build an active MultiCoil, applying optional rectangular quadrature."""
+
+    if coil_data.get("active_quadrature", None) is None:
+        R, Z = _as_active_arrays(coil_data)
+        multicoil = MultiCoil(R, Z)
+        multicoil.dR = float(coil_data["dR"])
+        multicoil.dZ = float(coil_data["dZ"])
+        multicoil.resistivity = coil_data["resistivity"]
+        return multicoil
+
+    R, Z, weights, sample_dR, sample_dZ = _active_quadrature_points(
+        coil_data, reference_points
+    )
+    multicoil = ActiveQuadratureMultiCoil(R, Z, filament_weights=weights)
+    multicoil.dR = sample_dR
+    multicoil.dZ = sample_dZ
+    multicoil.resistivity = coil_data["resistivity"]
+    return multicoil
+
+
+def _append_active_metadata(metadata, coil_data, reference_points=None):
+    """Append one active coil block into vectorized metadata arrays."""
+
+    R, Z, weights, sample_dR, sample_dZ = _active_quadrature_points(
+        coil_data, reference_points
+    )
+    metadata["coords_R"].extend(R)
+    metadata["coords_Z"].extend(Z)
+    metadata["polarity"].extend([coil_data["polarity"]] * len(R))
+    metadata["multiplier"].extend(float(coil_data["multiplier"]) * weights)
+    metadata["dR"].extend([sample_dR] * len(R))
+    metadata["dZ"].extend([sample_dZ] * len(R))
+
+
+def _finalise_active_metadata(metadata):
+    """Convert accumulated active metadata into a ``coils_dict`` entry."""
+
+    dR = np.asarray(metadata["dR"])
+    dZ = np.asarray(metadata["dZ"])
+    if np.allclose(dR, dR[0]):
+        dR = float(dR[0])
+    if np.allclose(dZ, dZ[0]):
+        dZ = float(dZ[0])
+
+    return {
+        "active": True,
+        "coords": np.array([metadata["coords_R"], metadata["coords_Z"]]),
+        "polarity": np.asarray(metadata["polarity"]),
+        "multiplier": np.asarray(metadata["multiplier"]),
+        "dR": dR,
+        "dZ": dZ,
+        "resistivity_over_area": metadata["resistivity"] / metadata["area"],
+    }
 
 
 def tokamak(
@@ -60,7 +314,16 @@ def tokamak(
     Parameters
     ----------
     active_coils_data : dict, optional
-        Dictionary containing the active coil data.
+        Dictionary containing the active coil data. Each active winding may
+        optionally include ``active_quadrature``. If omitted or set to
+        ``None``, the standard FreeGS4E ``MultiCoil`` point-filament
+        representation is used. If set to ``"auto"``, nearby active winding
+        geometry is used to choose an equal-area sample grid. If set to an
+        integer ``n`` or a pair ``(nR, nZ)``, each ``dR`` by ``dZ`` winding
+        rectangle is represented by that many equal-current samples. The
+        ``"auto"`` rule can be tuned with optional
+        ``active_quadrature_auto_fraction`` and ``active_quadrature_auto_max``
+        entries on individual windings.
     passive_coils_data : dict, optional
         Dictionary containing the passive structure data.
     limiter_data : dict, optional
@@ -145,7 +408,8 @@ def build_tokamak_components(
     Parameters
     ----------
     active_coils_data : dict, optional
-        Dictionary containing the active coil description.
+        Dictionary containing the active coil description. Entries may include
+        the optional ``active_quadrature`` field described in :func:`tokamak`.
     passive_coils_data : list, optional
         List containing passive structure descriptions. If omitted, no passive
         structures are added.
@@ -327,7 +591,7 @@ def apply_tokamak_components(
     return tokamak
 
 
-def build_active_coil_component(coil_name, active_coil_data):
+def build_active_coil_component(coil_name, active_coil_data, active_coils_context=None):
     """
     Build one active coil/circuit and its FreeGSNKE metadata.
 
@@ -342,6 +606,10 @@ def build_active_coil_component(coil_name, active_coil_data):
         Label of the active coil/circuit to build.
     active_coil_data : dict
         Machine-description entry for this active coil/circuit.
+    active_coils_context : dict, optional
+        Full active-coil machine description to use when resolving
+        ``active_quadrature="auto"``. If omitted, automatic quadrature is based
+        only on ``active_coil_data``.
 
     Returns
     -------
@@ -358,8 +626,21 @@ def build_active_coil_component(coil_name, active_coil_data):
     """
 
     active_coils = {coil_name: deepcopy(active_coil_data)}
-    coil_circuits = build_actives(active_coils=active_coils)
-    coils_dict = build_active_coil_dict(active_coils=active_coils)
+    if active_coils_context is None:
+        reference_active_coils = active_coils
+    else:
+        reference_active_coils = deepcopy(active_coils_context)
+        reference_active_coils[coil_name] = deepcopy(active_coil_data)
+    reference_points = _active_reference_points(reference_active_coils)
+
+    coil_circuits = build_actives(
+        active_coils=active_coils,
+        active_quadrature_reference_points=reference_points,
+    )
+    coils_dict = build_active_coil_dict(
+        active_coils=active_coils,
+        active_quadrature_reference_points=reference_points,
+    )
 
     if len(coil_circuits) != 1 or coil_name not in coils_dict:
         raise ValueError(
@@ -438,8 +719,13 @@ def update_active_coil(tokamak, coil_name, active_coil_data, preserve_current=Tr
 
     old_current = tokamak[coil_name].current
     coil_index = tokamak.coil_order[coil_name]
+    active_coils_context = None
+    if machine_description_data is not None:
+        active_coils_context = machine_description_data.get("active_coils")
     built_component, coil_metadata = build_active_coil_component(
-        coil_name, active_coil_data
+        coil_name,
+        active_coil_data,
+        active_coils_context=active_coils_context,
     )
 
     tokamak.coils[coil_index] = built_component
@@ -608,7 +894,8 @@ def update_tokamak(
     tokamak : Machine
         Existing tokamak object to update in place.
     active_coils_data : dict, optional
-        Dictionary containing the active coil description.
+        Dictionary containing the active coil description. Entries may include
+        the optional ``active_quadrature`` field described in :func:`tokamak`.
     passive_coils_data : list, optional
         List containing passive structure descriptions.
     limiter_data : list, optional
@@ -775,9 +1062,7 @@ def load_data_dicts(
     return active_coils_data, passive_coils_data, limiter_data, wall_data
 
 
-def build_actives(
-    active_coils,
-):
+def build_actives(active_coils, active_quadrature_reference_points=None):
     """
     Build the coils (and any circuits) in FreeGSNKE using the MultiCoil and Circuit
     functionality from FreeGS4E.
@@ -786,6 +1071,10 @@ def build_actives(
     ----------
     active_coils : dict, optional
         Dictionary containing the active coil data.
+    active_quadrature_reference_points : array-like, optional
+        Original active winding centres used to resolve
+        ``active_quadrature="auto"``. Defaults to the centres in
+        ``active_coils``.
 
     Returns
     -------
@@ -795,6 +1084,8 @@ def build_actives(
 
     # store list of all coils built
     coils = []
+    if active_quadrature_reference_points is None:
+        active_quadrature_reference_points = _active_reference_points(active_coils)
 
     # loop over all coils in dictionary
     for name in active_coils:
@@ -803,10 +1094,10 @@ def build_actives(
         if "R" in active_coils[name] or "Z" in active_coils[name]:
             try:
                 # initialise Multicoil and set attributes
-                multicoil = MultiCoil(active_coils[name]["R"], active_coils[name]["Z"])
-                multicoil.dR = active_coils[name]["dR"]
-                multicoil.dZ = active_coils[name]["dZ"]
-                multicoil.resistivity = active_coils[name]["resistivity"]
+                multicoil = _build_active_multicoil(
+                    active_coils[name],
+                    reference_points=active_quadrature_reference_points,
+                )
 
                 # add to list in its own Circuit
                 coils.append(
@@ -840,12 +1131,10 @@ def build_actives(
                 for ind in active_coils[name]:
 
                     # initialise Multicoil and set attributes
-                    multicoil = MultiCoil(
-                        active_coils[name][ind]["R"], active_coils[name][ind]["Z"]
+                    multicoil = _build_active_multicoil(
+                        active_coils[name][ind],
+                        reference_points=active_quadrature_reference_points,
                     )
-                    multicoil.dR = active_coils[name][ind]["dR"]
-                    multicoil.dZ = active_coils[name][ind]["dZ"]
-                    multicoil.resistivity = active_coils[name][ind]["resistivity"]
 
                     # add to coils in circuit
                     circuit_list.append(
@@ -1003,7 +1292,7 @@ def build_passives(
     return coil_circuits, coils_dict, coil_names
 
 
-def build_active_coil_dict(active_coils):
+def build_active_coil_dict(active_coils, active_quadrature_reference_points=None):
     """
     Create vectorised version of the active coil properties in a dictionary for use
     throughout FreeGSNKE.
@@ -1012,6 +1301,10 @@ def build_active_coil_dict(active_coils):
     ----------
     active_coils : dict, optional
         Dictionary containing the active coil data.
+    active_quadrature_reference_points : array-like, optional
+        Original active winding centres used to resolve
+        ``active_quadrature="auto"``. Defaults to the centres in
+        ``active_coils``.
 
     Returns
     -------
@@ -1021,6 +1314,8 @@ def build_active_coil_dict(active_coils):
 
     # initialise
     coils_dict = {}
+    if active_quadrature_reference_points is None:
+        active_quadrature_reference_points = _active_reference_points(active_coils)
 
     # loop over each entry
     for i, name in enumerate(active_coils):
@@ -1028,22 +1323,22 @@ def build_active_coil_dict(active_coils):
         # single coil (e.g a solenoid)
         if "R" in active_coils[name] or "Z" in active_coils[name]:
             try:
-                coils_dict[name] = {}
-                coils_dict[name]["active"] = True
-                coils_dict[name]["coords"] = np.array(
-                    [active_coils[name]["R"], active_coils[name]["Z"]]
+                metadata = {
+                    "coords_R": [],
+                    "coords_Z": [],
+                    "polarity": [],
+                    "multiplier": [],
+                    "dR": [],
+                    "dZ": [],
+                    "resistivity": active_coils[name]["resistivity"],
+                    "area": active_coils[name]["dR"] * active_coils[name]["dZ"],
+                }
+                _append_active_metadata(
+                    metadata,
+                    active_coils[name],
+                    reference_points=active_quadrature_reference_points,
                 )
-                coils_dict[name]["polarity"] = np.array(
-                    [active_coils[name]["polarity"]] * len(active_coils[name]["R"])
-                )
-                coils_dict[name]["dR"] = active_coils[name]["dR"]
-                coils_dict[name]["dZ"] = active_coils[name]["dZ"]
-                coils_dict[name]["resistivity_over_area"] = active_coils[name][
-                    "resistivity"
-                ] / (active_coils[name]["dR"] * active_coils[name]["dZ"])
-                coils_dict[name]["multiplier"] = np.array(
-                    [active_coils[name]["multiplier"]] * len(active_coils[name]["R"])
-                )
+                coils_dict[name] = _finalise_active_metadata(metadata)
 
             except:
                 print(
@@ -1053,44 +1348,27 @@ def build_active_coil_dict(active_coils):
         # multiple coils linked in a circuit (e.g. an up-down pair of shaping coils)
         else:
             try:
-                coils_dict[name] = {}
-                coils_dict[name]["active"] = True
+                first_key = list(active_coils[name].keys())[0]
+                first_coil = active_coils[name][first_key]
+                metadata = {
+                    "coords_R": [],
+                    "coords_Z": [],
+                    "polarity": [],
+                    "multiplier": [],
+                    "dR": [],
+                    "dZ": [],
+                    "resistivity": first_coil["resistivity"],
+                    "area": first_coil["dR"] * first_coil["dZ"],
+                }
 
-                coords_R = []
                 for ind in active_coils[name].keys():
-                    coords_R.extend(active_coils[name][ind]["R"])
-
-                coords_Z = []
-                for ind in active_coils[name].keys():
-                    coords_Z.extend(active_coils[name][ind]["Z"])
-                coils_dict[name]["coords"] = np.array([coords_R, coords_Z])
-
-                polarity = []
-                for ind in active_coils[name].keys():
-                    polarity.extend(
-                        [active_coils[name][ind]["polarity"]]
-                        * len(active_coils[name][ind]["R"])
+                    _append_active_metadata(
+                        metadata,
+                        active_coils[name][ind],
+                        reference_points=active_quadrature_reference_points,
                     )
-                coils_dict[name]["polarity"] = np.array(polarity)
 
-                multiplier = []
-                for ind in active_coils[name].keys():
-                    multiplier.extend(
-                        [active_coils[name][ind]["multiplier"]]
-                        * len(active_coils[name][ind]["R"])
-                    )
-                coils_dict[name]["multiplier"] = np.array(multiplier)
-
-                coils_dict[name]["dR"] = active_coils[name][
-                    list(active_coils[name].keys())[0]
-                ]["dR"]
-                coils_dict[name]["dZ"] = active_coils[name][
-                    list(active_coils[name].keys())[0]
-                ]["dZ"]
-
-                coils_dict[name]["resistivity_over_area"] = active_coils[name][
-                    list(active_coils[name].keys())[0]
-                ]["resistivity"] / (coils_dict[name]["dR"] * coils_dict[name]["dZ"])
+                coils_dict[name] = _finalise_active_metadata(metadata)
 
             except:
                 print(

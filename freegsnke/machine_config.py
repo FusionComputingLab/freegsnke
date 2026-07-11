@@ -44,8 +44,9 @@ def build_tokamak_R_and_M(tokamak, rebuild=False, changed_coils=None):
             # mutual inductance = 2pi * (sum of all Greens(R_i,Z_i, R_j,Z_j) on n_i*n_j terms, where n is the number of windings)
 
             # note that while the equation above is valid for active coils, where each filament carries the nominal current,
-            # this is not valid for refined passive structures. Their filament currents are normalized quadrature weights
-            # of the total structure current, which is accounted through the 'multiplier'
+            # this is not valid for refined passive structures or quadrature-expanded active coils.
+            # Their filament currents are normalized sample weights of the total structure/winding current,
+            # which is accounted through the 'multiplier'
 
 
             # resistance = 2pi * (resistivity/area) * (number of loops * mean_radius)
@@ -169,9 +170,13 @@ def _calc_mutual_inductance_entry(tokamak, name_i, name_j):
     )
 
     if name_j == name_i:
-        rr = np.array([tokamak.coils_dict[name_i]["dR"]]) + np.array(
-            [tokamak.coils_dict[name_i]["dZ"]]
-        )
+        dR = np.asarray(tokamak.coils_dict[name_i]["dR"], dtype=float)
+        dZ = np.asarray(tokamak.coils_dict[name_i]["dZ"], dtype=float)
+        if dR.ndim == 0:
+            dR = np.full(len(coords_i[0]), float(dR))
+        if dZ.ndim == 0:
+            dZ = np.full(len(coords_i[0]), float(dZ))
+        rr = dR + dZ
         green_m[np.arange(len(coords_i[0])), np.arange(len(coords_i[0]))] = (
             self_ind_circular_loop(R=coords_i[0], dR=rr) / (2 * np.pi)
         )

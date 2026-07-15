@@ -148,7 +148,6 @@ class VCGenerator:
 
         ## fill out full vc matrix
         vc_matrix_big_temp = np.zeros((len(coils), len(targets_calc)))
-        vc_matrix_big = np.zeros((len(coils), len(targets)))
 
         # fill out rows, keeping target order
         index_coils = {coil: i for i, coil in enumerate(coils)}
@@ -313,8 +312,7 @@ class VCGenerator:
             )
 
             # populate schedule, keeping non-controlled targets at zero
-            for j, targ in enumerate(targets_all):
-                if targ in targets_ctrl_set:
-                    schedule[targ]["vals"][t_idx, :] = vc_matrix_big[:, j]
+            for j, targ in enumerate(targets_ctrl):
+                schedule[targ]["vals"][t_idx, :] = vc_matrix_big[:, j]
 
         return schedule

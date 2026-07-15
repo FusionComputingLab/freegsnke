@@ -66,6 +66,15 @@ class VCGenerator:
 
         return array_func
 
+    def get_targets(self, outputs: list[str], input_data):
+
+        # get inputs
+        eq = input_data[0]
+
+        # construct target calculator
+        target_calculator = self._create_target_calculator(outputs)
+        return target_calculator(eq)
+
     def get_vc(
         self,
         targets: list[str],

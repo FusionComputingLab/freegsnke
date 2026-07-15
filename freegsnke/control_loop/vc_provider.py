@@ -31,6 +31,28 @@ class VCGenerator:
     Virtual Circuit (VC) generator based on FreeGSNKE's
     ``VirtualCircuitHandling`` infrastructure.
 
+    This class wraps ``VirtualCircuitHandling`` to provide a higher-level,
+    user-facing interface for computing virtual circuits (VCs): matrices
+    that map coil current perturbations to changes in chosen plasma shape
+    or position targets (e.g. Z, R, elongation, etc.), for a given
+    equilibrium and profile set.
+
+    Methods
+    -------
+    get_targets(outputs, input_data)
+        Evaluate the current values of a set of targets directly from an
+        equilibrium, without performing any VC/inversion calculation.
+    get_vc(targets, targets_calc, coils, coils_calc, input_data, tikhonov_lambda=None)
+        Compute the virtual circuit matrix for a chosen subset of targets
+        and coils, optionally using a larger set of targets/coils
+        internally to condition the inversion.
+    get_inputs_from_equi(eq, profiles)
+        Package an equilibrium and its profiles into the ``input_data``
+        tuple format expected by ``get_vc`` and ``get_targets``.
+    generate_fixed_schedule(times, eqi_list, profile_list, targets_all, targets_ctrl, targets_calc, coils_all, coils_calc)
+        Build a full time-dependent VC schedule across multiple
+        equilibria, suitable for use as ``circuits_data`` in a
+        ``VirtualCircuitsController`` or plasma control system (PCS).
     """
 
     def __init__(self, solver, target_calculator_dict):
@@ -57,7 +79,27 @@ class VCGenerator:
         self.target_calculator_dict = target_calculator_dict
 
     def _create_target_calculator(self, targets):
-        """Assemble array function for chosen targets out of dictionary of target functions"""
+        """
+        Assemble array function for chosen targets out of dictionary of
+        target functions.
+
+        Builds a single callable of function expected by
+        ``VirtualCircuitHandling.calculate_VC`` (as its ``target_calculator``
+        argument).
+
+        Parameters
+        ----------
+        targets : list[str]
+            Names of targets to evaluate, in the desired output order.
+            Each name must be a key in ``self.target_calculator_dict``.
+
+        Returns
+        -------
+        Callable[[object], np.ndarray]
+            Function that takes an equilibrium ``eq`` and returns a 1D
+            ``np.ndarray`` of shape ``(len(targets),)`` with the evaluated
+            target values, in the same order as ``targets``.
+        """
 
         def array_func(eq):
             return np.array(
@@ -67,8 +109,26 @@ class VCGenerator:
         return array_func
 
     def get_targets(self, outputs: list[str], input_data):
+        """
+        Evaluate the current values of a set of targets for a given
+        equilibrium.
 
-        # get inputs
+        Parameters
+        ----------
+        outputs : list[str]
+            Names of the targets to evaluate. Each name must be a key in
+            ``self.target_calculator_dict``.
+        input_data : tuple
+            Tuple of inputs as returned by ``get_inputs_from_equi``, i.e.
+            ``(equilibrium, profiles)``. Only the equilibrium (first
+            element) is used here.
+
+        Returns
+        -------
+        np.ndarray
+            1D array of shape ``(len(outputs),)`` containing the evaluated
+            target values, in the same order as ``outputs``.
+        """
         eq = input_data[0]
 
         # construct target calculator
@@ -86,11 +146,8 @@ class VCGenerator:
     ):
         """
         Compute the virtual circuit (VC) matrix for a given set of targets and coils.
-
-        The VC matrix maps coil current perturbations to changes in the selected
-        plasma shape or position targets. Only a subset of coils may be use
-        for the VC computation, but the returned matrix is expanded to include
-        all coils provided in ``coils``.
+        Only a subset of coils may be used for the VC computation, but the returned
+        matrix is expanded to include all coils provided in ``coils``.
 
         Parameters
         ----------
@@ -106,7 +163,7 @@ class VCGenerator:
         coils_calc : list[str]
             Subset of coils actually used in the VC calculation.
         input_data : tuple
-            Tuple of inputs required for VC computation.
+            Tuple of inputs required for VC computation. Obtained from .get_inputs() method.
             Expected to be ``(equilibrium, profiles)``.
         tikhonov_lambda : np.ndarray, optional
             Regularisation parameter(s) passed through to

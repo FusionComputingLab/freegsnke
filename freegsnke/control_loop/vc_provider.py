@@ -46,7 +46,7 @@ class VCGenerator:
         Compute the virtual circuit matrix for a chosen subset of targets
         and coils, optionally using a larger set of targets/coils
         internally to condition the inversion.
-    get_inputs_from_equi(eq, profiles)
+    get_inputs_from_eq(eq, profiles)
         Package an equilibrium and its profiles into the ``input_data``
         tuple format expected by ``get_vc`` and ``get_targets``.
     generate_fixed_schedule(times, eqi_list, profile_list, targets_all, targets_ctrl, targets_calc, coils_all, coils_calc)
@@ -55,7 +55,7 @@ class VCGenerator:
         ``VirtualCircuitsController`` or plasma control system (PCS).
     """
 
-    def __init__(self, solver, target_calculator_dict):
+    def __init__(self, solver, target_calculator, target_names):
         """
         Initialise the VC generator and bind it to a  solver.
 
@@ -66,17 +66,23 @@ class VCGenerator:
         solver : object
             A FreeGSNKE solver instance used internally by
             ``VirtualCircuitHandling`` to compute virtual circuits.
-        target_calculator_dict : dict[str, Callable]
-            Dictionary mapping user-facing target names to functions that,
-            given an equilibrium, return the corresponding scalar target
-            value. Used to assemble the array function passed into
-            ``VirtualCircuitHandling.calculate_VC``.
+        target_calculator : array function
+            Function to compute array of shape targets from a given equilibrium.
+            Same as the target_calculator used by ``VirtualCircuitHandling.calculate_VC``.
+        target_names = list[str]
+            list of target names associated with the outputs of target_calculator.
         """
 
         self.VCH = VirtualCircuitHandling()
         self.VCH.define_solver(solver)
+        self.target_calculator = target_calculator
+        self.target_names = target_names
 
-        self.target_calculator_dict = target_calculator_dict
+        # construct a dictionary to allow for different ordering or a subset of targets to be used in computation.
+        self.target_calculator_dict = {
+            name: (lambda eq, i=i: self.target_calculator(eq)[i])
+            for i, name in enumerate(self.target_names)
+        }
 
     def _create_target_calculator(self, targets):
         """
@@ -102,9 +108,7 @@ class VCGenerator:
         """
 
         def array_func(eq):
-            return np.array(
-                [self.target_calculator_dict[targ](eq)[0] for targ in targets]
-            )
+            return np.array([self.target_calculator_dict[targ](eq) for targ in targets])
 
         return array_func
 
@@ -119,7 +123,7 @@ class VCGenerator:
             Names of the targets to evaluate. Each name must be a key in
             ``self.target_calculator_dict``.
         input_data : tuple
-            Tuple of inputs as returned by ``get_inputs_from_equi``, i.e.
+            Tuple of inputs as returned by ``get_inputs_from_eq``, i.e.
             ``(equilibrium, profiles)``. Only the equilibrium (first
             element) is used here.
 
@@ -219,7 +223,7 @@ class VCGenerator:
 
         return vc_matrix_big
 
-    def get_inputs_from_equi(self, eq, profiles):
+    def get_inputs_from_eq(self, eq, profiles):
         """
         Package equilibrium and profile data into the input format expected
         by ``get_vc``.
@@ -357,7 +361,7 @@ class VCGenerator:
         targets_ctrl_set = set(targets_ctrl)
 
         for t_idx in range(n_times):
-            input_data = self.get_inputs_from_equi(eqi_list[t_idx], profile_list[t_idx])
+            input_data = self.get_inputs_from_eq(eqi_list[t_idx], profile_list[t_idx])
 
             # calculate VC matrix for this phase, shape (n_coils, len(targets_all))
             vc_matrix_big = self.get_vc(

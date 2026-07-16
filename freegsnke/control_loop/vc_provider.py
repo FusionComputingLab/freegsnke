@@ -376,4 +376,6 @@ class VCGenerator:
             for j, targ in enumerate(targets_ctrl):
                 schedule[targ]["vals"][t_idx, :] = vc_matrix_big[:, j]
 
+            schedule["coil_order"] = coils_all
+
         return schedule

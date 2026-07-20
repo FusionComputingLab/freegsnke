@@ -650,6 +650,8 @@ class ConstrainBetapIp(freegs4e.jtor.ConstrainBetapIp, Jtor_universal):
 
     """
 
+    Jtor = Jtor_universal.Jtor
+
     def __init__(self, eq, *args, **kwargs):
         """Instantiates the object.
 
@@ -718,6 +720,8 @@ class ConstrainPaxisIp(freegs4e.jtor.ConstrainPaxisIp, Jtor_universal):
     - deal with limiter plasma configurations
 
     """
+
+    Jtor = Jtor_universal.Jtor
 
     def __init__(self, eq, *args, **kwargs):
         """Instantiates the object.
@@ -788,6 +792,8 @@ class Fiesta_Topeol(freegs4e.jtor.Fiesta_Topeol, Jtor_universal):
 
     """
 
+    Jtor = Jtor_universal.Jtor
+
     def __init__(self, eq, *args, **kwargs):
         """Instantiates the object.
 
@@ -855,6 +861,8 @@ class Lao85(freegs4e.jtor.Lao85, Jtor_universal):
     - deal with limiter plasma configurations
 
     """
+
+    Jtor = Jtor_universal.Jtor
 
     def __init__(self, eq, *args, refine_jtor=False, nnx=None, nny=None, **kwargs):
         """Instantiates the object.
@@ -931,6 +939,8 @@ class TensionSpline(freegs4e.jtor.TensionSpline, Jtor_universal):
     - retain memory of critical point calculation;
     - deal with limiter plasma configurations
     """
+
+    Jtor = Jtor_universal.Jtor
 
     def __init__(self, eq, *args, **kwargs):
         """Instantiates the object.
@@ -1027,6 +1037,8 @@ class GeneralPprimeFFprime(freegs4e.jtor.GeneralPprimeFFprime, Jtor_universal):
     - retain memory of critical point calculation;
     - deal with limiter plasma configurations
     """
+
+    Jtor = Jtor_universal.Jtor
 
     def __init__(self, eq, *args, **kwargs):
         """Instantiates the object.

@@ -107,10 +107,18 @@ class VCGenerator:
             target values, in the same order as ``targets``.
         """
 
-        def array_func(eq):
-            return np.array([self.target_calculator_dict[targ](eq) for targ in targets])
+        if targets == self.target_names:
+            # return target calculator if target ordering doesn't change
+            return self.target_calculator
 
-        return array_func
+        else:
+            # reorder the target calculator outputs if targets are different order or a subset
+            def array_func(eq):
+                return np.array(
+                    [self.target_calculator_dict[targ](eq) for targ in targets]
+                )
+
+            return array_func
 
     def get_targets(self, outputs: list[str], input_data):
         """
@@ -255,6 +263,7 @@ class VCGenerator:
         targets_calc: list[str],
         coils_all: list[str],
         coils_calc: list[str],
+        ff_drives: dict | None = None,
     ) -> dict:
         """
         Generate a circuits schedule that can be passed into the circuits_data
@@ -285,11 +294,19 @@ class VCGenerator:
             VC arrays. Must be a subset of ``targets_all`` and ``targets_calc``.
         targets_calc : list[str]
             list of targets used in VC computation (sensitivity calculation
-            and inversion). Must be a superset of ``targets_all``.
+            and inversion). Must be a subset of ``targets_all``.
         coils_all : list[str]
             list of all coils passed to systems category
         coils_calc : list[str]
             subset of coils actually used in the VC calculation
+        ff_drives : dict, optional
+            Feed-forward coil drive schedules, keyed by ``"{coilname}_ref"``
+            for every coil in ``coils_all``. Each value must be a dict with
+            ``"times"`` (np.ndarray) and ``"vals"`` (np.ndarray) entries,
+            defining a linearly-interpolated feed-forward reference signal
+            for that coil. If ``None`` (default), all feed-forward drives
+            are set to zero for the full duration of ``times`` (plus a
+            10-unit buffer past the final timestamp).
 
         Returns:
         --------
@@ -307,9 +324,10 @@ class VCGenerator:
         -------
         ValueError
             If ``targets_ctrl`` is not a subset of ``targets_all`` or of
-            ``targets_calc``; if ``targets_all`` is not a subset of
-            ``targets_calc``; if ``coils_calc`` is not a subset of
-            ``coils_all``; or if ``eqi_list``/``profile_list`` do not match
+            ``targets_calc``;
+            if ``targets_all`` is not a subset of ``targets_calc``;
+            if ``coils_calc`` is not a subset of ``coils_all``;
+            if ``eqi_list``/``profile_list`` do not match
             ``times`` in length.
         """
         targets_all_set = set(targets_all)
@@ -328,6 +346,12 @@ class VCGenerator:
             raise ValueError(
                 "`targets_ctrl` must be a subset of `targets_calc`; "
                 f"found targets not in targets_calc: {sorted(targets_ctrl_set - targets_calc_set)}"
+            )
+
+        if not targets_calc_set.issubset(targets_all):
+            raise ValueError(
+                "`targets_calc` must be a subset of `targets_all`; "
+                f"found targets not in targets_all: {sorted(targets_ctrl_set - targets_calc_set)}"
             )
 
         if not coils_calc_set.issubset(coils_all_set):
@@ -377,5 +401,52 @@ class VCGenerator:
                 schedule[targ]["vals"][t_idx, :] = vc_matrix_big[:, j]
 
             schedule["coil_order"] = coils_all
+
+        if ff_drives is None:
+            print(f"default ff coil drives set to zero")
+            tmin = times[0]
+            tmax = times[-1]
+            zeros_dict = {
+                "times": np.array([tmin, tmax + 10]),
+                "vals": np.array([0.0, 0.0]),
+            }
+            for coil in coils_all:  # linearly interpolated
+                schedule[coil + "_ref"] = zeros_dict
+        else:
+            # Check input is a dictionary, and that it has the correct keys "{coilname}_ref"
+            if not isinstance(ff_drives, dict):
+                raise TypeError(
+                    f"`ff_drives` must be a dict mapping coil names to schedules, got {type(ff_drives)}"
+                )
+
+            expected_keys = {coil + "_ref" for coil in coils_all}
+            provided_keys = set(ff_drives.keys())
+
+            missing_keys = expected_keys - provided_keys
+            if missing_keys:
+                raise ValueError(
+                    f"`ff_drives` is missing entries for coils: {sorted(missing_keys)}"
+                )
+
+            # Check each entry has the required "times"/"vals" structure
+            for key, entry in ff_drives.items():
+                if (
+                    not isinstance(entry, dict)
+                    or "times" not in entry
+                    or "vals" not in entry
+                ):
+                    raise ValueError(
+                        f"`ff_drives['{key}']` must be a dict with 'times' and 'vals' keys"
+                    )
+
+            # populate schedule directly from the user-provided feed-forward drives
+            for coil in coils_all:
+                schedule[coil + "_ref"] = ff_drives[coil + "_ref"]
+
+        print("-----")
+        print("Shape virtual circuits schedule set up")
+        print(
+            "Plasma circuit schedule must be added before proceding to PCS initialisation!"
+        )
 
         return schedule

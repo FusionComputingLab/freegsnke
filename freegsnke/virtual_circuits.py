@@ -516,9 +516,10 @@ class VirtualCircuitHandling:
         if name is None:
             name = self.default_VC_name
 
-        print("--- Stage three ---")
-        print("Inverting the shape matrix to get the virtual circuit matrix.")
-        print(f"VC object stored under name: '{name}'.")
+        if verbose:
+            print("--- Stage three ---")
+            print("Inverting the shape matrix to get the virtual circuit matrix.")
+            print(f"VC object stored under name: '{name}'.")
 
         # vc_matrix is the pseudo inverse of shape_matrix
         vc_matrix = self.calculate_matrix_inverse(

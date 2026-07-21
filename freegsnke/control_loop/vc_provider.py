@@ -263,6 +263,7 @@ class VCGenerator:
         targets_calc: list[str],
         coils_all: list[str],
         coils_calc: list[str],
+        plasma_schedule: dict,
         ff_drives: dict | None = None,
     ) -> dict:
         """
@@ -275,7 +276,10 @@ class VCGenerator:
         sensitivity calculation and inversion. The resulting per-coil
         coefficients for each target in ``targets_all`` are stored over time,
         with targets not in ``targets_ctrl`` left as all-zero arrays (i.e.
-        reported to PCS but not actively controlled).
+        reported to PCS but not actively controlled). The resulting schedule is
+        a dictionary with control targets as keys, and each value being a dictionary
+        key/items specified by ``"times"`` (np.ndarray) and ``"vals"`` (np.ndarray) entries,
+
 
         Inputs:
         -------
@@ -299,12 +303,11 @@ class VCGenerator:
             list of all coils passed to systems category
         coils_calc : list[str]
             subset of coils actually used in the VC calculation
+        plasma_schedule : dict
+            dictionary for plasma vc schedule of the form {"plasma" : }
         ff_drives : dict, optional
             Feed-forward coil drive schedules, keyed by ``"{coilname}_ref"``
-            for every coil in ``coils_all``. Each value must be a dict with
-            ``"times"`` (np.ndarray) and ``"vals"`` (np.ndarray) entries,
-            defining a linearly-interpolated feed-forward reference signal
-            for that coil. If ``None`` (default), all feed-forward drives
+            for every coil in ``coils_all``. If ``None`` (default), all feed-forward drives
             are set to zero for the full duration of ``times`` (plus a
             10-unit buffer past the final timestamp).
 
@@ -335,6 +338,8 @@ class VCGenerator:
         targets_calc_set = set(targets_calc)
         coils_all_set = set(coils_all)
         coils_calc_set = set(coils_calc)
+        n_times = len(times)
+        n_coils = len(coils_all)
 
         if not targets_ctrl_set.issubset(targets_all_set):
             raise ValueError(
@@ -360,7 +365,6 @@ class VCGenerator:
                 f"found coils not in coils_all: {sorted(coils_calc_set - coils_all_set)}"
             )
 
-        n_times = len(times)
         if len(eqi_list) != n_times:
             raise ValueError(
                 f"`eqi_list` must have the same length as `times` ({n_times}), got {len(eqi_list)}"
@@ -369,8 +373,6 @@ class VCGenerator:
             raise ValueError(
                 f"`profile_list` must have the same length as `times` ({n_times}), got {len(profile_list)}"
             )
-
-        n_coils = len(coils_all)
 
         # initialise: all-zero coil-coefficient arrays for every target;
         # targets not in targets_ctrl are left at zero (uncontrolled)
@@ -382,6 +384,29 @@ class VCGenerator:
             for targ in targets_all
         }
 
+        # Add plasma schedule
+        if plasma_schedule is None:
+            raise ValueError(f"Please provide a plasma vc schedule")
+        else:
+            # check dictoinary of correct form
+            for key, entry in plasma_schedule.items():
+                if (
+                    not isinstance(entry, dict)
+                    or "times" not in entry
+                    or "vals" not in entry
+                ):
+                    raise ValueError(
+                        f"`plasma_schedule['{key}']` must be a dict with 'times' and 'vals' keys"
+                    )
+
+                assert len(entry) == len(
+                    n_coils
+                ), f"virtual circuit array must have {n_coils} entries"
+
+            # add plasma schedule to schedule
+            schedule.update(plasma_schedule)
+
+        # Build shaping VC schedule
         targets_ctrl_set = set(targets_ctrl)
 
         for t_idx in range(n_times):
@@ -443,10 +468,6 @@ class VCGenerator:
             for coil in coils_all:
                 schedule[coil + "_ref"] = ff_drives[coil + "_ref"]
 
-        print("-----")
-        print("Shape virtual circuits schedule set up")
-        print(
-            "Plasma circuit schedule must be added before proceding to PCS initialisation!"
-        )
+        print(f"Circuits data generated!")
 
         return schedule

@@ -520,7 +520,7 @@ class VirtualCircuitHandling:
         print("Inverting the shape matrix to get the virtual circuit matrix.")
         print(f"VC object stored under name: '{name}'.")
 
-        # vc matrix is pseudo inverse of shape matrix
+        # vc_matrix is the pseudo inverse of shape_matrix
         vc_matrix = self.calculate_matrix_inverse(
             shape_matrix, tikhonov_lambda=tikhonov_lambda
         )

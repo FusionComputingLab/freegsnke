@@ -88,7 +88,7 @@ class PlasmaControlSystem:
 
     vc_generator : object, optional
         An optional class object for applying emulated virtual circuits. If not
-        provided, deafult waveform-defined VCs will be used.
+        provided, default waveform-defined VCs will be used.
 
     vc_update_rate : float, optional
         Optional argument to specify how ofte, in seconds, new VCs are computed with vc_generator.
@@ -254,7 +254,7 @@ class PlasmaControlSystem:
             List of coils to use in emulated VC compuation. These are coils to use in computing shape sensitivity matrix.
 
         tikhonov_lambda : numpy.ndarray , optional
-            Array of regularisation values for Tikhonov regularisation in emualted VC matrix inversion.
+            Array of regularisation values for Tikhonov regularisation in emulated VC matrix inversion.
             Must be same length as emulator_coils_calc.
 
         verbose : bool, optional

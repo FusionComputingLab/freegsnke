@@ -294,7 +294,7 @@ class VCGenerator:
             VC arrays. Must be a subset of ``targets_all`` and ``targets_calc``.
         targets_calc : list[str]
             list of targets used in VC computation (sensitivity calculation
-            and inversion). Must be a superset of ``targets_all``.
+            and inversion). Must be a subset of ``targets_all``.
         coils_all : list[str]
             list of all coils passed to systems category
         coils_calc : list[str]
@@ -324,9 +324,10 @@ class VCGenerator:
         -------
         ValueError
             If ``targets_ctrl`` is not a subset of ``targets_all`` or of
-            ``targets_calc``; if ``targets_all`` is not a subset of
-            ``targets_calc``; if ``coils_calc`` is not a subset of
-            ``coils_all``; or if ``eqi_list``/``profile_list`` do not match
+            ``targets_calc``;
+            if ``targets_all`` is not a subset of ``targets_calc``;
+            if ``coils_calc`` is not a subset of ``coils_all``;
+            if ``eqi_list``/``profile_list`` do not match
             ``times`` in length.
         """
         targets_all_set = set(targets_all)
@@ -345,6 +346,12 @@ class VCGenerator:
             raise ValueError(
                 "`targets_ctrl` must be a subset of `targets_calc`; "
                 f"found targets not in targets_calc: {sorted(targets_ctrl_set - targets_calc_set)}"
+            )
+
+        if not targets_calc_set.issubset(targets_all):
+            raise ValueError(
+                "`targets_calc` must be a subset of `targets_all`; "
+                f"found targets not in targets_all: {sorted(targets_ctrl_set - targets_calc_set)}"
             )
 
         if not coils_calc_set.issubset(coils_all_set):

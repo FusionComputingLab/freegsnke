@@ -57,7 +57,7 @@ class VCGenerator:
 
     def __init__(self, solver, target_calculator, target_names):
         """
-        Initialise the VC generator and bind it to a  solver.
+        Initialise the VC generator and bind it to a solver.
 
         This sets up a ``VirtualCircuitHandling`` instance and registers the solver object required for VC computations.
 
@@ -398,10 +398,10 @@ class VCGenerator:
                     raise ValueError(
                         f"`plasma_schedule['{key}']` must be a dict with 'times' and 'vals' keys"
                     )
-
-                assert len(entry) == len(
-                    n_coils
-                ), f"virtual circuit array must have {n_coils} entries"
+                for arr in entry["vals"]:
+                    assert (
+                        len(arr) == n_coils
+                    ), f"plasma virtual circuit array must have {n_coils} entries"
 
             # add plasma schedule to schedule
             schedule.update(plasma_schedule)

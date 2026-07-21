@@ -201,7 +201,7 @@ class VirtualCircuitsController:
             Array of input values for all input parameters (currents and other plasma parameters) of the Neural Network emulator.
 
         tikhonov_lambda : numpy.ndarray , optional
-            Array of regularisation values for Tikhonov regularisation in emualted VC matrix inversion.
+            Array of regularisation values for Tikhonov regularisation in emulated VC matrix inversion.
             Must be same length as emulator_coils_calc.
 
         verbose : bool

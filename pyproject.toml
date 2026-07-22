@@ -34,4 +34,4 @@ Homepage = "https://github.com/FusionComputingLab/freegsnke"
 [tool.interrogate]
 fail-under = 95
 exclude = ["freegsnke/tests"]
-verbose = 1
+verbose = 2

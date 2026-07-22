@@ -14,4 +14,4 @@ jobs:
       - name: Setup
         uses: './.github/actions/cicd-setup'
       - name: Check docstring coverage
-        run: interrogate --fail-under 80 freegsnke/
+        run: interrogate --fail-under 95 freegsnke/

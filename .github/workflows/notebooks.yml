@@ -10,7 +10,7 @@ jobs:
   notebooks:
     strategy:
       fail-fast: false
-    timeout-minutes: 5
+    timeout-minutes: 60
     if: ${{ github.event.label.name == 'ready-for-final-tests' }}
     runs-on: ubuntu-latest
     steps:

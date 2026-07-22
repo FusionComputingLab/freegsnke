@@ -1,4 +1,4 @@
-name: Docstring Coverage Check
+name: Docs Coverage Check
 
 on:
   pull_request:
@@ -6,7 +6,7 @@ on:
       - main
 
 jobs:
-  docstrings:
+  docs-coverage:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -14,4 +14,4 @@ jobs:
       - name: Setup
         uses: './.github/actions/cicd-setup'
       - name: Check docstring coverage
-        run: interrogate freegsnke/
+        run: interrogate --fail-under 80 freegsnke/

@@ -470,6 +470,25 @@ def _reuse_unchanged_coil_components(tokamak, components, changed_coils):
     Reusing unchanged entries keeps cached matrices and Greens functions
     consistent with the actual coil objects, and avoids treating passive
     refinement noise as a real geometry change.
+
+    Parameters
+    ----------
+    tokamak : Machine
+        Existing tokamak object whose current coil objects and metadata are
+        the candidates for reuse.
+    components : dict
+        Newly built components, as returned by :func:`build_tokamak_components`.
+        Updated in place: entries for unchanged labels have their
+        ``coil_circuits`` and ``coils_dict`` entries replaced with the
+        corresponding objects from ``tokamak``.
+    changed_coils : list
+        Labels that should be treated as changed and therefore left untouched
+        (i.e. not reused from ``tokamak``).
+
+    Returns
+    -------
+    None
+        ``components`` is modified in place.
     """
 
     changed = set(changed_coils)
@@ -496,6 +515,33 @@ def _changed_coil_labels(
     Raw machine-description data is preferred over rebuilt coil metadata so that
     unchanged passive structures are not marked as changed solely because their
     refinement was regenerated.
+
+    Parameters
+    ----------
+    old_coils_dict : dict or None
+        Existing ``tokamak.coils_dict``, or None if the tokamak has not been
+        built with coil metadata before.
+    old_coils_list : list or None
+        Existing ``tokamak.coils_list``, or None if unavailable.
+    new_coils_dict : dict
+        Newly built ``coils_dict`` (from :func:`build_tokamak_components`).
+    new_coils_list : list
+        Newly built ``coils_list`` (from :func:`build_tokamak_components`).
+    old_machine_description_data : dict or None
+        Cached raw machine-description data (``active_coils``, ``passive_coils``,
+        etc.) from the existing tokamak, or None if unavailable.
+    new_machine_description_data : dict
+        Raw machine-description data for the newly built components.
+
+    Returns
+    -------
+    changed_coils : list
+        Labels whose underlying description changed (or all labels, if the
+        coil topology changed).
+    topology_changed : bool
+        True if the set/order of coil labels differs between the old and new
+        descriptions (or no prior description exists), in which case
+        ``changed_coils`` is simply ``new_coils_list``.
     """
 
     if old_coils_dict is None or old_coils_list is None:
@@ -532,7 +578,27 @@ def _changed_coil_labels(
 
 
 def _changed_coil_labels_from_metadata(old_coils_dict, old_coils_list, new_coils_dict):
-    """Fallback changed-label detection based on built coil metadata."""
+    """
+    Fallback changed-label detection based on built coil metadata.
+
+    Used when no cached raw machine-description data is available to compare
+    against, so coil metadata dictionaries are compared directly instead.
+
+    Parameters
+    ----------
+    old_coils_dict : dict
+        Existing ``tokamak.coils_dict``.
+    old_coils_list : list
+        Existing ``tokamak.coils_list``, defining the labels to check.
+    new_coils_dict : dict
+        Newly built ``coils_dict`` to compare against.
+
+    Returns
+    -------
+    list
+        Labels whose metadata entry differs between ``old_coils_dict`` and
+        ``new_coils_dict``.
+    """
 
     changed = []
     for label in old_coils_list:
@@ -544,7 +610,26 @@ def _changed_coil_labels_from_metadata(old_coils_dict, old_coils_list, new_coils
 
 
 def _machine_description_values_equal(old_value, new_value):
-    """Recursively compare machine-description values, including numpy arrays."""
+    """
+    Recursively compare machine-description values, including numpy arrays.
+
+    Handles the value types found in machine-description dictionaries (nested
+    dicts, lists/tuples, numpy arrays, and plain scalars/strings), since a
+    plain ``==`` comparison raises or gives the wrong answer for arrays and
+    nested containers.
+
+    Parameters
+    ----------
+    old_value : any
+        Value from the existing/old machine description.
+    new_value : any
+        Value from the newly built machine description.
+
+    Returns
+    -------
+    bool
+        True if the two values are recursively equal, False otherwise.
+    """
 
     if isinstance(old_value, dict) and isinstance(new_value, dict):
         if set(old_value.keys()) != set(new_value.keys()):
@@ -1091,6 +1176,26 @@ def build_active_coil_dict(active_coils):
 
 
 def copy_tokamak(tokamak: Machine):
+    """
+    Create an independent copy of a tokamak object.
+
+    Coil circuit objects and geometry are copied via ``tokamak.copy()``;
+    FreeGSNKE-specific attributes (coil metadata, counts, cached resistance/
+    inductance matrices, cached machine-description data, and the probe
+    object) are then copied across explicitly so the new object behaves
+    identically without sharing mutable state with the original.
+
+    Parameters
+    ----------
+    tokamak : Machine
+        Tokamak object to copy.
+
+    Returns
+    -------
+    Machine
+        A new tokamak object, independent of the original.
+    """
+
     new_tokamak = tokamak.copy()
 
     new_tokamak.coils_dict = tokamak.coils_dict.copy()

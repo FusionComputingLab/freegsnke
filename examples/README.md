@@ -12,8 +12,9 @@ These example Jupyter notebooks are intended to be the **first port of call for 
 | Example 04 | Learn how to use the magnetic probes object. | Anyone |
 | Example 05 | Learn how to use the evolutive solver to simulate time-dependent equilibria. | Anyone |
 | Example 06a/b | Simulate (static) MAST-U equilibria over an entire shot using inputs from EFIT++ (requires internal UKAEA MAST-U database). | UKAEA employees + collaborators |
-| Example 07 | Static inverse solve in a SPARC-like tokamak. | Anyone |
-| Example 08 | Static inverse solve in an ITER-like tokamak. | Anyone |
+| Example 07a | Static inverse solve in the "Anamak" toy tokamak. | Anyone |
+| Example 07b | Static inverse solve in a SPARC-like tokamak. | Anyone |
+| Example 07c | Static inverse solve in an ITER-like tokamak. | Anyone |
 | Example 09 | Learn how to use and build virtual circuits for plasma shape control. | Anyone |
 | Example 10 | Learn how to calculate growth rates associated with vertically unstable modes. | Anyone |
 

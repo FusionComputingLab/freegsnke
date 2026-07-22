@@ -53,3 +53,4 @@ examples/.virtual_documents/*
 .virtual_documents/
 .netlify
 .github/copilot-instructions.md
+AGENTS.md

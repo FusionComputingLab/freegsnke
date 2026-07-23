@@ -28,7 +28,7 @@ These problems can be solved in a **user-specified tokamak geometry** that can i
 | Tokamak feature | Purpose | Properties | Element in image below | 
 | ------ | ------ | ------ | ------ |
 | Active poloidal field coils | Can be assigned (voltage-driven) currents that influence plasma shape and position. | Locations, sizes (areas), wirings (series/anti-series), polarities (+1 or -1), resistivities (of coil materials), and number of windings. | Blue rectangles |
-| Passive conducting structures  | Can be assigned induced eddy currents that also impact plasma shape and position. In evolutive forward mode, these are solved self-consistently. | Locations, sizes, orientations (if available), and filaments (as passives can be refined if needed). | Dark grey parallelograms |
+| Passive conducting structures  | Can be assigned induced eddy currents that also impact plasma shape and position. In evolutive forward mode, these are solved self-consistently. | Filaments or polygon vertex lists. General polygons can use the standard grid/Latin Hypercube passive refinement; quadrilateral polygons can additionally use weighted Gauss-Legendre refinement and topology subdivision into smaller child polygons. | Dark grey polygons |
 | Wall and/or limiter contours  | Confines the plasma boundary (for computational purposes). | Locations. | Solid black line |
 | Magnetic diagnostic probes  | Can measure the poloidal flux (fluxloops) or the magnetic field strength (pickup coils) at specified locations. | Locations (for both) and orientations (for pickup coils). | Orange diamonds (fluxloops) and brown dots/lines (pickup coils) |
 

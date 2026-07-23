@@ -111,7 +111,9 @@ class Equilibrium(freegs4e.equilibrium.Equilibrium):
         magnetic_probe_path : str, optional
             Path to a pickle file containing magnetic probe descriptions.
         refine_mode : str, optional
-            Refinement mode for extended passive structures. Defaults to ``"G"``.
+            Refinement mode for extended passive structures. Defaults to
+            ``"G"``; ``"LH"`` and ``"GQ"`` are also supported. ``"GQ"``
+            requires every polygon passive to have four vertices.
         preserve_currents : bool, optional
             If True, currents for labels that are present in both the old and new
             machine descriptions are copied onto the updated coil objects.

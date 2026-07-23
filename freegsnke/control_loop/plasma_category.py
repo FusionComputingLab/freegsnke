@@ -40,7 +40,8 @@ class PlasmaController:
         A dictionary containing waveforms for the plasma current controller. The required keys
         for both spline-based and step-based waveforms are:
             - Spline keys: "ip_ref", "ip_blend", "vloop_ff"
-            - Step keys: "k_prop", "k_int", "k_deriv", "M_solenoid"
+            - Step keys: "k_prop", "k_int", "M_solenoid"
+            - Optional step keys: "k_deriv" (defaults to zero when omitted)
         Each key should map to a waveform dictionary suitable for interpolation with keys:
             - 'times': 1D array of time points
             - 'vals': 1D array of values at those time points (same length).
@@ -67,9 +68,13 @@ class PlasmaController:
         data,
     ):
 
+        data = dict(data)
+
         # check correct data is input and in correct format
         self.keys_to_spline = ["ip_ref", "ip_blend", "vloop_ff"]
         self.keys_to_step = ["k_prop", "k_int", "k_deriv", "M_solenoid"]
+        if "k_deriv" not in data:
+            data["k_deriv"] = {"times": np.array([0.0]), "vals": np.array([0.0])}
         for key in self.keys_to_spline + self.keys_to_step:
             check_data_entry(data=data, key=key, controller_name="PlasmaController")
 

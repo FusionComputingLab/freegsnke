@@ -2,8 +2,6 @@
 
 These example Jupyter notebooks are intended to be the **first port of call for new users** trying to get up to speed with the basics of simulating Grad-Shafranov (GS) equilibria using FreeGSNKE (the numberings represent approximately increasing complexity!). Most examples will use a MAST-U-like tokamak machine, unless otherwise specified. 
 
-When choosing an equilibrium solution domain, ensure the limiter contour lies strictly inside the rectangular grid defined by `Rmin`, `Rmax`, `Zmin`, and `Zmax`. The limiter does not need to enclose the active coils or passive structures, but it must be contained by the solver domain because limiter-boundary flux interpolation is used for limited plasmas.
-
 | Example notebook | Purpose | Who can use it? |
 | ------ | ------ | ------ | 
 | Example 00 | Learn how to build a generic tokamak object. | Anyone |

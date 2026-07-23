@@ -254,7 +254,32 @@ class Inverse_optimizer:
 
     @staticmethod
     def _extract_isoflux_constraints_weights(isoflux_set: np.ndarray):
+        """
+        Extract isoflux constraint locations and associated weights.
 
+        The input array encodes a set of isoflux constraints in one of two formats:
+        - (3, N): first two rows are constraint coordinates, third row contains weights
+        - (2, N): constraint coordinates only, with unit weights assumed
+
+        Parameters
+        ----------
+        isoflux_set : ndarray
+            Array of isoflux constraints with shape (2, N) or (3, N), where N is
+            the number of constraint points.
+
+        Returns
+        -------
+        constraints : ndarray
+            Constraint coordinates with shape (2, N).
+        weights : ndarray
+            Weights associated with each constraint point, shape (N,).
+            Defaults to an array of ones if not provided in input.
+
+        Raises
+        ------
+        ValueError
+            If input does not have shape (2, N) or (3, N).
+        """
         if isoflux_set.shape[0] == 3:
             return isoflux_set[0:2, :], isoflux_set[2, :]
         elif isoflux_set.shape[0] == 2:

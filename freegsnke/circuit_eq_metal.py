@@ -1,5 +1,5 @@
 """
-Defines the metal_currents Object, which handles the circuit equations of 
+Defines the metal_currents object, which handles the circuit equations of 
 all metal structures in the tokamak - both active PF coils and passive structures.
 
 Copyright 2025 UKAEA, UKRI-STFC, and The Authors, as per the COPYRIGHT and README files.
@@ -28,6 +28,28 @@ from .normal_modes import mode_decomposition
 
 
 class metal_currents:
+    """
+    Time evolution model for electrical currents in conducting structures
+    within a tokamak (active coils, passive vessel, and optional plasma coupling).
+
+    This class solves the dynamical circuit equations for metallic components
+    using an implicit-Euler time integrator. It can operate in multiple modes:
+
+    - Coil-only (vacuum vessel response)
+    - Vessel eigenmode representation of passive structures
+    - Fully coupled plasma–metal system (optional)
+
+    The system evolves currents in a reduced basis determined by:
+    - physical active coil currents
+    - vessel eigenmodes (if enabled)
+    - optional plasma current coupling
+
+    Key features:
+    - Construction of resistance and inductance operators
+    - Optional diagonalisation of passive vessel dynamics
+    - Optional coupling to plasma current evolution
+    - Support for multi-step implicit time integration
+    """
 
     def __init__(
         self,
@@ -42,45 +64,42 @@ class metal_currents:
         coil_self_ind=None,
         verbose=True,
     ):
-        """Sets up framework to solve the dynamical evolution of all metal currents.
-        Can be used by itself to solve metal circuit equations for vacuum shots,
-        i.e. when in the absence of the plasma.
+        """
+        Initialise the dynamical evolution model for metallic currents.
+
+        This class solves the time evolution of currents in conducting structures
+        (coils, vessel, and passive structures). It can also be used independently
+        to solve vacuum vessel circuit equations in the absence of plasma.
 
         Parameters
         ----------
-
-        eq : FreeGSNKE equilibrium Object
-            Initial equilibrium. This is used to set the domain/grid properties
-            as well as the machine properties.
-            Furthermore, eq will be used to set up the linearization used by the linear evolutive solver.
-            It can be changed later by initializing a new set of initial conditions.
-            Note however that, to change either the machine or limiter properties
-            it will be necessary to instantiate a new nl_solver object.
+        eq : FreeGSNKE equilibrium object
+            Initial equilibrium used to define grid geometry, machine configuration,
+            and linearisation for the evolution solver. Changing machine geometry
+            requires re-instantiation.
         flag_vessel_eig : bool
-            Flag re whether vessel eigenmodes are used or not.
+            If True, include vessel eigenmodes in the circuit model.
         flag_plasma : bool
-            Whether to include plasma in circuit equation. If True, plasma_pts
-            must be provided.
-        plasma_pts : freegsnke.limiter_handler.plasma_pts
-            Domain points in the domain that are included in the evolutive calculations.
-            A typical choice would be all domain points inside the limiter. Defaults to None.
+            If True, include plasma coupling in the circuit equations.
+            In this case, `plasma_pts` must be provided.
         max_mode_frequency : float
-            Maximum frequency of vessel eigenmodes to include in circuit equation.
-            Defaults to 1. Unit is s^-1.
+            Maximum vessel eigenmode frequency to include (s⁻¹).
         max_internal_timestep : float
-            Maximum value of the 'internal' timestep for implicit euler solver. Defaults to .0001.
-            The 'internal' timestep is the one actually used by the solver.
+            Internal timestep used by the implicit Euler solver.
         full_timestep : float
-            Timestep by which the equations are advanced. If full_timestep>max_internal_timestep
-            multiple 'internal' steps are executed. Defaults to .0001.
-        coil_resist : np.array
-            1d array of resistance values for all conducting elements in the machine,
-            including both active coils and passive structures.
-            Defaults to None, meaning the values calculated by default in tokamak will be sourced and used.
-        coil_self_ind : np.array
-            2d matrix of mutual inductances between all pairs of machine conducting elements,
-            including both active coils and passive structures
-            Defaults to None, meaning the values calculated by default in tokamak will be sourced and used.
+            Physical timestep for advancing the system. May be split into
+            multiple internal steps if larger than `max_internal_timestep`.
+        plasma_pts : array-like, optional
+            Grid points included in plasma evolution coupling (typically points
+            inside the limiter).
+        coil_resist : ndarray, optional
+            Resistances of all conducting elements (coils + passive structures).
+            If None, default machine values are used.
+        coil_self_ind : ndarray, optional
+            Mutual inductance matrix for all conducting elements.
+            If None, default machine values are used.
+        verbose : bool
+            If True, enable diagnostic output during setup.
         """
 
         self.n_coils = eq.tokamak.n_coils
@@ -144,12 +163,52 @@ class metal_currents:
     def build_rm1l(
         self,
     ):
-        # active + passive
+        """
+        Construct the R⁻¹L coupling matrix for the circuit model.
+
+        This method builds the product of the inverse resistance matrix with the
+        self-inductance (mutual inductance) matrix for all conducting elements
+        (active coils and passive structures).
+
+        The resulting matrix is used in the formulation of the linear circuit
+        evolution equations.
+
+        Returns
+        -------
+        None
+            The result is stored in `self.rm1l_non_symm`.
+        """
+
         self.rm1l_non_symm = np.diag(self.coil_resist**-1.0) @ self.coil_self_ind
 
     def make_selected_mode_mask(self, mode_coupling_masks, verbose):
-        """Creates a mask for the vessel normal modes to include in the circuit
-        equations, based on the maximum frequency of the selected modes.
+        """
+        Build selection mask for vessel normal modes used in circuit equations.
+
+        This method selects which passive structure eigenmodes are included in the
+        reduced-order circuit model based on a frequency cutoff and optional
+        plasma-coupling criteria.
+
+        Active coil variables are always included, while passive vessel modes are
+        filtered according to:
+        - maximum mode frequency (`self.max_mode_frequency`)
+        - optional coupling thresholds provided in `mode_coupling_masks`
+
+        Parameters
+        ----------
+        mode_coupling_masks : tuple of ndarray or None
+            Optional pair of boolean masks used to:
+            - reintroduce strongly coupled modes
+            - remove weakly coupled modes
+        verbose : bool
+            If True, print diagnostic information about mode selection.
+
+        Returns
+        -------
+        None
+            Updates internal attributes:
+            - `self.selected_modes_mask`
+            - `self.n_independent_vars`
         """
         # this is for passives alone
         selected_modes_mask = self.normal_modes.w_passive < self.max_mode_frequency
@@ -205,13 +264,42 @@ class metal_currents:
     def initialize_for_eig(
         self, selected_modes_mask=None, mode_coupling_masks=None, verbose=True
     ):
-        """Initializes the metal_currents object for the case where vessel
-        eigenmodes are used.
+        """
+        Initialise the metal current system in eigenmode representation.
+
+        This method prepares the reduced-order circuit model when vessel
+        eigenmodes are included. It constructs the mode transformation matrices,
+        applies optional mode selection/reduction, and builds the system matrices
+        required for the implicit time integration solver.
+
+        The system is transformed between physical currents and eigenmodes via:
+        - P: transformation from eigenmodes to physical currents
+        - Pm1: inverse transformation (restricted to selected modes)
 
         Parameters
         ----------
-        mode_coupling_metric_masks : (np.ndarray of booles, np.ndarray of booles)
+        selected_modes_mask : ndarray of bool, optional
+            Explicit mask selecting which modes to retain. If None, the mask is
+            constructed using `mode_coupling_masks`. If False, all modes are used.
+        mode_coupling_masks : tuple of ndarray of bool, optional
+            Pair of masks used to:
+            - include strongly coupled modes
+            - exclude weakly coupled modes
+            Only used when `selected_modes_mask is None`.
+        verbose : bool
+            If True, print diagnostic information about mode reduction.
+
+        Returns
+        -------
+        None
+            Updates internal solver state including:
+            - mode selection masks
+            - transformation matrices (P, Pm1)
+            - system matrix (Lambdam1)
+            - time integrator solver
+            - forcing term selection
         """
+
         if selected_modes_mask is None:
             # this is the case when mode_coupling_masks are used to build self.selected_modes_mask
             self.make_selected_mode_mask(mode_coupling_masks, verbose)
@@ -270,6 +358,24 @@ class metal_currents:
             self.forcing_term = self.forcing_term_eig_no_plasma
 
     def reset_active_coil_resistances(self, active_coil_resistances):
+        """
+        Update the resistances of the active coils and rebuild derived system matrices.
+
+        This method replaces the active-coil portion of the full resistance vector
+        while keeping passive/vessel resistances unchanged. It then updates all
+        dependent operators used in the circuit evolution model.
+
+        The update triggers a rebuild of:
+        - the full resistance vector
+        - the inverse resistance matrix
+        - the resistance–inductance coupling operator
+        - the reduced system matrix used in vessel mode dynamics
+
+        Parameters
+        ----------
+        active_coil_resistances : ndarray
+            Updated resistances for the active coils only (length = n_active_coils).
+        """
         self.coil_resist = np.concatenate(
             (active_coil_resistances, self.coil_resist[self.n_active_coils :])
         )
@@ -279,8 +385,24 @@ class metal_currents:
         self.Lambdam1 = self.Pm1 @ (self.rm1l_non_symm @ self.P)
 
     def initialize_for_no_eig(self):
-        """Initializes the metal currents object for the case where vessel
-        eigenmodes are not used."""
+        """
+        Initialise the metal current system without eigenmode decomposition.
+
+        This method constructs and solves the full circuit equations in the
+        physical current basis, without projecting onto vessel eigenmodes.
+
+        The governing equation is:
+        Mmatrix · dI/dt + Rmatrix · I = F
+
+        where:
+        - Mmatrix is the full mutual inductance matrix
+        - Rmatrix is the diagonal resistance matrix
+
+        Returns
+        -------
+        None
+            Updates internal solver and forcing term configuration.
+        """
 
         # Equation is Mmatrix Idot + Rmatrix I = F
         self.solver = implicit_euler_solver(
@@ -296,88 +418,47 @@ class metal_currents:
             self.forcing_term = self.forcing_term_no_eig_no_plasma
 
     def reset_timesteps(self, max_internal_timestep, full_timestep):
-        """Resets the timesteps
+        """
+        Update solver time-stepping parameters.
+
+        This method resets both the internal solver timestep and the external
+        evolution timestep used to advance the circuit equations. If the full
+        timestep exceeds the internal timestep, multiple substeps are performed
+        automatically by the solver.
 
         Parameters
         ----------
         max_internal_timestep : float
-            Maximum value of the 'internal' timestep for implicit euler solver.
-            The 'internal' timestep is the one actually used by the solver.
+            Maximum timestep used internally by the implicit Euler solver.
         full_timestep : float
-            Timestep by which the equations are advanced. If full_timestep>max_internal_timestep
-            multiple 'internal' steps are executed.
+            External timestep used to advance the system in time.
         """
         self.solver.set_timesteps(
             full_timestep=full_timestep, max_internal_timestep=max_internal_timestep
         )
 
-    # def reset_mode(
-    #     self,
-    #     flag_vessel_eig,
-    #     flag_plasma,
-    #     plasma_pts=None,
-    #     max_mode_frequency=1,
-    #     max_internal_timestep=0.0001,
-    #     full_timestep=0.0001,
-    # ):
-    #     """Resets init inputs.
-
-    #     flag_vessel_eig : bool
-    #         Flag re whether vessel eigenmodes are used or not.
-    #     flag_plasma : bool
-    #         Whether to include plasma in circuit equation. If True, plasma_pts
-    #         must be provided.
-    #     plasma_pts : freegsnke.limiter_handler.plasma_pts
-    #         Domain points in the domain that are included in the evolutive calculations.
-    #         A typical choice would be all domain points inside the limiter. Defaults to None.
-    #     max_mode_frequency : float
-    #         Maximum frequency of vessel eigenmodes to include in circuit equation.
-    #         Defaults to 1. Unit is s^-1.
-    #     max_internal_timestep : float
-    #         Maximum value of the 'internal' timestep for implicit euler solver. Defaults to .0001.
-    #         The 'internal' timestep is the one actually used by the solver.
-    #     full_timestep : float
-    #         Timestep by which the equations are advanced. If full_timestep>max_internal_timestep
-    #         multiple 'internal' steps are executed. Defaults to .0001.
-    #     """
-    #     control = self.max_internal_timestep != max_internal_timestep
-    #     self.max_internal_timestep = max_internal_timestep
-
-    #     control += self.full_timestep != full_timestep
-    #     self.full_timestep = full_timestep
-
-    #     control += flag_plasma != self.flag_plasma
-    #     self.flag_plasma = flag_plasma
-
-    #     if control * flag_plasma:
-    #         self.plasma_pts = plasma_pts
-    #         self.Mey_matrix = self.Mey(eq)
-
-    #     control += flag_vessel_eig != self.flag_vessel_eig
-    #     self.flag_vessel_eig = flag_vessel_eig
-
-    #     if flag_vessel_eig:
-    #         control += max_mode_frequency != self.max_mode_frequency
-    #         self.max_mode_frequency = max_mode_frequency
-    #     if control * flag_vessel_eig:
-    #         self.initialize_for_eig(self.selected_modes_mask)
-    #     else:
-    #         self.initialize_for_no_eig()
-
     def forcing_term_eig_plasma(self, active_voltage_vec, Iydot):
-        """Right-hand-side of circuit equation in eigenmode basis with plasma.
+        """
+        Compute forcing term in eigenmode basis including plasma coupling.
+
+        This method constructs the effective right-hand side of the circuit
+        equations in eigenmode coordinates when plasma dynamics are included.
+
+        The forcing is built from:
+        - applied coil voltages
+        - inductive coupling to plasma current evolution
 
         Parameters
         ----------
-        active_voltage_vec : np.ndarray
-            Vector of active coil voltages.
-        Iydot : np.ndarray
-            Vector of rate of change of plasma currents.
+        active_voltage_vec : ndarray
+            Voltages applied to the active coils.
+        Iydot : ndarray
+            Time derivative of plasma current degrees of freedom.
 
         Returns
         -------
-        all_Us : np.ndarray
-            Effective voltages in eigenmode basis.
+        all_Us : ndarray
+            Forcing term expressed in the eigenmode basis.
         """
         all_Us = np.zeros_like(self.empty_U)
         all_Us[: self.n_active_coils] = active_voltage_vec
@@ -386,20 +467,24 @@ class metal_currents:
         return all_Us
 
     def forcing_term_eig_no_plasma(self, active_voltage_vec, Iydot=0):
-        """Right-hand-side of circuit equation in eigenmode basis without
-        plasma.
+        """
+        Compute forcing term in eigenmode basis without plasma coupling.
+
+        This method constructs the right-hand side of the circuit equations in
+        eigenmode coordinates when plasma effects are neglected. Only coil
+        voltages are included.
 
         Parameters
         ----------
-        active_voltage_vec : np.ndarray
-            Vector of active coil voltages.
-        Iydot : np.ndarray, optional
-            This is not used.
+        active_voltage_vec : ndarray
+            Voltages applied to the active coils.
+        Iydot : ndarray, optional
+            Unused placeholder for interface compatibility.
 
         Returns
         -------
-        all_Us : np.ndarray
-            Effective voltages in eigenmode basis.
+        all_Us : ndarray
+            Forcing term expressed in the eigenmode basis.
         """
         all_Us = self.empty_U.copy()
         all_Us[: self.n_active_coils] = active_voltage_vec
@@ -407,19 +492,24 @@ class metal_currents:
         return all_Us
 
     def forcing_term_no_eig_plasma(self, active_voltage_vec, Iydot):
-        """Right-hand-side of circuit equation in normal mode basis with plasma.
+        """
+        Compute forcing term in coil basis including plasma coupling.
+
+        This method builds the right-hand side of the circuit equations in the
+        physical (non-eigenmode) coil basis, including inductive coupling to the
+        plasma evolution.
 
         Parameters
         ----------
-        active_voltage_vec : np.ndarray
-            Vector of active coil voltages.
-        Iydot : np.ndarray
-            Vector of rate of change of plasma currents.
+        active_voltage_vec : ndarray
+            Voltages applied to the active coils.
+        Iydot : ndarray
+            Time derivative of plasma current degrees of freedom.
 
         Returns
         -------
-        all_Us : np.ndarray
-            Effective voltages in metals basis.
+        all_Us : ndarray
+            Forcing term in the physical coil basis.
         """
         all_Us = self.empty_U.copy()
         all_Us[: self.n_active_coils] = active_voltage_vec
@@ -427,20 +517,24 @@ class metal_currents:
         return all_Us
 
     def forcing_term_no_eig_no_plasma(self, active_voltage_vec, Iydot=0):
-        """Right-hand-side of circuit equation in normal mode basis without
-        plasma.
+        """
+        Compute forcing term in coil basis without plasma coupling.
+
+        This method constructs the right-hand side of the circuit equations in the
+        physical (non-eigenmode) coil basis when plasma effects are neglected.
+        Only applied coil voltages are included.
 
         Parameters
         ----------
-        active_voltage_vec : np.ndarray
-            Vector of active coil voltages.
-        Iydot : np.ndarray, optional
-            This is not used.
+        active_voltage_vec : ndarray
+            Voltages applied to the active coils.
+        Iydot : ndarray, optional
+            Unused placeholder for interface consistency.
 
         Returns
         -------
-        all_Us : np.ndarray
-            Effective voltages in metals basis.
+        all_Us : ndarray
+            Forcing term in the physical coil basis.
         """
         all_Us = self.empty_U.copy()
         all_Us[: self.n_active_coils] = active_voltage_vec
@@ -534,37 +628,3 @@ class metal_currents:
             greenm *= coils_dict[labelj]["multiplier"][np.newaxis, :]
             mey[j] = np.sum(greenm, axis=-1)
         return 2 * np.pi * mey
-
-    # def Mey_f(
-    #     self,
-    #     eq,
-    #     green_f
-    #     ):
-    #     """Calculates values of the function green_f for the matrix of
-    #     plasma_pts x all vessel coils. For clarity, the function Mey is Mey_f(green_f = Greens)
-
-    #     Parameters
-    #     -------
-    #     eq : class
-    #         FreeGSNKE equilibrium Object
-    #     green_f : function
-    #         with same structure as Greens, i.e. Greens(R1,Z1, R2,Z2)
-
-    #     Returns
-    #     -------
-    #     Mey : np.ndarray
-    #         Array of 'inductance values' between plasma grid points and all vessel coils
-    #     """
-    #     coils_dict = eq.tokamak.coils_dict
-    #     mey = np.zeros((eq.tokamak.n_coils, len(self.plasma_pts)))
-    #     for j, labelj in enumerate(eq.tokamak.coils_list):
-    #         greenm = green_f(
-    #             coils_dict[labelj]["coords"][0][np.newaxis, :],
-    #             coils_dict[labelj]["coords"][1][np.newaxis, :],
-    #             self.plasma_pts[:, 0, np.newaxis],
-    #             self.plasma_pts[:, 1, np.newaxis],
-    #         )
-    #         greenm *= coils_dict[labelj]["polarity"][np.newaxis, :]
-    #         greenm *= coils_dict[labelj]["multiplier"][np.newaxis, :]
-    #         mey[j] = np.sum(greenm, axis=-1)
-    #     return 2 * np.pi * mey

@@ -1589,6 +1589,7 @@ class nl_solver:
                                 )
                     else:
                         self.final_dI_record[j] = 1.0 * self.starting_dI[j]
+                        rel_ndIy = ndIy
 
                     if verbose:
                         print("")

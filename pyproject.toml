@@ -30,3 +30,8 @@ optional-dependencies.docs = { file = ["requirements-docs.txt"] }
 
 [project.urls]
 Homepage = "https://github.com/FusionComputingLab/freegsnke"
+
+[tool.interrogate]
+fail-under = 95
+exclude = ["freegsnke/tests"]
+verbose = 2

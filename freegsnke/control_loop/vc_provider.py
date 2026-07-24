@@ -236,9 +236,6 @@ class VCGenerator:
         Package equilibrium and profile data into the input format expected
         by ``get_vc``.
 
-        This method exists for compatibility with higher-level infrastructure
-        (e.g. observable registries).
-
         Parameters
         ----------
         eq : object

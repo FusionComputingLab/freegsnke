@@ -21,21 +21,90 @@ You should have received a copy of the GNU Lesser General Public License
 along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 """
 
+import abc
+
 import numpy as np
 
 from freegsnke.virtual_circuits import VirtualCircuitHandling
 
 
-class VCGenerator:
+class VirtualCircuitProvider(abc.ABC):
+    """
+    Defines the interface for a Virtual Circuit provider.
+    """
+
+    def __init__(
+        self,
+    ):
+        """
+        Initialise the virtual circuit provider.
+        """
+
+    @abc.abstractmethod
+    def get_vc(
+        self,
+        targets: list[str],
+        targets_calc: list[str],
+        coils: list[str],
+        coils_calc: list[str],
+        input_data: tuple | np.ndarray,
+        tikhonov_lambda: np.ndarray = None,
+    ) -> np.ndarray | None:
+        """
+        Gets a Virtual Circuit for the given timestamp and observables requested from
+        the registry.
+
+        Parameters
+        ----------
+        targets : list[str]
+            User-facing names of targets to include in the returned matrix
+            (order is preserved). Must be a subset of ``targets_calc``.
+        targets_calc : list[str]
+            Targets actually used in the VC calculation (sensitivity
+            calculation and inversion). May be a superset of ``targets``,
+            e.g. if extra targets are needed to condition the inversion.
+        coils : list[str]
+            Full list of coils defining the output matrix row ordering.
+        coils_calc : list[str]
+            Subset of coils actually used in the VC calculation.
+        input_data : tuple
+            Tuple of inputs required for VC computation, obtained from .get_inputs() method.
+        tikhonov_lambda : np.ndarray, optional
+            Regularisation parameter(s) passed through to
+            ``VirtualCircuitHandling.calculate_VC``.
+        Returns
+        -------
+        vc : VirtualCircuit | None
+            virtual circuit matrix to be used by the control voltages class or None if
+            no virtual circuit could be obtained or constructed.
+        """
+        pass
+
+    def get_inputs_from_eq(self, eq: object, profiles: object):
+        """
+        Method to obtain input_data from equilibrium and profiles
+
+        Parameters
+        ----------
+        eq : object
+            Equilibrium object.
+        profiles : object
+            Plasma profile data.
+
+        Returns
+        -------
+        input_data : tuple or array
+            data formatted to pass to input_data argument of get_vc()
+        """
+        pass
+
+
+class VCGenerator(VirtualCircuitProvider):
     """
     Virtual Circuit (VC) generator based on FreeGSNKE's
-    ``VirtualCircuitHandling`` infrastructure.
+    ``VirtualCircuitHandling`` infrastructure to interface with PCS class
+    in the vc_generator argument.
 
-    This class wraps ``VirtualCircuitHandling`` to provide a higher-level,
-    user-facing interface for computing virtual circuits (VCs): matrices
-    that map coil current perturbations to changes in chosen plasma shape
-    or position targets (e.g. Z, R, elongation, etc.), for a given
-    equilibrium and profile set.
 
     Methods
     -------

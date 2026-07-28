@@ -54,7 +54,7 @@ def interpolate_step(
         kind="previous",
         axis=0,
         bounds_error=False,
-        fill_value=(0.0, vals[-1]),  # extrapolate for first and last values
+        fill_value=(vals[0], vals[-1]),  # extrapolate for first and last values
     )
 
     return f_interp
@@ -88,7 +88,7 @@ def interpolate_spline(data):
         vals,
         k=1,  # order (linear)
         s=0,  # interpolates points exactly
-        ext="zeros",  # extrapolate to zeros outside of boundary points
+        ext="const",  # extrapolate to first/last values outside of boundary points
     )
 
     return f_interp
@@ -115,8 +115,6 @@ def check_data_entry(
 
     Returns
     -------
-    bool
-        True if the checks pass.
 
     Raises
     ------
@@ -163,9 +161,9 @@ def PID(
     """
     Compute a flexible PID controller output.
 
-    Any of the P, I, or D components may be omitted. If a gain or the
-    corresponding error term is not provided (None), that component
-    contributes zero to the output.
+    Any of the P, I, or D components may be omitted. A component
+    contributes only if both its error term and its gain are provided
+    (i.e. not None); otherwise it contributes zero to the output.
 
     Parameters
     ----------
@@ -176,11 +174,14 @@ def PID(
     error_deriv : float or array_like, optional
         Derivative error term. If None, the D contribution is zero.
     k_prop : float or array_like, optional
-        Proportional gain. Default is 0.
+        Proportional gain. Default is 0. If explicitly set to None, the P
+        contribution is zero regardless of error_prop.
     k_int : float or array_like, optional
-        Integral gain. Default is 0.
+        Integral gain. Default is 0. If explicitly set to None, the I
+        contribution is zero regardless of error_int.
     k_deriv : float or array_like, optional
-        Derivative gain. Default is 0.
+        Derivative gain. Default is 0. If explicitly set to None, the D
+        contribution is zero regardless of error_deriv.
 
     Returns
     -------
@@ -192,18 +193,18 @@ def PID(
     -----
     - A component contributes only if both its gain and error term are provided.
     - This function performs no time integration or differentiation; the caller
-      must compute error_int and error_deriv externally.
+        must compute error_int and error_deriv externally.
     """
 
-    out = 0
+    out = 0.0
 
-    if error_prop is not None:
-        out += k_prop * error_prop
+    if error_prop is not None and k_prop is not None:
+        out += np.asarray(k_prop) * np.asarray(error_prop)
 
-    if error_int is not None:
-        out += k_int * error_int
+    if error_int is not None and k_int is not None:
+        out += np.asarray(k_int) * np.asarray(error_int)
 
-    if error_deriv is not None:
-        out += k_deriv * error_deriv
+    if error_deriv is not None and k_deriv is not None:
+        out += np.asarray(k_deriv) * np.asarray(error_deriv)
 
     return out

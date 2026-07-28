@@ -160,7 +160,7 @@ class VerticalController:
 
         return output
 
-    def plot_data(self, tmin=-1.0, tmax=1.0, nt=10001):
+    def plot_data(self, tmin=-1.0, tmax=1.0, nt=1001):
         """
         Visualizes interpolated control waveforms and corresponding raw inputs.
 
@@ -175,7 +175,7 @@ class VerticalController:
         tmax : float, optional
             End time for the evaluation grid (default is 1.0 seconds).
         nt : int, optional
-            Number of time points to evaluate the interpolants over the interval [tmin, tmax] (default is 10001).
+            Number of time points to evaluate the interpolants over the interval [tmin, tmax] (default is 1001).
 
         Notes
         -----
@@ -216,10 +216,10 @@ class VerticalController:
 
             if key == "z_ref":
                 ax.set_ylabel(rf"{key} [$m$]")
-            # elif key == "k_prop":
-            #     ax.set_ylabel(rf"{key} [$1/s$]")
-            # elif key == "k_deriv":
-            #     ax.set_ylabel(rf"{key} [$1/s^2$]")
+            elif key == "k_prop":
+                ax.set_ylabel(rf"{key} [$\Omega / m$]")
+            elif key == "k_deriv":
+                ax.set_ylabel(rf"{key} [$H / m$]")
             else:
                 ax.set_ylabel(key)
 

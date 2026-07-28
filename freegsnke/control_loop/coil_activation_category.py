@@ -123,7 +123,7 @@ class CoilActivationController:
         Compute effective coil resistances at a given time step.
 
         This function extracts coil activation values at time ``t`` and scales the
-        base resistances accordingly. Coils that are inactive (activation ~ 0)
+        base resistances accordingly. Coils that are inactive (activation = 0)
         are assigned a very large resistance to effectively disable them in the
         control model.
 
@@ -147,10 +147,10 @@ class CoilActivationController:
         activations = self.extract_values(t=t, targets=self.active_coils, deriv=False)
 
         # if coil is not active, set very large resistance
-        # final_coil_resists = active_coil_resists + (1.0 - activations) * 1e12
+        large_resistance = 1e12
         mask = activations.astype(bool)
         final_coil_resists = active_coil_resists.copy()
-        final_coil_resists[~mask] = 1e12
+        final_coil_resists[~mask] = large_resistance
 
         return final_coil_resists
 

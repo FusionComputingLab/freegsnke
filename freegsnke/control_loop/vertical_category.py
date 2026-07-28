@@ -66,7 +66,45 @@ class VerticalController:
         self,
         data,
     ):
+        """
+        Initialise the vertical position controller.
 
+        Validates that the required reference and gain data are present in
+        `data`, stores a reference to the data, and builds the spline/step
+        interpolants used to evaluate them at arbitrary times.
+
+        Parameters
+        ----------
+        data : dict
+            Dictionary of time-series entries. Must contain the following
+            keys, each in the format expected by `check_data_entry` (i.e.
+            containing 'times' and 'vals' arrays of matching length):
+
+            - "z_ref" : reference (target) vertical position.
+            - "k_prop" : proportional gain for the vertical position PD.
+            - "k_deriv" : derivative gain for the vertical position PD.
+
+        Attributes
+        ----------
+        keys_to_spline : list of str
+            Data keys that will be spline-interpolated: "z_ref".
+        keys_to_step : list of str
+            Data keys that will be step-interpolated: "k_prop" and
+            "k_deriv".
+        data : dict
+            Internal reference to the input `data`.
+
+        Raises
+        ------
+        ValueError
+            If a required key is missing from `data` or is not in the
+            expected format, as enforced by `check_data_entry`.
+
+        Notes
+        -----
+        Calls `update_interpolants` at the end of initialisation to build
+        the interpolating functions from `data`.
+        """
         # check correct data is input and in correct format
         self.keys_to_spline = ["z_ref"]
         self.keys_to_step = ["k_prop", "k_deriv"]

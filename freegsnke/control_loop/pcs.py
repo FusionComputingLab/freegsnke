@@ -114,6 +114,92 @@ class PlasmaControlSystem:
         vc_generator=None,
         vc_update_rate=None,
     ):
+        """
+        Initialise the top-level control system, composing all sub-controllers.
+
+        Builds and wires together the individual controllers (plasma, shape,
+        virtual circuits, systems, PF, vertical, and coil activation), each
+        given its own slice of input data plus whatever coil groupings and
+        targets it needs.
+
+        Parameters
+        ----------
+        plasma_data : dict
+            Time-series data passed to `PlasmaController`.
+        shape_data : dict
+            Time-series data passed to `ShapeController`.
+        circuits_data : dict
+            Time-series data passed to `VirtualCircuitsController`.
+        systems_data : dict
+            Time-series data passed to `SystemsController`.
+        pf_data : dict
+            Time-series data passed to `PFController`.
+        vertical_data : dict
+            Time-series data passed to `VerticalController`.
+        coil_activation_data : dict
+            Time-series data passed to `CoilActivationController`.
+        active_coils : list of str
+            Names of all coils that are active in this configuration. Passed
+            to `CoilActivationController`.
+        ctrl_coils : list of str
+            Names of the coils used for shape/virtual-circuit control. Passed
+            to `VirtualCircuitsController` and `SystemsController`.
+        solenoid_coils : list of str
+            Names of the solenoid coils.
+        vertical_coils : list of str
+            Names of the coils used for vertical position control.
+        ctrl_targets : list or dict
+            Shape control targets, passed to `ShapeController` and
+            `VirtualCircuitsController`.
+        plasma_target : float or array_like or dict
+            Target value(s) for the plasma, passed to
+            `VirtualCircuitsController`.
+        shape_control_mode : str, optional
+            Mode used by `ShapeController` to determine how shape control is
+            performed. If None, `ShapeController`'s default mode is used.
+        vc_generator : callable, optional
+            Generator function used by `VirtualCircuitsController` to produce
+            virtual circuit outputs. If None, `VirtualCircuitsController`'s
+            default generator is used.
+        vc_update_rate : float, optional
+            Rate at which `VirtualCircuitsController` updates its virtual
+            circuits. If None, `VirtualCircuitsController`'s default update
+            rate is used.
+
+        Attributes
+        ----------
+        active_coils : list of str
+            Stored copy of `active_coils`.
+        ctrl_coils : list of str
+            Stored copy of `ctrl_coils`.
+        solenoid_coils : list of str
+            Stored copy of `solenoid_coils`.
+        vertical_coils : list of str
+            Stored copy of `vertical_coils`.
+        ctrl_targets : list or dict
+            Stored copy of `ctrl_targets`.
+        plasma_target : float or array_like or dict
+            Stored copy of `plasma_target`.
+        PlasmaController : PlasmaController
+            Sub-controller handling plasma-related quantities.
+        ShapeController : ShapeController
+            Sub-controller handling shape control.
+        VirtualCircuitsController : VirtualCircuitsController
+            Sub-controller handling virtual circuit generation and control.
+        SystemsController : SystemsController
+            Sub-controller handling systems-level control.
+        PFController : PFController
+            Sub-controller handling PF coil control.
+        VerticalController : VerticalController
+            Sub-controller handling vertical position control.
+        CoilActivationController : CoilActivationController
+            Sub-controller handling per-coil activation state.
+
+        Notes
+        -----
+        `solenoid_coils` is stored but not passed to any sub-controller here;
+        it is presumably used elsewhere in the class.
+        """
 
         # coil ordering
         self.active_coils = active_coils

@@ -73,7 +73,50 @@ class CoilActivationController:
         data,
         active_coils,
     ):
+        """
+        Initialise the coil activation controller.
 
+        Validates that the required time-series entries are present in
+        ``data`` for every coil in ``active_coils``, stores a reference to
+        the data, and builds the spline/step interpolants used to evaluate
+        coil activation at arbitrary times.
+
+        Parameters
+        ----------
+        data : dict
+            Dictionary of time-series entries. For each key required by
+            this controller (see `keys_to_spline` and `keys_to_step`), the
+            corresponding entry must be present and in the format expected
+            by `check_data_entry` (i.e. containing 'times' and 'vals'
+            arrays of matching length).
+        active_coils : list of str
+            Names of the coils this controller manages. For each coil, a
+            corresponding "<coil>_activation" entry must exist in `data`.
+
+        Attributes
+        ----------
+        active_coils : list of str
+            Stored copy of `active_coils`.
+        keys_to_spline : list of str
+            Data keys that will be spline-interpolated. Currently unused
+            (empty) for this controller.
+        keys_to_step : list of str
+            Data keys that will be step-interpolated: one
+            "<coil>_activation" entry per coil in `active_coils`.
+        data : dict
+            Internal reference to the input `data`.
+
+        Raises
+        ------
+        ValueError
+            If a required key is missing from `data` or is not in the
+            expected format, as enforced by `check_data_entry`.
+
+        Notes
+        -----
+        Calls `update_interpolants` at the end of initialisation to build
+        the interpolating functions from `data`.
+        """
         # coils list
         self.active_coils = active_coils
 

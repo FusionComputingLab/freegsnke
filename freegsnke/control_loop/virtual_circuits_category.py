@@ -77,6 +77,108 @@ class VirtualCircuitsController:
         vc_generator=None,
         vc_update_rate=None,
     ):
+        """
+        Initialise the virtual circuits controller.
+
+        Reads the coil ordering used by the virtual circuit matrices,
+        validates that the required per-coil reference data and per-target
+        (shape and plasma) data are present in `data`, stores a reference to
+        the data, and builds the spline/step interpolants used to evaluate
+        them at arbitrary times. Optionally sets up state for an emulated
+        virtual circuit generator.
+
+        Parameters
+        ----------
+        data : dict
+            Dictionary of time-series entries, plus a "coil_order" entry.
+            Must contain:
+
+            - "coil_order" : list of str giving the ordering of `ctrl_coils`
+            used in the virtual circuit matrices. Not validated via
+            `check_data_entry` (not a time-series entry).
+            - "<coil>_ref" for each coil in `ctrl_coils` : reference signal
+            for that coil.
+            - one entry per name in `ctrl_targets` and `plasma_target` :
+            target values, each in the format expected by
+            `check_data_entry` (i.e. containing 'times' and 'vals' arrays
+            of matching length).
+        ctrl_coils : list of str
+            Names of the coils used for shape control. Determines which
+            "<coil>_ref" keys are required in `data`.
+        ctrl_targets : list of str
+            Names of the shape parameters to be controlled. Determines
+            which additional keys are required in `data`.
+        plasma_target : list of str
+            Names of the plasma parameter(s) to be controlled. Determines
+            which additional keys are required in `data`.
+        vc_generator : object, optional
+            Emulated virtual circuit generator. If provided, enables
+            emulated-VC bookkeeping (see Attributes). If None, this
+            controller does not emulate virtual circuits.
+        vc_update_rate : float, optional
+            How often to update emulated virtual circuits, in seconds. Only
+            used if `vc_generator` is provided. Defaults to 0.0 if not
+            specified.
+
+        Attributes
+        ----------
+        ctrl_coils : list of str
+            Stored copy of `ctrl_coils`.
+        vc_coil_order : list of str
+            Coil ordering used by the virtual circuit matrices, taken from
+            `data["coil_order"]`.
+        vc_coil_order_index : dict
+            Mapping from coil name to its index in `vc_coil_order`.
+        ctrl_targets : list of str
+            Stored copy of `ctrl_targets`.
+        plasma_target : list of str
+            Stored copy of `plasma_target`.
+        keys_to_spline : list of str
+            Data keys that will be spline-interpolated: one "<coil>_ref"
+            entry per coil in `ctrl_coils`.
+        keys_to_step : list of str
+            Data keys that will be step-interpolated: `ctrl_targets` +
+            `plasma_target`.
+        data : dict
+            Internal reference to the input `data`.
+        vc_generator : object or None
+            Stored copy of `vc_generator`.
+        vc_update_rate : float
+            Only set if `vc_generator` is provided. How often emulated VCs
+            are updated, in seconds.
+        latest_vc_time : None
+            Only set if `vc_generator` is provided. Placeholder for the
+            timestamp of the most recently computed emulated virtual
+            circuit.
+        latest_vc : None
+            Only set if `vc_generator` is provided. Placeholder for the most
+            recently computed emulated virtual circuit.
+        emulated_jacobian_list : list
+            Only set if `vc_generator` is provided. Accumulated jacobians
+            used to generate emulated virtual circuits.
+        emulated_vc_list : list
+            Only set if `vc_generator` is provided. Accumulated emulated
+            virtual circuits.
+        emulated_vc_times : list
+            Only set if `vc_generator` is provided. Timestamps corresponding
+            to `emulated_vc_list`.
+        full_vc_matrix : list
+            Only set if `vc_generator` is provided. Accumulated full virtual
+            circuit matrix.
+
+        Raises
+        ------
+        ValueError
+            If a required key is missing from `data` or is not in the
+            expected format, as enforced by `check_data_entry`.
+        KeyError
+            If `data` does not contain a "coil_order" entry.
+
+        Notes
+        -----
+        Calls `update_interpolants` after validating `data`, before the
+        emulated-VC state is set up.
+        """
 
         # active coils list (used for shape control)
         self.ctrl_coils = ctrl_coils
@@ -109,21 +211,21 @@ class VirtualCircuitsController:
 
         # store emulated VCs class if present
         self.vc_generator = vc_generator
+        if self.vc_generator:
+            # how often to update emulated VCs (in seconds)
+            if vc_update_rate is None:
+                vc_update_rate = 0.0
+            self.vc_update_rate = vc_update_rate
 
-        # how often to update emulated VCs (in seconds)
-        if vc_update_rate is None:
-            vc_update_rate = 0.0
-        self.vc_update_rate = vc_update_rate
+            # set placeholders for most recent VCs
+            self.latest_vc_time = None
+            self.latest_vc = None
 
-        # set placeholders for most recent VCs
-        self.latest_vc_time = None
-        self.latest_vc = None
-
-        # store emulated VCs that were used
-        self.emulated_jacobian_list = []
-        self.emulated_vc_list = []
-        self.emulated_vc_times = []
-        self.full_vc_matrix = []
+            # store emulated VCs that were used
+            self.emulated_jacobian_list = []
+            self.emulated_vc_list = []
+            self.emulated_vc_times = []
+            self.full_vc_matrix = []
 
     def update_interpolants(self):
         """
@@ -461,10 +563,6 @@ class VirtualCircuitsController:
 
         if nplots == 1:
             axes = [axes]
-
-        # Convert each array to a hashable form
-        def make_key(arr):
-            return tuple(arr.tolist())
 
         for ax, key in zip(axes, self.keys_to_step):
 

@@ -73,7 +73,55 @@ class SystemsController:
         data,
         ctrl_coils,
     ):
+        """
+        Initialise the systems controller.
 
+        Validates that per-coil perturbation data and coil current/ramp
+        limits are present in `data`, stores a reference to the data, and
+        builds the spline/step interpolants used to evaluate them at
+        arbitrary times.
+
+        Parameters
+        ----------
+        data : dict
+            Dictionary of time-series entries. Must contain the following
+            keys, each in the format expected by `check_data_entry` (i.e.
+            containing 'times' and 'vals' arrays of matching length):
+
+            - "<coil>_pert" for each coil in `ctrl_coils` : perturbation
+            signal for that coil.
+            - "min_coil_curr_lims" : minimum coil current limits.
+            - "max_coil_curr_lims" : maximum coil current limits.
+            - "max_coil_curr_ramp_lims" : maximum coil current ramp-rate
+            limits.
+        ctrl_coils : list of str
+            Names of the coils controlled by this controller. Determines
+            which "<coil>_pert" keys are required in `data`.
+
+        Attributes
+        ----------
+        ctrl_coils : list of str
+            Stored copy of `ctrl_coils`.
+        keys_to_spline : list of str
+            Data keys that will be spline-interpolated: one "<coil>_pert"
+            entry per coil in `ctrl_coils`.
+        keys_to_step : list of str
+            Data keys that will be step-interpolated: "min_coil_curr_lims",
+            "max_coil_curr_lims", and "max_coil_curr_ramp_lims".
+        data : dict
+            Internal reference to the input `data`.
+
+        Raises
+        ------
+        ValueError
+            If a required key is missing from `data` or is not in the
+            expected format, as enforced by `check_data_entry`.
+
+        Notes
+        -----
+        Calls `update_interpolants` at the end of initialisation to build
+        the interpolating functions from `data`.
+        """
         # coils list
         self.ctrl_coils = ctrl_coils
 

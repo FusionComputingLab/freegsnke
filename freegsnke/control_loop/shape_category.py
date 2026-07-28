@@ -78,6 +78,74 @@ class ShapeController:
         ctrl_targets,
         mode=None,
     ):
+        """
+        Initialise the shape controller.
+
+        Selects a control algorithm based on `mode`, determines which data
+        keys that algorithm requires, validates that `data` contains those
+        keys (per control target) in the expected format, and builds the
+        spline/step interpolants used to evaluate them at arbitrary times.
+
+        Parameters
+        ----------
+        data : dict
+            Dictionary keyed by control target (each entry of `ctrl_targets`
+            must be a key). Each value is itself a dictionary of time-series
+            entries, containing whichever of "ff", "ref", "blend", "k_prop",
+            "k_int", "k_deriv", and "damping" are required by the selected
+            `mode` (see below), each in the format expected by
+            `check_data_entry`.
+        ctrl_targets : list of str
+            Names of the shape control targets. Each must be a top-level key
+            in `data`.
+        mode : str, optional
+            Control algorithm to use. One of:
+
+            - "PI_with_P_damping" (default): PI control with proportional
+            damping. Requires spline keys "ff", "ref", "blend" and step
+            keys "k_prop", "k_int", "k_deriv", "damping".
+            - "PID_with_scaled_out_damping": PID control with damping scaled
+            out. Requires spline keys "ff", "ref", "blend" and step keys
+            "k_prop", "damping".
+            - "PID": standard PID control. Requires spline keys "ff", "ref",
+            "blend" and step keys "k_prop", "k_int", "k_deriv".
+
+            If None, defaults to "PI_with_P_damping".
+
+        Attributes
+        ----------
+        ctrl_targets : list of str
+            Stored copy of `ctrl_targets`.
+        data : dict
+            Internal reference to the input `data`.
+        run_control : callable
+            Bound method implementing the selected control algorithm
+            (`run_control_PI_with_P_damping`,
+            `run_control_PID_with_scaled_out_damping`, or `run_control_PID`).
+        keys_to_spline : list of str
+            Data keys (per target) that will be spline-interpolated, as
+            determined by `mode`.
+        keys_to_step : list of str
+            Data keys (per target) that will be step-interpolated, as
+            determined by `mode`.
+
+        Raises
+        ------
+        ValueError
+            If a required key is missing from `data[targ]` for any target
+            in `ctrl_targets`, or is not in the expected format, as enforced
+            by `check_data_entry`.
+
+        Notes
+        -----
+        If `mode` is not one of the recognised values, `run_control`,
+        `keys_to_spline`, and `keys_to_step` are never set, and the
+        subsequent validation loop and `update_interpolants` call will raise
+        an `AttributeError` rather than a clear error about the invalid mode.
+
+        Calls `update_interpolants` at the end of initialisation to build
+        the interpolating functions from `data`.
+        """
 
         # targets list
         self.ctrl_targets = ctrl_targets

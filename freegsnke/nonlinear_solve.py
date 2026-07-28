@@ -31,6 +31,7 @@ from scipy.signal import convolve2d
 from . import nk_solver_H as nk_solver
 from .circuit_eq_metal import metal_currents
 from .GSstaticsolver import NKGSsolver
+from .jtor_update import fit_lao85_betap_li_ip
 from .linear_solve import linear_solver
 from .Myy_builder import Myy_handler
 from .simplified_solve import simplified_solver_J1
@@ -195,6 +196,8 @@ class nl_solver:
             target_relative_tolerance=target_relative_tolerance_linearization,
             verbose=False,
         )
+        self.lao_betap_li_fit_results = []
+        self._lao_betap_li_metric_jacobian = None
         print("-----")
 
         # set internal copy of the equilibrium and profile
@@ -2753,7 +2756,165 @@ class nl_solver:
         r_res_GS = a_res_GS / self.d_plasma_psi_step
         return r_res_GS
 
-    def check_and_change_profiles(self, profiles_parameters=None):
+    def lao85_betap_li_to_profiles_parameters(
+        self, profiles_parameters, profile_constraint_options=None
+    ):
+        """Convert Lao85 ``betap``/``li`` targets into ``alpha``/``beta`` coefficients.
+
+        The evolutive solver linearisation is built with respect to the Lao
+        profile coefficients. This helper lets users prescribe a more physical
+        profile schedule using ``profiles_parameters={"betap": ..., "li": ...}``;
+        internally, a static target fit is performed on the auxiliary
+        equilibrium and the resulting Lao coefficients are passed through the
+        existing coefficient-evolution path.
+
+        Parameters
+        ----------
+        profiles_parameters : dict or None
+            Profile update dictionary supplied to :meth:`nlstepper`.
+        profile_constraint_options : dict or None
+            Optional settings forwarded to :func:`fit_lao85_betap_li_ip`. Common
+            entries are ``li_method``, ``target_relative_tolerance``,
+            ``max_solving_iterations``, ``optimizer_kwargs``,
+            ``regularization_weight``, ``use_metric_jacobian``,
+            ``reuse_metric_jacobian``, and ``linearized_metric_update``.
+
+        Returns
+        -------
+        dict or None
+            A profile update dictionary containing fitted ``alpha`` and ``beta``
+            entries when beta_p/li targets were supplied. Dictionaries without
+            beta_p/li targets are returned unchanged.
+        """
+
+        if profiles_parameters is None:
+            return None
+
+        profiles_parameters = dict(profiles_parameters)
+        has_betap = "betap" in profiles_parameters or "beta_p" in profiles_parameters
+        has_li = "li" in profiles_parameters
+        if not (has_betap or has_li):
+            return profiles_parameters
+
+        if self.profiles_type != "Lao85":
+            raise ValueError(
+                "The {'betap', 'li'} profile-constraint route is only available "
+                "for Lao85 profiles. Other profile classes should continue to "
+                "receive their native profile parameters."
+            )
+
+        if "alpha" in profiles_parameters or "beta" in profiles_parameters:
+            raise ValueError(
+                "Provide either Lao85 coefficient updates ('alpha'/'beta') or "
+                "physical target updates ('betap'/'li'), not both."
+            )
+
+        options = (
+            {}
+            if profile_constraint_options is None
+            else dict(profile_constraint_options)
+        )
+        li_method = options.pop("li_method", "internalInductance2")
+        reuse_metric_jacobian = options.pop("reuse_metric_jacobian", True)
+        use_metric_jacobian = options.pop("use_metric_jacobian", True)
+        linearized_metric_update = options.pop("linearized_metric_update", False)
+        linearized_metric_regularization = options.pop(
+            "linearized_metric_regularization", 1e-8
+        )
+        linearized_metric_step_fraction = options.pop(
+            "linearized_metric_step_fraction", 1.0
+        )
+        if linearized_metric_step_fraction <= 0:
+            raise ValueError("linearized_metric_step_fraction must be positive.")
+        solve_kwargs = options.pop("solve_kwargs", None)
+        optimizer_kwargs = options.pop("optimizer_kwargs", None)
+
+        if "betap" in profiles_parameters and "beta_p" in profiles_parameters:
+            raise ValueError("Use only one of 'betap' or 'beta_p'.")
+        if "betap" in profiles_parameters:
+            target_betap = profiles_parameters.pop("betap")
+        elif "beta_p" in profiles_parameters:
+            target_betap = profiles_parameters.pop("beta_p")
+        else:
+            target_betap = self.eq1.poloidalBeta1()
+
+        if "li" in profiles_parameters:
+            target_li = profiles_parameters.pop("li")
+        else:
+            target_li = getattr(self.eq1, li_method)()
+        target_ip = profiles_parameters.get("Ip", self.profiles1.Ip)
+
+        initial_alpha = self.profiles1.alpha[: self.n_profiles_parameters_alpha]
+        initial_beta = self.profiles1.beta[: self.n_profiles_parameters_beta]
+
+        if (
+            linearized_metric_update
+            and reuse_metric_jacobian
+            and self._lao_betap_li_metric_jacobian is not None
+        ):
+            current_metrics = np.array(
+                [self.eq1.poloidalBeta1(), getattr(self.eq1, li_method)()],
+                dtype=float,
+            )
+            target_metrics = np.array([target_betap, target_li], dtype=float)
+            metric_jacobian = np.asarray(
+                self._lao_betap_li_metric_jacobian, dtype=float
+            )
+            metric_matrix = metric_jacobian @ metric_jacobian.T
+            metric_matrix += linearized_metric_regularization * np.eye(
+                metric_matrix.shape[0]
+            )
+            coefficient_step = metric_jacobian.T @ np.linalg.solve(
+                metric_matrix, target_metrics - current_metrics
+            )
+            coefficient_step *= linearized_metric_step_fraction
+            profiles_parameters["alpha"] = initial_alpha + coefficient_step[:2]
+            profiles_parameters["beta"] = initial_beta + coefficient_step[2:]
+            return profiles_parameters
+
+        scratch_eq = self.eq2
+        scratch_plasma_psi = np.copy(scratch_eq.plasma_psi)
+        scratch_solved = getattr(scratch_eq, "solved", None)
+        metric_jacobian = (
+            self._lao_betap_li_metric_jacobian if reuse_metric_jacobian else None
+        )
+
+        try:
+            _, fit_result = fit_lao85_betap_li_ip(
+                scratch_eq,
+                self.NK,
+                Ip=target_ip,
+                fvac=self.fvac,
+                betap=target_betap,
+                li=target_li,
+                alpha=initial_alpha,
+                beta=initial_beta,
+                alpha_logic=self.profiles1.alpha_logic,
+                beta_logic=self.profiles1.beta_logic,
+                li_method=li_method,
+                Raxis=getattr(self.profiles1, "Raxis", 1),
+                solve_kwargs=solve_kwargs,
+                optimizer_kwargs=optimizer_kwargs,
+                use_metric_jacobian=use_metric_jacobian,
+                metric_jacobian=metric_jacobian,
+                **options,
+            )
+        finally:
+            scratch_eq.plasma_psi = scratch_plasma_psi
+            if scratch_solved is not None:
+                scratch_eq.solved = scratch_solved
+
+        if fit_result.metric_jacobian is not None:
+            self._lao_betap_li_metric_jacobian = fit_result.metric_jacobian
+        self.lao_betap_li_fit_results.append(fit_result)
+
+        profiles_parameters["alpha"] = fit_result.alpha
+        profiles_parameters["beta"] = fit_result.beta
+        return profiles_parameters
+
+    def check_and_change_profiles(
+        self, profiles_parameters=None, profile_constraint_options=None
+    ):
         """
         Updates the plasma current profile parameters at time t+dt if new values are provided.
 
@@ -2769,6 +2930,11 @@ class nl_solver:
             Dictionary of profile parameters to update. Keys and values should match the
             attributes of the profile object (see `get_profiles_values` for structure).
             If None, no changes are made and the profiles remain unchanged.
+            For Lao85 profiles, users may alternatively provide ``betap`` and
+            ``li`` targets. These are fitted to Lao ``alpha`` and ``beta``
+            coefficients before the timestep is advanced.
+        profile_constraint_options : dict or None, optional
+            Options used when fitting Lao85 ``betap``/``li`` targets.
 
         Notes
         -----
@@ -2779,6 +2945,10 @@ class nl_solver:
         self.profiles_change_flag = 0
 
         if profiles_parameters is not None:
+            profiles_parameters = self.lao85_betap_li_to_profiles_parameters(
+                profiles_parameters,
+                profile_constraint_options=profile_constraint_options,
+            )
             for par in profiles_parameters:
                 setattr(self.profiles1, par, profiles_parameters[par])
                 setattr(self.profiles2, par, profiles_parameters[par])
@@ -2828,6 +2998,7 @@ class nl_solver:
         self,
         active_voltage_vec,
         profiles_parameters=None,
+        profile_constraint_options=None,
         plasma_resistivity=None,
         target_relative_tol_currents=0.005,
         target_relative_tol_GS=0.003,
@@ -2891,6 +3062,18 @@ class nl_solver:
             Voltages applied to the active coils between ``t`` and ``t + dt_step``.
         profiles_parameters : dict or None, optional
             Parameters to update the profile model. If None, profiles are unchanged.
+            Lao85 profiles may be updated either with native ``alpha``/``beta``
+            coefficients or with physical targets ``betap`` and ``li``. Physical
+            targets are fitted to Lao coefficients before the timestep is
+            advanced, so the linearised evolution still uses ``dIy/dtheta`` with
+            respect to the Lao coefficients.
+        profile_constraint_options : dict or None, optional
+            Options used when converting Lao85 ``betap``/``li`` targets to
+            ``alpha``/``beta``. Common entries are ``li_method``,
+            ``target_relative_tolerance``, ``max_solving_iterations``,
+            ``optimizer_kwargs``, ``regularization_weight``,
+            ``use_metric_jacobian``, ``reuse_metric_jacobian``, and
+            ``linearized_metric_update``.
         plasma_resistivity : float or array-like, optional
             New plasma resistivity. If None, resistivity remains unchanged.
         target_relative_tol_currents : float, default=0.005
@@ -3023,6 +3206,7 @@ class nl_solver:
         # and action the change where necessary
         self.check_and_change_profiles(
             profiles_parameters=profiles_parameters,
+            profile_constraint_options=profile_constraint_options,
         )
 
         self.check_and_change_active_coil_resistances(

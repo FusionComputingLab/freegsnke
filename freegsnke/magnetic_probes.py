@@ -31,41 +31,58 @@ from freegs4e.gradshafranov import Greens, GreensBr, GreensBz
 
 class Probes:
     """
-    Class to implement magnetic probes:
-    - flux loops: compute psi(R,Z)
-    - pickup coils: compute B(R,phi,Z).nhat (nhat is unit vector orientation of the probe)
+    Representation of magnetic diagnostics for a tokamak equilibrium.
 
-    Inputs:
-    - equilibrium object - contains grid, plasma profile, plasma and coil currents, coil positions.
-    N.B:- in init/setup the eq object only provides machine /domain/position information
-        - in methods the equilibrium provides currents and other aspects that evolve in solve().
+    This class implements synthetic magnetic probe signals, including:
 
-    Attributes:
-    - floops,pickups = dictionaries with name, position, orientation of the probes
-    - floops_positions etc.  = extract individual arrays of positions, orientations etc.
-    - floops_order / pickups_order = list of fluxloop/pickups names, if individual probe value is required
-    - greens_psi_coils_floops = greens functions for psi, evaluated at flux loop positions
-    - greens_br/bz_coils_pickups = greens functions for Br/Bz, evaluated at pickup coil positions
-    - greens_psi_plasma_floops = dictionary of greens functions for psi from plasma current, evaluated at flux loop positions
-    - greens_BrBz_plasma_pickups = dictionary of greens functions for Br and Bz from plasma, evaluated at pickup coil positions
+    - Flux loops: measure poloidal flux ψ(R, Z)
+    - Pickup coils: measure magnetic field components projected onto a
+      probe orientation vector (B · n̂)
 
-    - more greens function attributes would be added if new probes area added.
+    The signals are computed from contributions of both coil currents and
+    plasma current distributions via precomputed Green's functions.
 
-    Methods:
-    - get_coil_currents(eq): returns current values in all the coils from equilibrium object.
-    - get_plasma_current(eq): returns toroidal current values at each plasma grid point, taken from equilibrium input.
-    - create_greens_all_coils(): returns array with greens function for each coil and probe combination.
-    - psi_all_coils(eq): returns list of psi values at each flux loop position, summed over all coils.
-    - psi_from_plasma(eq): returns list of psi values at each flux loop position from plasma itself.
-    - create_greens_B_oriented_plasma(eq) : creates oriented greens functions for pickup coils.
-    - calculate_fluxloop_value(eq): returns total flux at each probe position (sum of previous two outputs).
-    - calculate_pickup_value(eq): returns pickup values at each probe position.
+    Parameters
+    ----------
+    coils_dict : dict
+        Dictionary describing active (and possibly passive) coils, including
+        geometry and identifiers used for Green's function evaluation.
 
+    magnetic_probe_data : dict, optional
+        Dictionary containing pre-defined probe configurations. Must include
+        keys:
+            - "flux_loops"
+            - "pickups"
 
-    - Br(eq)/ Bz(eq) : computes radial/z component of magnetic field, sum of coil and plasma contributions
-    - Btor(eq) : extracts toroidal magnetic field (outside of plasma), evaluated at
+    magnetic_probe_path : str, optional
+        Path to a pickled file containing `magnetic_probe_data`.
 
-    Methods currently have floop or pickup positions as default, but these can be changed with optional argument.
+    Notes
+    -----
+    Exactly one of `magnetic_probe_data` or `magnetic_probe_path` must be
+    provided. If both are given, a ValueError is raised. If neither is
+    provided, no probe geometry is initialised.
+
+    Attributes
+    ----------
+    floops : dict
+        Flux loop definitions (positions, identifiers, etc.).
+    pickups : dict
+        Pickup coil definitions (positions, orientations, etc.).
+    coil_names : list of str
+        Ordered list of coil identifiers.
+    coils_dict : dict
+        Copy of input coil dictionary.
+
+    Other Attributes
+    -----------------
+    The class also stores multiple Green's function caches used to compute:
+
+    - Flux loop signals from coils and plasma
+    - Pickup coil signals (Br, Bz projections)
+    - Combined diagnostic outputs
+
+    These are populated during later setup routines.
     """
 
     def __init__(
@@ -111,10 +128,56 @@ class Probes:
 
     def initialise_setup(self, eq):
         """
-        Setup attributes: positions, orientations and greens functions
-        - set probe positions and orientations
-        - set coil positions from equilibrium object
-        - create arrays/dictionaries of greens functions with positions of coils/plasma currents and probes
+        Initialise probe geometry and precompute Green's functions for a given
+        equilibrium configuration.
+
+        This method validates compatibility between the probe set and the supplied
+        equilibrium, then constructs all probe-related quantities (positions,
+        orientations, and Green's function caches) required for synthetic
+        diagnostic evaluation.
+
+        Parameters
+        ----------
+        eq : Equilibrium
+            Equilibrium object providing tokamak geometry, coil configuration,
+            and (optionally) plasma state information.
+
+        Raises
+        ------
+        AssertionError
+            If the coil configuration in `eq.tokamak` does not match the coil
+            configuration used to define the probes.
+
+        Notes
+        -----
+        This routine performs expensive precomputation of Green's functions and
+        should typically be called once per equilibrium setup.
+
+        Flux Loops
+        ----------
+        - Extracts flux loop positions and ordering from `self.floops`
+        - Computes coil contribution Green's functions:
+            `greens_psi_coils_floops`
+        - Computes plasma contribution Green's functions:
+            `greens_psi_plasma_floops` (cached per equilibrium key)
+
+        Pickup Coils
+        -------------
+        - Extracts pickup positions and orientation vectors
+        - Computes coil contributions:
+            `greens_br_coils_pickup`, `greens_bz_coils_pickup`
+        - Computes oriented magnetic field responses:
+            `greens_B_coils_oriented`, `greens_B_plasma_oriented`
+
+        Caching
+        -------
+        All plasma-dependent Green's functions are stored in dictionaries keyed by
+        an equilibrium identifier (`eq_key`) to avoid recomputation when possible.
+
+        Returns
+        -------
+        None
+            All results are stored in-place as object attributes.
         """
 
         check = DeepDiff(eq.tokamak.coils_dict, self.coils_dict) == {}
@@ -124,9 +187,6 @@ class Probes:
             )
 
         eq_key = self.create_eq_key(eq)
-
-        # self.limiter_handler = {}
-        # self.limiter_handler[eq_key] = eq.limiter_handler
 
         # FLUX LOOPS
         # positions, number of probes, ordering
@@ -153,11 +213,6 @@ class Probes:
         self.greens_br_coils_pickup, self.greens_bz_coils_pickup = (
             self.greens_BrBz_all_coils(eq, "pickups")
         )
-        # not initialised unless needed to save memory
-        # (
-        #     self.greens_br_plasma_pickup[eq_key],
-        #     self.greens_bz_plasma_pickup[eq_key],
-        # ) = self.create_greens_BrBz_plasma(eq, "pickups")
 
         self.greens_B_plasma_oriented = {}
         self.greens_B_plasma_oriented[eq_key] = self.create_greens_B_oriented_plasma(
@@ -167,18 +222,32 @@ class Probes:
             eq, "pickups"
         )
 
-        # Other probes - to add in future...
-
-    """
-    Things for all probes
-    - coil current array
-    - plasma current array
-    - eq grid key 
-    """
-
     def get_coil_currents(self, eq):
         """
-        create list of coil currents from the equilibrium
+        Extract coil current values from an equilibrium object in a fixed ordering.
+
+        This method builds a vector of coil currents corresponding to
+        `self.coil_names`, ensuring a consistent ordering between the probe
+        model and the equilibrium representation.
+
+        Parameters
+        ----------
+        eq : Equilibrium
+            Equilibrium object containing a `tokamak` attribute with coil objects
+            indexed by name.
+
+        Returns
+        -------
+        np.ndarray
+            Array of coil currents ordered according to `self.coil_names`.
+
+        Notes
+        -----
+        - The ordering of currents is determined by `self.coil_names`, which is
+        fixed during probe initialisation.
+        - Each coil is accessed via `eq.tokamak[label].current`.
+        - This could be replaced by a vectorised call such as
+        `eq.tokamak.getcurrents()` if ordering consistency is guaranteed.
         """
         array_of_coil_currents = np.zeros(len(self.coil_names))
         for i, label in enumerate(self.coil_names):
@@ -189,55 +258,133 @@ class Probes:
 
     def get_plasma_current(self, eq):
         """
-        From equilibirium object contains toroidal current distribution on the grid, reduced to the limiter region only.
+        Extract the toroidal plasma current distribution from an equilibrium object.
+
+        The returned quantity is the grid-based plasma current density mapped to
+        the physically valid domain (typically restricted by the limiter region).
+
+        Parameters
+        ----------
+        eq : Equilibrium
+            Equilibrium object containing the plasma current density profile and
+            limiter geometry.
+
+        Returns
+        -------
+        np.ndarray
+            Toroidal current distribution mapped onto the limiter-constrained grid.
+
+        Notes
+        -----
+        - The current density is taken from `eq._profiles.jtor`.
+        - The mapping to circuit-relevant currents is performed via:
+        `eq.limiter_handler.Iy_from_jtor(...)`
+        - This ensures only physically valid (in-limiter) contributions are used.
         """
         return eq.limiter_handler.Iy_from_jtor(eq._profiles.jtor)
 
     def create_eq_key(self, eq):
         """
-        Produces tuple (Rmin,Rmax,Zmin,Zmax,nx,ny) from equilibrium to access correct greens function.
+        Generate a hashable identifier for an equilibrium grid configuration.
+
+        The key uniquely encodes the spatial domain and resolution of the
+        equilibrium, and is used to cache and retrieve precomputed Green's
+        functions associated with a specific grid.
+
+        Parameters
+        ----------
+        eq : Equilibrium
+            Equilibrium object containing grid metadata (domain bounds and
+            discretisation).
+
+        Returns
+        -------
+        tuple
+            A hashable key of the form:
+            (R_min, R_max, Z_min, Z_max, nx, ny)
+
+        Notes
+        -----
+        - nx and ny are inferred from `eq.R_1D` and `eq.Z_1D`.
+        - This key assumes that Green's functions are valid only when both
+        spatial bounds and resolution match exactly.
+        - Small floating-point differences in bounds will produce distinct keys.
         """
         nx, ny = len(eq.R_1D), len(eq.Z_1D)
         eq_key = (eq.Rmin, eq.Rmax, eq.Zmin, eq.Zmax, nx, ny)
         return eq_key
 
-    """
-    Things for flux loops
-    """
-
     def create_greens_psi_single_coil(self, eq, coil_key, probe="floops"):
         """
-        Create array of greens functions for given coil evaluate at all probe positions
-        - pos_R and pos_Z are arrays of R,Z coordinates of the probes
-        - defines array of greens for each filament at each probe.
-        - multiplies by polarity and multiplier
-        - then sums over filaments to return greens function for probes from a given coil
-        - flux loops by default, can apply to other probes too with minor modification
+        Compute the Green's function contribution of a single coil to probe signals.
+
+        This method evaluates the poloidal flux response ψ at all probe locations
+        due to a unit current in a specified coil.
+
+        Parameters
+        ----------
+        eq : Equilibrium
+            Equilibrium object containing the tokamak model and coil definitions.
+        coil_key : str
+            Identifier of the coil in `eq.tokamak` for which the Green's function
+            is computed.
+        probe : {"floops"}, optional
+            Type of diagnostic probe to evaluate. Currently only flux loops
+            ("floops") are supported.
+
+        Returns
+        -------
+        np.ndarray
+            Array of ψ values at each probe location due to a unit current in the
+            specified coil.
+
+        Notes
+        -----
+        - Probe positions are taken from `self.floop_pos` when `probe="floops"`.
+        - The computation is delegated to:
+        `eq.tokamak[coil_key].controlPsi(R, Z)`
+        - The result corresponds to a linear response (unit current assumption).
         """
+
         if probe == "floops":
             pos_R = self.floop_pos[:, 0]
             pos_Z = self.floop_pos[:, 1]
 
-        # pol = self.coils_dict[coil_key]["polarity"][np.newaxis, :]
-        # mul = self.coils_dict[coil_key]["multiplier"][np.newaxis, :]
-
-        # greens_filaments = Greens(
-        #     self.coils_dict[coil_key]["coords"][0][np.newaxis, :],
-        #     self.coils_dict[coil_key]["coords"][1][np.newaxis, :],
-        #     pos_R[:, np.newaxis],
-        #     pos_Z[:, np.newaxis],
-        # )
-        # greens_filaments *= pol
-        # greens_filaments *= mul
-        # greens_psi_coil = np.sum(greens_filaments, axis=1)
         greens_psi_coil = eq.tokamak[coil_key].controlPsi(pos_R, pos_Z)
 
         return greens_psi_coil
 
     def create_greens_psi_all_coils(self, eq, probe="floops"):
         """
-        Create 2d array of greens functions for all coils and at all probe positions
-        - array[i][j] is greens function for coil i evaluated at probe position j
+        Compute the Green's function matrix relating all coils to all probe
+        locations for poloidal flux measurements.
+
+        This builds a full response matrix where each entry represents the
+        contribution of a unit current in a coil to the flux measured at a
+        specific diagnostic probe.
+
+        Parameters
+        ----------
+        eq : Equilibrium
+            Equilibrium object containing coil geometry and Green's function
+            evaluation methods.
+        probe : {"floops"}, optional
+            Type of diagnostic probe. Currently only flux loops ("floops") are
+            supported.
+
+        Returns
+        -------
+        np.ndarray
+            2D array of shape (n_coils, n_probes), where entry [i, j] gives the
+            poloidal flux ψ at probe j due to a unit current in coil i.
+
+        Notes
+        -----
+        - Each row corresponds to a coil in `self.coils_dict`.
+        - Each column corresponds to a flux loop in `self.floop_pos`.
+        - The matrix assumes linear superposition of coil contributions.
+        - Computation is performed via repeated calls to
+        `create_greens_psi_single_coil`.
         """
 
         array = np.array([]).reshape(0, self.number_floops)
@@ -249,9 +396,31 @@ class Probes:
 
     def psi_floop_all_coils(self, eq, probe="floops"):
         """
-        compute flux function summed over all coils.
-        returns array of flux values at the positions of the floop probes by default.
-        new probes can be used instead (just change which greens function is used)
+        Compute the total poloidal flux at all flux loop locations due to all coils.
+
+        This method forms the linear superposition of coil contributions using the
+        precomputed Green's function matrix and the current coil state from the
+        equilibrium.
+
+        Parameters
+        ----------
+        eq : Equilibrium
+            Equilibrium object providing the current coil state via `get_coil_currents`.
+        probe : {"floops"}, optional
+            Diagnostic type. Currently only flux loops ("floops") are supported.
+
+        Returns
+        -------
+        np.ndarray
+            Total poloidal flux ψ at each flux loop location due to all coils.
+
+        Notes
+        -----
+        - Uses the Green's function matrix:
+        `self.greens_psi_coils_floops`
+        - Coil contributions are combined via linear superposition:
+        ψ_total = Σ_i I_i G_i
+        - The ordering of coils is defined by `self.coil_names`.
         """
         array_of_coil_currents = self.get_coil_currents(eq)
         if probe == "floops":
@@ -265,9 +434,35 @@ class Probes:
 
     def create_green_psi_plasma(self, eq, probe="floops"):
         """
-        Compute greens function at probes from the plasma currents .
-        - plasma current source in grid from solve. grid points contained in eq object
-        - evaluated on flux loops by default, can apply to other probes too with minor modification
+        Compute the Green's function mapping plasma current density to probe
+        measurements of poloidal flux ψ.
+
+        This constructs the response of each diagnostic probe to unit plasma
+        current sources distributed over the equilibrium grid (restricted to the
+        limiter-allowed region).
+
+        Parameters
+        ----------
+        eq : Equilibrium
+            Equilibrium object containing the plasma current grid and limiter
+            mapping.
+        probe : {"floops"}, optional
+            Diagnostic type. Currently only flux loops ("floops") are supported.
+
+        Returns
+        -------
+        np.ndarray
+            Green's function array mapping plasma current elements to flux loop
+            measurements. Shape is typically (n_plasma_cells, n_probes).
+
+        Notes
+        -----
+        - Plasma source points are taken from:
+        `eq.limiter_handler.plasma_pts`
+        - Probe positions are taken from `self.floop_pos`.
+        - The returned object represents a linear operator for:
+            ψ_probe = G_plasma → probe · I_plasma
+        - Only in-limiter plasma points are included in the computation.
         """
 
         if probe == "floops":
@@ -286,9 +481,36 @@ class Probes:
 
     def psi_from_plasma(self, eq, probe="floops"):
         """
-        Calculate flux function contribution from the plasma
-        - returns array of flux values from plasma at position of floop probes
-        - evaluated on flux loops by default, can apply to other probes too with minor modification
+        Compute the contribution of plasma current to poloidal flux measurements
+        at diagnostic probes.
+
+        This evaluates the linear mapping from distributed plasma current density
+        to flux loop signals using precomputed or lazily generated Green's
+        functions.
+
+        Parameters
+        ----------
+        eq : Equilibrium
+            Equilibrium object containing plasma current distribution and limiter
+            mapping information.
+        probe : {"floops"}, optional
+            Diagnostic type. Currently only flux loops ("floops") are supported.
+
+        Returns
+        -------
+        np.ndarray
+            Contribution to poloidal flux ψ at each probe due to plasma current.
+
+        Notes
+        -----
+        - Plasma current distribution is obtained via:
+        `get_plasma_current(eq)`
+        - Green's functions are cached per equilibrium grid using:
+        `create_eq_key(eq)`
+        - If no cached plasma Green's function exists for the given equilibrium,
+        it is computed on demand via `create_green_psi_plasma`.
+        - The final signal is computed by linear superposition:
+            ψ = Σ_i G_i I_i
         """
         eq_key = self.create_eq_key(eq)
         plasma_current_distribution = self.get_plasma_current(eq)
@@ -312,48 +534,66 @@ class Probes:
 
     def calculate_fluxloop_value(self, eq):
         """
-        total flux for all floop probes
+        Compute the total flux loop signals by combining coil and plasma
+        contributions.
+
+        This method returns the full synthetic flux loop measurement at all
+        diagnostic locations by summing the magnetic response from coil currents
+        and plasma current distribution.
+
+        Parameters
+        ----------
+        eq : Equilibrium
+            Equilibrium object containing both coil currents and plasma current
+            density.
+
+        Returns
+        -------
+        np.ndarray
+            Total poloidal flux ψ at each flux loop location.
+
+        Notes
+        -----
+        - Coil contribution:
+        `psi_floop_all_coils(eq)`
+        - Plasma contribution:
+        `psi_from_plasma(eq)`
+        - Assumes linear superposition of magnetic fields.
         """
         return self.psi_floop_all_coils(eq) + self.psi_from_plasma(eq)
 
-    """
-    Things for pickup coils
-    """
-
     def create_greens_BrBz_single_coil(self, eq, coil_key, probe="pickups"):
         """
-        Create array of greens functions for given coil evaluate at all pickup positions
-        - defines array of greens for each filament at each probe.
-        - multiplies by polarity and multiplier
-        - then sums over filaments to return greens function for probes from a given coil
-        - evaluated on pickups by default, can apply to other probes too with minor modification
+        Compute Green's functions for the magnetic field (Br, Bz) from a single coil,
+        evaluated at a set of probe locations.
+
+        This function:
+        - Evaluates the radial (Br) and vertical (Bz) magnetic field contributions
+        from all filaments in the specified coil.
+        - Computes these contributions at the chosen probe positions (default: pickup coils).
+        - Returns the Green's function matrices mapping coil filament currents
+        to magnetic field components at the probe locations.
+
+        Parameters
+        ----------
+        eq : object
+            Equilibrium object containing the tokamak configuration.
+        coil_key : str
+            Key identifying the coil within `eq.tokamak`.
+        probe : str, optional
+            Location set where the field is evaluated.
+            Currently only "pickups" is implemented (default).
+
+        Returns
+        -------
+        greens_br_coil : ndarray
+            Green's function matrix for Br at probe locations.
+        greens_bz_coil : ndarray
+            Green's function matrix for Bz at probe locations.
         """
         if probe == "pickups":
             pos_R = self.pickup_pos[:, 0]
             pos_Z = self.pickup_pos[:, 2]
-
-        # pol = self.coils_dict[coil_key]["polarity"][np.newaxis, :]
-        # mul = self.coils_dict[coil_key]["multiplier"][np.newaxis, :]
-        # greens_br_filaments = GreensBr(
-        #     self.coils_dict[coil_key]["coords"][0][np.newaxis, :],
-        #     self.coils_dict[coil_key]["coords"][1][np.newaxis, :],
-        #     pos_R[:, np.newaxis],
-        #     pos_Z[:, np.newaxis],
-        # )
-        # greens_br_filaments *= pol
-        # greens_br_filaments *= mul
-        # greens_br_coil = np.sum(greens_br_filaments, axis=1)
-
-        # greens_bz_filaments = GreensBz(
-        #     self.coils_dict[coil_key]["coords"][0][np.newaxis, :],
-        #     self.coils_dict[coil_key]["coords"][1][np.newaxis, :],
-        #     pos_R[:, np.newaxis],
-        #     pos_Z[:, np.newaxis],
-        # )
-
-        # greens_bz_filaments *= pol
-        # greens_bz_filaments *= mul
-        # greens_bz_coil = np.sum(greens_bz_filaments, axis=1)
 
         greens_br_coil = eq.tokamak[coil_key].controlBr(pos_R, pos_Z)
         greens_bz_coil = eq.tokamak[coil_key].controlBz(pos_R, pos_Z)
@@ -362,9 +602,30 @@ class Probes:
 
     def greens_BrBz_all_coils(self, eq, probe="pickups"):
         """
-        Create 2d array of greens functions for all coils and at all probe positions
-        - array[i][j] is greens function for coil i evaluated at probe position j
-        - evaluated on pickups by default, can apply to other probes too with minor modification
+        Compute Green's function matrices for (Br, Bz) contributions from all coils
+        evaluated at a set of probe locations.
+
+        This function assembles the coil-wise Green's functions into global matrices:
+        - Each row corresponds to a coil in `self.coils_dict`
+        - Each column corresponds to a probe location
+        - Entries represent the magnetic field response (Br or Bz) at a probe due to a given coil
+
+        Parameters
+        ----------
+        eq : object
+            Equilibrium object containing the tokamak configuration.
+        probe : str, optional
+            Set of probe locations where fields are evaluated.
+            Currently only "pickups" is implemented (default).
+
+        Returns
+        -------
+        array_r : ndarray
+            Global Green's function matrix for radial field component Br,
+            shape (n_coils, n_probes).
+        array_z : ndarray
+            Global Green's function matrix for vertical field component Bz,
+            shape (n_coils, n_probes).
         """
         if probe == "pickups":
             array_r = np.array([]).reshape(0, self.number_pickups)
@@ -379,7 +640,30 @@ class Probes:
 
     def create_greens_B_oriented_coils(self, eq, probe="pickups"):
         """
-        perform dot product of greens function vector with pickup coil orientation
+        Compute the directional Green's function for coils projected onto probe orientations.
+
+        This function evaluates the magnetic field Green's functions (Br, Bz) from all coils
+        and projects them onto the local orientation of each probe. This yields the component
+        of the magnetic field aligned with the probe direction.
+
+        Mathematically, for each coil i and probe j:
+            G_oriented[i, j] = Br[i, j] * or_R[j] + Bz[i, j] * or_Z[j]
+
+        where (or_R, or_Z) defines the unit orientation vector of the probe in (R, Z).
+
+        Parameters
+        ----------
+        eq : object
+            Equilibrium object containing the tokamak configuration.
+        probe : str, optional
+            Probe set at which the field is evaluated.
+            Currently only "pickups" is implemented (default).
+
+        Returns
+        -------
+        prod : ndarray
+            Oriented Green's function matrix of shape (n_coils, n_probes),
+            representing the projection of (Br, Bz) onto probe orientations.
         """
         if probe == "pickups":
             or_R = self.pickup_or[:, 0]
@@ -392,8 +676,34 @@ class Probes:
 
     def BrBz_coils(self, eq, probe="pickups"):
         """
-        Magnetic fields from coils, radial and z components only.
-        evaluated on pickup positions by default.
+        Compute magnetic field components (Br, Bz) produced by all coils
+        at a set of probe locations.
+
+        The fields are obtained by contracting precomputed Green's functions
+        with the coil current vector:
+
+            Br[j] = sum_i G_br[i, j] * I_i
+            Bz[j] = sum_i G_bz[i, j] * I_i
+
+        where:
+            - i indexes coils
+            - j indexes probe locations
+            - I_i is the current in coil i
+
+        Parameters
+        ----------
+        eq : object
+            Equilibrium object containing the tokamak configuration.
+        probe : str, optional
+            Probe set at which fields are evaluated.
+            Currently only "pickups" is implemented (default).
+
+        Returns
+        -------
+        br_coil : ndarray
+            Radial magnetic field at probe locations, shape (n_probes,).
+        bz_coil : ndarray
+            Vertical magnetic field at probe locations, shape (n_probes,).
         """
         coil_currents = self.get_coil_currents(eq)[:, np.newaxis]
         if probe == "pickups":
@@ -403,9 +713,40 @@ class Probes:
 
     def create_greens_BrBz_plasma(self, eq, probe="pickups"):
         """
-        Compute greens function at probes from the plasma currents .
-        - plasma current source in grid from solve. grid points contained in eq object
-        - evaluated on pickups by default, can apply to other probes too with minor modification
+        Compute Green's functions for magnetic field components (Br, Bz)
+        produced by plasma current elements and evaluated at probe locations.
+
+        This constructs the plasma-to-probe coupling matrices by evaluating
+        the Biot–Savart kernel between discrete plasma grid points and probes.
+
+        The resulting Green's functions map plasma current density (at grid points)
+        to magnetic field at probes:
+
+            Br[j] = sum_i G_br[i, j] * J_i
+            Bz[j] = sum_i G_bz[i, j] * J_i
+
+        where:
+            - i indexes plasma grid / limiter-handler points
+            - j indexes probe locations
+            - J_i represents plasma current contribution at grid point i
+
+        Parameters
+        ----------
+        eq : object
+            Equilibrium object containing:
+            - plasma grid points in `eq.limiter_handler.plasma_pts`
+        probe : str, optional
+            Probe set where fields are evaluated.
+            Currently only "pickups" is implemented (default).
+
+        Returns
+        -------
+        greens_br : object / ndarray
+            Green's function for radial field component Br
+            mapping plasma grid points to probes.
+        greens_bz : object / ndarray
+            Green's function for vertical field component Bz
+            mapping plasma grid points to probes.
         """
         if probe == "pickups":
             pos_R = self.pickup_pos[:, 0]
@@ -432,7 +773,36 @@ class Probes:
 
     def create_greens_B_oriented_plasma(self, eq, probe="pickups"):
         """
-        perform dot product of greens function vector with orientation
+        Compute the oriented Green's function for plasma current contributions
+        projected onto probe directions.
+
+        This function first computes the plasma-to-probe Green's functions
+        for the magnetic field components (Br, Bz), and then projects them
+        onto the local orientation of each probe.
+
+        The resulting kernel represents the magnetic field component aligned
+        with the probe orientation:
+
+            G_oriented[i, j] = Br[i, j] * or_R[j] + Bz[i, j] * or_Z[j]
+
+        where:
+            - i indexes plasma grid points
+            - j indexes probe locations
+            - (or_R, or_Z) is the unit orientation vector at each probe
+
+        Parameters
+        ----------
+        eq : object
+            Equilibrium object containing plasma grid information.
+        probe : str, optional
+            Probe set at which the field is evaluated.
+            Currently only "pickups" is implemented (default).
+
+        Returns
+        -------
+        prod : ndarray
+            Oriented Green's function matrix mapping plasma currents
+            to field components aligned with probe orientation.
         """
         br, bz = self.create_greens_BrBz_plasma(eq)
 
@@ -444,7 +814,40 @@ class Probes:
 
     def BrBz_plasma(self, eq, probe="pickups"):
         """
-        Magnetic fields from plasma
+        Compute magnetic field components (Br, Bz) generated by plasma currents
+        at a set of probe locations.
+
+        This function uses precomputed (or lazily generated) Green's functions
+        mapping plasma grid current elements to probe measurements, then contracts
+        them with the plasma current distribution.
+
+        The field is computed as:
+
+            Br[j] = sum_i G_br[i, j] * I_i
+            Bz[j] = sum_i G_bz[i, j] * I_i
+
+        where:
+            - i indexes plasma grid points
+            - j indexes probe locations
+            - I_i is the plasma current at grid point i
+
+        The Green's functions are cached per equilibrium via `eq_key` to avoid
+        recomputation when the plasma grid is unchanged.
+
+        Parameters
+        ----------
+        eq : object
+            Equilibrium object containing plasma current and grid information.
+        probe : str, optional
+            Probe set at which fields are evaluated.
+            Currently only "pickups" is implemented (default).
+
+        Returns
+        -------
+        br_plasma : ndarray
+            Radial magnetic field at probe locations, shape (n_probes,).
+        bz_plasma : ndarray
+            Vertical magnetic field at probe locations, shape (n_probes,).
         """
         eq_key = self.create_eq_key(eq)
         plasma_current = self.get_plasma_current(eq)[:, np.newaxis]
@@ -465,9 +868,36 @@ class Probes:
 
     def Br(self, eq, probe="pickups"):
         """
-        Method to compute total radial magnetic field from coil and plasma
-        returns array with Br at each pickup coil probe
-        - evaluated on pickups by default, can apply to other probes too with minor modification
+        Compute the total radial magnetic field (Br) from both coils and plasma
+        at a set of probe locations.
+
+        The total field is the sum of contributions from discrete coils and the
+        distributed plasma current:
+
+            Br_total[j] = sum_i G_coil[i, j] * I_coil[i]
+                        + sum_k G_plasma[k, j] * I_plasma[k]
+
+        where:
+            - i indexes coils
+            - k indexes plasma grid points
+            - j indexes probe locations
+
+        Green's functions for the plasma contribution are cached per equilibrium
+        using `eq_key` and computed lazily if not already available.
+
+        Parameters
+        ----------
+        eq : object
+            Equilibrium object containing coil and plasma current information,
+            as well as grid definitions.
+        probe : str, optional
+            Probe set at which the field is evaluated.
+            Currently only "pickups" is implemented (default).
+
+        Returns
+        -------
+        br_total : ndarray
+            Total radial magnetic field at probe locations, shape (n_probes,).
         """
         coil_currents = self.get_coil_currents(eq)[:, np.newaxis]
         plasma_current = self.get_plasma_current(eq)[:, np.newaxis]
@@ -488,9 +918,36 @@ class Probes:
 
     def Bz(self, eq, probe="pickups"):
         """
-        Method to compute total z component of magnetic field from coil and plasma
-        returns array with Bz at each pickup coil probe
-        - evaluated on pickups by default, can apply to other probes too with minor modification
+        Compute the total vertical magnetic field (Bz) from both coils and plasma
+        at a set of probe locations.
+
+        The total field is the sum of contributions from discrete coils and the
+        distributed plasma current:
+
+            Bz_total[j] = sum_i G_coil[i, j] * I_coil[i]
+                        + sum_k G_plasma[k, j] * I_plasma[k]
+
+        where:
+            - i indexes coils
+            - k indexes plasma grid points
+            - j indexes probe locations
+
+        Plasma Green's functions are cached per equilibrium using `eq_key` and
+        are computed lazily if not already available.
+
+        Parameters
+        ----------
+        eq : object
+            Equilibrium object containing coil and plasma current information,
+            as well as grid definitions.
+        probe : str, optional
+            Probe set at which the field is evaluated.
+            Currently only "pickups" is implemented (default).
+
+        Returns
+        -------
+        bz_total : ndarray
+            Total vertical magnetic field at probe locations, shape (n_probes,).
         """
         coil_currents = self.get_coil_currents(eq)[:, np.newaxis]
         plasma_current = self.get_plasma_current(eq)[:, np.newaxis]
@@ -512,9 +969,32 @@ class Probes:
 
     def Btor(self, eq, probe="pickups"):
         """
-        Probes outside of plasma therefore Btor = fvac/R
-        returns array of btor for each probe position
-        - evaluated on pickups by default, can apply to other probes too with minor modification
+        Compute the toroidal magnetic field (Btor) at probe locations.
+
+        The toroidal field is assumed to follow the vacuum scaling law:
+
+            Btor(R) = f_vac / R
+
+        where:
+            - f_vac is the vacuum toroidal field function from the equilibrium
+            - R is the major radius of the probe location
+
+        This approximation assumes probes are located outside the plasma,
+        where the toroidal field is purely vacuum-like.
+
+        Parameters
+        ----------
+        eq : object
+            Equilibrium object providing the vacuum toroidal field profile
+            via `eq._profiles.fvac()`.
+        probe : str, optional
+            Probe set at which the field is evaluated.
+            Currently only "pickups" is implemented (default).
+
+        Returns
+        -------
+        btor : ndarray
+            Toroidal magnetic field at probe locations, shape (n_probes,).
         """
         if probe == "pickups":
             pos_R = self.pickup_pos[:, 0]
@@ -522,21 +1002,38 @@ class Probes:
         btor = eq._profiles.fvac() / pos_R
         return btor
 
-    # def calculate_pickup_value_v1(self,eq,probe = 'pickups'):
-    #     """
-    #     OLD VERSION
-    #     Method to compute and return B.n, for pickup coils
-    #     """
-    #     orientation = self.pickup_or.transpose()
-    #     Btotal = np.vstack((self.Br(eq),self.Btor(eq,probe),self.Bz(eq)))
-
-    #     BdotN = np.sum(orientation*Btotal, axis = 0)
-
-    #     return BdotN
-
     def calculate_pickup_value(self, eq, probe="pickups"):
         """
-        Compute B.n at pickup probes, using oriented greens functions.
+        Compute the magnetic field projection (B · n) at pickup probes.
+
+        This function evaluates the total magnetic field at pickup locations
+        and projects it onto the local probe orientation vector n.
+
+        The total pickup signal is composed of three contributions:
+
+            (B · n)_j = (B_coil · n)_j + (B_plasma · n)_j + (B_tor · n)_j
+
+        where:
+            - j indexes pickup probes
+            - coil and plasma terms are computed using precomputed oriented
+            Green's functions
+            - the toroidal field contribution is projected via the pickup
+            orientation component in the toroidal direction
+
+        Parameters
+        ----------
+        eq : object
+            Equilibrium object containing coil currents, plasma currents,
+            and magnetic field profiles.
+        probe : str, optional
+            Probe set at which the signal is evaluated.
+            Currently only "pickups" is implemented (default).
+
+        Returns
+        -------
+        signal : ndarray
+            Scalar pickup signal (B · n) at each probe location,
+            shape (n_probes,).
         """
         coil_current = self.get_coil_currents(eq)[:, np.newaxis]
         plasma_current = self.get_plasma_current(eq)[:, np.newaxis]
@@ -563,18 +1060,27 @@ class Probes:
 
     def plot(self, axis=None, show=True, floops=True, pickups=True, pickups_scale=0.05):
         """
-        Plot the magnetic probes.
+        Plot magnetic diagnostic probes (fluxloops and pickup coils).
 
-        axis     - Specify the axis on which to plot
-        show     - Call matplotlib.pyplot.show() before returning
-        floops   - Plot the fluxloops
-        pickups  - Plot the pickup coils
+        This is a convenience wrapper around `freegs4e.plotting.plotProbes`.
+
+        Parameters
+        ----------
+        axis : matplotlib.axes.Axes, optional
+            Matplotlib axis to draw on. If None, a new figure/axis is created.
+        show : bool, optional
+            If True, calls `matplotlib.pyplot.show()` before returning.
+        floops : bool, optional
+            If True, plots fluxloop diagnostics.
+        pickups : bool, optional
+            If True, plots pickup coil diagnostics.
+        pickups_scale : float, optional
+            Scaling factor for visual representation of pickup coil orientation.
 
         Returns
         -------
-
-        axis  object from Matplotlib
-
+        axis : matplotlib.axes.Axes
+            Matplotlib axis containing the plotted probes.
         """
         from freegs4e.plotting import plotProbes
 

@@ -365,7 +365,7 @@ class SystemsController:
 
             if key[-4:] == "pert":
                 ax.set_ylabel(rf"{key} [$A$]")
-            elif key in ["min_coil_curr_lims", "min_coil_curr_lims"]:
+            elif key in ["min_coil_curr_lims", "max_coil_curr_lims"]:
                 ax.set_ylabel(rf"{key} [$A$]")
             elif key == "max_coil_curr_ramp_lims":
                 ax.set_ylabel(rf"{key} [$A/s$]")

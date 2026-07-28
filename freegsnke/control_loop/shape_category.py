@@ -138,11 +138,6 @@ class ShapeController:
 
         Notes
         -----
-        If `mode` is not one of the recognised values, `run_control`,
-        `keys_to_spline`, and `keys_to_step` are never set, and the
-        subsequent validation loop and `update_interpolants` call will raise
-        an `AttributeError` rather than a clear error about the invalid mode.
-
         Calls `update_interpolants` at the end of initialisation to build
         the interpolating functions from `data`.
         """
@@ -427,7 +422,6 @@ class ShapeController:
         -----
         - The integral term is updated using trapezoidal integration.
         - The final output blends feedforward and feedback derivatives based on a dynamic blend factor.
-        - THIS FUNCTION IS UNTESTED.
         """
 
         # extract data

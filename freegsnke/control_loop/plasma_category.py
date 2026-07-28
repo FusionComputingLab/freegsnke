@@ -186,7 +186,6 @@ class PlasmaController:
         proportional gain (`k_prop`), integral gain (`k_int`), integral gain (`k_deriv`), blend factor (`ip_blend`),
         feedforward voltage (`vloop_ff`), and solenoid inductance (`M_solenoid`).
         - The blend factor determines the weighting between feedback and feedforward control.
-        - The integral term is computed using the trapezoidal rule for numerical integration.
         """
 
         # extract data

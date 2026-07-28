@@ -49,9 +49,6 @@ class PlasmaControlSystem:
     ctrl_coils : list of str
         List of all active coils being used for shape control.
 
-    solenoid_coils : list of str
-        List of all active coils being used for plasma current control.
-
     vertical_coils : list of str
         List of all active coils being used for vertical control.
 
@@ -106,7 +103,6 @@ class PlasmaControlSystem:
         coil_activation_data,
         active_coils,
         ctrl_coils,
-        solenoid_coils,
         vertical_coils,
         ctrl_targets,
         plasma_target,
@@ -144,8 +140,6 @@ class PlasmaControlSystem:
         ctrl_coils : list of str
             Names of the coils used for shape/virtual-circuit control. Passed
             to `VirtualCircuitsController` and `SystemsController`.
-        solenoid_coils : list of str
-            Names of the solenoid coils.
         vertical_coils : list of str
             Names of the coils used for vertical position control.
         ctrl_targets : list or dict
@@ -172,8 +166,6 @@ class PlasmaControlSystem:
             Stored copy of `active_coils`.
         ctrl_coils : list of str
             Stored copy of `ctrl_coils`.
-        solenoid_coils : list of str
-            Stored copy of `solenoid_coils`.
         vertical_coils : list of str
             Stored copy of `vertical_coils`.
         ctrl_targets : list or dict
@@ -195,16 +187,11 @@ class PlasmaControlSystem:
         CoilActivationController : CoilActivationController
             Sub-controller handling per-coil activation state.
 
-        Notes
-        -----
-        `solenoid_coils` is stored but not passed to any sub-controller here;
-        it is presumably used elsewhere in the class.
         """
 
         # coil ordering
         self.active_coils = active_coils
         self.ctrl_coils = ctrl_coils
-        self.solenoid_coils = solenoid_coils
         self.vertical_coils = vertical_coils
 
         # shape targets

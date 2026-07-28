@@ -209,7 +209,10 @@ class VirtualCircuitsController:
         # interpolate the input data
         self.update_interpolants()
 
-        # store emulated VCs class if present
+        # storage
+        self.full_vc_matrix = []
+
+        # use emulated VCs class if present
         self.vc_generator = vc_generator
         if self.vc_generator:
             # how often to update emulated VCs (in seconds)
@@ -225,7 +228,6 @@ class VirtualCircuitsController:
             self.emulated_jacobian_list = []
             self.emulated_vc_list = []
             self.emulated_vc_times = []
-            self.full_vc_matrix = []
 
     def update_interpolants(self):
         """

@@ -24,6 +24,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from freegsnke.control_loop.useful_functions import (
+    Waveform,
     check_data_entry,
     interpolate_spline,
     interpolate_step,
@@ -70,9 +71,9 @@ class CoilActivationController:
 
     def __init__(
         self,
-        data,
-        active_coils,
-    ):
+        data: dict[str, Waveform],
+        active_coils: list[str],
+    ) -> None:
         """
         Initialise the coil activation controller.
 
@@ -134,7 +135,7 @@ class CoilActivationController:
         # interpolate the input data
         self.update_interpolants()
 
-    def update_interpolants(self):
+    def update_interpolants(self) -> None:
         """
         Recompute all interpolant functions from the current `self.data`.
 
@@ -158,10 +159,10 @@ class CoilActivationController:
 
     def run_control(
         self,
-        t,
-        dt,
-        active_coil_resists,
-    ):
+        t: float,
+        dt: float,
+        active_coil_resists: np.ndarray,
+    ) -> np.ndarray:
         """
         Compute effective coil resistances at a given time step.
 
@@ -199,10 +200,10 @@ class CoilActivationController:
 
     def extract_values(
         self,
-        t,
-        targets,
-        deriv=False,
-    ):
+        t: float,
+        targets: list[str],
+        deriv: bool = False,
+    ) -> np.ndarray:
         """
         Extracts interpolated values or their derivatives for specified shape targets at a given time.
 
@@ -241,7 +242,7 @@ class CoilActivationController:
                 [self.interpolants[target + "_activation"](t) for target in targets]
             )
 
-    def plot_data(self, tmin=-1.0, tmax=1.0, nt=1001):
+    def plot_data(self, tmin: float = -1.0, tmax: float = 1.0, nt: int = 1001) -> None:
         """
         Visualizes interpolated control waveforms and corresponding raw inputs.
 

@@ -19,6 +19,8 @@ You should have received a copy of the GNU Lesser General Public License
 along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 """
 
+from typing import Any, Optional, Protocol, Tuple
+
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -27,6 +29,19 @@ from freegsnke.control_loop.useful_functions import (
     interpolate_spline,
     interpolate_step,
 )
+
+
+class VCGenerator(Protocol):
+    """The interface an emulated virtual-circuit generator must implement."""
+
+    def get_vc(
+        self,
+        targets: list[str],
+        targets_calc: list[str],
+        coils: list[str],
+        coils_calc: list[str],
+        input_data: Optional[np.ndarray],
+    ) -> np.ndarray: ...
 
 
 class VirtualCircuitsController:
@@ -70,13 +85,14 @@ class VirtualCircuitsController:
 
     def __init__(
         self,
-        data,
-        ctrl_coils,
-        ctrl_targets,
-        plasma_target,
-        vc_generator=None,
-        vc_update_rate=None,
-    ):
+        # heterogeneous: per-coil/target `Waveform` entries, plus a "coil_order" list[str]
+        data: dict[str, Any],
+        ctrl_coils: list[str],
+        ctrl_targets: list[str],
+        plasma_target: list[str],
+        vc_generator: Optional[VCGenerator] = None,
+        vc_update_rate: Optional[float] = None,
+    ) -> None:
         """
         Initialise the virtual circuits controller.
 
@@ -229,7 +245,7 @@ class VirtualCircuitsController:
             self.emulated_vc_list = []
             self.emulated_vc_times = []
 
-    def update_interpolants(self):
+    def update_interpolants(self) -> None:
         """
         Recompute all interpolant functions from the current `self.data`.
 
@@ -251,17 +267,17 @@ class VirtualCircuitsController:
 
     def run_control(
         self,
-        t,
-        dt,
-        dip_dt,
-        dT_dt,
-        I_approved_prev,
-        emulated_VC_targets=None,
-        emulated_VC_targets_calc=None,
-        emulator_coils_calc=None,
-        emu_inputs=None,
-        verbose=False,
-    ):
+        t: float,
+        dt: float,
+        dip_dt: float,
+        dT_dt: np.ndarray,
+        I_approved_prev: np.ndarray,
+        emulated_VC_targets: Optional[list[str]] = None,
+        emulated_VC_targets_calc: Optional[list[str]] = None,
+        emulator_coils_calc: Optional[list[str]] = None,
+        emu_inputs: Optional[np.ndarray] = None,
+        verbose: bool = False,
+    ) -> Tuple[np.ndarray, np.ndarray]:
         """
         Computes the unapproved coil currents and their rates of change based on feedforward
         coil current references and virtual circuit transformations.
@@ -410,10 +426,10 @@ class VirtualCircuitsController:
 
     def extract_values(
         self,
-        t,
-        targets,
-        deriv=False,
-    ):
+        t: float,
+        targets: list[str],
+        deriv: bool = False,
+    ) -> np.ndarray:
         """
         Extracts interpolated values or their derivatives for specified shape targets at a given time.
 
@@ -447,7 +463,9 @@ class VirtualCircuitsController:
         else:
             return np.array([self.interpolants[target](t) for target in targets])
 
-    def plot_data_FF_currents(self, tmin=-1.0, tmax=1.0, nt=1001):
+    def plot_data_FF_currents(
+        self, tmin: float = -1.0, tmax: float = 1.0, nt: int = 1001
+    ) -> None:
         """
         Visualizes interpolated control waveforms and corresponding raw inputs.
 
@@ -541,7 +559,9 @@ class VirtualCircuitsController:
         plt.tight_layout(rect=[0, 0, 1, 0.97])
         plt.show()
 
-    def plot_data_VCs(self, tmin=-1.0, tmax=1.0, nt=1001):
+    def plot_data_VCs(
+        self, tmin: float = -1.0, tmax: float = 1.0, nt: int = 1001
+    ) -> None:
         """
         Visualizes virtual circuits times and corresponding raw inputs.
 

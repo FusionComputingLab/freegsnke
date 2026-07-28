@@ -19,11 +19,14 @@ You should have received a copy of the GNU Lesser General Public License
 along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 """
 
+from typing import Tuple
+
 import matplotlib.pyplot as plt
 import numpy as np
 
 from freegsnke.control_loop.useful_functions import (
     PID,
+    Waveform,
     check_data_entry,
     interpolate_spline,
     interpolate_step,
@@ -64,8 +67,8 @@ class PlasmaController:
 
     def __init__(
         self,
-        data,
-    ):
+        data: dict[str, Waveform],
+    ) -> None:
         """
         Initialise the plasma current controller.
 
@@ -125,7 +128,7 @@ class PlasmaController:
         # interpolate the input data
         self.update_interpolants()
 
-    def update_interpolants(self):
+    def update_interpolants(self) -> None:
         """
         Recompute all interpolant functions from the current `self.data`.
 
@@ -149,12 +152,12 @@ class PlasmaController:
 
     def run_control(
         self,
-        t,
-        dt,
-        ip_meas,
-        ip_hist_prev,
-        ip_err_prev,
-    ):
+        t: float,
+        dt: float,
+        ip_meas: float,
+        ip_hist_prev: float,
+        ip_err_prev: float,
+    ) -> Tuple[float, float, float]:
         """
         Computes the time derivative of the plasma current request (`dip_dt`) and updates the
         integral history of the plasma current error (`ip_hist`) using a blended feedback and
@@ -227,7 +230,7 @@ class PlasmaController:
 
         return dip_dt, ip_hist, ip_err
 
-    def plot_data(self, tmin=-1.0, tmax=1.0, nt=1001):
+    def plot_data(self, tmin: float = -1.0, tmax: float = 1.0, nt: int = 1001) -> None:
         """
         Visualizes interpolated control waveforms and corresponding raw inputs.
 

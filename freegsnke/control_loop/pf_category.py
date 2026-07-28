@@ -23,6 +23,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from freegsnke.control_loop.useful_functions import (
+    Waveform,
     check_data_entry,
     interpolate_spline,
     interpolate_step,
@@ -66,8 +67,8 @@ class PFController:
 
     def __init__(
         self,
-        data,
-    ):
+        data: dict[str, Waveform],
+    ) -> None:
         """
         Initialise the PF (poloidal field) coil controller.
 
@@ -132,7 +133,7 @@ class PFController:
         # interpolate the input data
         self.update_interpolants()
 
-    def update_interpolants(self):
+    def update_interpolants(self) -> None:
         """
         Recompute all interpolant functions from the current `self.data`.
 
@@ -152,14 +153,14 @@ class PFController:
 
     def run_control(
         self,
-        t,
-        dt,
-        I_meas,
-        I_approved,
-        dI_dt_approved,
-        V_approved_prev,
-        verbose=False,
-    ):
+        t: float,
+        dt: float,
+        I_meas: np.ndarray,
+        I_approved: np.ndarray,
+        dI_dt_approved: np.ndarray,
+        V_approved_prev: np.ndarray,
+        verbose: bool = False,
+    ) -> np.ndarray:
         """
         Computes the approved coil voltage commands based on measured and approved currents,
         while enforcing voltage and slew rate constraints.
@@ -231,9 +232,9 @@ class PFController:
 
     def extract_values(
         self,
-        t,
-        targets,
-    ):
+        t: float,
+        targets: list[str],
+    ) -> np.ndarray:
         """
         Extracts interpolated values for specified shape targets at a given time.
 
@@ -256,7 +257,7 @@ class PFController:
 
         return np.array([self.interpolants[target](t) for target in targets])
 
-    def plot_data(self, tmin=-1.0, tmax=1.0, nt=1001):
+    def plot_data(self, tmin: float = -1.0, tmax: float = 1.0, nt: int = 1001) -> None:
         """
         Visualizes interpolated control waveforms and corresponding raw inputs.
 

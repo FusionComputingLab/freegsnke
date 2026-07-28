@@ -20,6 +20,8 @@ along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 # imports
+from typing import Any, Optional, Tuple
+
 import numpy as np
 
 from .coil_activation_category import CoilActivationController
@@ -27,8 +29,9 @@ from .pf_category import PFController
 from .plasma_category import PlasmaController
 from .shape_category import ShapeController
 from .systems_category import SystemsController
+from .useful_functions import Waveform
 from .vertical_category import VerticalController
-from .virtual_circuits_category import VirtualCircuitsController
+from .virtual_circuits_category import VCGenerator, VirtualCircuitsController
 
 
 class PlasmaControlSystem:
@@ -94,22 +97,23 @@ class PlasmaControlSystem:
 
     def __init__(
         self,
-        plasma_data,
-        shape_data,
-        circuits_data,
-        systems_data,
-        pf_data,
-        vertical_data,
-        coil_activation_data,
-        active_coils,
-        ctrl_coils,
-        vertical_coils,
-        ctrl_targets,
-        plasma_target,
-        shape_control_mode=None,
-        vc_generator=None,
-        vc_update_rate=None,
-    ):
+        plasma_data: dict[str, Waveform],
+        shape_data: dict[str, dict[str, Waveform]],
+        # heterogeneous: per-coil/target `Waveform` entries, plus a "coil_order" list[str]
+        circuits_data: dict[str, Any],
+        systems_data: dict[str, Waveform],
+        pf_data: dict[str, Waveform],
+        vertical_data: dict[str, Waveform],
+        coil_activation_data: dict[str, Waveform],
+        active_coils: list[str],
+        ctrl_coils: list[str],
+        vertical_coils: list[str],
+        ctrl_targets: list[str],
+        plasma_target: list[str],
+        shape_control_mode: Optional[str] = None,
+        vc_generator: Optional[VCGenerator] = None,
+        vc_update_rate: Optional[float] = None,
+    ) -> None:
         """
         Initialise the top-level control system, composing all sub-controllers.
 
@@ -238,28 +242,30 @@ class PlasmaControlSystem:
 
     def calculate_ctrl_voltages(
         self,
-        t,
-        dt,
-        ip_meas,
-        ip_hist_prev,
-        ip_err_prev,
-        T_meas,
-        T_err_prev,
-        T_hist_prev,
-        I_approved_prev,
-        I_meas,
-        V_approved_prev,
-        zip_meas,
-        zipv_meas,
-        active_coil_resists,
-        dt_simulator=None,
-        emulated_VC_targets=None,
-        emulated_VC_targets_calc=None,
-        emulator_coils_calc=None,
-        emu_inputs=None,
-        vc_update_rate=None,
-        verbose=False,
-    ):
+        t: float,
+        dt: float,
+        ip_meas: float,
+        ip_hist_prev: float,
+        ip_err_prev: float,
+        T_meas: np.ndarray,
+        T_err_prev: np.ndarray,
+        T_hist_prev: np.ndarray,
+        I_approved_prev: np.ndarray,
+        I_meas: np.ndarray,
+        V_approved_prev: np.ndarray,
+        zip_meas: float,
+        zipv_meas: float,
+        active_coil_resists: np.ndarray,
+        dt_simulator: Optional[float] = None,
+        emulated_VC_targets: Optional[list[str]] = None,
+        emulated_VC_targets_calc: Optional[list[str]] = None,
+        emulator_coils_calc: Optional[list[str]] = None,
+        emu_inputs: Optional[np.ndarray] = None,
+        vc_update_rate: Optional[float] = None,
+        verbose: bool = False,
+    ) -> Tuple[
+        np.ndarray, float, float, np.ndarray, np.ndarray, np.ndarray, np.ndarray
+    ]:
         """
         Run the full control pipeline to compute approved coil voltage commands.
 

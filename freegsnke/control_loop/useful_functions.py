@@ -19,13 +19,22 @@ You should have received a copy of the GNU Lesser General Public License
 along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 """
 
+from typing import Any, Optional, Union
+
 import numpy as np
 from scipy.interpolate import UnivariateSpline, interp1d
 
+# a single time-series entry, e.g. {"times": [...], "vals": [...]}
+Waveform = dict[str, Any]
+
+# an interpolant produced by `interpolate_step`/`interpolate_spline`: callable at a
+# time `t`, and (for splines only) supports `.derivative()`
+Interpolant = Union[interp1d, UnivariateSpline]
+
 
 def interpolate_step(
-    data,
-):
+    data: Waveform,
+) -> interp1d:
     """
     Creates a step-wise interpolator for time-series data using 'previous' value interpolation.
 
@@ -60,7 +69,7 @@ def interpolate_step(
     return f_interp
 
 
-def interpolate_spline(data):
+def interpolate_spline(data: Waveform) -> UnivariateSpline:
     """
     Creates a spline interpolator for time-series data in 'data'.
 
@@ -95,10 +104,10 @@ def interpolate_spline(data):
 
 
 def check_data_entry(
-    data: dict,
+    data: dict[str, Waveform],
     key: str,
     controller_name: str,
-) -> bool:
+) -> None:
     """
     Validate that a specified sub-dictionary contains 'times' and 'vals' keys
     of equal length.
@@ -151,13 +160,13 @@ def check_data_entry(
 
 
 def PID(
-    error_prop=None,
-    error_int=None,
-    error_deriv=None,
-    k_prop=0.0,
-    k_int=0.0,
-    k_deriv=0.0,
-):
+    error_prop: Optional[Union[float, np.ndarray]] = None,
+    error_int: Optional[Union[float, np.ndarray]] = None,
+    error_deriv: Optional[Union[float, np.ndarray]] = None,
+    k_prop: Optional[Union[float, np.ndarray]] = 0.0,
+    k_int: Optional[Union[float, np.ndarray]] = 0.0,
+    k_deriv: Optional[Union[float, np.ndarray]] = 0.0,
+) -> Union[float, np.ndarray]:
     """
     Compute a flexible PID controller output.
 

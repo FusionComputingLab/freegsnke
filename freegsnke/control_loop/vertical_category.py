@@ -24,6 +24,7 @@ import numpy as np
 
 from freegsnke.control_loop.useful_functions import (
     PID,
+    Waveform,
     check_data_entry,
     interpolate_spline,
     interpolate_step,
@@ -64,8 +65,8 @@ class VerticalController:
 
     def __init__(
         self,
-        data,
-    ):
+        data: dict[str, Waveform],
+    ) -> None:
         """
         Initialise the vertical position controller.
 
@@ -117,7 +118,7 @@ class VerticalController:
         # interpolate the input data
         self.update_interpolants()
 
-    def update_interpolants(self):
+    def update_interpolants(self) -> None:
         """
         Recompute all interpolant functions from the current `self.data`.
 
@@ -141,12 +142,12 @@ class VerticalController:
 
     def run_control(
         self,
-        t,
-        dt,
-        ip_meas,
-        zip_meas,
-        zipv_meas,
-    ):
+        t: float,
+        dt: float,
+        ip_meas: float,
+        zip_meas: float,
+        zipv_meas: float,
+    ) -> float:
         """
         Compute the control signal for plasma vertical position regulation using a
         proportional-derivative (PD) control law.
@@ -198,7 +199,7 @@ class VerticalController:
 
         return output
 
-    def plot_data(self, tmin=-1.0, tmax=1.0, nt=1001):
+    def plot_data(self, tmin: float = -1.0, tmax: float = 1.0, nt: int = 1001) -> None:
         """
         Visualizes interpolated control waveforms and corresponding raw inputs.
 

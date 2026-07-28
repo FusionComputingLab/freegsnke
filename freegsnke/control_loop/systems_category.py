@@ -19,10 +19,13 @@ You should have received a copy of the GNU Lesser General Public License
 along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 """
 
+from typing import Tuple
+
 import matplotlib.pyplot as plt
 import numpy as np
 
 from freegsnke.control_loop.useful_functions import (
+    Waveform,
     check_data_entry,
     interpolate_spline,
     interpolate_step,
@@ -70,9 +73,9 @@ class SystemsController:
 
     def __init__(
         self,
-        data,
-        ctrl_coils,
-    ):
+        data: dict[str, Waveform],
+        ctrl_coils: list[str],
+    ) -> None:
         """
         Initialise the systems controller.
 
@@ -141,7 +144,7 @@ class SystemsController:
         # interpolate the input data
         self.update_interpolants()
 
-    def update_interpolants(self):
+    def update_interpolants(self) -> None:
         """
         Recompute all interpolant functions from the current `self.data`.
 
@@ -161,7 +164,14 @@ class SystemsController:
         for key in self.keys_to_step:
             self.interpolants[key] = interpolate_step(self.data[key])
 
-    def run_control(self, t, dt, I_unapproved, dI_dt_unapproved, verbose=False):
+    def run_control(
+        self,
+        t: float,
+        dt: float,
+        I_unapproved: np.ndarray,
+        dI_dt_unapproved: np.ndarray,
+        verbose: bool = False,
+    ) -> Tuple[np.ndarray, np.ndarray]:
         """
         Applies coil current perturbations to unapproved coil currents and enforce coil current
         constraints to produce approved control signals.
@@ -234,10 +244,10 @@ class SystemsController:
 
     def extract_values(
         self,
-        t,
-        targets,
-        deriv=False,
-    ):
+        t: float,
+        targets: list[str],
+        deriv: bool = False,
+    ) -> np.ndarray:
         """
         Extracts interpolated values or their derivatives for specified shape targets at a given time.
 
@@ -276,7 +286,7 @@ class SystemsController:
                 [self.interpolants[target + "_pert"](t) for target in targets]
             )
 
-    def plot_data(self, tmin=-1.0, tmax=1.0, nt=1001):
+    def plot_data(self, tmin: float = -1.0, tmax: float = 1.0, nt: int = 1001) -> None:
         """
         Visualizes interpolated control waveforms and corresponding raw inputs.
 

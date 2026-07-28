@@ -19,11 +19,14 @@ You should have received a copy of the GNU Lesser General Public License
 along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 """
 
+from typing import Callable, Optional, Tuple
+
 import matplotlib.pyplot as plt
 import numpy as np
 
 from freegsnke.control_loop.useful_functions import (
     PID,
+    Waveform,
     check_data_entry,
     interpolate_spline,
     interpolate_step,
@@ -74,10 +77,10 @@ class ShapeController:
 
     def __init__(
         self,
-        data,
-        ctrl_targets,
-        mode=None,
-    ):
+        data: dict[str, dict[str, Waveform]],
+        ctrl_targets: list[str],
+        mode: Optional[str] = None,
+    ) -> None:
         """
         Initialise the shape controller.
 
@@ -154,7 +157,10 @@ class ShapeController:
 
         if mode == "PI_with_P_damping":
             # select control algorithm
-            self.run_control = self.run_control_PI_with_P_damping
+            self.run_control: Callable[
+                [float, float, np.ndarray, np.ndarray, np.ndarray],
+                Tuple[np.ndarray, np.ndarray, np.ndarray],
+            ] = self.run_control_PI_with_P_damping
 
             # inputs required for this algorithm
             self.keys_to_spline = ["ff", "ref", "blend"]
@@ -186,7 +192,7 @@ class ShapeController:
         # interpolate the input data
         self.update_interpolants()
 
-    def update_interpolants(self):
+    def update_interpolants(self) -> None:
         """
         Recompute all interpolant functions from the current `self.data`.
 
@@ -210,12 +216,12 @@ class ShapeController:
 
     def run_control_PI_with_P_damping(
         self,
-        t,
-        dt,
-        T_meas,
-        T_err_prev,
-        T_hist_prev,
-    ):
+        t: float,
+        dt: float,
+        T_meas: np.ndarray,
+        T_err_prev: np.ndarray,
+        T_hist_prev: np.ndarray,
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
         Computes the time derivative of shape target requests based on measured values,
         reference trajectories, and control gains. It blends feedforward and feedback
@@ -293,12 +299,12 @@ class ShapeController:
 
     def run_control_PID_with_scaled_out_damping(
         self,
-        t,
-        dt,
-        T_meas,
-        T_err_prev,
-        T_hist_prev,
-    ):
+        t: float,
+        dt: float,
+        T_meas: np.ndarray,
+        T_err_prev: np.ndarray,
+        T_hist_prev: np.ndarray,
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
         Computes the time derivative of shape target requests based on measured values,
         reference trajectories, and control gains. It blends feedforward and feedback
@@ -385,12 +391,12 @@ class ShapeController:
 
     def run_control_PID(
         self,
-        t,
-        dt,
-        T_meas,
-        T_err_prev,
-        T_hist_prev,
-    ):
+        t: float,
+        dt: float,
+        T_meas: np.ndarray,
+        T_err_prev: np.ndarray,
+        T_hist_prev: np.ndarray,
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
         Computes the time derivative of shape target requests based on measured values,
         reference trajectories, and control gains. It blends feedforward and feedback
@@ -463,11 +469,11 @@ class ShapeController:
 
     def extract_values(
         self,
-        t,
-        targets,
-        key,
-        deriv=False,
-    ):
+        t: float,
+        targets: list[str],
+        key: str,
+        deriv: bool = False,
+    ) -> np.ndarray:
         """
         Extracts interpolated values or their derivatives for specified shape targets at a given time.
 
@@ -503,7 +509,9 @@ class ShapeController:
         else:
             return np.array([self.interpolants[target][key](t) for target in targets])
 
-    def plot_data(self, targ, tmin=-1.0, tmax=1.0, nt=1001):
+    def plot_data(
+        self, targ: str, tmin: float = -1.0, tmax: float = 1.0, nt: int = 1001
+    ) -> None:
         """
         Visualizes interpolated control waveforms and corresponding raw inputs for a specified
         shape target.

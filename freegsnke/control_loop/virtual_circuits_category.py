@@ -186,7 +186,9 @@ class VirtualCircuitsController:
         ------
         ValueError
             If a required key is missing from `data` or is not in the
-            expected format, as enforced by `check_data_entry`.
+            expected format, as enforced by `check_data_entry`. Also raised
+            if `data["coil_order"]` and `ctrl_coils` do not contain the same
+            set of coils.
         KeyError
             If `data` does not contain a "coil_order" entry.
 
@@ -204,6 +206,20 @@ class VirtualCircuitsController:
         self.vc_coil_order_index = {
             coil: i for i, coil in enumerate(self.vc_coil_order)
         }
+
+        # VC matrix columns (from `data`) are ordered per `vc_coil_order`, but
+        # everywhere else (e.g. `dI_dt_ref` below) coil-indexed arrays are
+        # ordered per `ctrl_coils`. Precompute the permutation that reorders
+        # VC matrix columns from `vc_coil_order` into `ctrl_coils` order.
+        if set(self.vc_coil_order) != set(ctrl_coils):
+            raise ValueError(
+                "VirtualCircuitsController: `data['coil_order']` must contain "
+                "exactly the same coils as `ctrl_coils` (order may differ). "
+                f"Got coil_order={self.vc_coil_order}, ctrl_coils={ctrl_coils}."
+            )
+        self._coil_permutation = np.array(
+            [self.vc_coil_order_index[coil] for coil in ctrl_coils]
+        )
 
         # shape parameter list to be controlled
         self.ctrl_targets = ctrl_targets
@@ -336,13 +352,17 @@ class VirtualCircuitsController:
             t=t, targets=[coil + "_ref" for coil in self.ctrl_coils], deriv=True
         )
 
-        # extract shape target VCs from waveform data (targets x coils)
+        # extract shape target VCs from waveform data (targets x coils, in
+        # vc_coil_order), then reorder columns into ctrl_coils order
         VC_shape = self.extract_values(t=t, targets=self.ctrl_targets)
+        VC_shape = VC_shape[:, self._coil_permutation]
         if verbose:
             print("VC's from file", VC_shape)
 
-        # extract plasma target VC from waveform data (targets x coils)
+        # extract plasma target VC from waveform data (targets x coils),
+        # reordered into ctrl_coils order as above
         VC_plasma = self.extract_values(t=t, targets=self.plasma_target)
+        VC_plasma = VC_plasma[:, self._coil_permutation]
 
         # if emulated VCs to be used, extract the data and overwrite relevant VC
         # matrix columns

@@ -19,7 +19,7 @@ classifiers = [
 dynamic = ["dependencies", "optional-dependencies"]
 
 [tool.setuptools]
-packages = ["freegsnke"]
+packages = ["freegsnke", "freegsnke.control_loop"]
 
 [tool.setuptools.dynamic]
 dependencies = {file = ["requirements.txt"]}

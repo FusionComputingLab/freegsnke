@@ -62,6 +62,8 @@ class metal_currents:
         plasma_pts=None,
         coil_resist=None,
         coil_self_ind=None,
+        passive_reflection_operator=None,
+        symmetry_tolerance=1e-8,
         verbose=True,
     ):
         """
@@ -98,6 +100,11 @@ class metal_currents:
         coil_self_ind : ndarray, optional
             Mutual inductance matrix for all conducting elements.
             If None, default machine values are used.
+        passive_reflection_operator : ndarray, optional
+            Reflection map for passive currents. If supplied, odd-in-Z passive
+            modes are excluded before plasma coupling is calculated.
+        symmetry_tolerance : float, optional
+            Tolerance used to classify passive modes as even or odd.
         verbose : bool
             If True, enable diagnostic output during setup.
         """
@@ -145,7 +152,19 @@ class metal_currents:
                 coil_self_ind=self.coil_self_ind,
                 n_coils=self.n_coils,
                 n_active_coils=self.n_active_coils,
+                passive_reflection_operator=passive_reflection_operator,
+                symmetry_tolerance=symmetry_tolerance,
             )
+            passive_modes = self.normal_modes.passive_mode_parity
+            if passive_modes is None:
+                self.available_modes_mask = np.ones(self.n_coils, dtype=bool)
+            else:
+                self.available_modes_mask = np.concatenate(
+                    (
+                        np.ones(self.n_active_coils, dtype=bool),
+                        passive_modes > 0,
+                    )
+                )
             self.max_mode_frequency = max_mode_frequency
             self.initialize_for_eig(selected_modes_mask=False)
 
@@ -210,13 +229,13 @@ class metal_currents:
             - `self.selected_modes_mask`
             - `self.n_independent_vars`
         """
-        # this is for passives alone
-        selected_modes_mask = self.normal_modes.w_passive < self.max_mode_frequency
+        available_passive = self.available_modes_mask[self.n_active_coils :]
+        selected_modes_mask = (
+            self.normal_modes.w_passive[available_passive] < self.max_mode_frequency
+        )
         freq_only_number = np.sum(selected_modes_mask)
 
-        # selected_modes_mask = [True,...,True, False,...,False]
-        # this includes the actives too
-        self.selected_modes_mask = np.concatenate(
+        local_selected_modes_mask = np.concatenate(
             (np.ones(self.n_active_coils).astype(bool), selected_modes_mask)
         )
         if verbose:
@@ -231,26 +250,26 @@ class metal_currents:
 
         if mode_coupling_masks is not None:
             # reintroduce modes that couple strongly
-            self.selected_modes_mask = (
-                self.selected_modes_mask + mode_coupling_masks[0]
+            local_selected_modes_mask = (
+                local_selected_modes_mask + mode_coupling_masks[0]
             ).astype(bool)
-            freq_and_thresh_number = np.sum(self.selected_modes_mask)
+            freq_and_thresh_number = np.sum(local_selected_modes_mask)
             if verbose:
                 print(
                     f"      {freq_and_thresh_number - (freq_only_number + self.n_active_coils)} recovered that couple with the plasma more than 'threshold_dIy_dI'"
                 )
 
             # exclude modes that do not couple enough
-            self.selected_modes_mask = (
-                self.selected_modes_mask * mode_coupling_masks[1]
+            local_selected_modes_mask = (
+                local_selected_modes_mask * mode_coupling_masks[1]
             ).astype(bool)
-            final_number = np.sum(self.selected_modes_mask)
+            final_number = np.sum(local_selected_modes_mask)
             if verbose:
                 print(
                     f"      {freq_and_thresh_number - final_number} removed that couple with the plasma less than 'min_dIy_dI'"
                 )
                 print(
-                    f"      total selected = {final_number - self.n_active_coils} (out of {self.n_coils - self.n_active_coils})"
+                    f"      total selected = {final_number - self.n_active_coils} (out of {np.sum(available_passive)})"
                 )
                 print(
                     f"   Total number of modes = {final_number} ({self.n_active_coils} active coils + {final_number - self.n_active_coils} passive structures)"
@@ -259,7 +278,11 @@ class metal_currents:
                     f"      (Note: some additional modes may be removed after Jacobian calculation)"
                 )
 
-        self.n_independent_vars = np.sum(self.selected_modes_mask)
+        available_indices = np.flatnonzero(self.available_modes_mask)
+        self.selected_modes_mask = np.zeros(self.n_coils, dtype=bool)
+        self.selected_modes_mask[available_indices[local_selected_modes_mask]] = True
+        self.last_selection_mask = local_selected_modes_mask
+        self.n_independent_vars = np.sum(local_selected_modes_mask)
 
     def initialize_for_eig(
         self, selected_modes_mask=None, mode_coupling_masks=None, verbose=True
@@ -312,8 +335,12 @@ class metal_currents:
             self.P = self.normal_modes.Pmatrix[:, self.selected_modes_mask]
             self.Pm1 = self.normal_modes.Pmatrix_inverse[self.selected_modes_mask]
         elif selected_modes_mask is False:
-            # this is to include ALL modes
-            self.selected_modes_mask = np.ones(self.n_coils).astype(bool)
+            # Include all modes available to this solver. In symmetric operation,
+            # odd passive modes have already been made unavailable.
+            self.selected_modes_mask = self.available_modes_mask.copy()
+            self.last_selection_mask = np.ones(
+                np.sum(self.available_modes_mask), dtype=bool
+            )
             self.n_independent_vars = np.sum(self.selected_modes_mask)
             self.P = self.normal_modes.Pmatrix[:, self.selected_modes_mask]
             self.Pm1 = self.normal_modes.Pmatrix_inverse[self.selected_modes_mask]
@@ -332,6 +359,12 @@ class metal_currents:
 
             self.P = self.P[:, self.selected_modes_mask_partial]
             self.Pm1 = self.Pm1[self.selected_modes_mask_partial]
+            retained_full_indices = np.flatnonzero(self.selected_modes_mask)[
+                self.selected_modes_mask_partial
+            ]
+            self.selected_modes_mask[:] = False
+            self.selected_modes_mask[retained_full_indices] = True
+            self.last_selection_mask = self.selected_modes_mask_partial
 
         # this is not needed any longer and now incorrect, the eigenvectors in P are independent but NOT orthogonal
         # self.Pm1 = (self.P).T

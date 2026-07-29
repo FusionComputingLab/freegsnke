@@ -83,6 +83,9 @@ class nl_solver:
         collinearity_reg=1e-6,
         verbose=False,
         plasma_descriptor_function=None,
+        force_up_down_symmetric=False,
+        passive_reflection_operator=None,
+        symmetry_tolerance=1e-8,
     ):
         """
         Initialize the nonlinear solver.
@@ -144,6 +147,18 @@ class nl_solver:
             Additional penalty for collinear terms in nonlinear solver.
         verbose : bool, default=False
             Print diagnostic output during initialization.
+        force_up_down_symmetric : bool, default=False
+            Restrict every Grad-Shafranov solve and plasma-response Jacobian to
+            the even-in-Z subspace. This strict path requires a symmetric grid,
+            limiter, machine, and plasma initial condition. All retained active
+            circuits must be even; odd active circuits must be omitted from the
+            machine description.
+        passive_reflection_operator : ndarray, optional
+            Reflection map for passive currents. Required with
+            ``force_up_down_symmetric=True`` when passive structures are present;
+            odd passive modes are removed before plasma coupling is calculated.
+        symmetry_tolerance : float, default=1e-8
+            Tolerance used to classify passive modes as even or odd.
         """
         print("-----")
 
@@ -165,6 +180,16 @@ class nl_solver:
         self.n_passive_coils = eq.tokamak.n_coils - eq.tokamak.n_active_coils
         self.coils_order = list(eq.tokamak.coils_dict.keys())
         self.currents_vec = np.zeros(self.n_coils + 1)
+        self.force_up_down_symmetric = force_up_down_symmetric
+        if (
+            force_up_down_symmetric
+            and self.n_passive_coils
+            and passive_reflection_operator is None
+        ):
+            raise ValueError(
+                "'passive_reflection_operator' is required for symmetric "
+                "evolution with passive structures."
+            )
 
         # setting up reduced domain for plasma circuit eq.:
         self.limiter_handler = eq.limiter_handler
@@ -194,6 +219,7 @@ class nl_solver:
             profiles,
             target_relative_tolerance=target_relative_tolerance_linearization,
             verbose=False,
+            force_up_down_symmetric=self.force_up_down_symmetric,
         )
         print("-----")
 
@@ -241,12 +267,27 @@ class nl_solver:
             full_timestep=self.dt_step,
             coil_resist=custom_coil_resist,
             coil_self_ind=custom_self_ind,
+            passive_reflection_operator=(
+                passive_reflection_operator if force_up_down_symmetric else None
+            ),
+            symmetry_tolerance=symmetry_tolerance,
         )
         self.n_metal_modes = self.evol_metal_curr.n_independent_vars
+        self.n_passive_modes = self.n_metal_modes - self.n_active_coils
+        if fix_n_vessel_modes > self.n_passive_modes:
+            print(
+                f"'fix_n_vessel_modes' ({fix_n_vessel_modes}) exceeds the "
+                f"number of available passive modes ({self.n_passive_modes}); "
+                f"setting it to {self.n_passive_modes}."
+            )
+            fix_n_vessel_modes = self.n_passive_modes
 
         # prepare the vectorised green functions of the vessel modes
         self.vessel_modes_greens = (
-            self.evol_metal_curr.normal_modes.normal_modes_greens(eq._vgreen)
+            self.evol_metal_curr.normal_modes.normal_modes_greens(
+                eq._vgreen,
+                self.evol_metal_curr.P if self.force_up_down_symmetric else None,
+            )
         )
         # build full vector of vessel mode currents
         self.build_current_vec(eq, profiles)
@@ -379,9 +420,9 @@ class nl_solver:
         self.build_current_vec(eq, profiles)
 
         # select modes accordingly
-        self.starting_dI = self.starting_dI[self.evol_metal_curr.selected_modes_mask]
+        self.starting_dI = self.starting_dI[self.evol_metal_curr.last_selection_mask]
         self.approved_target_dIy = self.approved_target_dIy[
-            self.evol_metal_curr.selected_modes_mask
+            self.evol_metal_curr.last_selection_mask
         ]
         # add the plasma
         self.starting_dI = np.concatenate(
@@ -612,17 +653,22 @@ class nl_solver:
                 )
 
             else:
-                print(
-                    f"      No unstable modes found: either plasma stable, or more likely, it is Alfven unstable (i.e. needs more stabilisation from coils and passives)."
-                )
-                if fix_n_vessel_modes >= 0:
+                if self.force_up_down_symmetric:
                     print(
-                        f"      Try adding more passive modes (by increasing 'fix_n_vessel_modes')."
+                        "      No unstable modes found in the retained even-in-Z subspace."
                     )
                 else:
                     print(
-                        f"      Try adding more passive modes (by increasing 'max_mode_frequency' and/or 'threshold_dIy_dI' and/or reducing 'min_dIy_dI'."
+                        f"      No unstable modes found: either plasma stable, or more likely, it is Alfven unstable (i.e. needs more stabilisation from coils and passives)."
                     )
+                    if fix_n_vessel_modes >= 0:
+                        print(
+                            f"      Try adding more passive modes (by increasing 'fix_n_vessel_modes')."
+                        )
+                    else:
+                        print(
+                            f"      Try adding more passive modes (by increasing 'max_mode_frequency' and/or 'threshold_dIy_dI' and/or reducing 'min_dIy_dI'."
+                        )
         print("-----")
 
         # if automatic_timestep, reset the timestep accordingly,
@@ -632,9 +678,15 @@ class nl_solver:
             print(
                 f"      Solver timestep 'dt_step' has been set to {self.dt_step} as requested."
             )
-            print(
-                f"      Ensure it is smaller than the growth rate else you may find numerical instability in any subsequent evoltuive simulations!"
-            )
+            if self.force_up_down_symmetric:
+                print(
+                    "      Odd-in-Z modes are excluded; ensure the timestep "
+                    "resolves the retained even dynamics."
+                )
+            else:
+                print(
+                    f"      Ensure it is smaller than the growth rate else you may find numerical instability in any subsequent evoltuive simulations!"
+                )
         else:
             if len(self.linearised_sol.growth_rates):
                 dt_step = abs(
@@ -706,11 +758,11 @@ class nl_solver:
             enforcement applied).
         """
 
-        self.dIydI_noGS = np.zeros((len(self.Iy), self.n_coils))
-        self.ndIydI_no_GS = np.zeros(self.n_coils)
-        self.rel_ndIy = np.zeros(self.n_coils)
+        self.dIydI_noGS = np.zeros((len(self.Iy), self.n_metal_modes))
+        self.ndIydI_no_GS = np.zeros(self.n_metal_modes)
+        self.rel_ndIy = np.zeros(self.n_metal_modes)
 
-        for j in range(self.n_coils):
+        for j in range(self.n_metal_modes):
             dIydInoGS, rel_ndIy = self.prepare_build_dIydI_j(
                 j, None, self.approved_target_dIy[j], starting_dI[j], GS=False
             )
@@ -748,6 +800,20 @@ class nl_solver:
             # self.final_dI_record[j] = starting_dI[j] * self.accepted_target_dIy[j] / rel_ndIy
             self.ndIydI_no_GS[j] = rel_ndIy * self.nIy / starting_dI[j]
         self.starting_dI = 1.0 * starting_dI
+
+    def _project_plasma_vectors_even(self, vectors):
+        """Project reduced-domain plasma vectors onto the even-in-Z subspace."""
+        if not self.force_up_down_symmetric:
+            return vectors
+
+        vectors = np.asarray(vectors)
+        was_vector = vectors.ndim == 1
+        columns = vectors[:, np.newaxis] if was_vector else vectors
+        fields = np.zeros((self.nx, self.ny, columns.shape[1]))
+        fields[self.limiter_handler.mask_inside_limiter] = columns
+        fields = 0.5 * (fields + fields[:, ::-1])
+        projected = fields[self.limiter_handler.mask_inside_limiter]
+        return projected[:, 0] if was_vector else projected
 
     def set_solvers(
         self,
@@ -1468,6 +1534,7 @@ class nl_solver:
             )
 
         dIy_0 = self.limiter_handler.Iy_from_jtor(self.profiles2.jtor) - self.Iy
+        dIy_0 = self._project_plasma_vectors_even(dIy_0)
 
         rel_ndIy_0 = np.linalg.norm(dIy_0) / self.nIy
         final_dI = starting_dI * target_dIy / rel_ndIy_0
@@ -1741,6 +1808,9 @@ class nl_solver:
             self.dIydI = dIydI
             self.dIydI_ICs = np.copy(self.dIydI)
 
+        self.dIydI = self._project_plasma_vectors_even(self.dIydI)
+        self.dIydI_ICs = np.copy(self.dIydI)
+
         # compose the vector of initial delta_theta (profile parameters) to be used for the finite difference calculation
         # - this uses the variation to Jtor caused by the parameter's contribution to the change in poloidal flux, ignoring the response of the plasma
 
@@ -1809,6 +1879,10 @@ class nl_solver:
                 self.dIydtheta = np.copy(self.dIydtheta_ICs)
         else:
             self.dIydtheta = dIydtheta
+            self.dIydtheta_ICs = np.copy(self.dIydtheta)
+
+        if self.dIydtheta is not None:
+            self.dIydtheta = self._project_plasma_vectors_even(self.dIydtheta)
             self.dIydtheta_ICs = np.copy(self.dIydtheta)
 
     def set_plasma_resistivity(self, plasma_resistivity):
@@ -2088,12 +2162,14 @@ class nl_solver:
         self.get_vessel_currents(eq)
 
         # transforms in normal modes (including truncation)
-        self.currents_vec[: self.n_metal_modes] = self.evol_metal_curr.IvesseltoId(
+        mode_currents = self.evol_metal_curr.IvesseltoId(
             Ivessel=self.vessel_currents_vec
         )
 
-        # extracts total plasma current value
-        self.currents_vec[-1] = profiles.Ip / self.plasma_norm_factor
+        # append the total plasma current value
+        self.currents_vec = np.concatenate(
+            (mode_currents, [profiles.Ip / self.plasma_norm_factor])
+        )
 
         # this is currents_vec(t-dt):
         self.currents_vec_m1 = np.copy(self.currents_vec)
@@ -2185,6 +2261,7 @@ class nl_solver:
             self.profiles1,
             target_relative_tolerance=target_relative_tolerance_linearization,
             suppress=True,
+            force_up_down_symmetric=self.force_up_down_symmetric,
         )
 
         # self.eq2 and self.profiles2 are used as auxiliary objects when solving for the dynamics
@@ -2456,6 +2533,7 @@ class nl_solver:
             self.profiles2,
             target_relative_tolerance=rtol_NK,
             suppress=True,
+            force_up_down_symmetric=self.force_up_down_symmetric,
         )
 
     def make_blended_hatIy_(self, hatIy1, blend):
@@ -3173,7 +3251,11 @@ class nl_solver:
                 # update plasma flux if trial_currents and plasma_flux exceedingly far from GS solution
                 if control_GS:
                     self.NK.forward_solve(
-                        self.eq2, self.profiles2, self.rtol_NK, suppress=True
+                        self.eq2,
+                        self.profiles2,
+                        self.rtol_NK,
+                        suppress=True,
+                        force_up_down_symmetric=self.force_up_down_symmetric,
                     )
                     self.trial_plasma_psi *= 1 - blend_GS
                     self.trial_plasma_psi += blend_GS * self.eq2.plasma_psi

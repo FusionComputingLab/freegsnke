@@ -25,7 +25,15 @@ import numpy as np
 class mode_decomposition:
     """Sets up the vessel mode decomposition to be used by the dynamic solver(s)"""
 
-    def __init__(self, coil_resist, coil_self_ind, n_coils, n_active_coils):
+    def __init__(
+        self,
+        coil_resist,
+        coil_self_ind,
+        n_coils,
+        n_active_coils,
+        passive_reflection_operator=None,
+        symmetry_tolerance=1e-8,
+    ):
         """Instantiates the class.
         Matrix data calculated here is used to reformulate the system of circuit eqs,
         primarily in circuit_eq_metal.py
@@ -38,6 +46,11 @@ class mode_decomposition:
         coil_self_ind : np.array
             2d matrix of mutual inductances between all pairs of machine conducting elements,
             including both active coils and passive structures
+        passive_reflection_operator : np.array, optional
+            Matrix mapping passive currents to their up-down reflected counterparts.
+            When supplied, passive modes are classified as even or odd in Z.
+        symmetry_tolerance : float, optional
+            Maximum departure of a mode's parity from exactly +1 or -1.
         """
 
         # check number of coils is compatible with data provided
@@ -73,12 +86,31 @@ class mode_decomposition:
         self.w_passive = w[ordw]
         Pmatrix_passive = v[:, ordw]
 
-        # A sign convention for the sign of the normal modes is set
-        # The way this is achieved is just a choice:
-        # Pmatrix_passive /= np.sign(np.sum(Pmatrix_passive, axis=0, keepdims=True))
-
-        # find inverse
-        # Pmatrix_passive_m1 = np.linalg.inv(Pmatrix_passive)
+        self.passive_mode_parity = None
+        if passive_reflection_operator is not None:
+            reflection = np.asarray(passive_reflection_operator)
+            n_passive = self.n_coils - self.n_active_coils
+            if reflection.shape != (n_passive, n_passive):
+                raise ValueError(
+                    "'passive_reflection_operator' must have shape "
+                    f"({n_passive}, {n_passive})."
+                )
+            parity = np.einsum(
+                "im,ij,jm->m", Pmatrix_passive, reflection, Pmatrix_passive
+            ) / np.einsum("im,im->m", Pmatrix_passive, Pmatrix_passive)
+            if np.any(np.abs(np.abs(parity) - 1) > symmetry_tolerance):
+                raise ValueError(
+                    "Passive normal modes are not purely even or odd in Z. "
+                    "Check that the machine resistance and inductance data are "
+                    "up-down symmetric."
+                )
+            self.passive_mode_parity = np.where(parity >= 0, 1, -1)
+            Pmatrix_passive = 0.5 * (
+                Pmatrix_passive
+                + reflection
+                @ (Pmatrix_passive * self.passive_mode_parity[np.newaxis, :])
+            )
+            Pmatrix_passive /= np.linalg.norm(Pmatrix_passive, axis=0)
 
         if np.any(w_active < 0):
             print(
@@ -112,7 +144,7 @@ class mode_decomposition:
             self.Pmatrix.T @ self.Pmatrix, self.Pmatrix.T
         )
 
-    def normal_modes_greens(self, eq_vgreen):
+    def normal_modes_greens(self, eq_vgreen, mode_matrix=None):
         """
         Calculates the green functions of the vessel normal modes,
         i.e. the psi flux per unit current for each mode.
@@ -122,12 +154,13 @@ class mode_decomposition:
         eq_vgreen : np.array
             the vectorised green functions of each coil.
             Can be found at eq._vgreen. np.shape(eq_vgreen)=(n_coils, nx, ny)
+        mode_matrix : np.array, optional
+            Transformation from retained mode currents to physical currents.
+            Required when calculating Green functions for a reduced basis. If
+            omitted, the existing full-basis transformation is used.
         """
 
-        dgreen = np.sum(
-            eq_vgreen[np.newaxis, :, :, :]
-            * self.Pmatrix_inverse[:, :, np.newaxis, np.newaxis],
-            axis=1,
-        )
+        if mode_matrix is not None:
+            return np.einsum("im,irz->mrz", mode_matrix, eq_vgreen)
 
-        return dgreen
+        return np.einsum("mi,irz->mrz", self.Pmatrix_inverse, eq_vgreen)

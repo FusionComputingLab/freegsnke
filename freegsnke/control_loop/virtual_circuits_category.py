@@ -31,19 +31,6 @@ from freegsnke.control_loop.useful_functions import (
 )
 
 
-class VCGenerator(Protocol):
-    """The interface an emulated virtual-circuit generator must implement."""
-
-    def get_vc(
-        self,
-        targets: list[str],
-        targets_calc: list[str],
-        coils: list[str],
-        coils_calc: list[str],
-        input_data: Optional[np.ndarray],
-    ) -> np.ndarray: ...
-
-
 class VirtualCircuitsController:
     """
     A controller class for managing virtual circuit control matrices and coil current reference

@@ -31,7 +31,7 @@ from .shape_category import ShapeController
 from .systems_category import SystemsController
 from .useful_functions import Waveform
 from .vertical_category import VerticalController
-from .virtual_circuits_category import VCGenerator, VirtualCircuitsController
+from .virtual_circuits_category import VirtualCircuitsController
 
 
 class PlasmaControlSystem:
@@ -111,7 +111,7 @@ class PlasmaControlSystem:
         ctrl_targets: list[str],
         plasma_target: list[str],
         shape_control_mode: Optional[str] = None,
-        vc_generator: Optional[VCGenerator] = None,
+        vc_generator=None,
         vc_update_rate: Optional[float] = None,
     ) -> None:
         """

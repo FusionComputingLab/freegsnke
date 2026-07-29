@@ -77,7 +77,7 @@ class VirtualCircuitsController:
         ctrl_coils: list[str],
         ctrl_targets: list[str],
         plasma_target: list[str],
-        vc_generator: Optional[VCGenerator] = None,
+        vc_generator=None,
         vc_update_rate: Optional[float] = None,
     ) -> None:
         """

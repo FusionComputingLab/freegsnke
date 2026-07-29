@@ -295,7 +295,11 @@ class ShapeController:
         # time deriv of shape target requests
         dT_dt = ((T_blend * T_fb_deriv) + ((1.0 - T_blend) * T_ff_deriv)).squeeze()
 
-        return dT_dt.squeeze(), T_err.squeeze(), T_hist.squeeze()
+        return (
+            np.atleast_1d(dT_dt),
+            np.atleast_1d(T_err.squeeze()),
+            np.atleast_1d(T_hist.squeeze()),
+        )
 
     def run_control_PID_with_scaled_out_damping(
         self,
@@ -387,7 +391,11 @@ class ShapeController:
         # update hist
         T_hist = T_int + (0.5 * T_err * dt)
 
-        return dT_dt.squeeze(), T_err.squeeze(), T_hist.squeeze()
+        return (
+            np.atleast_1d(dT_dt),
+            np.atleast_1d(T_err.squeeze()),
+            np.atleast_1d(T_hist.squeeze()),
+        )
 
     def run_control_PID(
         self,
@@ -465,7 +473,11 @@ class ShapeController:
         # update hist
         T_hist = T_hist_prev + (T_err * dt)
 
-        return dT_dt.squeeze(), T_err.squeeze(), T_hist.squeeze()
+        return (
+            np.atleast_1d(dT_dt),
+            np.atleast_1d(T_err.squeeze()),
+            np.atleast_1d(T_hist.squeeze()),
+        )
 
     def extract_values(
         self,

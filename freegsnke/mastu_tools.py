@@ -1641,6 +1641,39 @@ def load_currents_voltages_and_TS_signals(
     coil_list = np.sort(list(att_dict.keys()))
 
     def get_voltages(shotn):
+        """
+        Retrieve coil voltage signals for a given shot number.
+
+        This function queries an external data source for voltage signals
+        associated with a set of actuators defined in `att_dict`. Depending
+        on the actuator type, it fetches either PS coil voltages or generic
+        output voltages.
+
+        The returned data is organised into a dictionary keyed by actuator name.
+
+        Parameters
+        ----------
+        shotn : int
+            Shot number identifying the discharge for which voltage data is
+            requested.
+
+        Returns
+        -------
+        outdict : dict
+            Dictionary of voltage signals. Each key corresponds to an actuator
+            name and maps to a dictionary with:
+
+            - data : ndarray
+                Voltage time series
+            - times : ndarray
+                Time base associated with the signal
+            - units : str
+                Physical units of the voltage signal
+
+        Notes
+        -----
+        Missing signals are silently ignored.
+        """
         outdict = {}
         for attk in att_dict:
             tinner = att_dict[attk]
@@ -1659,6 +1692,39 @@ def load_currents_voltages_and_TS_signals(
         return outdict
 
     def get_req_voltages(shotn):
+        """
+        Retrieve requested (reference/commanded) coil voltages for a given shot.
+
+        This function queries an external data source for the prescribed voltage
+        waveforms associated with each actuator defined in `att_dict`.
+
+        If a signal cannot be retrieved, a default placeholder signal is returned
+        and a warning message is printed.
+
+        Parameters
+        ----------
+        shotn : int
+            Shot number identifying the discharge for which voltage data is
+            requested.
+
+        Returns
+        -------
+        outdict : dict
+            Dictionary of requested voltage signals. Each key corresponds to a
+            coil name and maps to a dictionary with:
+
+            - data : ndarray
+                Requested voltage time series (or placeholder if missing)
+            - times : ndarray
+                Time base associated with the signal (or placeholder if missing)
+            - units : str
+                Physical units of the signal
+
+        Notes
+        -----
+        Missing signals are replaced with a default placeholder array and a
+        warning is printed to standard output.
+        """
         outdict = {}
         for coil in att_dict:
             tinner = att_dict[coil]
@@ -1679,6 +1745,36 @@ def load_currents_voltages_and_TS_signals(
         return outdict
 
     def get_coilcurrs_AMC(shotn):
+        """
+        Retrieve AMC Rogowski coil current measurements for a given shot.
+
+        This function queries an external data source for measured coil currents
+        from AMC Rogowski sensors. Data is organised hierarchically by actuator
+        group and individual coil channel.
+
+        Parameters
+        ----------
+        shotn : int
+            Shot number identifying the discharge for which current data is
+            requested.
+
+        Returns
+        -------
+        outdict : dict
+            Nested dictionary of coil current signals structured as:
+
+            outdict[actuator_group][coil_name] -> dict with:
+                - data : ndarray
+                    Measured current time series
+                - times : ndarray
+                    Time base associated with the signal
+                - units : str
+                    Physical units of the measurement
+
+        Notes
+        -----
+        Missing coil signals are silently ignored.
+        """
         outdict = {}
         for attk in att_dict:
             outdict[attk] = {}
@@ -1696,6 +1792,39 @@ def load_currents_voltages_and_TS_signals(
         return outdict
 
     def get_coilcurrs(shotn):
+        """
+        Retrieve measured coil currents for a given shot.
+
+        This function queries an external data source for coil current measurements,
+        selecting the appropriate signal path depending on actuator type.
+
+        For PS coils, currents are retrieved from the standard CURRENT signal.
+        For non-PS coils, the signal path depends on the actuator configuration,
+        with a special case for coil 'P6'.
+
+        Parameters
+        ----------
+        shotn : int
+            Shot number identifying the discharge for which coil current data is
+            requested.
+
+        Returns
+        -------
+        outdict : dict
+            Dictionary of coil current signals. Each key corresponds to a coil
+            name and maps to a dictionary containing:
+
+            - data : ndarray
+                Current time series
+            - times : ndarray
+                Time base associated with the signal
+            - units : str
+                Physical units of the signal
+
+        Notes
+        -----
+        Missing signals are silently ignored.
+        """
         outdict = {}
         for attk in att_dict:
             tinner = att_dict[attk]
@@ -1718,6 +1847,39 @@ def load_currents_voltages_and_TS_signals(
         return outdict
 
     def get_rogs(shotn):
+        """
+        Retrieve Rogowski coil measurements (external and internal) for a given shot.
+
+        This function queries AMC Rogowski diagnostics and returns both external
+        (ROGEXT) and internal (ROGINT) signals where available. Data is organised
+        hierarchically by actuator group and Rogowski channel.
+
+        Parameters
+        ----------
+        shotn : int
+            Shot number identifying the discharge for which Rogowski data is
+            requested.
+
+        Returns
+        -------
+        outdict : dict
+            Nested dictionary containing Rogowski coil data:
+
+            outdict[actuator_group]["rogext"][channel] -> dict
+                External Rogowski signals:
+                    - data : ndarray
+                    - times : ndarray
+
+            outdict[actuator_group]["rogint"][channel] -> dict (if available)
+                Internal Rogowski signals:
+                    - data : ndarray
+                    - times : ndarray
+
+        Notes
+        -----
+        Missing channels are silently ignored. Internal Rogowski data is only
+        included if available for the given actuator.
+        """
         outdict = {}
         for attk in att_dict:
             outdict[attk] = {}
@@ -2331,16 +2493,28 @@ def get_element_vertices(
     return [rr, zz, dR, dZ]
 
 
-# ------------
 def find_strikepoints(R, Z, psi, psi_boundary, wall):
     """
-    This function can be used to find the strikepoints of an equilibrium using
-    the:
-        - R and Z grids (2D)
-        - psi_total (2D) (i.e. the poloidal flux map)
-        - psi_boundary (single value)
-        - limiter/wall coordinates (N x 2)
+    Find the strikepoints of an equilibrium with the wall.
 
+    Parameters
+    ----------
+    R : np.ndarray (nx, nz)
+        2D array of major radius coordinates [m]
+    Z : np.ndarray (nx, nz)
+        2D array of vertical coordinates [m]
+    psi : np.ndarray (nx, nz)
+        2D poloidal flux map [Wb]
+    psi_boundary : float
+        Value of psi at the plasma boundary [Wb]
+    wall : np.ndarray (N, 2)
+        Wall/limiter coordinates as (R, Z) pairs [m]
+
+    Returns
+    -------
+    np.ndarray or None
+        Array of strikepoint coordinates, shape (M, 2), or None if no
+        intersections are found.
     """
 
     # find contour object for psi_boundary
@@ -2379,20 +2553,39 @@ def find_strikepoints(R, Z, psi, psi_boundary, wall):
 
 
 def Separatrix(R, Z, psi, ntheta, psival=1.0, theta_grid=None, input_opoint=None):
-    """Find the R, Z coordinates of the separatrix for equilbrium
-    eq. Returns a tuple of (R, Z, R_X, Z_X), where R_X, Z_X are the
-    coordinates of the X-point on the separatrix. Points are equally
-    spaced in geometric poloidal angle.
+    """
+    Compute separatrix coordinates for a given equilibrium flux map.
 
-    If opoint, xpoint or psi are not given, they are calculated from eq
+    This function traces the ψ = const surface corresponding to the separatrix
+    (default psival = 1.0 in normalized coordinates) starting from the magnetic
+    axis and marching outwards in poloidal angle.
 
-    eq - Equilibrium object
-    opoint - List of O-point tuples of (R, Z, psi)
-    xpoint - List of X-point tuples of (R, Z, psi)
-    ntheta - Number of points to find
-    psi - Grid of psi on (R, Z)
-    axis - A matplotlib axis object to plot points on
-    input_opoint - a user-chosen magnetic axis from which to find separatrix
+    The separatrix is sampled at equally spaced geometric poloidal angles,
+    with care taken to avoid sampling exactly at the X-point locations.
+
+    Parameters
+    ----------
+    R : ndarray
+        Radial grid coordinates (2D array).
+    Z : ndarray
+        Vertical grid coordinates (2D array).
+    psi : ndarray
+        Poloidal flux on the (R, Z) grid.
+    ntheta : int
+        Number of poloidal angle samples along the separatrix.
+    psival : float, optional
+        Target normalized flux value defining the separatrix.
+    theta_grid : ndarray, optional
+        User-specified poloidal angle grid. If None, a uniform grid is used.
+    input_opoint : tuple, optional
+        User-specified magnetic axis (R0, Z0). If None, it is inferred.
+
+    Returns
+    -------
+    points : ndarray
+        Array of separatrix points (R, Z) sampled along θ.
+    theta_grid : ndarray
+        Poloidal angle grid used for the construction.
     """
 
     opoint, xpoint = critical.find_critical(R, Z, psi)
@@ -2453,11 +2646,39 @@ def Separatrix(R, Z, psi, ntheta, psival=1.0, theta_grid=None, input_opoint=None
 
 def find_psisurface(psifunc, R, Z, r0, z0, r1, z1, psival=1.0, n=100):
     """
-    eq      - Equilibrium object
-    (r0,z0) - Start location inside separatrix
-    (r1,z1) - Location outside separatrix
+    Find an intersection point of a ψ = const surface along a straight line.
 
-    n - Number of starting points to use
+    This routine samples a straight line from an initial point inside the
+    separatrix to a point outside it, evaluates the flux along the line, and
+    interpolates to locate the position where ψ equals the target value.
+
+    Parameters
+    ----------
+    psifunc : callable
+        Interpolated flux function ψ(R, Z).
+    R : ndarray
+        Radial grid (used for domain clipping).
+    Z : ndarray
+        Vertical grid (used for domain clipping).
+    r0 : float
+        Starting radial coordinate (assumed inside target surface).
+    z0 : float
+        Starting vertical coordinate (assumed inside target surface).
+    r1 : float
+        Ending radial coordinate (outside target surface).
+    z1 : float
+        Ending vertical coordinate (outside target surface).
+    psival : float, optional
+        Target flux value defining the surface.
+    n : int, optional
+        Number of points sampled along the line.
+
+    Returns
+    -------
+    r : float
+        Radial coordinate of ψ = psival intersection.
+    z : float
+        Vertical coordinate of ψ = psival intersection.
     """
     # Clip (r1,z1) to be inside domain
     # Shorten the line so that the direction is unchanged
@@ -2496,8 +2717,22 @@ def find_psisurface(psifunc, R, Z, r0, z0, r1, z1, psival=1.0, n=100):
 
 def max_euclidean_distance(points1, points2):
     """
-    Calculate the maximum Euclidean distance between corresponding points in two sets.
-    Exclude points with 'None' values.
+    Compute the maximum Euclidean distance between corresponding points in two sets.
+
+    Points containing NaN values are excluded before the distance calculation.
+
+    Parameters
+    ----------
+    points1 : ndarray
+        First set of (x, y) points.
+    points2 : ndarray
+        Second set of (x, y) points with the same shape as points1.
+
+    Returns
+    -------
+    float
+        Maximum Euclidean distance between valid corresponding points.
+        Returns NaN if no valid points remain.
     """
     valid_indices = np.logical_not(
         np.any(np.isnan(points1), axis=1) | np.any(np.isnan(points2), axis=1)
@@ -2511,8 +2746,22 @@ def max_euclidean_distance(points1, points2):
 
 def median_euclidean_distance(points1, points2):
     """
-    Calculate the maximum Euclidean distance between corresponding points in two sets.
-    Exclude points with 'None' values.
+    Compute the median Euclidean distance between corresponding points in two sets.
+
+    Points containing NaN values are excluded before computing distances.
+
+    Parameters
+    ----------
+    points1 : ndarray
+        First set of (x, y) points.
+    points2 : ndarray
+        Second set of (x, y) points with the same shape as points1.
+
+    Returns
+    -------
+    float
+        Median Euclidean distance between valid corresponding points.
+        Returns NaN if no valid points remain.
     """
     valid_indices = np.logical_not(
         np.any(np.isnan(points1), axis=1) | np.any(np.isnan(points2), axis=1)
@@ -2526,11 +2775,28 @@ def median_euclidean_distance(points1, points2):
 
 def separatrix_areas(separatrix_1, separatrix_2):
     """
-    This function can be used to find the poloidal area of each separatrix given
-    and the similiarity of the two as calculated using equation 8 in Bardsely et al
-    2024 (Nuclear Fusion) ("Decoupled magnetic control of spherical tokamak
-    divertors via vacuum harmonic constraints"). Inputs:
-        - separatrix_1 (and 2): np.array of (n x 2) (r,z) points
+    Compute a geometric similarity metric between two separatrix shapes.
+
+    This function constructs convex hull polygons from two sets of (R, Z)
+    points, then compares their overlap using union and intersection areas.
+    The resulting metric η is based on the non-overlapping area relative
+    to the total area, as defined in Bardsley et al. (2024, Nuclear Fusion).
+
+    Parameters
+    ----------
+    separatrix_1 : ndarray
+        Array of shape (N, 2) containing (R, Z) points of the first separatrix.
+    separatrix_2 : ndarray
+        Array of shape (M, 2) containing (R, Z) points of the second separatrix.
+
+    Returns
+    -------
+    eta : float
+        Normalised non-overlap metric between the two separatrices.
+    polygon1 : shapely.geometry.Polygon
+        Convex hull polygon of separatrix_1.
+    polygon2 : shapely.geometry.Polygon
+        Convex hull polygon of separatrix_2.
     """
 
     # create Polygon objects from the points using Shapely package
@@ -2558,28 +2824,30 @@ def interpolate_data(
     order=5,
 ):
     """
-    This function will interpolate the 'data' and 'times' using an nth order polynomial,
-    where n='order'. It can take optional arguments that will only use the times/data within
-    a certain time window [t_start, t_final].
+    Fit a polynomial to time-series data and return an evaluatable interpolant.
+
+    This function selects a time window (if provided), fits a polynomial of
+    specified order to the data within that window, and returns the resulting
+    polynomial object. The output can be evaluated on scalar or array inputs.
 
     Parameters
     ----------
-    times : np.array
-        Times at which 'data' are recorded.
-    data : np.array
-        Data to be interpolated at 'times'.
-    t_start : float
-        Start of time window to interpolate over.
-    t_final : float
-        End of time window to interpolate over.
-    order : int
-        Non-negative integer value for polynomial order to use in interpolation.
+    times : ndarray
+        Array of time values corresponding to the data samples.
+    data : ndarray
+        Data values sampled at the given times.
+    t_start : float, optional
+        Start of the time window. If None, the full range is used from the beginning.
+    t_final : float, optional
+        End of the time window. If None, the full range is used up to the end.
+    order : int, optional
+        Degree of the polynomial used for fitting.
 
     Returns
     -------
-    function
-        Returns a function that represents the interpolated polynomial. It can
-        be called with a float or np.array input.
+    numpy.polynomial.Polynomial
+        Polynomial object representing the fitted interpolation, callable on
+        scalar or array inputs.
     """
 
     # find closest time indices

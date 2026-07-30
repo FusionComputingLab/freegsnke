@@ -23,6 +23,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from freegsnke.control_loop.useful_functions import (
+    Waveform,
     check_data_entry,
     interpolate_spline,
     interpolate_step,
@@ -66,9 +67,53 @@ class PFController:
 
     def __init__(
         self,
-        data,
-    ):
+        data: dict[str, Waveform],
+    ) -> None:
+        """
+        Initialise the PF (poloidal field) coil controller.
 
+        Validates that the required matrices, gains, and voltage/slew limits
+        are present in `data`, stores a reference to the data, and builds the
+        step interpolants used to evaluate them at arbitrary times.
+
+        Parameters
+        ----------
+        data : dict
+            Dictionary of time-series entries. Must contain the following
+            keys, each in the format expected by `check_data_entry` (i.e.
+            containing 'times' and 'vals' arrays of matching length):
+
+            - "R_matrix" : resistance matrix.
+            - "M_FF_matrix" : mutual inductance matrix between field coils.
+            - "M_FB_matrix" : mutual inductance matrix between field and
+            body/plasma circuits.
+            - "coil_gains" : per-coil gain values.
+            - "coil_voltage_lims" : per-coil voltage limits.
+            - "coil_voltage_slew_lims" : per-coil voltage slew-rate limits.
+
+        Attributes
+        ----------
+        keys_to_spline : list of str
+            Data keys that will be spline-interpolated. Currently unused
+            (empty) for this controller.
+        keys_to_step : list of str
+            Data keys that will be step-interpolated: "R_matrix",
+            "M_FF_matrix", "M_FB_matrix", "coil_gains", "coil_voltage_lims",
+            and "coil_voltage_slew_lims".
+        data : dict
+            Internal reference to the input `data`.
+
+        Raises
+        ------
+        ValueError
+            If a required key is missing from `data` or is not in the
+            expected format, as enforced by `check_data_entry`.
+
+        Notes
+        -----
+        Calls `update_interpolants` at the end of initialisation to build
+        the interpolating functions from `data`.
+        """
         # check correct data is input and in correct format
         self.keys_to_spline = []
         self.keys_to_step = [
@@ -88,7 +133,7 @@ class PFController:
         # interpolate the input data
         self.update_interpolants()
 
-    def update_interpolants(self):
+    def update_interpolants(self) -> None:
         """
         Recompute all interpolant functions from the current `self.data`.
 
@@ -108,14 +153,14 @@ class PFController:
 
     def run_control(
         self,
-        t,
-        dt,
-        I_meas,
-        I_approved,
-        dI_dt_approved,
-        V_approved_prev,
-        verbose=False,
-    ):
+        t: float,
+        dt: float,
+        I_meas: np.ndarray,
+        I_approved: np.ndarray,
+        dI_dt_approved: np.ndarray,
+        V_approved_prev: np.ndarray,
+        verbose: bool = False,
+    ) -> np.ndarray:
         """
         Computes the approved coil voltage commands based on measured and approved currents,
         while enforcing voltage and slew rate constraints.
@@ -187,9 +232,9 @@ class PFController:
 
     def extract_values(
         self,
-        t,
-        targets,
-    ):
+        t: float,
+        targets: list[str],
+    ) -> np.ndarray:
         """
         Extracts interpolated values for specified shape targets at a given time.
 
@@ -212,7 +257,7 @@ class PFController:
 
         return np.array([self.interpolants[target](t) for target in targets])
 
-    def plot_data(self, tmin=-1.0, tmax=1.0, nt=1001):
+    def plot_data(self, tmin: float = -1.0, tmax: float = 1.0, nt: int = 1001) -> None:
         """
         Visualizes interpolated control waveforms and corresponding raw inputs.
 

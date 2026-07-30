@@ -19,10 +19,13 @@ You should have received a copy of the GNU Lesser General Public License
 along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 """
 
+from typing import Tuple
+
 import matplotlib.pyplot as plt
 import numpy as np
 
 from freegsnke.control_loop.useful_functions import (
+    Waveform,
     check_data_entry,
     interpolate_spline,
     interpolate_step,
@@ -70,10 +73,58 @@ class SystemsController:
 
     def __init__(
         self,
-        data,
-        ctrl_coils,
-    ):
+        data: dict[str, Waveform],
+        ctrl_coils: list[str],
+    ) -> None:
+        """
+        Initialise the systems controller.
 
+        Validates that per-coil perturbation data and coil current/ramp
+        limits are present in `data`, stores a reference to the data, and
+        builds the spline/step interpolants used to evaluate them at
+        arbitrary times.
+
+        Parameters
+        ----------
+        data : dict
+            Dictionary of time-series entries. Must contain the following
+            keys, each in the format expected by `check_data_entry` (i.e.
+            containing 'times' and 'vals' arrays of matching length):
+
+            - "<coil>_pert" for each coil in `ctrl_coils` : perturbation
+            signal for that coil.
+            - "min_coil_curr_lims" : minimum coil current limits.
+            - "max_coil_curr_lims" : maximum coil current limits.
+            - "max_coil_curr_ramp_lims" : maximum coil current ramp-rate
+            limits.
+        ctrl_coils : list of str
+            Names of the coils controlled by this controller. Determines
+            which "<coil>_pert" keys are required in `data`.
+
+        Attributes
+        ----------
+        ctrl_coils : list of str
+            Stored copy of `ctrl_coils`.
+        keys_to_spline : list of str
+            Data keys that will be spline-interpolated: one "<coil>_pert"
+            entry per coil in `ctrl_coils`.
+        keys_to_step : list of str
+            Data keys that will be step-interpolated: "min_coil_curr_lims",
+            "max_coil_curr_lims", and "max_coil_curr_ramp_lims".
+        data : dict
+            Internal reference to the input `data`.
+
+        Raises
+        ------
+        ValueError
+            If a required key is missing from `data` or is not in the
+            expected format, as enforced by `check_data_entry`.
+
+        Notes
+        -----
+        Calls `update_interpolants` at the end of initialisation to build
+        the interpolating functions from `data`.
+        """
         # coils list
         self.ctrl_coils = ctrl_coils
 
@@ -93,7 +144,7 @@ class SystemsController:
         # interpolate the input data
         self.update_interpolants()
 
-    def update_interpolants(self):
+    def update_interpolants(self) -> None:
         """
         Recompute all interpolant functions from the current `self.data`.
 
@@ -113,7 +164,14 @@ class SystemsController:
         for key in self.keys_to_step:
             self.interpolants[key] = interpolate_step(self.data[key])
 
-    def run_control(self, t, dt, I_unapproved, dI_dt_unapproved, verbose=False):
+    def run_control(
+        self,
+        t: float,
+        dt: float,
+        I_unapproved: np.ndarray,
+        dI_dt_unapproved: np.ndarray,
+        verbose: bool = False,
+    ) -> Tuple[np.ndarray, np.ndarray]:
         """
         Applies coil current perturbations to unapproved coil currents and enforce coil current
         constraints to produce approved control signals.
@@ -186,10 +244,10 @@ class SystemsController:
 
     def extract_values(
         self,
-        t,
-        targets,
-        deriv=False,
-    ):
+        t: float,
+        targets: list[str],
+        deriv: bool = False,
+    ) -> np.ndarray:
         """
         Extracts interpolated values or their derivatives for specified shape targets at a given time.
 
@@ -228,7 +286,7 @@ class SystemsController:
                 [self.interpolants[target + "_pert"](t) for target in targets]
             )
 
-    def plot_data(self, tmin=-1.0, tmax=1.0, nt=1001):
+    def plot_data(self, tmin: float = -1.0, tmax: float = 1.0, nt: int = 1001) -> None:
         """
         Visualizes interpolated control waveforms and corresponding raw inputs.
 
@@ -317,7 +375,7 @@ class SystemsController:
 
             if key[-4:] == "pert":
                 ax.set_ylabel(rf"{key} [$A$]")
-            elif key in ["min_coil_curr_lims", "min_coil_curr_lims"]:
+            elif key in ["min_coil_curr_lims", "max_coil_curr_lims"]:
                 ax.set_ylabel(rf"{key} [$A$]")
             elif key == "max_coil_curr_ramp_lims":
                 ax.set_ylabel(rf"{key} [$A/s$]")

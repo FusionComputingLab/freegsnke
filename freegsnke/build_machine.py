@@ -589,6 +589,40 @@ def build_active_coil_dict(active_coils):
 
 
 def copy_tokamak(tokamak: Machine):
+    """
+    Create a copy of a tokamak Machine object with controlled deep/shallow copying.
+
+    This function duplicates the core Machine object while carefully controlling
+    which internal structures are shared and which are copied. It is intended to
+    produce a new independent tokamak instance suitable for simulation branching
+    or parameter variation.
+
+    Copy behaviour:
+        - Uses `tokamak.copy()` as the base object copy.
+        - Performs shallow copies of coil container structures.
+        - Copies selected numerical arrays using `copy_into`.
+        - Shares some reference-type attributes (e.g. probes).
+
+    Parameters
+    ----------
+    tokamak : Machine
+        Original tokamak machine object to be copied.
+
+    Returns
+    -------
+    Machine
+        New tokamak instance with copied geometry and selected attributes.
+
+    Notes
+    -----
+    - `coils_dict` is shallow-copied (dictionary structure copied, values shared).
+    - `coils_list` is shallow-copied (list container copied, objects shared).
+    - `coil_resist`, `coil_self_ind`, and `current_vec` are copied using
+      `copy_into` (typically deep or array-level copy depending on implementation).
+    - `probes` is shared by reference (not copied).
+    - This function does not guarantee full independence of all mutable
+      substructures unless `copy_into` enforces deep copying.
+    """
     new_tokamak = tokamak.copy()
 
     new_tokamak.coils_dict = tokamak.coils_dict.copy()

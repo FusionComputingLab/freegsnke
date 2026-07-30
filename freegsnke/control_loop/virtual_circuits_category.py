@@ -279,7 +279,7 @@ class VirtualCircuitsController:
         emulated_VC_targets_calc: Optional[list[str]] = None,
         emulator_coils_calc: Optional[list[str]] = None,
         emu_inputs: Optional[np.ndarray] = None,
-        tikhonov_lambda=None,
+        tikhonov_lambda: Optional[np.ndarray] = None,
         verbose: bool = False,
     ) -> Tuple[np.ndarray, np.ndarray]:
         """

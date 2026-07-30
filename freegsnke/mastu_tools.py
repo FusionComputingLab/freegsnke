@@ -2353,10 +2353,6 @@ def plasma_resistivity_controller(
         Plasma resistivity required to maintain the target plasma current.
     """
 
-    # if not history, no control action
-    if not history:
-        return 0
-
     # proportional term
     error = history[-1] - target
     output = (

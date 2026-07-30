@@ -703,6 +703,8 @@ class ConstrainBetapIp(freegs4e.jtor.ConstrainBetapIp, Jtor_universal):
 
     """
 
+    Jtor = Jtor_universal.Jtor
+
     def __init__(self, eq, *args, **kwargs):
         """
         Initialise the constrained profile.
@@ -802,6 +804,8 @@ class ConstrainPaxisIp(freegs4e.jtor.ConstrainPaxisIp, Jtor_universal):
     Paxis–Ip constrained toroidal current profile with FreeGSNKE extensions.
 
     """
+
+    Jtor = Jtor_universal.Jtor
 
     def __init__(self, eq, *args, **kwargs):
         """
@@ -905,6 +909,8 @@ class Fiesta_Topeol(freegs4e.jtor.Fiesta_Topeol, Jtor_universal):
 
     """
 
+    Jtor = Jtor_universal.Jtor
+
     def __init__(self, eq, *args, **kwargs):
         """
         Initialise the Fiesta-Topeol constrained current profile.
@@ -1005,6 +1011,8 @@ class Lao85(freegs4e.jtor.Lao85, Jtor_universal):
 
     """
 
+    Jtor = Jtor_universal.Jtor
+
     def __init__(self, eq, *args, refine_jtor=False, nnx=None, nny=None, **kwargs):
         """
         Initialise the Lao85 current profile.
@@ -1098,6 +1106,8 @@ class TensionSpline(freegs4e.jtor.TensionSpline, Jtor_universal):
     Tension spline constrained toroidal current profile with FreeGSNKE extensions.
 
     """
+
+    Jtor = Jtor_universal.Jtor
 
     def __init__(self, eq, *args, **kwargs):
         """
@@ -1224,6 +1234,8 @@ class GeneralPprimeFFprime(freegs4e.jtor.GeneralPprimeFFprime, Jtor_universal):
     General unconstrained toroidal current profile with FreeGSNKE extensions.
 
     """
+
+    Jtor = Jtor_universal.Jtor
 
     def __init__(self, eq, *args, **kwargs):
         """

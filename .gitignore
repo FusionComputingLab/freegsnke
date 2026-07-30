@@ -52,5 +52,7 @@ build/
 examples/.virtual_documents/*
 .virtual_documents/
 .netlify
+examples/control_pickles/*
+freegsnke/control_loop/control_test_files/*
 .github/copilot-instructions.md
 AGENTS.md

@@ -20,6 +20,7 @@ along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 from datetime import datetime
+from typing import Any, Optional, Protocol, Tuple
 
 import numpy as np
 
@@ -316,7 +317,7 @@ class VirtualCircuitHandling:
 
     @staticmethod
     def calculate_matrix_inverse(
-        matrix: np.ndarray, tikhonov_lambda: np.ndarray = None
+        matrix: np.ndarray, tikhonov_lambda: Optional[np.ndarray] = None
     ):
         """
         Compute inverse of a generically non-square matrix
@@ -347,7 +348,9 @@ class VirtualCircuitHandling:
 
         else:
             print("Computing Tikhonov regularised inverse")
-            tikhonov_lambda = np.asarray(tikhonov_lambda)
+            tikhonov_lambda = np.asarray(
+                tikhonov_lambda
+            )  # convert tensorflow to numpy.
             n_cols = matrix.shape[1]
 
             if tikhonov_lambda.ndim == 1:
@@ -375,7 +378,7 @@ class VirtualCircuitHandling:
                     f"tikhonov_lambda must be 1d or 2d, got {tikhonov_lambda.ndim}d."
                 )
 
-            inverse = np.linalg.inv(matrix.T @ matrix + tikhonov_matrix) @ matrix.T
+            inverse = np.linalg.solve(matrix.T @ matrix + tikhonov_matrix, matrix.T)
 
         return inverse
 

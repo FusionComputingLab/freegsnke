@@ -30,7 +30,7 @@ along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 from __future__ import annotations
 
 import abc
-from typing import Callable
+from typing import Callable, Optional
 
 import numpy as np
 

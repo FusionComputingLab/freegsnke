@@ -114,8 +114,21 @@ class mode_decomposition:
 
     def normal_modes_greens(self, eq_vgreen):
         """
-        Calculates the green functions of the vessel normal modes,
-        i.e. the psi flux per unit current for each mode.
+        Calculate the Green functions of the vessel normal modes.
+
+        If ``I_m`` contains the physical metal currents and ``I_d`` contains
+        the normal-mode currents, the current transformation is
+
+        ``I_m = Pmatrix @ I_d``.
+
+        Since the physical-coil Green functions satisfy
+        ``psi = I_m.T @ G_m``, substitution gives
+
+        ``psi = I_d.T @ Pmatrix.T @ G_m``.
+
+        The modal Green functions are therefore ``Pmatrix.T @ G_m``.  The
+        inverse transformation is instead used to recover modal currents from
+        physical currents and must not be applied to the Green functions.
 
         Parameters
         ----------
@@ -124,10 +137,6 @@ class mode_decomposition:
             Can be found at eq._vgreen. np.shape(eq_vgreen)=(n_coils, nx, ny)
         """
 
-        dgreen = np.sum(
-            eq_vgreen[np.newaxis, :, :, :]
-            * self.Pmatrix_inverse[:, :, np.newaxis, np.newaxis],
-            axis=1,
-        )
-
-        return dgreen
+        grid_shape = eq_vgreen.shape[1:]
+        physical_greens = eq_vgreen.reshape(self.n_coils, -1)
+        return (self.Pmatrix.T @ physical_greens).reshape(self.n_coils, *grid_shape)

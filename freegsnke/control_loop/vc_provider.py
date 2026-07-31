@@ -42,6 +42,23 @@ class VirtualCircuitProvider(abc.ABC):
     Defines the interface for a Virtual Circuit provider.
     """
 
+    def __init__(
+        self,
+        vcg_targets_ctrl: list[str],
+        vcg_targets_calc: list[str],
+        vcg_coils_calc: list[str],
+    ) -> None:
+
+        # Confguration for VC computations
+        self.vcg_targets_ctrl = vcg_targets_ctrl
+        self.vcg_targets_calc = vcg_targets_calc
+        self.vcg_coils_calc = vcg_coils_calc
+
+        print(f"New VCs will be computed for {self.vcg_targets_ctrl}")
+        print(
+            f"The Jacobian matrix computation and inversion is performed with :\n{self.vcg_targets_calc} \n{self.vcg_coils_calc}"
+        )
+
     @abc.abstractmethod
     def get_vc(
         self,
@@ -87,6 +104,7 @@ class VirtualCircuitProvider(abc.ABC):
         """
         pass
 
+    @abc.abstractmethod
     def get_inputs_from_eq(
         self, eq: object, profiles: object
     ) -> tuple | np.ndarray | None:
@@ -123,6 +141,9 @@ class VCGenerator(VirtualCircuitProvider):
         solver: object,
         target_calculator: Callable[[object], np.ndarray],
         target_names: list[str],
+        vcg_targets_ctrl: list[str],
+        vcg_targets_calc: list[str],
+        vcg_coils_calc: list[str],
     ) -> None:
         """
         Initialise the VC generator and bind it to a solver.
@@ -139,7 +160,22 @@ class VCGenerator(VirtualCircuitProvider):
             Same as the target_calculator used by ``VirtualCircuitHandling.calculate_VC``.
         target_names : list[str]
             list of target names associated with the outputs of target_calculator.
+        vcg_targets_ctrl : list of str , optional
+            List of targets to be controlled using the emulated VC's. Must be subset of
+            ctrl_targets, and subset/equal to emulated_VC_targets_calc. Those not defined in this list will be taken from waveform-defined
+            VCs.
+        vcg_targets_calc : list of str , optional
+            List of targets to be used when performing pseudoinverse of jacobian when calculating the emulated VC.
+        vcg_coils_calc : list of str, optional
+            List of coils to use in emulated VC compuation. These are coils to use in computing shape sensitivity matrix.
+
         """
+        # Confguration for VC computations
+        super().__init__(
+            vcg_targets_ctrl=vcg_targets_ctrl,
+            vcg_targets_calc=vcg_targets_calc,
+            vcg_coils_calc=vcg_coils_calc,
+        )
 
         self.VCH = VirtualCircuitHandling()
         self.VCH.define_solver(solver)

@@ -258,10 +258,7 @@ class PlasmaControlSystem:
         zipv_meas: float,
         active_coil_resists: np.ndarray,
         dt_simulator: Optional[float] = None,
-        emulated_VC_targets: Optional[list[str]] = None,
-        emulated_VC_targets_calc: Optional[list[str]] = None,
-        emulator_coils_calc: Optional[list[str]] = None,
-        emu_inputs: Optional[np.ndarray] = None,
+        vcg_inputs: Optional[np.ndarray] = None,
         tikhonov_lambda: Optional[np.ndarray] = None,
         verbose: bool = False,
     ) -> Tuple[
@@ -321,17 +318,6 @@ class PlasmaControlSystem:
 
         dt_simulator : float
             Time step of the simulator (must have 'dt_simulator = dt*n' where n is a natural number) [s].
-
-        emulated_VC_targets : list of str , optional
-            List of targets to be controlled using the emulated VC's. Must be subset of
-            ctrl_targets, and subset/equal to emulated_VC_targets_calc. Those not defined in this list will be taken from waveform-defined
-            VCs.
-
-        emulated_VC_targets_calc : list of str , optional
-            List of targets to be used when performing pseudoinverse of jacobian when calculating the emulated VC.
-
-        emulator_coils_calc : list of str, optional
-            List of coils to use in emulated VC compuation. These are coils to use in computing shape sensitivity matrix.
 
         tikhonov_lambda : numpy.ndarray , optional
             Array of regularisation values for Tikhonov regularisation in emulated VC matrix inversion.
@@ -411,10 +397,7 @@ class PlasmaControlSystem:
                     dip_dt=self.dip_dt,
                     dT_dt=self.dT_dt,
                     I_approved_prev=I_approved_prev,
-                    emulated_VC_targets=emulated_VC_targets,
-                    emulated_VC_targets_calc=emulated_VC_targets_calc,
-                    emulator_coils_calc=emulator_coils_calc,
-                    emu_inputs=emu_inputs,
+                    vcg_inputs=vcg_inputs,
                     tikhonov_lambda=tikhonov_lambda,
                 )
             )

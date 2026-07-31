@@ -275,10 +275,7 @@ class VirtualCircuitsController:
         dip_dt: float,
         dT_dt: np.ndarray,
         I_approved_prev: np.ndarray,
-        emulated_VC_targets: Optional[list[str]] = None,
-        emulated_VC_targets_calc: Optional[list[str]] = None,
-        emulator_coils_calc: Optional[list[str]] = None,
-        emu_inputs: Optional[np.ndarray] = None,
+        vcg_inputs: Optional[np.ndarray] = None,
         tikhonov_lambda: Optional[np.ndarray] = None,
         verbose: bool = False,
     ) -> Tuple[np.ndarray, np.ndarray]:
@@ -309,23 +306,12 @@ class VirtualCircuitsController:
         I_approved_prev : numpy.ndarray
             Previously approved coil currents [A].
 
-        emulated_VC_targets : list of str , optional
-            List of targets to be controlled using the emulated VC's. Must be subset of
-            ctrl_targets, and subset/equal to emulated_VC_targets_calc. Those not defined in this list will be taken from waveform-defined
-            VCs.
-
-        emulated_VC_targets_calc : list of str , optional
-            List of targets to be used when performing pseudoinverse of jacobian when calculating the emulated VC.
-
-        emulator_coils_calc : list of str, optional
-            List of coils to use in emulated VC compuation. These are coils to use in computing shape sensitivity matrix.
-
-        emu_inputs : np.ndarray , optional
+        vcg_inputs : np.ndarray , optional
             Array of input values for all input parameters (currents and other plasma parameters) of the Neural Network emulator.
 
         tikhonov_lambda : numpy.ndarray , optional
             Array of regularisation values for Tikhonov regularisation in emulated VC matrix inversion.
-            Must be same length as emulator_coils_calc.
+            Must be same length as vcg_coils_calc.
 
         verbose : bool
             Print some output if True.
@@ -360,19 +346,19 @@ class VirtualCircuitsController:
         # matrix columns
         if (
             (self.vc_generator is not None)
-            and (emulated_VC_targets is not None)
-            and (emulated_VC_targets_calc is not None)
-            and (emulator_coils_calc is not None)
+            and (self.vc_generator.vcg_targets_ctrl is not None)
+            and (self.vc_generator.vcg_targets_calc is not None)
+            and (self.vc_generator.vcg_coils_calc is not None)
         ):
             # error checks
             assert (
                 self.vc_generator is not None
             ), "Need to provide a VC emulator class to `VirtualCircuitsController`."
             assert (
-                emulated_VC_targets is not None
+                self.vc_generator.vcg_targets_ctrl is not None
             ), "Need to provide targets for the VC emulator."
             assert (
-                emulated_VC_targets_calc is not None
+                self.vc_generator.vcg_targets_calc is not None
             ), "Need to provide targets for calculation in the VC emulator."
 
             if self.latest_vc is None:
@@ -380,11 +366,11 @@ class VirtualCircuitsController:
                 if verbose:
                     print("...first emulated VCs being used.")
                 VC_shape_emu = self.vc_generator.get_vc(
-                    targets=emulated_VC_targets,
-                    targets_calc=emulated_VC_targets_calc,
+                    targets=self.vc_generator.vcg_targets_ctrl,
+                    targets_calc=self.vc_generator.vcg_targets_calc,
                     coils=self.ctrl_coils,
-                    coils_calc=emulator_coils_calc,
-                    input_data=emu_inputs,
+                    coils_calc=self.vc_generator.vcg_coils_calc,
+                    input_data=vcg_inputs,
                     tikhonov_lambda=tikhonov_lambda,
                 )
                 # update latest vcs/times
@@ -400,11 +386,11 @@ class VirtualCircuitsController:
                 if verbose:
                     print("...updating the emulated VCs being used.")
                 VC_shape_emu = self.vc_generator.get_vc(
-                    targets=emulated_VC_targets,
-                    targets_calc=emulated_VC_targets_calc,
+                    targets=self.vc_generator.vcg_targets_ctrl,
+                    targets_calc=self.vc_generator.vcg_targets_calc,
                     coils=self.ctrl_coils,
-                    coils_calc=emulator_coils_calc,
-                    input_data=emu_inputs,
+                    coils_calc=self.vc_generator.vcg_coils_calc,
+                    input_data=vcg_inputs,
                     tikhonov_lambda=tikhonov_lambda,
                 )
 
@@ -426,7 +412,7 @@ class VirtualCircuitsController:
             ctrl_target_order = {
                 target: i for i, target in enumerate(self.ctrl_targets)
             }
-            for j, emu_targ in enumerate(emulated_VC_targets):
+            for j, emu_targ in enumerate(self.vc_generator.vcg_targets_ctrl):
                 # expand array as apropriate
                 VC_shape[ctrl_target_order[emu_targ], :] = 1.0 * VC_shape_emu[:, j]
 

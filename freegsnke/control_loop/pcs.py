@@ -262,7 +262,7 @@ class PlasmaControlSystem:
         emulated_VC_targets_calc: Optional[list[str]] = None,
         emulator_coils_calc: Optional[list[str]] = None,
         emu_inputs: Optional[np.ndarray] = None,
-        tikhonov_lambda: Optional[float] = None,
+        tikhonov_lambda: Optional[np.ndarray] = None,
         verbose: bool = False,
     ) -> Tuple[
         np.ndarray, float, float, np.ndarray, np.ndarray, np.ndarray, np.ndarray

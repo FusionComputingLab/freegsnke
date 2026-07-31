@@ -30,7 +30,7 @@ along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 from __future__ import annotations
 
 import abc
-from typing import Callable
+from typing import Callable, Optional
 
 import numpy as np
 
@@ -368,10 +368,10 @@ class VCGenerator(VirtualCircuitProvider):
         times: list[float],
         eq_list: list[object],
         profile_list: list[object],
-        targets_calc: list[str],
-        targets_ctrl: list[str],
         coils: list[str],
-        coils_calc: list[str],
+        targets_calc: Optional[list[str]] = None,
+        targets_ctrl: Optional[list[str]] = None,
+        coils_calc: Optional[list[str]] = None,
         tikhonov_lambda: np.ndarray | None = None,
         verbose: bool = False,
     ) -> dict:
@@ -404,18 +404,21 @@ class VCGenerator(VirtualCircuitProvider):
         profile_list : list[object]
             Equilibrium profiles used to compute the VC for each phase (one
             entry per timestamp in ``times``).
-        targets_calc : list[str]
+        coils : list[str]
+            Full list of coils defining the output matrix column ordering.
+        targets_calc : list[str], optional
             Targets actually used in the VC calculation (sensitivity
             calculation and inversion). Must be a subset of
             ``self.target_names``.
-        targets_ctrl : list[str]
+            Defaults to list set when initialising class
+        targets_ctrl : list[str], optional
             List of targets that are going to be controlled, with non-zero
             VC arrays. Must be a subset of ``self.target_names`` and of
             ``targets_calc``.
-        coils : list[str]
-            Full list of coils defining the output matrix column ordering.
-        coils_calc : list[str]
+            Defaults to list set when initialising class
+        coils_calc : list[str], optional
             Subset of coils actually used in the VC calculation.
+            Defaults to list set when initialising class
         tikhonov_lambda : np.ndarray, optional
             Regularisation parameter(s) passed through to ``get_vc`` (and in
             turn to ``VirtualCircuitHandling.calculate_VC``) for every phase
@@ -444,6 +447,14 @@ class VCGenerator(VirtualCircuitProvider):
             if ``coils_calc`` is not a subset of ``coils``;
             if ``eq_list``/``profile_list`` do not match ``times`` in length.
         """
+        # assign defaults for coils/targets from VCG class if not provided
+        if coils_calc is None:
+            coils_calc = self.vcg_coils_calc
+        if targets_ctrl is None:
+            targets_ctrl = self.vcg_targets_ctrl
+        if targets_calc is None:
+            targets_calc = self.vcg_targets_calc
+
         target_names_set = set(self.target_names)
         targets_ctrl_set = set(targets_ctrl)
         targets_calc_set = set(targets_calc)

@@ -696,7 +696,9 @@ class nl_solver:
             Approximate Jacobian of plasma current distribution wrt coil currents,
             computed without GS solves.
         self.ndIydI_no_GS : ndarray, shape (n_coils,)
-            Norm of dIy/dI for each coil/mode, used in mode selection.
+            Norm of the finite-difference dIy/dI column for each coil/mode,
+            used in mode selection. Each norm uses the same perturbation as
+            its corresponding response, before preparing the next perturbation.
         self.rel_ndIy : ndarray, shape (n_coils,)
             Relative plasma current perturbation norms for each mode.
         self.starting_dI : ndarray
@@ -745,8 +747,7 @@ class nl_solver:
 
             self.dIydI_noGS[:, j] = dIydInoGS
             self.rel_ndIy[j] = rel_ndIy
-            # self.final_dI_record[j] = starting_dI[j] * self.accepted_target_dIy[j] / rel_ndIy
-            self.ndIydI_no_GS[j] = rel_ndIy * self.nIy / starting_dI[j]
+            self.ndIydI_no_GS[j] = np.linalg.norm(dIydInoGS)
         self.starting_dI = 1.0 * starting_dI
 
     def set_solvers(

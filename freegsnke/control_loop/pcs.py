@@ -88,12 +88,9 @@ class PlasmaControlSystem:
 
     vc_generator : object, optional
         An optional class object for applying emulated virtual circuits. If not
-        provided, default waveform-defined VCs will be used.
-        provided, default waveform-defined VCs will be used.
-
-    vc_update_rate : float, optional
-        Optional argument to specify how often, in seconds, new VCs are computed with vc_generator.
-        If None provided, defaults to zero and new VC computed at every iteration.
+        provided, default waveform-defined VCs will be used. Its `vc_update_rate`
+        attribute (set when the generator was initialised) controls how often, in
+        seconds, new VCs are computed.
     """
 
     def __init__(
@@ -113,7 +110,6 @@ class PlasmaControlSystem:
         plasma_target: list[str],
         shape_control_mode: Optional[str] = None,
         vc_generator=None,
-        vc_update_rate: Optional[float] = None,
     ) -> None:
         """
         Initialise the top-level control system, composing all sub-controllers.
@@ -159,11 +155,8 @@ class PlasmaControlSystem:
         vc_generator : callable, optional
             Generator function used by `VirtualCircuitsController` to produce
             virtual circuit outputs. If None, `VirtualCircuitsController`'s
-            default generator is used.
-        vc_update_rate : float, optional
-            Rate at which `VirtualCircuitsController` updates its virtual
-            circuits. If None, `VirtualCircuitsController`'s default update
-            rate is used.
+            default generator is used. Its `vc_update_rate` attribute controls
+            how often `VirtualCircuitsController` updates its virtual circuits.
 
         Attributes
         ----------
@@ -220,7 +213,6 @@ class PlasmaControlSystem:
             ctrl_targets=self.ctrl_targets,
             plasma_target=self.plasma_target,
             vc_generator=vc_generator,
-            vc_update_rate=vc_update_rate,
         )
 
         self.SystemsController = SystemsController(
@@ -319,9 +311,14 @@ class PlasmaControlSystem:
         dt_simulator : float
             Time step of the simulator (must have 'dt_simulator = dt*n' where n is a natural number) [s].
 
+        vcg_inputs : np.ndarray , optional
+            Array of input values required to compute the emulated virtual circuit, as
+            returned by ``vc_generator.get_inputs_from_eq(...)``. Only used if a
+            ``vc_generator`` was provided to this ``PlasmaControlSystem``.
+
         tikhonov_lambda : numpy.ndarray , optional
             Array of regularisation values for Tikhonov regularisation in emulated VC matrix inversion.
-            Must be same length as emulator_coils_calc.
+            Must be same length as coils_calc.
 
         verbose : bool, optional
             If True, prints diagnostic information from subsystem controllers.

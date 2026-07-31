@@ -44,20 +44,49 @@ class VirtualCircuitProvider(abc.ABC):
 
     def __init__(
         self,
-        vcg_targets_ctrl: list[str],
-        vcg_targets_calc: list[str],
-        vcg_coils_calc: list[str],
+        targets_ctrl: list[str],
+        targets_calc: list[str],
+        coils_calc: list[str],
+        vc_update_rate: float = 0.0,
+        verbose: bool = False,
     ) -> None:
+        """
+        Store the coil/target configuration used for every VC computation
+        made by this provider.
 
-        # Confguration for VC computations
-        self.vcg_targets_ctrl = vcg_targets_ctrl
-        self.vcg_targets_calc = vcg_targets_calc
-        self.vcg_coils_calc = vcg_coils_calc
+        Parameters
+        ----------
+        targets_ctrl : list[str]
+            List of targets to be controlled using the emulated VCs. Must be a
+            subset of ``ctrl_targets``, and subset/equal to ``targets_calc``.
+            Those not defined in this list will be taken from waveform-defined
+            VCs.
+        targets_calc : list[str]
+            List of targets to be used when performing the pseudoinverse of the
+            Jacobian when calculating the emulated VC.
+        coils_calc : list[str]
+            List of coils to use in the emulated VC computation. These are the
+            coils used in computing the shape sensitivity matrix.
+        vc_update_rate : float, optional
+            How often, in seconds, ``VirtualCircuitsController.run_control`` should
+            recompute the emulated VC via ``get_vc``. Default is 0.0, i.e. a new VC
+            is computed at every control step.
+        verbose : bool, optional
+            If True, print the configuration used for VC computations.
+            Default is False.
+        """
 
-        print(f"New VCs will be computed for {self.vcg_targets_ctrl}")
-        print(
-            f"The Jacobian matrix computation and inversion is performed with :\n{self.vcg_targets_calc} \n{self.vcg_coils_calc}"
-        )
+        # Configuration for VC computations
+        self.targets_ctrl = targets_ctrl
+        self.targets_calc = targets_calc
+        self.coils_calc = coils_calc
+        self.vc_update_rate = vc_update_rate
+
+        if verbose:
+            print(f"New VCs will be computed for {self.targets_ctrl}")
+            print(
+                f"The Jacobian matrix computation and inversion is performed with :\n{self.targets_calc} \n{self.coils_calc}"
+            )
 
     @abc.abstractmethod
     def get_vc(
@@ -141,9 +170,12 @@ class VCGenerator(VirtualCircuitProvider):
         solver: object,
         target_calculator: Callable[[object], np.ndarray],
         target_names: list[str],
-        vcg_targets_ctrl: list[str],
-        vcg_targets_calc: list[str],
-        vcg_coils_calc: list[str],
+        targets_ctrl: list[str],
+        targets_calc: list[str],
+        coils_calc: list[str],
+        coils: list[str] | None = None,
+        vc_update_rate: float = 0.0,
+        verbose: bool = False,
     ) -> None:
         """
         Initialise the VC generator and bind it to a solver.
@@ -160,22 +192,37 @@ class VCGenerator(VirtualCircuitProvider):
             Same as the target_calculator used by ``VirtualCircuitHandling.calculate_VC``.
         target_names : list[str]
             list of target names associated with the outputs of target_calculator.
-        vcg_targets_ctrl : list of str , optional
+        targets_ctrl : list[str]
             List of targets to be controlled using the emulated VC's. Must be subset of
-            ctrl_targets, and subset/equal to emulated_VC_targets_calc. Those not defined in this list will be taken from waveform-defined
+            ctrl_targets, and subset/equal to targets_calc. Those not defined in this list will be taken from waveform-defined
             VCs.
-        vcg_targets_calc : list of str , optional
+        targets_calc : list[str]
             List of targets to be used when performing pseudoinverse of jacobian when calculating the emulated VC.
-        vcg_coils_calc : list of str, optional
+        coils_calc : list[str]
             List of coils to use in emulated VC compuation. These are coils to use in computing shape sensitivity matrix.
+        coils : list[str], optional
+            Full list of coils defining the output matrix column ordering, used only by
+            ``generate_fixed_schedule``. Not needed if this generator is only used via
+            ``get_vc``/``get_inputs_from_eq`` (e.g. through ``VirtualCircuitsController``),
+            where the full coil list is instead supplied per-call by the controller.
+        vc_update_rate : float, optional
+            How often, in seconds, ``VirtualCircuitsController.run_control`` should
+            recompute the emulated VC via ``get_vc``. Default is 0.0, i.e. a new VC
+            is computed at every control step.
+        verbose : bool, optional
+            If True, print the configuration used for VC computations.
+            Default is False.
 
         """
-        # Confguration for VC computations
+        # Configuration for VC computations
         super().__init__(
-            vcg_targets_ctrl=vcg_targets_ctrl,
-            vcg_targets_calc=vcg_targets_calc,
-            vcg_coils_calc=vcg_coils_calc,
+            targets_ctrl=targets_ctrl,
+            targets_calc=targets_calc,
+            coils_calc=coils_calc,
+            vc_update_rate=vc_update_rate,
+            verbose=verbose,
         )
+        self.coils = coils
 
         self.VCH = VirtualCircuitHandling()
         self.VCH.define_solver(solver)
@@ -297,16 +344,30 @@ class VCGenerator(VirtualCircuitProvider):
             Expanded virtual circuit matrix of shape
             (len(coils), len(targets))
 
+        Notes
+        -----
+        As a side effect, stores the shape (Jacobian) matrix used to compute this
+        VC as ``self.latest_shape_matrix``, of shape
+        (len(targets_calc), len(coils_calc)) -- i.e. *not* expanded/reordered to
+        match ``coils``/``targets`` like the returned ``vc_matrix`` is.
+
         Raises
         ------
         ValueError
             If ``targets_calc`` contains a target with no corresponding
-            entry in ``self.target_calculator_dict``.
+            entry in ``self.target_calculator_dict``; if ``input_data`` is
+            None.
         """
 
         if not set(targets_calc).issubset(self.target_calculator_dict.keys()):
             raise ValueError(
                 "All chosen control targets in `targets_calc` must have a corresponding function in the target_calculator_dict"
+            )
+
+        if input_data is None:
+            raise ValueError(
+                "`input_data` must not be None; obtain it via "
+                "`get_inputs_from_eq(eq, profiles)`."
             )
 
         # get inputs
@@ -328,6 +389,10 @@ class VCGenerator(VirtualCircuitProvider):
             verbose=verbose,
         )
         vc_matrix = self.VCH.latest_VC.VCs_matrix
+
+        # store the Jacobian (shape matrix) used to compute this VC, for
+        # external bookkeeping (e.g. VirtualCircuitsController.jacobian_list)
+        self.latest_shape_matrix = self.VCH.latest_VC.shape_matrix
 
         # fill out full vc matrix
         vc_matrix_big_temp = np.zeros((len(coils), len(targets_calc)))
@@ -368,10 +433,6 @@ class VCGenerator(VirtualCircuitProvider):
         times: list[float],
         eq_list: list[object],
         profile_list: list[object],
-        targets_calc: list[str],
-        targets_ctrl: list[str],
-        coils: list[str],
-        coils_calc: list[str],
         tikhonov_lambda: np.ndarray | None = None,
         verbose: bool = False,
     ) -> dict:
@@ -382,12 +443,13 @@ class VCGenerator(VirtualCircuitProvider):
 
         For each timestamp in ``times``, a VC matrix is computed from the
         corresponding equilibrium/profile pair in ``eq_list``/``profile_list``,
-        using ``targets_calc`` and ``coils_calc`` for the underlying
-        sensitivity calculation and inversion. The resulting per-coil
-        coefficients for each target in ``self.target_names`` (the full set
-        of targets this generator was initialised with) are stored over
-        time, with targets not in ``targets_ctrl`` left as all-zero arrays
-        (i.e. reported to PCS but not actively controlled).
+        using ``self.targets_calc`` and ``self.coils_calc`` (set when
+        this ``VCGenerator`` was initialised) for the underlying sensitivity
+        calculation and inversion. The resulting per-coil coefficients for
+        each target in ``self.target_names`` (the full set of targets this
+        generator was initialised with) are stored over time, with targets
+        not in ``self.targets_ctrl`` left as all-zero arrays (i.e.
+        reported to PCS but not actively controlled).
 
         Note that this method only builds the shape-target entries. The
         plasma-current VC and any feedforward coil drives (``"<coil>_ref"``)
@@ -404,18 +466,6 @@ class VCGenerator(VirtualCircuitProvider):
         profile_list : list[object]
             Equilibrium profiles used to compute the VC for each phase (one
             entry per timestamp in ``times``).
-        targets_calc : list[str]
-            Targets actually used in the VC calculation (sensitivity
-            calculation and inversion). Must be a subset of
-            ``self.target_names``.
-        targets_ctrl : list[str]
-            List of targets that are going to be controlled, with non-zero
-            VC arrays. Must be a subset of ``self.target_names`` and of
-            ``targets_calc``.
-        coils : list[str]
-            Full list of coils defining the output matrix column ordering.
-        coils_calc : list[str]
-            Subset of coils actually used in the VC calculation.
         tikhonov_lambda : np.ndarray, optional
             Regularisation parameter(s) passed through to ``get_vc`` (and in
             turn to ``VirtualCircuitHandling.calculate_VC``) for every phase
@@ -430,49 +480,58 @@ class VCGenerator(VirtualCircuitProvider):
             One entry per target in ``self.target_names``, each a dict with:
                 "times" : np.ndarray, shape (len(times),)
                     the schedule timestamps for this target
-                "vals" : np.ndarray, shape (len(times), len(coils))
+                "vals" : np.ndarray, shape (len(times), len(self.coils))
                     that target's coil coefficients at each scheduled time
-            Targets not in ``targets_ctrl`` are left with all-zero "vals".
-            Plus a ``"coil_order"`` entry giving ``coils``.
+            Targets not in ``self.targets_ctrl`` are left with all-zero
+            "vals". Plus a ``"coil_order"`` entry giving ``self.coils``.
 
         Raises
         ------
         ValueError
-            If ``targets_ctrl`` is not a subset of ``self.target_names`` or
-            of ``targets_calc``;
-            if ``targets_calc`` is not a subset of ``self.target_names``;
-            if ``coils_calc`` is not a subset of ``coils``;
+            If ``self.coils`` was not provided when this ``VCGenerator`` was
+            initialised;
+            if ``self.targets_ctrl`` is not a subset of
+            ``self.target_names`` or of ``self.targets_calc``;
+            if ``self.targets_calc`` is not a subset of
+            ``self.target_names``;
+            if ``self.coils_calc`` is not a subset of ``self.coils``;
             if ``eq_list``/``profile_list`` do not match ``times`` in length.
         """
+        if self.coils is None:
+            raise ValueError(
+                "`self.coils` was not provided; pass `coils` when initialising "
+                "this `VCGenerator` in order to use `generate_fixed_schedule`."
+            )
+
         target_names_set = set(self.target_names)
-        targets_ctrl_set = set(targets_ctrl)
-        targets_calc_set = set(targets_calc)
-        coils_set = set(coils)
-        coils_calc_set = set(coils_calc)
+        targets_ctrl_set = set(self.targets_ctrl)
+        targets_calc_set = set(self.targets_calc)
+        coils_set = set(self.coils)
+        coils_calc_set = set(self.coils_calc)
         n_times = len(times)
-        n_coils = len(coils)
+        n_coils = len(self.coils)
 
         if not targets_ctrl_set.issubset(target_names_set):
             raise ValueError(
-                "`targets_ctrl` must be a subset of `self.target_names`; "
+                "`self.targets_ctrl` must be a subset of `self.target_names`; "
                 f"found targets not in target_names: {sorted(targets_ctrl_set - target_names_set)}"
             )
 
         if not targets_ctrl_set.issubset(targets_calc_set):
             raise ValueError(
-                "`targets_ctrl` must be a subset of `targets_calc`; "
+                "`self.targets_ctrl` must be a subset of `self.targets_calc`; "
                 f"found targets not in targets_calc: {sorted(targets_ctrl_set - targets_calc_set)}"
             )
 
         if not targets_calc_set.issubset(target_names_set):
             raise ValueError(
-                "`targets_calc` must be a subset of `self.target_names`; "
+                "`self.targets_calc` must be a subset of `self.target_names`; "
                 f"found targets not in target_names: {sorted(targets_calc_set - target_names_set)}"
             )
 
         if not coils_calc_set.issubset(coils_set):
             raise ValueError(
-                "`coils_calc` must be a subset of `coils`; "
+                "`self.coils_calc` must be a subset of `self.coils`; "
                 f"found coils not in coils: {sorted(coils_calc_set - coils_set)}"
             )
 
@@ -486,8 +545,8 @@ class VCGenerator(VirtualCircuitProvider):
             )
 
         # initialise: all-zero coil-coefficient arrays for every target this
-        # generator supports; targets not in targets_ctrl are left at zero
-        # (uncontrolled)
+        # generator supports; targets not in self.targets_ctrl are left at
+        # zero (uncontrolled)
         schedule = {
             targ: {
                 "times": np.asarray(times, dtype=float).copy(),
@@ -495,7 +554,7 @@ class VCGenerator(VirtualCircuitProvider):
             }
             for targ in self.target_names
         }
-        schedule["coil_order"] = coils
+        schedule["coil_order"] = self.coils
 
         if verbose:
             print("Calculating VC schedule...")
@@ -509,17 +568,17 @@ class VCGenerator(VirtualCircuitProvider):
 
             # calculate VC matrix for this phase, shape (n_coils, len(targets_ctrl))
             vc_matrix_big = self.get_vc(
-                targets=targets_ctrl,
-                targets_calc=targets_calc,
-                coils=coils,
-                coils_calc=coils_calc,
+                targets=self.targets_ctrl,
+                targets_calc=self.targets_calc,
+                coils=self.coils,
+                coils_calc=self.coils_calc,
                 input_data=input_data,
                 tikhonov_lambda=tikhonov_lambda,
                 verbose=verbose,
             )
 
             # populate schedule, keeping non-controlled targets at zero
-            for j, targ in enumerate(targets_ctrl):
+            for j, targ in enumerate(self.targets_ctrl):
                 schedule[targ]["vals"][idx, :] = vc_matrix_big[:, j]
 
         if verbose:

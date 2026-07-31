@@ -335,7 +335,9 @@ class VirtualCircuitHandling:
 
     @staticmethod
     def calculate_matrix_inverse(
-        matrix: np.ndarray, tikhonov_lambda: np.ndarray | None = None
+        matrix: np.ndarray,
+        tikhonov_lambda: np.ndarray | None = None,
+        verbose: bool = False,
     ) -> np.ndarray:
         """
         Compute inverse of a generically non-square matrix
@@ -350,20 +352,28 @@ class VirtualCircuitHandling:
         tikhonov_lambda : np.ndarray, optional
             1d array of tikhonov coefficients, or 2d diagonal matrix of coefficients.
             Must have size/shape consistent with matrix.shape[1].
+        verbose : bool, optional
+            Display output (or not).
 
         Returns
         -------
         inverse : np.ndarray
             inverse of matrix
         """
-        matrix = np.asarray(matrix)  # convert tensorflow to numpy.
+
+        # convert tensorflow to numpy
+        matrix = np.asarray(matrix)
+
+        # use regular moore-penrose pseudo inverse
         if tikhonov_lambda is None:
-            # use regular moore-penrose pseudo inverse
-            print("Computing Moore-Penrose pseudoinverse")
+            if verbose:
+                print("VC computing using Moore-Penrose pseudoinverse.")
             inverse = np.linalg.pinv(matrix)
 
+        # use tikhonov regularisation in the inverse calculation
         else:
-            print("Computing Tikhonov regularised inverse")
+            if verbose:
+                print("VC computed using Tikhonov regularised inverse. ")
             tikhonov_lambda = np.asarray(
                 tikhonov_lambda
             )  # convert tensorflow to numpy.
@@ -546,7 +556,7 @@ class VirtualCircuitHandling:
 
         # vc_matrix is the pseudo inverse of shape_matrix
         vc_matrix = self.calculate_matrix_inverse(
-            shape_matrix, tikhonov_lambda=tikhonov_lambda
+            shape_matrix, tikhonov_lambda=tikhonov_lambda, verbose=verbose
         )
 
         # store the VC object dynamically

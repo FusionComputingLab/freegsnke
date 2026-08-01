@@ -175,3 +175,34 @@ def test_static_solve(create_machine):
     assert np.allclose(
         eq.psi(), test_psi, atol=(np.max(test_psi) - np.min(test_psi)) * 0.003
     ), "Psi map differs significantly from the test map"
+
+
+def test_limiter_reduced_boundary_green_is_exact(create_machine):
+    """Limiter reduction preserves the boundary flux for confined current."""
+    eq, _, _ = create_machine
+
+    from freegsnke import GSstaticsolver
+
+    solver = GSstaticsolver.NKGSsolver(eq)
+    boundary_indices = solver.bndry_indices
+    full_green = freegs4e.gradshafranov.Greens(
+        eq.R[np.newaxis, :, :],
+        eq.Z[np.newaxis, :, :],
+        eq.R[:, 0][boundary_indices[:, 0]][:, np.newaxis, np.newaxis],
+        eq.Z[0, :][boundary_indices[:, 1]][:, np.newaxis, np.newaxis],
+    )
+    full_green[
+        np.arange(len(boundary_indices)),
+        boundary_indices[:, 0],
+        boundary_indices[:, 1],
+    ] = 0.0
+    full_green *= solver.dRdZ
+
+    jtor = np.zeros_like(eq.R)
+    jtor[solver.plasma_source_mask] = np.random.default_rng(0).random(
+        np.count_nonzero(solver.plasma_source_mask)
+    )
+    expected = np.tensordot(full_green, jtor, axes=([1, 2], [0, 1]))
+    actual = solver._boundary_flux_from_jtor(jtor)
+
+    np.testing.assert_allclose(actual, expected, rtol=2e-14, atol=1e-14)

@@ -125,7 +125,8 @@ class NKGSsolver:
             Multigrid solver for linearised GS equation.
 
         self.greenfunc
-            Boundary response Green's function matrix.
+            Boundary response Green's function matrix for source points inside
+            the limiter, where the plasma current is confined.
 
         self.nksolver
             Newton–Krylov nonlinear solver backend.
@@ -144,9 +145,6 @@ class NKGSsolver:
 
         self.R = R
         self.Z = Z
-
-        R_1D = R[:, 0]
-        Z_1D = Z[0, :]
 
         # number of grid points
         nx, ny = np.shape(R)
@@ -190,22 +188,12 @@ class NKGSsolver:
         )
         self.bndry_indices = bndry_indices
 
-        # Compute Green's function mapping:
-        #
-        #   Jtor(R',Z') → ψ_boundary(R,Z)
-        greenfunc = Greens(
-            R[np.newaxis, :, :],
-            Z[np.newaxis, :, :],
-            R_1D[bndry_indices[:, 0]][:, np.newaxis, np.newaxis],
-            Z_1D[bndry_indices[:, 1]][:, np.newaxis, np.newaxis],
+        # Plasma current is confined inside the limiter, so only those Green
+        # columns contribute to the free-boundary condition.
+        self.plasma_source_mask = np.asarray(
+            eq.limiter_handler.mask_inside_limiter, dtype=bool
         )
-
-        # remove singular self-interaction terms
-        zeros = np.ones_like(greenfunc)
-        zeros[
-            np.arange(len(bndry_indices)), bndry_indices[:, 0], bndry_indices[:, 1]
-        ] = 0
-        self.greenfunc = greenfunc * zeros * self.dRdZ
+        self.greenfunc = self._build_boundary_green(self.plasma_source_mask)
 
         # Precompute geometric RHS coefficient
         # Comes from GS equation:
@@ -214,6 +202,35 @@ class NKGSsolver:
 
         # random generator used for NK search direction exploration
         self.rng = np.random.default_rng(seed=seed)
+
+    def _build_boundary_green(self, source_mask):
+        """Build the boundary Green matrix for a selected set of source points."""
+        source_indices = np.flatnonzero(source_mask)
+        boundary_indices = np.ravel_multi_index(
+            (self.bndry_indices[:, 0], self.bndry_indices[:, 1]),
+            (self.nx, self.ny),
+        )
+        flat_R = self.R.reshape(-1)
+        flat_Z = self.Z.reshape(-1)
+        greenfunc = Greens(
+            flat_R[source_indices][np.newaxis, :],
+            flat_Z[source_indices][np.newaxis, :],
+            flat_R[boundary_indices][:, np.newaxis],
+            flat_Z[boundary_indices][:, np.newaxis],
+        )
+
+        # Remove singular self-interactions when the selected sources include
+        # points on the computational boundary.
+        positions = np.searchsorted(source_indices, boundary_indices)
+        valid = positions < len(source_indices)
+        matches = np.zeros_like(valid)
+        matches[valid] = source_indices[positions[valid]] == boundary_indices[valid]
+        greenfunc[np.flatnonzero(matches), positions[matches]] = 0.0
+        return np.ascontiguousarray(greenfunc * self.dRdZ)
+
+    def _boundary_flux_from_jtor(self, jtor):
+        """Return boundary flux from plasma current inside the limiter."""
+        return self.greenfunc @ jtor[self.plasma_source_mask]
 
     def freeboundary(self, plasma_psi, tokamak_psi, profiles):
         """
@@ -293,15 +310,11 @@ class NKGSsolver:
         #
         # psi_boundary = ∫ G(R,Z; R',Z') Jtor(R',Z') dR'dZ'
         #
-        # Implemented using tensor contraction:
-        #
-        # Contract:
-        #   greenfunc axis (1,2) with jtor axis (0,1)
-        #
-        # Result is flattened boundary flux vector.
+        # Implemented as a matrix-vector product over source points inside the
+        # limiter, outside which the plasma current is identically zero.
         # ------------------------------------------------------------
         self.psi_boundary = np.zeros_like(self.R)
-        psi_bnd = np.tensordot(self.greenfunc, self.jtor, axes=([1, 2], [0, 1]))
+        psi_bnd = self._boundary_flux_from_jtor(self.jtor)
 
         # ------------------------------------------------------------
         # Map flattened Green's solution back to boundary grid

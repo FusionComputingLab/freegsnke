@@ -73,6 +73,7 @@ class NKGSsolver:
         l2_reg=1e-6,
         collinearity_reg=1e-6,
         seed=42,
+        gs_operator_order=4,
     ):
         """
         Initialise the Grad–Shafranov nonlinear solver.
@@ -80,7 +81,7 @@ class NKGSsolver:
         The constructor prepares all numerical operators required for
         nonlinear GS solving, including:
 
-            • Linear GS multigrid solver
+            • Direct sparse linear GS solver
             • Green's function boundary response operator
             • Newton–Krylov nonlinear solver backend
             • Random generator for Krylov direction perturbations
@@ -109,6 +110,12 @@ class NKGSsolver:
             Random number generator seed used for:
                 • Krylov perturbation generation
                 • Directional exploration in nonlinear solve
+
+        gs_operator_order : {2, 4}, optional (default=4)
+            Finite-difference order of the linear Grad-Shafranov operator.
+            Fourth order is more accurate; second order reduces sparse matrix
+            construction and factorisation costs when that accuracy trade-off
+            is acceptable.
 
         Attributes
         ----------
@@ -159,6 +166,14 @@ class NKGSsolver:
         dZ = Z[0, 1] - Z[0, 0]
         self.dRdZ = dR * dZ
 
+        if gs_operator_order == 2:
+            gs_operator = freegs4e.gradshafranov.GSsparse
+        elif gs_operator_order == 4:
+            gs_operator = freegs4e.gradshafranov.GSsparse4thOrder
+        else:
+            raise ValueError("gs_operator_order must be either 2 or 4")
+        self.gs_operator_order = gs_operator_order
+
         # nonlinear solver backend
         self.nksolver = nk_solver.nksolver(
             problem_dimension=self.nx * self.ny,
@@ -170,9 +185,7 @@ class NKGSsolver:
         self.linear_GS_solver = freegs4e.multigrid.createVcycle(
             nx,
             ny,
-            freegs4e.gradshafranov.GSsparse4thOrder(
-                eq.R[0, 0], eq.R[-1, 0], eq.Z[0, 0], eq.Z[0, -1]
-            ),
+            gs_operator(eq.R[0, 0], eq.R[-1, 0], eq.Z[0, 0], eq.Z[0, -1]),
             nlevels=1,
             ncycle=1,
             niter=2,

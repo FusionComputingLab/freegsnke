@@ -171,6 +171,41 @@ def test_no_diverted_mask_falls_back_to_limiter_boundary():
         psi_bndry, np.amax(eq.limiter_handler.psi_on_limiter_boundary(psi))
     )
 
+    profiles.Ip *= -1
+    negative_result = profiles.Jtor_build(
+        no_diverted_mask,
+        mask_as_current,
+        eq.limiter_handler.core_mask_limiter,
+        eq.R,
+        eq.Z,
+        -psi,
+        None,
+        profiles.mask_outside_limiter,
+        profiles.limiter_mask_out,
+    )
+    assert np.array_equal(negative_result[5], limiter_core_mask)
+    assert np.isclose(negative_result[3], -psi_bndry)
+
+    diverted_psi_bndry = -0.25
+    diverted_core_mask = psi > diverted_psi_bndry
+    positive_limited = eq.limiter_handler.core_mask_limiter(
+        psi,
+        diverted_psi_bndry,
+        diverted_core_mask,
+        profiles.limiter_mask_out,
+        1.0,
+    )
+    negative_limited = eq.limiter_handler.core_mask_limiter(
+        -psi,
+        -diverted_psi_bndry,
+        diverted_core_mask,
+        profiles.limiter_mask_out,
+        -1.0,
+    )
+    assert positive_limited[2] and negative_limited[2]
+    assert np.array_equal(positive_limited[1], negative_limited[1])
+    assert np.isclose(positive_limited[0], -negative_limited[0])
+
     profiles.jtor = jtor_map
     profiles.opt = np.array([[0.95, 0.0, np.amax(psi)]])
     profiles.xpt = xpt

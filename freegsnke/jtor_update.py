@@ -98,7 +98,7 @@ class Jtor_universal:
         -----
         Copy semantics:
         - Immutable / scalar attributes are copied directly
-        - NumPy arrays and simple containers are shallow-copied where safe
+        - Grid geometry and limiter masks are shared through limiter_handler
         - Selected complex objects are deep-copied (e.g. via copy.deepcopy)
         - Some large system objects are shared by reference (e.g. limiter_handler)
 
@@ -122,17 +122,13 @@ class Jtor_universal:
         copy_into(self, obj, "dRdZ")
         copy_into(self, obj, "nx")
 
-        copy_into(self, obj, "dR_dZ", mutable=True)
-        copy_into(self, obj, "grid_points", mutable=True)
-        copy_into(self, obj, "eqRidx", mutable=True)
-        copy_into(self, obj, "eqZidx", mutable=True)
-        copy_into(self, obj, "idx_grid_points", mutable=True)
-        copy_into(self, obj, "R0Z0", mutable=True)
-        copy_into(self, obj, "mask_inside_limiter", mutable=True)
-        copy_into(self, obj, "mask_outside_limiter", mutable=True)
-        copy_into(self, obj, "limiter_mask_out", mutable=True)
-        copy_into(self, obj, "limiter_mask_for_plotting", mutable=True)
-        copy_into(self, obj, "edge_mask", mutable=True)
+        copy_into(self, obj, "dR_dZ")
+        copy_into(self, obj, "eqRidx")
+        copy_into(self, obj, "eqZidx")
+        copy_into(self, obj, "R0Z0")
+        copy_into(self, obj, "mask_inside_limiter")
+        copy_into(self, obj, "mask_outside_limiter")
+        copy_into(self, obj, "limiter_mask_out")
         obj.inputs = self.inputs[::]  # shallow copy suffices
 
         # *Should* not be necessary to copy this
@@ -186,46 +182,25 @@ class Jtor_universal:
         eq : FreeGSNKE Equilibrium object
             Equilibrium defining the computational domain, including 1D and 2D
             coordinate grids and limiter geometry.
+
+        Notes
+        -----
+        Fixed grid arrays are shared with ``eq.limiter_handler`` and treated as
+        read-only by profile calculations.
         """
         self.dR = eq.R_1D[1] - eq.R_1D[0]
         self.dZ = eq.Z_1D[1] - eq.Z_1D[0]
-        self.dR_dZ = np.array([self.dR, self.dZ])
-        self.R0Z0 = np.array([eq.R_1D[0], eq.Z_1D[0]])
         self.dRdZ = self.dR * self.dZ
-        self.grid_points = np.concatenate(
-            (eq.R[:, :, np.newaxis], eq.Z[:, :, np.newaxis]), axis=-1
-        )
         self.nx, self.ny = np.shape(eq.R)
-        self.eqRidx = np.tile(np.arange(self.nx)[:, np.newaxis], (1, self.ny))
-        self.eqZidx = np.tile(np.arange(self.ny)[:, np.newaxis], (1, self.nx)).T
-        self.idx_grid_points = np.concatenate(
-            (self.eqRidx[:, :, np.newaxis], self.eqZidx[:, :, np.newaxis]), axis=-1
-        ).reshape(-1, 2)
 
         self.limiter_handler = eq.limiter_handler
-
-        # self.core_mask_limiter = eq.limiter_handler.core_mask_limiter
-
-        self.mask_inside_limiter = eq.limiter_handler.mask_inside_limiter
-
-        mask_outside_limiter = np.logical_not(eq.limiter_handler.mask_inside_limiter)
-        # Note the factor 2 is not a typo: used in critical.inside_mask
-        self.mask_outside_limiter = (2 * mask_outside_limiter).astype(float)
-
-        self.limiter_mask_out = eq.limiter_handler.limiter_mask_out
-
-        self.limiter_mask_for_plotting = (
-            eq.limiter_handler.mask_inside_limiter
-            + eq.limiter_handler.make_layer_mask(
-                eq.limiter_handler.mask_inside_limiter, layer_size=1
-            )
-        ) > 0
-
-        # set mask of the edge domain pixels
-        self.edge_mask = np.zeros_like(eq.R)
-        self.edge_mask[0, :] = self.edge_mask[:, 0] = self.edge_mask[-1, :] = (
-            self.edge_mask[:, -1]
-        ) = 1
+        self.dR_dZ = self.limiter_handler.dR_dZ
+        self.R0Z0 = self.limiter_handler.R0Z0
+        self.eqRidx = self.limiter_handler.eqRidx
+        self.eqZidx = self.limiter_handler.eqZidx
+        self.mask_inside_limiter = self.limiter_handler.mask_inside_limiter
+        self.mask_outside_limiter = self.limiter_handler.mask_outside_limiter
+        self.limiter_mask_out = self.limiter_handler.limiter_mask_out
 
     def select_refinement(self, eq, refine_jtor, nnx, nny):
         """
@@ -405,9 +380,9 @@ class Jtor_universal:
             (idx_valid_max * self.dR_dZ + self.R0Z0, [valid_max_psi * del_psi])
         )[np.newaxis]
         # build diverted_core_mask
-        diverted_core_mask = path.contains_points(self.idx_grid_points).reshape(
-            (self.nx, self.ny)
-        )
+        diverted_core_mask = path.contains_points(
+            self.limiter_handler.idx_grid_points
+        ).reshape((self.nx, self.ny))
 
         return opt, xpt, diverted_core_mask, psi_bndry
 

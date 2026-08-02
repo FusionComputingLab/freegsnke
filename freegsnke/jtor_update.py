@@ -499,11 +499,14 @@ class Jtor_universal:
         opt, xpt, diverted_core_mask, self.diverted_psi_bndry = Jtor_part1(
             R, Z, psi, psi_bndry, mask_outside_limiter
         )
+        current_sign = np.sign(self.Ip)
 
         if diverted_core_mask is None:
             psi_on_limiter = self.limiter_handler.psi_on_limiter_boundary(psi)
-            psi_bndry = np.amax(psi_on_limiter)
-            limiter_core_mask = (psi > psi_bndry) * self.mask_inside_limiter
+            psi_bndry = psi_on_limiter[np.argmax(current_sign * psi_on_limiter)]
+            limiter_core_mask = (
+                current_sign * (psi - psi_bndry) > 0
+            ) * self.mask_inside_limiter
             flag_limiter = True
             has_relevant_xpoint = False
 
@@ -513,6 +516,7 @@ class Jtor_universal:
                 self.diverted_psi_bndry,
                 diverted_core_mask * self.mask_inside_limiter,
                 limiter_mask_out,
+                current_sign,
             )
             if np.sum(limiter_core_mask * self.mask_inside_limiter) == 0:
                 limiter_core_mask = diverted_core_mask * self.mask_inside_limiter

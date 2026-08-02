@@ -476,6 +476,7 @@ class Limiter_handler:
         psi_bndry,
         core_mask,
         limiter_mask_out,
+        current_sign=1.0,
         #   limiter_mask_in,
         #   linear_coeff=.5
     ):
@@ -499,6 +500,8 @@ class Limiter_handler:
         limiter_mask_out : np.array
             The mask identifying the border of the limiter, including points just inside it, the 'last' accessible to the plasma.
             Same size as psi.
+        current_sign : float, optional
+            Sign of the plasma current, used to orient flux comparisons.
 
 
 
@@ -539,11 +542,13 @@ class Limiter_handler:
 
         if len(self.interpolated_on_limiter):
             self.interpolated_on_limiter = np.concatenate(self.interpolated_on_limiter)
-            psi_on_limiter = np.amax(self.interpolated_on_limiter)
-            if psi_on_limiter > psi_bndry:
+            psi_on_limiter = self.interpolated_on_limiter[
+                np.argmax(current_sign * self.interpolated_on_limiter)
+            ]
+            if current_sign * (psi_on_limiter - psi_bndry) > 0:
                 self.flag_limiter = True
                 psi_bndry = 1.0 * psi_on_limiter
-                core_mask = (psi > psi_bndry) * core_mask
+                core_mask = (current_sign * (psi - psi_bndry) > 0) * core_mask
 
         # if np.any(offending_mask):
         #     # psi_max_out = np.amax(psi[offending_mask])

@@ -1398,7 +1398,7 @@ class NKGSsolver:
             or constrain.psi_norm_limits is not None
         ):
             Newton_delta_current, loss = constrain.optimize_currents_quadratic(
-                eq, profiles, currents, reg_matrix, A=self.dbdI, b=-b0
+                eq, profiles, full_current_vec, reg_matrix, A=self.dbdI, b=-b0
             )
 
         # otherwise solve normal equations directly

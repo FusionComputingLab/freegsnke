@@ -1,5 +1,8 @@
+from types import SimpleNamespace
+
 import numpy as np
 
+from freegsnke.GSstaticsolver import NKGSsolver
 from freegsnke.inverse import Inverse_optimizer
 
 
@@ -63,3 +66,57 @@ def test_isoflux_point_weights_scale_response_and_residual():
     finite_difference = (optimizer.b - baseline_rhs) / step
 
     assert np.allclose(finite_difference, -frozen_matrix[:, 0])
+
+
+def test_constrained_full_jacobian_uses_unperturbed_reference_currents():
+    """Current limits must be applied relative to the baseline equilibrium."""
+
+    def make_equilibrium(currents):
+        tokamak = SimpleNamespace(current_vec=np.asarray(currents, dtype=float).copy())
+        tokamak.set_all_coil_currents = lambda values: setattr(
+            tokamak, "current_vec", np.asarray(values, dtype=float).copy()
+        )
+        equilibrium = SimpleNamespace(
+            tokamak=tokamak,
+            plasma_psi=np.zeros((2, 2)),
+            _vgreen=np.ones((2, 2, 2)),
+        )
+        equilibrium.create_auxiliary_equilibrium = lambda: make_equilibrium(
+            equilibrium.tokamak.current_vec
+        )
+        return equilibrium
+
+    baseline_currents = np.array([10.0, 20.0])
+    constrain = SimpleNamespace(
+        b=np.zeros(1),
+        n_control_coils=2,
+        control_mask=np.ones(2, dtype=bool),
+        coil_current_limits=([None, None], [None, None]),
+        psi_norm_limits=None,
+        rebuild_full_current_vec=np.asarray,
+    )
+
+    def optimize_currents(full_currents_vec, **kwargs):
+        constrain.b = np.array([np.sum(full_currents_vec)])
+        return np.ones(2), 0.0
+
+    constrain.optimize_currents = optimize_currents
+    captured = {}
+
+    def optimize_currents_quadratic(eq, profiles, full_currents_vec, *args, **kwargs):
+        captured["reference_currents"] = np.copy(full_currents_vec)
+        return np.zeros(2), 0.0
+
+    constrain.optimize_currents_quadratic = optimize_currents_quadratic
+    solver = object.__new__(NKGSsolver)
+    solver.forward_solve = lambda **kwargs: None
+    solver.get_rel_delta_psit = lambda *args, **kwargs: 1.0
+
+    solver.optimize_currents(
+        eq=make_equilibrium(baseline_currents),
+        profiles=object(),
+        constrain=constrain,
+        target_relative_tolerance=1e-6,
+    )
+
+    assert np.array_equal(captured["reference_currents"], baseline_currents)

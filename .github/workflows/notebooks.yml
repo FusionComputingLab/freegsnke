@@ -30,11 +30,11 @@ jobs:
         run: jupyter nbconvert --execute --to notebook --inplace "examples/example03 - extracting_equilibrium_quantities.ipynb"
       - name: Check using magnetic probes notebook
         run: jupyter nbconvert --execute --to notebook --inplace "examples/example04 - using_magnetic_probes.ipynb"
-      - name: Check evolutive forward solve notebook
+      - name: Check evolutive forward solve notebook (5a)
         run: jupyter nbconvert --execute --to notebook --inplace "examples/example05a - nonlinear_and_linear_evolution_with_GS.ipynb"
-      - name: Check evolutive forward solve notebook
+      - name: Check evolutive forward solve notebook (5b)
         run: jupyter nbconvert --execute --to notebook --inplace "examples/example05b - linear_evolution_without_GS.ipynb"
-      - name: Check evolutive forward solve notebook
+      - name: Check evolutive forward solve notebook (5c)
         run: jupyter nbconvert --execute --to notebook --inplace "examples/example05c - linear_evolution_with_relinearisation.ipynb"
       - name: Check static inverse solve Anamak notebook
         run: jupyter nbconvert --execute --to notebook --inplace "examples/example07a - Anamak"

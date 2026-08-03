@@ -50,3 +50,5 @@ jobs:
         run: jupyter nbconvert --execute --to notebook --inplace "examples/example10 - growth_rates.ipynb"
       - name: Check pulse design tool notebook
         run: jupyter nbconvert --execute --to notebook --inplace "examples/example11 - pulse_design_tool.ipynb"
+      - name: Check symmetric pulse design tool notebook
+        run: jupyter nbconvert --execute --to notebook --inplace "examples/example11a - symmetric_pulse_design_tool.ipynb"

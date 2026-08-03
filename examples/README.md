@@ -14,6 +14,7 @@ These example Jupyter notebooks are intended to be the **first port of call for 
 | Example 05b | Learn how to use the linear evolutive solver without solving GS at each timestep. | Anyone |
 | Example 05c | Learn how to use the linear evolutive solver (with or without solving GS) with automatic relinearisation enabled. | Anyone |
 | Example 06a/b | Simulate (static) MAST-U equilibria over an entire shot using inputs from EFIT++ (requires internal UKAEA MAST-U database). | UKAEA employees + collaborators |
+| Example 06c | Audit and prepare the series-connected MAST-U machine for exactly up-down symmetric calculations, including odd-circuit detection, active/passive magnetic-fingerprint changes, supporting geometry discrepancies, and explicit user acceptance (requires access to UDA). | UKAEA employees + collaborators |
 | Example 07a | Static inverse solve in the "Anamak" toy tokamak. | Anyone |
 | Example 07b | Static inverse solve in a SPARC-like tokamak. | Anyone |
 | Example 07c | Static inverse solve in an ITER-like tokamak. | Anyone |

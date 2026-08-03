@@ -1232,14 +1232,15 @@ class NKGSsolver:
         Once A is constructed, the Newton step is computed by solving the
         Tikhonov-regularised least-squares problem:
 
-            min || A ΔI + b0 ||² + ||R ΔI||²
+            min || A ΔI + b0 ||² + ΔIᵀ R ΔI
 
         where:
             b0 = current constraint residual
             R  = regularisation matrix
 
-        If current or flux limits are active, a quadratic optimisation
-        routine is used instead of the closed-form normal equations.
+        Without inequality limits, this is solved as an augmented
+        least-squares system. If current or flux limits are active, a
+        constrained quadratic optimisation routine is used instead.
 
         Parameters
         ----------

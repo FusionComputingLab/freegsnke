@@ -27,7 +27,7 @@ from scipy import interpolate
 
 
 def _solve_regularized_lstsq(A, b, regularization):
-    """Solve a diagonally regularized least-squares problem without normal equations."""
+    """Solve ``min ||A x - b||² + xᵀ diag(regularization) x`` in augmented form."""
     regularization = np.asarray(regularization)
     if regularization.shape != (A.shape[1],):
         raise ValueError(
@@ -1213,13 +1213,13 @@ class Inverse_optimizer:
 
         This method computes optimal coil current corrections by solving:
 
-            min_I || A I − b ||² + λ || I ||²
+            min_I || A I − b ||² + Iᵀ R I
 
         where:
 
             A = combined constraint Jacobian matrix
             b = combined constraint residual vector
-            λ = Tikhonov (L2) regularisation parameter
+            R = diagonal Tikhonov regularisation matrix
 
         The optimisation accounts for:
 
@@ -1252,10 +1252,10 @@ class Inverse_optimizer:
             Tikhonov regularisation parameter.
 
             If float:
-                λ I² penalty is applied uniformly.
+                R is the scalar value times the identity matrix.
 
             If array:
-                Allows coil-wise regularisation weighting.
+                R contains the supplied coil-wise values on its diagonal.
 
         Returns
         -------

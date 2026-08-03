@@ -1,7 +1,10 @@
+from types import SimpleNamespace
+
 import numpy as np
 
 from freegsnke.circuit_eq_metal import metal_currents
 from freegsnke.linear_solve import linear_solver
+from freegsnke.nonlinear_solve import nl_solver
 
 
 class _Tokamak:
@@ -104,13 +107,10 @@ def test_even_reduced_dynamics_match_full_symmetric_dynamics():
     rng = np.random.default_rng(4)
 
     mey_seed = rng.normal(scale=0.02, size=(_Tokamak.n_coils, 4))
-    mey = 0.5 * (
-        mey_seed + metal_reflection @ mey_seed @ plasma_reflection
-    )
+    mey = 0.5 * (mey_seed + metal_reflection @ mey_seed @ plasma_reflection)
     response_seed = rng.normal(scale=0.02, size=(4, _Tokamak.n_coils))
     physical_response = 0.5 * (
-        response_seed
-        + plasma_reflection @ response_seed @ metal_reflection
+        response_seed + plasma_reflection @ response_seed @ metal_reflection
     )
     ip_response = np.array([0.01, 0.02, 0.02, 0.01])
     hat_iy = np.array([0.3, 0.2, 0.2, 0.3])
@@ -149,9 +149,7 @@ def test_even_reduced_dynamics_match_full_symmetric_dynamics():
     for step in range(20):
         voltage = np.array([0.2 * np.cos(step)])
         full_state = full_solver.stepper(full_state, voltage, np.empty(0))
-        reduced_state = reduced_solver.stepper(
-            reduced_state, voltage, np.empty(0)
-        )
+        reduced_state = reduced_solver.stepper(reduced_state, voltage, np.empty(0))
 
         full_physical = full.P @ full_state[:-1]
         reduced_physical = reduced.P @ reduced_state[:-1]
@@ -162,3 +160,77 @@ def test_even_reduced_dynamics_match_full_symmetric_dynamics():
             full_physical,
             atol=2e-14,
         )
+
+
+def test_even_no_gs_relinearisation_advances_time_only_once():
+    """Internal GS synchronisation must not count as a second timestep."""
+
+    class EvenRelinearisationHarness(nl_solver):
+        def __init__(self):
+            self.force_up_down_symmetric = True
+            self.plasma_descriptors_vec = np.array([1.0])
+            self.initial_plasma_descriptors = np.array([0.0])
+            self.profiles1 = object()
+            self.profiles_parameters_vec = np.empty(0)
+            self.profiles_type = "test"
+            self.dt_step = 0.01
+            self.time = 0.0
+            self.step_no = 0
+            self.currents_vec = np.array([0.0])
+            self.trial_currents = self.currents_vec.copy()
+            self.hatIy = np.array([0.5, 0.5])
+            self.handleMyy = SimpleNamespace(check_Myy=lambda _: False)
+            self.gs_sync_calls = 0
+            self.state_sync_calls = 0
+            self.relinearise_calls = 0
+            self.step_complete_calls = 0
+
+        def assign_currents_solve_GS(self, currents_vec, rtol_NK):
+            self.gs_sync_calls += 1
+
+        def assign_trial_solution_state(self, from_linear=False):
+            assert from_linear
+            self.state_sync_calls += 1
+
+        def relinearise(self, verbose=False):
+            assert self.force_up_down_symmetric
+            self.relinearise_calls += 1
+
+        def get_profiles_values(self, profiles):
+            self.profiles_parameters_vec = np.empty(0)
+
+        def check_and_change_profiles(self, profiles_parameters):
+            return None
+
+        def check_and_change_active_coil_resistances(self, active_coil_resistances):
+            return None
+
+        def check_and_change_plasma_resistivity(self, plasma_resistivity):
+            return None
+
+        def set_linear_solution(self, active_voltage_vec, dtheta_dt, no_GS):
+            self.trial_currents = self.currents_vec.copy()
+
+        def step_complete_assign(self, working_relative_tol_GS, from_linear=False):
+            self.step_complete_calls += 1
+            self.time += self.dt_step
+            self.step_no += 1
+
+        def new_plasma_descriptors(self, new_currents, new_profiles):
+            return self.plasma_descriptors_vec.copy()
+
+    solver = EvenRelinearisationHarness()
+    solver.nlstepper(
+        active_voltage_vec=np.empty(0),
+        linear_only=True,
+        no_GS=True,
+        relinearise_threshold=0.5,
+    )
+
+    assert solver.gs_sync_calls == 1
+    assert solver.state_sync_calls == 1
+    assert solver.relinearise_calls == 1
+    assert solver.step_complete_calls == 1
+    assert solver.step_no == 1
+    assert solver.time == solver.dt_step
+    np.testing.assert_array_equal(solver.hatIy, solver.hatIy[::-1])

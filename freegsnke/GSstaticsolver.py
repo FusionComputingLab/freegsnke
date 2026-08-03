@@ -26,6 +26,7 @@ import numpy as np
 from freegs4e.gradshafranov import Greens
 
 from . import nk_solver_H as nk_solver
+from .inverse import _solve_regularized_lstsq
 
 
 class NKGSsolver:
@@ -1401,10 +1402,10 @@ class NKGSsolver:
                 eq, profiles, currents, reg_matrix, A=self.dbdI, b=-b0
             )
 
-        # otherwise solve normal equations directly
+        # otherwise solve the augmented regularised least-squares system
         else:
-            Newton_delta_current = np.linalg.solve(
-                self.dbdI.T @ self.dbdI + reg_matrix, self.dbdI.T @ -b0
+            Newton_delta_current = _solve_regularized_lstsq(
+                self.dbdI, -b0, np.diag(reg_matrix)
             )
             loss = np.linalg.norm(b0 + np.dot(self.dbdI, Newton_delta_current))
 

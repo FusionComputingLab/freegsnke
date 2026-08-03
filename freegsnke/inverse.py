@@ -185,7 +185,7 @@ class Inverse_optimizer:
                     self.isoflux_set.append(iso_set)
                     self.isoflux_weight.append(weights)
             # rebuild as list of numpy arrays for numerical stability
-            except TypeError:
+            except (TypeError, IndexError):
                 self.isoflux_set = np.array(self.isoflux_set)[np.newaxis]
                 self.isoflux_weight = np.ones(self.isoflux_set.shape[1])[np.newaxis]
             # number of isoflux points per constraint set

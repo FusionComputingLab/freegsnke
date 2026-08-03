@@ -7,6 +7,18 @@ from freegsnke.GSstaticsolver import NKGSsolver
 from freegsnke.inverse import Inverse_optimizer
 
 
+def test_two_row_isoflux_ndarray_matches_list_input():
+    """Documented (2, N) arrays must behave like equivalent Python lists."""
+    points = [[1.0, 1.1, 1.2], [0.0, 0.1, 0.0]]
+
+    from_list = Inverse_optimizer(isoflux_set=points)
+    from_array = Inverse_optimizer(isoflux_set=np.asarray(points))
+
+    assert np.array_equal(from_array.isoflux_set, from_list.isoflux_set)
+    assert np.array_equal(from_array.isoflux_weight, from_list.isoflux_weight)
+    assert from_array.isoflux_set_n == from_list.isoflux_set_n == [3]
+
+
 def test_constraint_weights_scale_matching_matrix_and_rhs_blocks():
     """Each class weight must scale its own complete residual block only."""
     optimizer = object.__new__(Inverse_optimizer)

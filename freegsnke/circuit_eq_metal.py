@@ -63,6 +63,7 @@ class metal_currents:
         coil_resist=None,
         coil_self_ind=None,
         passive_reflection_operator=None,
+        remove_odd_passive_modes=True,
         symmetry_tolerance=1e-8,
         verbose=True,
     ):
@@ -101,8 +102,15 @@ class metal_currents:
             Mutual inductance matrix for all conducting elements.
             If None, default machine values are used.
         passive_reflection_operator : ndarray, optional
-            Reflection map for passive currents. If supplied, odd-in-Z passive
-            modes are excluded before plasma coupling is calculated.
+            Reflection map used to classify passive-current parity and
+            reflection-average the sampled metal-plasma mutual inductance.
+            Odd-in-Z modes are excluded by default; see
+            ``remove_odd_passive_modes``.
+        remove_odd_passive_modes : bool, default=True
+            If False, retain both passive-mode parities while still using the
+            reflection operator to classify modes and symmetrise metal-plasma
+            coupling. This is useful as a full-mode reference for an
+            even-plasma evolution.
         symmetry_tolerance : float, optional
             Tolerance used to classify passive modes as even or odd.
         verbose : bool
@@ -112,6 +120,8 @@ class metal_currents:
         self.n_coils = eq.tokamak.n_coils
         self.n_active_coils = eq.tokamak.n_active_coils
         self.verbose = verbose
+        self.passive_reflection_operator = passive_reflection_operator
+        self.remove_odd_passive_modes = remove_odd_passive_modes
 
         # prepare resistance data
         if coil_resist is not None:
@@ -156,7 +166,7 @@ class metal_currents:
                 symmetry_tolerance=symmetry_tolerance,
             )
             passive_modes = self.normal_modes.passive_mode_parity
-            if passive_modes is None:
+            if passive_modes is None or not remove_odd_passive_modes:
                 self.available_modes_mask = np.ones(self.n_coils, dtype=bool)
             else:
                 self.available_modes_mask = np.concatenate(
@@ -660,4 +670,22 @@ class metal_currents:
             greenm *= coils_dict[labelj]["polarity"][np.newaxis, :]
             greenm *= coils_dict[labelj]["multiplier"][np.newaxis, :]
             mey[j] = np.sum(greenm, axis=-1)
+
+        if self.passive_reflection_operator is not None:
+            reflection = np.eye(self.n_coils)
+            reflection[self.n_active_coils :, self.n_active_coils :] = (
+                self.passive_reflection_operator
+            )
+            grid_indices = -np.ones((eq.nx, eq.ny), dtype=int)
+            mask = eq.limiter_handler.mask_inside_limiter
+            grid_indices[mask] = np.arange(len(self.plasma_pts))
+            reflected_indices = grid_indices[:, ::-1][mask]
+            if np.any(reflected_indices < 0):
+                raise ValueError(
+                    "The limiter mask must be up-down symmetric when a passive "
+                    "reflection operator is supplied."
+                )
+            mey = 0.5 * (
+                mey + np.einsum("ij,jp->ip", reflection, mey[:, reflected_indices])
+            )
         return 2 * np.pi * mey

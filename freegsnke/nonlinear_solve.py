@@ -85,6 +85,7 @@ class nl_solver:
         plasma_descriptor_function=None,
         force_up_down_symmetric=False,
         passive_reflection_operator=None,
+        remove_odd_passive_modes=True,
         symmetry_tolerance=1e-8,
     ):
         """
@@ -150,13 +151,22 @@ class nl_solver:
         force_up_down_symmetric : bool, default=False
             Restrict every Grad-Shafranov solve and plasma-response Jacobian to
             the even-in-Z subspace. This strict path requires a symmetric grid,
-            limiter, machine, and plasma initial condition. All retained active
-            circuits must be even; odd active circuits must be omitted from the
-            machine description.
+            limiter, and plasma initial condition. Retained active circuits must
+            be even. Small residual asymmetries in the machine resistance,
+            inductance, sampled Green functions, and metal-plasma coupling are
+            removed by reflection averaging.
         passive_reflection_operator : ndarray, optional
             Reflection map for passive currents. Required with
             ``force_up_down_symmetric=True`` when passive structures are present;
-            odd passive modes are removed before plasma coupling is calculated.
+            by default odd passive modes are removed before plasma coupling is
+            calculated.
+            Use ``prepare_up_down_symmetric_machine`` to infer this map from a
+            standard machine description.
+        remove_odd_passive_modes : bool, default=True
+            Whether to remove odd-in-Z passive modes when
+            ``force_up_down_symmetric=True``. Set False to retain the full
+            passive-mode basis as a reference while still constraining all
+            Grad-Shafranov solves and plasma-response Jacobians to be even.
         symmetry_tolerance : float, default=1e-8
             Tolerance used to classify passive modes as even or odd.
         """
@@ -181,6 +191,7 @@ class nl_solver:
         self.coils_order = list(eq.tokamak.coils_dict.keys())
         self.currents_vec = np.zeros(self.n_coils + 1)
         self.force_up_down_symmetric = force_up_down_symmetric
+        self.remove_odd_passive_modes = remove_odd_passive_modes
         if (
             force_up_down_symmetric
             and self.n_passive_coils
@@ -190,6 +201,43 @@ class nl_solver:
                 "'passive_reflection_operator' is required for symmetric "
                 "evolution with passive structures."
             )
+        if force_up_down_symmetric:
+            metal_reflection = np.eye(self.n_coils)
+            if self.n_passive_coils:
+                passive_reflection_operator = np.asarray(
+                    passive_reflection_operator, dtype=float
+                )
+                expected_shape = (self.n_passive_coils, self.n_passive_coils)
+                if passive_reflection_operator.shape != expected_shape:
+                    raise ValueError(
+                        "'passive_reflection_operator' must have shape "
+                        f"{expected_shape}."
+                    )
+                metal_reflection[self.n_active_coils :, self.n_active_coils :] = (
+                    passive_reflection_operator
+                )
+
+            resistance = (
+                eq.tokamak.coil_resist
+                if custom_coil_resist is None
+                else np.asarray(custom_coil_resist)
+            )
+            inductance = (
+                eq.tokamak.coil_self_ind
+                if custom_self_ind is None
+                else np.asarray(custom_self_ind)
+            )
+            custom_coil_resist = 0.5 * (resistance + metal_reflection @ resistance)
+            custom_self_ind = 0.5 * (
+                inductance + metal_reflection @ inductance @ metal_reflection
+            )
+            reflected_greens = np.einsum(
+                "ij,jrz->irz", metal_reflection, eq._vgreen[:, :, ::-1]
+            )
+            eq._vgreen = 0.5 * (eq._vgreen + reflected_greens)
+            self.metal_reflection_operator = metal_reflection
+        else:
+            self.metal_reflection_operator = None
 
         # setting up reduced domain for plasma circuit eq.:
         self.limiter_handler = eq.limiter_handler
@@ -270,6 +318,7 @@ class nl_solver:
             passive_reflection_operator=(
                 passive_reflection_operator if force_up_down_symmetric else None
             ),
+            remove_odd_passive_modes=remove_odd_passive_modes,
             symmetry_tolerance=symmetry_tolerance,
         )
         self.n_metal_modes = self.evol_metal_curr.n_independent_vars
@@ -653,9 +702,14 @@ class nl_solver:
                 )
 
             else:
-                if self.force_up_down_symmetric:
+                if self.force_up_down_symmetric and self.remove_odd_passive_modes:
                     print(
                         "      No unstable modes found in the retained even-in-Z subspace."
+                    )
+                elif self.force_up_down_symmetric:
+                    print(
+                        "      No unstable modes found with the plasma constrained "
+                        "to be even in Z."
                     )
                 else:
                     print(
@@ -678,10 +732,15 @@ class nl_solver:
             print(
                 f"      Solver timestep 'dt_step' has been set to {self.dt_step} as requested."
             )
-            if self.force_up_down_symmetric:
+            if self.force_up_down_symmetric and self.remove_odd_passive_modes:
                 print(
                     "      Odd-in-Z modes are excluded; ensure the timestep "
                     "resolves the retained even dynamics."
+                )
+            elif self.force_up_down_symmetric:
+                print(
+                    "      The plasma is constrained to be even in Z, but odd "
+                    "passive modes remain in the metal-current basis."
                 )
             else:
                 print(
@@ -2405,13 +2464,6 @@ class nl_solver:
         - Updates `self.currents_vec_m1` and `self.Iy_m1` to store previous step values.
         - Updates `self.currents_vec`, `self.Iy`, `self.hatIy`, and `self.rtol_NK`.
         - Modifies `self.eq1` and `self.profiles1` to reflect the timestep-evolved state.
-
-        Notes
-        -----
-        This method represents completion of an externally-requested timestep and must be
-        called exactly once per `nlstepper` call. To sync `self.eq1`/`self.profiles1` to the
-        current trial solution without completing a timestep (e.g. before relinearising),
-        use `assign_trial_solution_state` directly instead.
         """
 
         self.time += self.dt_step
@@ -2422,34 +2474,6 @@ class nl_solver:
 
         plasma_psi_step = self.eq2.plasma_psi - self.eq1.plasma_psi
         self.d_plasma_psi_step = np.amax(plasma_psi_step) - np.amin(plasma_psi_step)
-
-        self.assign_trial_solution_state(from_linear=from_linear)
-
-        self.rtol_NK = working_relative_tol_GS * self.d_plasma_psi_step
-
-    def assign_trial_solution_state(self, from_linear=False):
-        """
-        Copy the current trial solution (`self.trial_currents`, and
-        `self.trial_plasma_psi` if `from_linear=False`) into `self.currents_vec`,
-        `self.eq1`, `self.profiles1`, `self.Iy`, and `self.hatIy`.
-
-        This is the state-synchronisation portion of `step_complete_assign`, factored
-        out so it can be used on its own (e.g. to sync `self.eq1`/`self.profiles1` to
-        the just-solved trial state before relinearising) without also completing an
-        externally-requested timestep -- i.e. without advancing `self.time`/`self.step_no`
-        or overwriting the `self.currents_vec_m1`/`self.Iy_m1` "previous step" history.
-
-        Parameters
-        ----------
-        from_linear : bool, default=False
-            If True, only the linearised solution is applied. Reduces the number of full GS
-            solves by copying auxiliary equilibrium and profiles to the main state.
-
-        Side Effects
-        ------------
-        - Updates `self.currents_vec`, `self.Iy`, and `self.hatIy`.
-        - Modifies `self.eq1` and `self.profiles1` to reflect the trial solution.
-        """
 
         self.currents_vec = np.copy(self.trial_currents)
         self.assign_currents(self.currents_vec, self.eq1, self.profiles1)
@@ -2472,6 +2496,8 @@ class nl_solver:
 
         self.Iy = self.limiter_handler.Iy_from_jtor(self.profiles1.jtor)
         self.hatIy = self.limiter_handler.normalize_sum(self.Iy)
+
+        self.rtol_NK = working_relative_tol_GS * self.d_plasma_psi_step
 
     def assign_currents(self, currents_vec, eq, profiles):
         """
@@ -3110,9 +3136,7 @@ class nl_solver:
             # before relinearisation we need to solve GS to update the eq object and obtain new plasma descriptors
             if no_GS:
                 self.assign_currents_solve_GS(self.trial_currents, 1e-7)
-                # sync eq1/profiles1 to the trial solution for relinearise() to use,
-                # without completing a timestep (this is not a real time advancement)
-                self.assign_trial_solution_state(from_linear=True)
+                self.step_complete_assign(working_relative_tol_GS, from_linear=True)
                 print(
                     f"   Absolute relinearisation criteria change = {np.round(self.relinearise_criteria, 3)} "
                     f"(threshold = {np.round(relinearise_threshold, 3)}) "

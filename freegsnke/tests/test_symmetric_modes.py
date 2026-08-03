@@ -59,3 +59,20 @@ def test_odd_passive_modes_are_removed_before_mode_selection():
         mode_greens,
         np.einsum("im,irz->mrz", currents.P, greens),
     )
+
+
+def test_odd_passive_modes_can_be_retained_for_full_mode_reference():
+    currents = metal_currents(
+        eq=_Equilibrium(),
+        flag_vessel_eig=True,
+        flag_plasma=False,
+        max_mode_frequency=np.inf,
+        max_internal_timestep=1e-3,
+        full_timestep=1e-3,
+        passive_reflection_operator=_Tokamak.reflection,
+        remove_odd_passive_modes=False,
+    )
+
+    assert np.count_nonzero(currents.normal_modes.passive_mode_parity < 0) == 2
+    assert currents.n_independent_vars == _Tokamak.n_coils
+    np.testing.assert_allclose(currents.P, currents.normal_modes.Pmatrix)

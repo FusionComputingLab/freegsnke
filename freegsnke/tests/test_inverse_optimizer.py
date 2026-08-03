@@ -99,8 +99,8 @@ def test_direct_psi_jacobian_matches_mean_centred_residual():
     assert np.allclose(finite_difference, -matrix[:, 0])
 
 
-def test_constrained_full_jacobian_uses_unperturbed_reference_currents():
-    """Current limits must be applied relative to the baseline equilibrium."""
+def test_constrained_full_jacobian_uses_only_required_optimizer_calls():
+    """Columns rebuild residuals; limits use the unperturbed equilibrium."""
 
     def make_equilibrium(currents):
         tokamak = SimpleNamespace(current_vec=np.asarray(currents, dtype=float).copy())
@@ -127,11 +127,18 @@ def test_constrained_full_jacobian_uses_unperturbed_reference_currents():
         rebuild_full_current_vec=np.asarray,
     )
 
+    optimizer_calls = []
+
     def optimize_currents(full_currents_vec, **kwargs):
+        optimizer_calls.append(np.copy(full_currents_vec))
         constrain.b = np.array([np.sum(full_currents_vec)])
         return np.array([1.0, 0.0]), 0.0
 
     constrain.optimize_currents = optimize_currents
+    constrain.build_plasma_vals = lambda **kwargs: None
+    constrain.build_lsq = lambda currents: setattr(
+        constrain, "b", np.array([np.sum(currents)])
+    )
     captured = {}
 
     def optimize_currents_quadratic(eq, profiles, full_currents_vec, *args, **kwargs):
@@ -150,6 +157,7 @@ def test_constrained_full_jacobian_uses_unperturbed_reference_currents():
         target_relative_tolerance=1e-6,
     )
 
+    assert len(optimizer_calls) == 1
     assert np.array_equal(captured["reference_currents"], baseline_currents)
     assert np.all(np.isfinite(solver.dbdI))
     assert np.allclose(solver.dbdI, [[1.0, 1.0]])

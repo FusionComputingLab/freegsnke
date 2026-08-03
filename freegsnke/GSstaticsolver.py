@@ -1397,14 +1397,10 @@ class NKGSsolver:
                 suppress=True,
             )
 
-            # recompute constraint residual for perturbed equilibrium
-            constrain.optimize_currents(
-                eq=eq,
-                profiles=profiles,
-                full_currents_vec=currents,
-                trial_plasma_psi=self.eq2.plasma_psi,
-                l2_reg=1e-12,
-            )
+            # Rebuild only the perturbed residual. Solving for a current update
+            # here is unnecessary and may invoke the constrained CVXPY route.
+            constrain.build_plasma_vals(trial_plasma_psi=self.eq2.plasma_psi)
+            constrain.build_lsq(currents)
 
             # finite-difference derivative column
             self.dbdI[:, i] = (constrain.b - b0) / delta_current[i]

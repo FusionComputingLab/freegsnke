@@ -81,6 +81,24 @@ def test_isoflux_point_weights_scale_response_and_residual():
     assert np.allclose(finite_difference, -frozen_matrix[:, 0])
 
 
+def test_direct_psi_jacobian_matches_mean_centred_residual():
+    """Direct-flux response columns must use the residual's offset removal."""
+    optimizer = object.__new__(Inverse_optimizer)
+    optimizer.G = np.array([[1.0, 3.0, 7.0]])
+    optimizer.control_mask = np.array([True])
+    optimizer.psi_plasma_vals = np.zeros(3)
+    optimizer.psi_vals = np.array([[1.0, 1.1, 1.2], [0.0, 0.1, 0.0], [-1.0, 0.0, 1.0]])
+    optimizer.norm_psi_vals = np.linalg.norm(optimizer.psi_vals[2])
+
+    matrix, baseline_rhs, _ = optimizer.build_psi_vals_lsq(np.array([2.0]))
+    step = 1e-5
+    _, perturbed_rhs, _ = optimizer.build_psi_vals_lsq(np.array([2.0 + step]))
+    finite_difference = (perturbed_rhs - baseline_rhs) / step
+
+    assert np.allclose(np.mean(matrix, axis=0), 0.0)
+    assert np.allclose(finite_difference, -matrix[:, 0])
+
+
 def test_constrained_full_jacobian_uses_unperturbed_reference_currents():
     """Current limits must be applied relative to the baseline equilibrium."""
 

@@ -1043,6 +1043,7 @@ class Inverse_optimizer:
 
         Mean flux removal is applied to remove arbitrary vertical flux offsets,
         since the Grad–Shafranov equation is invariant under constant flux shifts.
+        The same mean removal is applied to each coil-response column in ``A``.
 
         Parameters
         ----------
@@ -1078,8 +1079,9 @@ class Inverse_optimizer:
             min_I || G I + ψ_plasma − ψ_target ||²
         """
 
-        # flux response wrt coil currents
+        # Flux response wrt coil currents, with the same offset removal as b.
         A = self.G[self.control_mask].T
+        A -= np.mean(A, axis=0)
 
         # tokamak coil flux
         b = np.sum(self.G * full_currents_vec[:, np.newaxis], axis=0)

@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
 
 from freegsnke.GSstaticsolver import NKGSsolver
 from freegsnke.inverse import Inverse_optimizer
@@ -98,7 +99,7 @@ def test_constrained_full_jacobian_uses_unperturbed_reference_currents():
 
     def optimize_currents(full_currents_vec, **kwargs):
         constrain.b = np.array([np.sum(full_currents_vec)])
-        return np.ones(2), 0.0
+        return np.array([1.0, 0.0]), 0.0
 
     constrain.optimize_currents = optimize_currents
     captured = {}
@@ -120,3 +121,14 @@ def test_constrained_full_jacobian_uses_unperturbed_reference_currents():
     )
 
     assert np.array_equal(captured["reference_currents"], baseline_currents)
+    assert np.all(np.isfinite(solver.dbdI))
+    assert np.allclose(solver.dbdI, [[1.0, 1.0]])
+
+    solver.get_rel_delta_psit = lambda *args, **kwargs: 0.0
+    with pytest.raises(ValueError, match="zero or non-finite core flux response"):
+        solver.optimize_currents(
+            eq=make_equilibrium(baseline_currents),
+            profiles=object(),
+            constrain=constrain,
+            target_relative_tolerance=1e-6,
+        )

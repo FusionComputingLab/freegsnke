@@ -1265,7 +1265,8 @@ class NKGSsolver:
 
         relative_psit_size : float, optional (default=1e-3)
             Target relative change in tokamak flux used to scale the
-            finite-difference perturbations δI.
+            finite-difference perturbations δI. A zero component in the
+            preliminary current step is replaced by a response-based fallback.
             Ensures perturbations are neither too small (noise-dominated)
             nor too large (nonlinear).
 
@@ -1331,14 +1332,42 @@ class NKGSsolver:
         b0 = np.copy(constrain.b)
 
         # ------------------------------------------------------------
-        # scale perturbation size so induced tokamak flux change
-        # is approximately relative_psit_size
+        # Scale the preliminary perturbation, then replace any exactly zero
+        # components with a response-based finite-difference step.
         # ------------------------------------------------------------
+        if not np.isfinite(relative_psit_size) or relative_psit_size <= 0:
+            raise ValueError("relative_psit_size must be finite and greater than zero.")
+        if not np.all(np.isfinite(delta_current)):
+            raise ValueError(
+                "Cannot build full inverse Jacobian from a non-finite preliminary "
+                "current step."
+            )
+
+        control_vgreen = eq._vgreen[constrain.control_mask]
         rel_delta_psit = self.get_rel_delta_psit(
-            delta_current, profiles, eq._vgreen[constrain.control_mask]
+            delta_current, profiles, control_vgreen
         )
-        adj_factor = min(1, relative_psit_size / rel_delta_psit)
-        delta_current *= adj_factor
+        if not np.isfinite(rel_delta_psit):
+            raise ValueError(
+                "Cannot build full inverse Jacobian from a non-finite flux response."
+            )
+        if rel_delta_psit > 0:
+            delta_current *= min(1, relative_psit_size / rel_delta_psit)
+
+        zero_components = np.flatnonzero(delta_current == 0)
+        target_column_response = relative_psit_size / np.sqrt(constrain.n_control_coils)
+        for i in zero_components:
+            unit_current = np.copy(self.dummy_current)
+            unit_current[i] = 1.0
+            response_per_amp = self.get_rel_delta_psit(
+                unit_current, profiles, control_vgreen
+            )
+            if not np.isfinite(response_per_amp) or response_per_amp <= 0:
+                raise ValueError(
+                    "Cannot build full inverse Jacobian: control coil "
+                    f"{i} has zero or non-finite core flux response."
+                )
+            delta_current[i] = target_column_response / response_per_amp
 
         # ============================================================
         # Build Jacobian via finite differences

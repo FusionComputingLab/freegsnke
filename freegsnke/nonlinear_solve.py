@@ -2464,6 +2464,13 @@ class nl_solver:
         - Updates `self.currents_vec_m1` and `self.Iy_m1` to store previous step values.
         - Updates `self.currents_vec`, `self.Iy`, `self.hatIy`, and `self.rtol_NK`.
         - Modifies `self.eq1` and `self.profiles1` to reflect the timestep-evolved state.
+
+        Notes
+        -----
+        This method represents completion of an externally-requested timestep and must be
+        called exactly once per `nlstepper` call. To sync `self.eq1`/`self.profiles1` to the
+        current trial solution without completing a timestep (e.g. before relinearising),
+        use `assign_trial_solution_state` directly instead.
         """
 
         self.time += self.dt_step
@@ -2474,6 +2481,34 @@ class nl_solver:
 
         plasma_psi_step = self.eq2.plasma_psi - self.eq1.plasma_psi
         self.d_plasma_psi_step = np.amax(plasma_psi_step) - np.amin(plasma_psi_step)
+
+        self.assign_trial_solution_state(from_linear=from_linear)
+
+        self.rtol_NK = working_relative_tol_GS * self.d_plasma_psi_step
+
+    def assign_trial_solution_state(self, from_linear=False):
+        """
+        Copy the current trial solution (`self.trial_currents`, and
+        `self.trial_plasma_psi` if `from_linear=False`) into `self.currents_vec`,
+        `self.eq1`, `self.profiles1`, `self.Iy`, and `self.hatIy`.
+
+        This is the state-synchronisation portion of `step_complete_assign`, factored
+        out so it can be used on its own (e.g. to sync `self.eq1`/`self.profiles1` to
+        the just-solved trial state before relinearising) without also completing an
+        externally-requested timestep -- i.e. without advancing `self.time`/`self.step_no`
+        or overwriting the `self.currents_vec_m1`/`self.Iy_m1` "previous step" history.
+
+        Parameters
+        ----------
+        from_linear : bool, default=False
+            If True, only the linearised solution is applied. Reduces the number of full GS
+            solves by copying auxiliary equilibrium and profiles to the main state.
+
+        Side Effects
+        ------------
+        - Updates `self.currents_vec`, `self.Iy`, and `self.hatIy`.
+        - Modifies `self.eq1` and `self.profiles1` to reflect the trial solution.
+        """
 
         self.currents_vec = np.copy(self.trial_currents)
         self.assign_currents(self.currents_vec, self.eq1, self.profiles1)
@@ -2496,8 +2531,6 @@ class nl_solver:
 
         self.Iy = self.limiter_handler.Iy_from_jtor(self.profiles1.jtor)
         self.hatIy = self.limiter_handler.normalize_sum(self.Iy)
-
-        self.rtol_NK = working_relative_tol_GS * self.d_plasma_psi_step
 
     def assign_currents(self, currents_vec, eq, profiles):
         """
@@ -3136,7 +3169,9 @@ class nl_solver:
             # before relinearisation we need to solve GS to update the eq object and obtain new plasma descriptors
             if no_GS:
                 self.assign_currents_solve_GS(self.trial_currents, 1e-7)
-                self.step_complete_assign(working_relative_tol_GS, from_linear=True)
+                # sync eq1/profiles1 to the trial solution for relinearise() to use,
+                # without completing a timestep (this is not a real time advancement)
+                self.assign_trial_solution_state(from_linear=True)
                 print(
                     f"   Absolute relinearisation criteria change = {np.round(self.relinearise_criteria, 3)} "
                     f"(threshold = {np.round(relinearise_threshold, 3)}) "

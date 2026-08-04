@@ -24,6 +24,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from freegsnke.control_loop.useful_functions import (
+    Waveform,
     check_data_entry,
     interpolate_spline,
     interpolate_step,
@@ -70,10 +71,53 @@ class CoilActivationController:
 
     def __init__(
         self,
-        data,
-        active_coils,
-    ):
+        data: dict[str, Waveform],
+        active_coils: list[str],
+    ) -> None:
+        """
+        Initialise the coil activation controller.
 
+        Validates that the required time-series entries are present in
+        ``data`` for every coil in ``active_coils``, stores a reference to
+        the data, and builds the spline/step interpolants used to evaluate
+        coil activation at arbitrary times.
+
+        Parameters
+        ----------
+        data : dict
+            Dictionary of time-series entries. For each key required by
+            this controller (see `keys_to_spline` and `keys_to_step`), the
+            corresponding entry must be present and in the format expected
+            by `check_data_entry` (i.e. containing 'times' and 'vals'
+            arrays of matching length).
+        active_coils : list of str
+            Names of the coils this controller manages. For each coil, a
+            corresponding "<coil>_activation" entry must exist in `data`.
+
+        Attributes
+        ----------
+        active_coils : list of str
+            Stored copy of `active_coils`.
+        keys_to_spline : list of str
+            Data keys that will be spline-interpolated. Currently unused
+            (empty) for this controller.
+        keys_to_step : list of str
+            Data keys that will be step-interpolated: one
+            "<coil>_activation" entry per coil in `active_coils`.
+        data : dict
+            Internal reference to the input `data`.
+
+        Raises
+        ------
+        ValueError
+            If a required key is missing from `data` or is not in the
+            expected format, as enforced by `check_data_entry`.
+
+        Notes
+        -----
+        Calls `update_interpolants` at the end of initialisation to build
+        the interpolating functions from `data`.
+        """
         # coils list
         self.active_coils = active_coils
 
@@ -91,7 +135,7 @@ class CoilActivationController:
         # interpolate the input data
         self.update_interpolants()
 
-    def update_interpolants(self):
+    def update_interpolants(self) -> None:
         """
         Recompute all interpolant functions from the current `self.data`.
 
@@ -115,15 +159,15 @@ class CoilActivationController:
 
     def run_control(
         self,
-        t,
-        dt,
-        active_coil_resists,
-    ):
+        t: float,
+        dt: float,
+        active_coil_resists: np.ndarray,
+    ) -> np.ndarray:
         """
         Compute effective coil resistances at a given time step.
 
         This function extracts coil activation values at time ``t`` and scales the
-        base resistances accordingly. Coils that are inactive (activation ~ 0)
+        base resistances accordingly. Coils that are inactive (activation = 0)
         are assigned a very large resistance to effectively disable them in the
         control model.
 
@@ -147,19 +191,19 @@ class CoilActivationController:
         activations = self.extract_values(t=t, targets=self.active_coils, deriv=False)
 
         # if coil is not active, set very large resistance
-        # final_coil_resists = active_coil_resists + (1.0 - activations) * 1e12
+        large_resistance = 1e12
         mask = activations.astype(bool)
         final_coil_resists = active_coil_resists.copy()
-        final_coil_resists[~mask] = 1e12
+        final_coil_resists[~mask] = large_resistance
 
         return final_coil_resists
 
     def extract_values(
         self,
-        t,
-        targets,
-        deriv=False,
-    ):
+        t: float,
+        targets: list[str],
+        deriv: bool = False,
+    ) -> np.ndarray:
         """
         Extracts interpolated values or their derivatives for specified shape targets at a given time.
 
@@ -198,7 +242,7 @@ class CoilActivationController:
                 [self.interpolants[target + "_activation"](t) for target in targets]
             )
 
-    def plot_data(self, tmin=-1.0, tmax=1.0, nt=1001):
+    def plot_data(self, tmin: float = -1.0, tmax: float = 1.0, nt: int = 1001) -> None:
         """
         Visualizes interpolated control waveforms and corresponding raw inputs.
 

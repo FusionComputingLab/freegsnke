@@ -19,11 +19,14 @@ You should have received a copy of the GNU Lesser General Public License
 along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 """
 
+from typing import Callable, Optional, Tuple
+
 import matplotlib.pyplot as plt
 import numpy as np
 
 from freegsnke.control_loop.useful_functions import (
     PID,
+    Waveform,
     check_data_entry,
     interpolate_spline,
     interpolate_step,
@@ -74,10 +77,73 @@ class ShapeController:
 
     def __init__(
         self,
-        data,
-        ctrl_targets,
-        mode=None,
-    ):
+        data: dict[str, dict[str, Waveform]],
+        ctrl_targets: list[str],
+        mode: Optional[str] = None,
+    ) -> None:
+        """
+        Initialise the shape controller.
+
+        Selects a control algorithm based on `mode`, determines which data
+        keys that algorithm requires, validates that `data` contains those
+        keys (per control target) in the expected format, and builds the
+        spline/step interpolants used to evaluate them at arbitrary times.
+
+        Parameters
+        ----------
+        data : dict
+            Dictionary keyed by control target (each entry of `ctrl_targets`
+            must be a key). Each value is itself a dictionary of time-series
+            entries, containing whichever of "ff", "ref", "blend", "k_prop",
+            "k_int", "k_deriv", and "damping" are required by the selected
+            `mode` (see below), each in the format expected by
+            `check_data_entry`.
+        ctrl_targets : list of str
+            Names of the shape control targets. Each must be a top-level key
+            in `data`.
+        mode : str, optional
+            Control algorithm to use. One of:
+
+            - "PI_with_P_damping" (default): PI control with proportional
+            damping. Requires spline keys "ff", "ref", "blend" and step
+            keys "k_prop", "k_int", "k_deriv", "damping".
+            - "PID_with_scaled_out_damping": PID control with damping scaled
+            out. Requires spline keys "ff", "ref", "blend" and step keys
+            "k_prop", "damping".
+            - "PID": standard PID control. Requires spline keys "ff", "ref",
+            "blend" and step keys "k_prop", "k_int", "k_deriv".
+
+            If None, defaults to "PI_with_P_damping".
+
+        Attributes
+        ----------
+        ctrl_targets : list of str
+            Stored copy of `ctrl_targets`.
+        data : dict
+            Internal reference to the input `data`.
+        run_control : callable
+            Bound method implementing the selected control algorithm
+            (`run_control_PI_with_P_damping`,
+            `run_control_PID_with_scaled_out_damping`, or `run_control_PID`).
+        keys_to_spline : list of str
+            Data keys (per target) that will be spline-interpolated, as
+            determined by `mode`.
+        keys_to_step : list of str
+            Data keys (per target) that will be step-interpolated, as
+            determined by `mode`.
+
+        Raises
+        ------
+        ValueError
+            If a required key is missing from `data[targ]` for any target
+            in `ctrl_targets`, or is not in the expected format, as enforced
+            by `check_data_entry`.
+
+        Notes
+        -----
+        Calls `update_interpolants` at the end of initialisation to build
+        the interpolating functions from `data`.
+        """
 
         # targets list
         self.ctrl_targets = ctrl_targets
@@ -91,7 +157,10 @@ class ShapeController:
 
         if mode == "PI_with_P_damping":
             # select control algorithm
-            self.run_control = self.run_control_PI_with_P_damping
+            self.run_control: Callable[
+                [float, float, np.ndarray, np.ndarray, np.ndarray],
+                Tuple[np.ndarray, np.ndarray, np.ndarray],
+            ] = self.run_control_PI_with_P_damping
 
             # inputs required for this algorithm
             self.keys_to_spline = ["ff", "ref", "blend"]
@@ -123,7 +192,7 @@ class ShapeController:
         # interpolate the input data
         self.update_interpolants()
 
-    def update_interpolants(self):
+    def update_interpolants(self) -> None:
         """
         Recompute all interpolant functions from the current `self.data`.
 
@@ -147,12 +216,12 @@ class ShapeController:
 
     def run_control_PI_with_P_damping(
         self,
-        t,
-        dt,
-        T_meas,
-        T_err_prev,
-        T_hist_prev,
-    ):
+        t: float,
+        dt: float,
+        T_meas: np.ndarray,
+        T_err_prev: np.ndarray,
+        T_hist_prev: np.ndarray,
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
         Computes the time derivative of shape target requests based on measured values,
         reference trajectories, and control gains. It blends feedforward and feedback
@@ -226,16 +295,20 @@ class ShapeController:
         # time deriv of shape target requests
         dT_dt = ((T_blend * T_fb_deriv) + ((1.0 - T_blend) * T_ff_deriv)).squeeze()
 
-        return dT_dt.squeeze(), T_err.squeeze(), T_hist.squeeze()
+        return (
+            np.atleast_1d(dT_dt),
+            np.atleast_1d(T_err.squeeze()),
+            np.atleast_1d(T_hist.squeeze()),
+        )
 
     def run_control_PID_with_scaled_out_damping(
         self,
-        t,
-        dt,
-        T_meas,
-        T_err_prev,
-        T_hist_prev,
-    ):
+        t: float,
+        dt: float,
+        T_meas: np.ndarray,
+        T_err_prev: np.ndarray,
+        T_hist_prev: np.ndarray,
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
         Computes the time derivative of shape target requests based on measured values,
         reference trajectories, and control gains. It blends feedforward and feedback
@@ -318,16 +391,20 @@ class ShapeController:
         # update hist
         T_hist = T_int + (0.5 * T_err * dt)
 
-        return dT_dt.squeeze(), T_err.squeeze(), T_hist.squeeze()
+        return (
+            np.atleast_1d(dT_dt),
+            np.atleast_1d(T_err.squeeze()),
+            np.atleast_1d(T_hist.squeeze()),
+        )
 
     def run_control_PID(
         self,
-        t,
-        dt,
-        T_meas,
-        T_err_prev,
-        T_hist_prev,
-    ):
+        t: float,
+        dt: float,
+        T_meas: np.ndarray,
+        T_err_prev: np.ndarray,
+        T_hist_prev: np.ndarray,
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
         Computes the time derivative of shape target requests based on measured values,
         reference trajectories, and control gains. It blends feedforward and feedback
@@ -359,7 +436,6 @@ class ShapeController:
         -----
         - The integral term is updated using trapezoidal integration.
         - The final output blends feedforward and feedback derivatives based on a dynamic blend factor.
-        - THIS FUNCTION IS UNTESTED.
         """
 
         # extract data
@@ -397,15 +473,19 @@ class ShapeController:
         # update hist
         T_hist = T_hist_prev + (T_err * dt)
 
-        return dT_dt.squeeze(), T_err.squeeze(), T_hist.squeeze()
+        return (
+            np.atleast_1d(dT_dt),
+            np.atleast_1d(T_err.squeeze()),
+            np.atleast_1d(T_hist.squeeze()),
+        )
 
     def extract_values(
         self,
-        t,
-        targets,
-        key,
-        deriv=False,
-    ):
+        t: float,
+        targets: list[str],
+        key: str,
+        deriv: bool = False,
+    ) -> np.ndarray:
         """
         Extracts interpolated values or their derivatives for specified shape targets at a given time.
 
@@ -441,7 +521,9 @@ class ShapeController:
         else:
             return np.array([self.interpolants[target][key](t) for target in targets])
 
-    def plot_data(self, targ, tmin=-1.0, tmax=1.0, nt=1001):
+    def plot_data(
+        self, targ: str, tmin: float = -1.0, tmax: float = 1.0, nt: int = 1001
+    ) -> None:
         """
         Visualizes interpolated control waveforms and corresponding raw inputs for a specified
         shape target.

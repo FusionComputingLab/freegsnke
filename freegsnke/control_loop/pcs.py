@@ -20,6 +20,8 @@ along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 # imports
+from typing import Any, Optional, Tuple
+
 import numpy as np
 
 from .coil_activation_category import CoilActivationController
@@ -27,6 +29,7 @@ from .pf_category import PFController
 from .plasma_category import PlasmaController
 from .shape_category import ShapeController
 from .systems_category import SystemsController
+from .useful_functions import Waveform
 from .vertical_category import VerticalController
 from .virtual_circuits_category import VirtualCircuitsController
 
@@ -48,9 +51,6 @@ class PlasmaControlSystem:
 
     ctrl_coils : list of str
         List of all active coils being used for shape control.
-
-    solenoid_coils : list of str
-        List of all active coils being used for plasma current control.
 
     vertical_coils : list of str
         List of all active coils being used for vertical control.
@@ -88,37 +88,114 @@ class PlasmaControlSystem:
 
     vc_generator : object, optional
         An optional class object for applying emulated virtual circuits. If not
-        provided, deafult waveform-defined VCs will be used.
+        provided, default waveform-defined VCs will be used.
 
     vc_update_rate : float, optional
-        Optional argument to specify how ofte, in seconds, new VCs are computed with vc_generator.
-        If None provided, defaults to zero and new VC computed at every iterration.
+        Optional argument to specify how often, in seconds, new VCs are computed with vc_generator.
+        If None provided, defaults to zero and new VC computed at every iteration.
     """
 
     def __init__(
         self,
-        plasma_data,
-        shape_data,
-        circuits_data,
-        systems_data,
-        pf_data,
-        vertical_data,
-        coil_activation_data,
-        active_coils,
-        ctrl_coils,
-        solenoid_coils,
-        vertical_coils,
-        ctrl_targets,
-        plasma_target,
-        shape_control_mode=None,
+        plasma_data: dict[str, Waveform],
+        shape_data: dict[str, dict[str, Waveform]],
+        # heterogeneous: per-coil/target `Waveform` entries, plus a "coil_order" list[str]
+        circuits_data: dict[str, Any],
+        systems_data: dict[str, Waveform],
+        pf_data: dict[str, Waveform],
+        vertical_data: dict[str, Waveform],
+        coil_activation_data: dict[str, Waveform],
+        active_coils: list[str],
+        ctrl_coils: list[str],
+        vertical_coils: list[str],
+        ctrl_targets: list[str],
+        plasma_target: list[str],
+        shape_control_mode: Optional[str] = None,
         vc_generator=None,
-        vc_update_rate=None,
-    ):
+        vc_update_rate: Optional[float] = None,
+    ) -> None:
+        """
+        Initialise the top-level control system, composing all sub-controllers.
+
+        Builds and wires together the individual controllers (plasma, shape,
+        virtual circuits, systems, PF, vertical, and coil activation), each
+        given its own slice of input data plus whatever coil groupings and
+        targets it needs.
+
+        Parameters
+        ----------
+        plasma_data : dict
+            Time-series data passed to `PlasmaController`.
+        shape_data : dict
+            Time-series data passed to `ShapeController`.
+        circuits_data : dict
+            Time-series data passed to `VirtualCircuitsController`.
+        systems_data : dict
+            Time-series data passed to `SystemsController`.
+        pf_data : dict
+            Time-series data passed to `PFController`.
+        vertical_data : dict
+            Time-series data passed to `VerticalController`.
+        coil_activation_data : dict
+            Time-series data passed to `CoilActivationController`.
+        active_coils : list of str
+            Names of all coils that are active in this configuration. Passed
+            to `CoilActivationController`.
+        ctrl_coils : list of str
+            Names of the coils used for shape/virtual-circuit control. Passed
+            to `VirtualCircuitsController` and `SystemsController`.
+        vertical_coils : list of str
+            Names of the coils used for vertical position control.
+        ctrl_targets : list or dict
+            Shape control targets, passed to `ShapeController` and
+            `VirtualCircuitsController`.
+        plasma_target : float or array_like or dict
+            Target value(s) for the plasma, passed to
+            `VirtualCircuitsController`.
+        shape_control_mode : str, optional
+            Mode used by `ShapeController` to determine how shape control is
+            performed. If None, `ShapeController`'s default mode is used.
+        vc_generator : callable, optional
+            Generator function used by `VirtualCircuitsController` to produce
+            virtual circuit outputs. If None, `VirtualCircuitsController`'s
+            default generator is used.
+        vc_update_rate : float, optional
+            Rate at which `VirtualCircuitsController` updates its virtual
+            circuits. If None, `VirtualCircuitsController`'s default update
+            rate is used.
+
+        Attributes
+        ----------
+        active_coils : list of str
+            Stored copy of `active_coils`.
+        ctrl_coils : list of str
+            Stored copy of `ctrl_coils`.
+        vertical_coils : list of str
+            Stored copy of `vertical_coils`.
+        ctrl_targets : list or dict
+            Stored copy of `ctrl_targets`.
+        plasma_target : float or array_like or dict
+            Stored copy of `plasma_target`.
+        PlasmaController : PlasmaController
+            Sub-controller handling plasma-related quantities.
+        ShapeController : ShapeController
+            Sub-controller handling shape control.
+        VirtualCircuitsController : VirtualCircuitsController
+            Sub-controller handling virtual circuit generation and control.
+        SystemsController : SystemsController
+            Sub-controller handling systems-level control.
+        PFController : PFController
+            Sub-controller handling PF coil control.
+        VerticalController : VerticalController
+            Sub-controller handling vertical position control.
+        CoilActivationController : CoilActivationController
+            Sub-controller handling per-coil activation state.
+
+        """
 
         # coil ordering
         self.active_coils = active_coils
         self.ctrl_coils = ctrl_coils
-        self.solenoid_coils = solenoid_coils
         self.vertical_coils = vertical_coils
 
         # shape targets
@@ -165,28 +242,30 @@ class PlasmaControlSystem:
 
     def calculate_ctrl_voltages(
         self,
-        t,
-        dt,
-        ip_meas,
-        ip_hist_prev,
-        ip_err_prev,
-        T_meas,
-        T_err_prev,
-        T_hist_prev,
-        I_approved_prev,
-        I_meas,
-        V_approved_prev,
-        zip_meas,
-        zipv_meas,
-        active_coil_resists,
-        dt_simulator=None,
-        emulated_VC_targets=None,
-        emulated_VC_targets_calc=None,
-        emulator_coils_calc=None,
-        emu_inputs=None,
-        vc_update_rate=None,
-        verbose=False,
-    ):
+        t: float,
+        dt: float,
+        ip_meas: float,
+        ip_hist_prev: float,
+        ip_err_prev: float,
+        T_meas: np.ndarray,
+        T_err_prev: np.ndarray,
+        T_hist_prev: np.ndarray,
+        I_approved_prev: np.ndarray,
+        I_meas: np.ndarray,
+        V_approved_prev: np.ndarray,
+        zip_meas: float,
+        zipv_meas: float,
+        active_coil_resists: np.ndarray,
+        dt_simulator: Optional[float] = None,
+        emulated_VC_targets: Optional[list[str]] = None,
+        emulated_VC_targets_calc: Optional[list[str]] = None,
+        emulator_coils_calc: Optional[list[str]] = None,
+        emu_inputs: Optional[np.ndarray] = None,
+        vc_update_rate: Optional[float] = None,
+        verbose: bool = False,
+    ) -> Tuple[
+        np.ndarray, float, float, np.ndarray, np.ndarray, np.ndarray, np.ndarray
+    ]:
         """
         Run the full control pipeline to compute approved coil voltage commands.
 

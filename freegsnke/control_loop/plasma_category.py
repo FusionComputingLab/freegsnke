@@ -19,11 +19,14 @@ You should have received a copy of the GNU Lesser General Public License
 along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 """
 
+from typing import Tuple
+
 import matplotlib.pyplot as plt
 import numpy as np
 
 from freegsnke.control_loop.useful_functions import (
     PID,
+    Waveform,
     check_data_entry,
     interpolate_spline,
     interpolate_step,
@@ -64,9 +67,55 @@ class PlasmaController:
 
     def __init__(
         self,
-        data,
-    ):
+        data: dict[str, Waveform],
+    ) -> None:
+        """
+        Initialise the plasma current controller.
 
+        Validates that the required reference, feedforward, gain, and
+        mutual-inductance data are present in `data`, stores a reference to
+        the data, and builds the spline/step interpolants used to evaluate
+        them at arbitrary times.
+
+        Parameters
+        ----------
+        data : dict
+            Dictionary of time-series entries. Must contain the following
+            keys, each in the format expected by `check_data_entry` (i.e.
+            containing 'times' and 'vals' arrays of matching length):
+
+            - "ip_ref" : reference (target) plasma current.
+            - "ip_blend" : blend factor between reference and measured
+            plasma current.
+            - "vloop_ff" : feedforward loop voltage.
+            - "k_prop" : proportional gain for the plasma current PID.
+            - "k_int" : integral gain for the plasma current PID.
+            - "k_deriv" : derivative gain for the plasma current PID.
+            - "M_solenoid" : mutual inductance between the solenoid and
+            the plasma.
+
+        Attributes
+        ----------
+        keys_to_spline : list of str
+            Data keys that will be spline-interpolated: "ip_ref",
+            "ip_blend", and "vloop_ff".
+        keys_to_step : list of str
+            Data keys that will be step-interpolated: "k_prop", "k_int",
+            "k_deriv", and "M_solenoid".
+        data : dict
+            Internal reference to the input `data`.
+
+        Raises
+        ------
+        ValueError
+            If a required key is missing from `data` or is not in the
+            expected format, as enforced by `check_data_entry`.
+
+        Notes
+        -----
+        Calls `update_interpolants` at the end of initialisation to build
+        the interpolating functions from `data`.
+        """
         # check correct data is input and in correct format
         self.keys_to_spline = ["ip_ref", "ip_blend", "vloop_ff"]
         self.keys_to_step = ["k_prop", "k_int", "k_deriv", "M_solenoid"]
@@ -79,7 +128,7 @@ class PlasmaController:
         # interpolate the input data
         self.update_interpolants()
 
-    def update_interpolants(self):
+    def update_interpolants(self) -> None:
         """
         Recompute all interpolant functions from the current `self.data`.
 
@@ -103,12 +152,12 @@ class PlasmaController:
 
     def run_control(
         self,
-        t,
-        dt,
-        ip_meas,
-        ip_hist_prev,
-        ip_err_prev,
-    ):
+        t: float,
+        dt: float,
+        ip_meas: float,
+        ip_hist_prev: float,
+        ip_err_prev: float,
+    ) -> Tuple[float, float, float]:
         """
         Computes the time derivative of the plasma current request (`dip_dt`) and updates the
         integral history of the plasma current error (`ip_hist`) using a blended feedback and
@@ -140,7 +189,6 @@ class PlasmaController:
         proportional gain (`k_prop`), integral gain (`k_int`), integral gain (`k_deriv`), blend factor (`ip_blend`),
         feedforward voltage (`vloop_ff`), and solenoid inductance (`M_solenoid`).
         - The blend factor determines the weighting between feedback and feedforward control.
-        - The integral term is computed using the trapezoidal rule for numerical integration.
         """
 
         # extract data
@@ -182,7 +230,7 @@ class PlasmaController:
 
         return dip_dt, ip_hist, ip_err
 
-    def plot_data(self, tmin=-1.0, tmax=1.0, nt=1001):
+    def plot_data(self, tmin: float = -1.0, tmax: float = 1.0, nt: int = 1001) -> None:
         """
         Visualizes interpolated control waveforms and corresponding raw inputs.
 

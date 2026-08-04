@@ -24,6 +24,7 @@ import numpy as np
 
 from freegsnke.control_loop.useful_functions import (
     PID,
+    Waveform,
     check_data_entry,
     interpolate_spline,
     interpolate_step,
@@ -64,9 +65,47 @@ class VerticalController:
 
     def __init__(
         self,
-        data,
-    ):
+        data: dict[str, Waveform],
+    ) -> None:
+        """
+        Initialise the vertical position controller.
 
+        Validates that the required reference and gain data are present in
+        `data`, stores a reference to the data, and builds the spline/step
+        interpolants used to evaluate them at arbitrary times.
+
+        Parameters
+        ----------
+        data : dict
+            Dictionary of time-series entries. Must contain the following
+            keys, each in the format expected by `check_data_entry` (i.e.
+            containing 'times' and 'vals' arrays of matching length):
+
+            - "z_ref" : reference (target) vertical position.
+            - "k_prop" : proportional gain for the vertical position PD.
+            - "k_deriv" : derivative gain for the vertical position PD.
+
+        Attributes
+        ----------
+        keys_to_spline : list of str
+            Data keys that will be spline-interpolated: "z_ref".
+        keys_to_step : list of str
+            Data keys that will be step-interpolated: "k_prop" and
+            "k_deriv".
+        data : dict
+            Internal reference to the input `data`.
+
+        Raises
+        ------
+        ValueError
+            If a required key is missing from `data` or is not in the
+            expected format, as enforced by `check_data_entry`.
+
+        Notes
+        -----
+        Calls `update_interpolants` at the end of initialisation to build
+        the interpolating functions from `data`.
+        """
         # check correct data is input and in correct format
         self.keys_to_spline = ["z_ref"]
         self.keys_to_step = ["k_prop", "k_deriv"]
@@ -79,7 +118,7 @@ class VerticalController:
         # interpolate the input data
         self.update_interpolants()
 
-    def update_interpolants(self):
+    def update_interpolants(self) -> None:
         """
         Recompute all interpolant functions from the current `self.data`.
 
@@ -103,12 +142,12 @@ class VerticalController:
 
     def run_control(
         self,
-        t,
-        dt,
-        ip_meas,
-        zip_meas,
-        zipv_meas,
-    ):
+        t: float,
+        dt: float,
+        ip_meas: float,
+        zip_meas: float,
+        zipv_meas: float,
+    ) -> float:
         """
         Compute the control signal for plasma vertical position regulation using a
         proportional-derivative (PD) control law.
@@ -160,7 +199,7 @@ class VerticalController:
 
         return output
 
-    def plot_data(self, tmin=-1.0, tmax=1.0, nt=10001):
+    def plot_data(self, tmin: float = -1.0, tmax: float = 1.0, nt: int = 1001) -> None:
         """
         Visualizes interpolated control waveforms and corresponding raw inputs.
 
@@ -175,7 +214,7 @@ class VerticalController:
         tmax : float, optional
             End time for the evaluation grid (default is 1.0 seconds).
         nt : int, optional
-            Number of time points to evaluate the interpolants over the interval [tmin, tmax] (default is 10001).
+            Number of time points to evaluate the interpolants over the interval [tmin, tmax] (default is 1001).
 
         Notes
         -----
@@ -216,10 +255,10 @@ class VerticalController:
 
             if key == "z_ref":
                 ax.set_ylabel(rf"{key} [$m$]")
-            # elif key == "k_prop":
-            #     ax.set_ylabel(rf"{key} [$1/s$]")
-            # elif key == "k_deriv":
-            #     ax.set_ylabel(rf"{key} [$1/s^2$]")
+            elif key == "k_prop":
+                ax.set_ylabel(rf"{key} [$\Omega / m$]")
+            elif key == "k_deriv":
+                ax.set_ylabel(rf"{key} [$H / m$]")
             else:
                 ax.set_ylabel(key)
 

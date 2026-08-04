@@ -23,6 +23,7 @@ import os
 import pickle
 
 import freegs4e.equilibrium
+import matplotlib.pyplot as plt
 import numpy as np
 from freegs4e import critical
 from scipy import interpolate
@@ -305,6 +306,7 @@ class Equilibrium(freegs4e.equilibrium.Equilibrium):
             strict=False,
             allow_deepcopy=True,
         )
+        copy_into(self, equilibrium, "has_relevant_xpoint", strict=False)
         copy_into(self, equilibrium, "current_vec", mutable=True, strict=False)
 
         copy_into(
@@ -319,6 +321,122 @@ class Equilibrium(freegs4e.equilibrium.Equilibrium):
             equilibrium._profiles = self._profiles.copy()
 
         return equilibrium
+
+    def plot(
+        self,
+        axis=None,
+        xpoints=True,
+        opoints=True,
+        wall=True,
+        limiter=True,
+        legend=False,
+        show=True,
+    ):
+        """Plot a solved FreeGSNKE equilibrium.
+
+        This overrides the FreeGS4E plotting wrapper so limited equilibria
+        without a relevant X-point in the solution domain can still be plotted.
+        In that case the LCFS is drawn from ``psi_bndry`` and no primary
+        X-point separatrix is requested.
+        """
+        try:
+            psi = self.psi()
+            opt = self._profiles.opt
+            xpt = self._profiles.xpt
+        except AttributeError as e:
+            raise RuntimeError(
+                "This equilibrium has not been solved: please solve for an "
+                "equilibrium first!"
+            ) from e
+
+        has_relevant_xpoint = getattr(
+            self,
+            "has_relevant_xpoint",
+            getattr(self._profiles, "has_relevant_xpoint", len(xpt) > 0),
+        )
+
+        if axis is None:
+            fig = plt.figure()
+            axis = fig.add_subplot(111)
+        axis.set_aspect("equal")
+        axis.set_xlabel("Major radius [m]")
+        axis.set_ylabel("Height [m]")
+
+        levels = np.linspace(np.amin(psi), np.amax(psi), 35)
+        axis.contour(self.R, self.Z, psi, levels=levels)
+
+        if has_relevant_xpoint:
+            colour = "r"
+            style = "solid"
+            axis.contour(
+                self.R,
+                self.Z,
+                psi,
+                levels=[xpt[0][2]],
+                colors=colour,
+                linestyles=style,
+            )
+            axis.plot(
+                [],
+                [],
+                colour,
+                label="Separatrix (primary X-point)",
+                linestyle=style,
+            )
+
+        if self._profiles.flag_limiter:
+            colour = "k"
+            style = "dashed"
+            axis.contour(
+                self.R,
+                self.Z,
+                psi,
+                levels=[self.psi_bndry],
+                colors=colour,
+                linestyles=style,
+            )
+            axis.plot([], [], colour, label="LCFS (limited plasma)", linestyle=style)
+
+        if xpoints and has_relevant_xpoint:
+            for r, z, _ in xpt:
+                axis.plot(r, z, "rx", markersize=9)
+            axis.plot(xpt[0][0], xpt[0][1], "rx", markersize=9, markeredgewidth=2.5)
+            axis.plot([], [], "rx", markersize=9, label="X-points")
+            axis.plot(
+                [],
+                [],
+                "rx",
+                markersize=9,
+                markeredgewidth=2.5,
+                label="X-point (primary)",
+            )
+
+        if opoints:
+            for r, z, _ in opt:
+                axis.plot(r, z, "g2", markersize=9)
+            axis.plot([], [], "g2", markersize=9, label="O-points")
+
+        if wall and self.tokamak.wall and len(self.tokamak.wall.R):
+            axis.plot(
+                list(self.tokamak.wall.R) + [self.tokamak.wall.R[0]],
+                list(self.tokamak.wall.Z) + [self.tokamak.wall.Z[0]],
+                "k",
+            )
+
+        if limiter and self.tokamak.limiter and len(self.tokamak.limiter.R):
+            axis.plot(
+                list(self.tokamak.limiter.R) + [self.tokamak.limiter.R[0]],
+                list(self.tokamak.limiter.Z) + [self.tokamak.limiter.Z[0]],
+                "k:",
+            )
+
+        if legend:
+            axis.legend(loc="upper right")
+
+        if show:
+            plt.show()
+
+        return axis
 
     def adjust_psi_plasma(
         self,

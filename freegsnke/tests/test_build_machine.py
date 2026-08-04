@@ -76,6 +76,17 @@ def _reset_refinement_engine():
     refine_passive.engine = LatinHypercube(d=2, seed=42)
 
 
+@pytest.fixture(autouse=True)
+def isolated_refinement_engine():
+    """Keep deterministic refinement local to each machine-building test."""
+    original_engine = refine_passive.engine
+    _reset_refinement_engine()
+    try:
+        yield
+    finally:
+        refine_passive.engine = original_engine
+
+
 @pytest.fixture()
 def tiny_machine_data():
     """Return a small in-memory machine covering active/passive/probe variants."""

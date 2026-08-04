@@ -40,6 +40,27 @@ Static Grad-Shafranov problems are solved using **fourth-order accurate finite d
 
 In the left panel above we show an example of a dynamic equilibrium calculated using FreeGSNKE's forward solver, simulating the flat-phase of a **MAST-U** plasma discharge. On the right is the sequence of EFIT equilibrium reconstructions from the actual MAST-U shot (re-plotted using FreeGSNKE). We can see clear agreement between the simulation and the reconstructions in both the plasma shape and the currents in the poloidal field coils, illustrating FreeGSNKE's accuracy. The contours represent constant poloidal flux and the different tokamak features are plotted in various colours (refer back to table above - noting magnetic probes not shown here).
 
+## Coordinate and flux conventions
+
+FreeGSNKE inherits its magnetic sign and flux conventions from FreeGS4E. Internally, the poloidal flux function `psi` is stored in Webers per radian (`Wb/rad`, equivalently `Webers/2pi`) and the Grad-Shafranov operator is written as:
+
+```text
+Delta* psi = - mu0 R J_phi
+```
+
+The poloidal magnetic field components are obtained from:
+
+```text
+B_R = -(1/R) dpsi/dZ
+B_Z =  (1/R) dpsi/dR
+```
+
+or, equivalently, `B_p = grad(psi) x grad(phi)` in the usual right-handed cylindrical coordinate system `(R, phi, Z)`. The toroidal field function is `F = R B_phi`, and the plasma current `Ip` is the integral of `J_phi` over the poloidal cross-section.
+
+Using the Sauter-Medvedev COCOS sign flags, these internal equations correspond to a **COCOS-7-like convention**: `exp_Bp = 0`, `sigma_Bp = -1`, `sigma_RpZ = +1`, and `sigma_rhotp = +1`.
+
+The low-level `cocos` argument in the current FreeGS4E G-EQDSK parser is only a partial conversion helper: `cocos < 10` leaves `psi` in `Wb/rad`, while `cocos > 10` divides `psi`, `simagx`, and `sibdry` by `2pi`. It does not apply the full set of sign changes required to transform arbitrary COCOS conventions. In practical terms, when importing or exporting equilibria from external tools, check both the `2pi` flux scaling and the signs of `psi`, `Ip`, `B_phi`, `F`, and `q`. The higher-level FreeGS4E equilibrium import path should also be validated for your use case before relying on it in production workflows.
+
 ## Feature roadmap
 FreeGSNKE is constantly evolving and so we hope to provide users with more advanced features over time:
 

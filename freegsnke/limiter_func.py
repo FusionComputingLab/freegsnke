@@ -24,6 +24,20 @@ from matplotlib.path import Path
 
 
 class Limiter_handler:
+    """
+    Handles limiter-related geometric operations for FreeGSNKE profile evaluation.
+
+    This class provides functionality for enforcing and querying the plasma
+    boundary defined by the limiter geometry. It is primarily used by profile
+    objects to determine whether grid points lie inside the allowable plasma
+    region and to support limiter-dependent calculations.
+
+    Each profile object typically instantiates its own Limiter_handler.
+
+    Notes
+    -----
+    The limiter is treated as a closed boundary defining the valid plasma domain.
+    """
 
     def __init__(self, eq, limiter):
         """Object to handle additional calculations due to the limiter.

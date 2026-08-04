@@ -36,6 +36,49 @@ class _FakeLaoProfile:
         return 0.5
 
 
+class _FakeCoil:
+    def __init__(self, current=0.0):
+        self.current = current
+
+
+class _FakeTokamak:
+    def __init__(self, current=0.0):
+        self.coil = _FakeCoil(current)
+
+    def __getitem__(self, name):
+        assert name == "C1"
+        return self.coil
+
+    def set_coil_current(self, name, current):
+        assert name == "C1"
+        self.coil.current = current
+
+
+class _FakeLimiterHandler:
+    @staticmethod
+    def Iy_from_jtor(jtor):
+        return np.asarray(jtor).reshape(-1)
+
+
+class _FakeVCProfile:
+    def __init__(self, jtor=None, state=0):
+        self.jtor = np.ones(1) if jtor is None else np.copy(jtor)
+        self.state = state
+
+    def copy(self):
+        return _FakeVCProfile(self.jtor, self.state)
+
+
+class _FakeVCEquilibrium:
+    def __init__(self, current=0.0, target=0.0):
+        self.tokamak = _FakeTokamak(current)
+        self.limiter_handler = _FakeLimiterHandler()
+        self.target = target
+
+    def create_auxiliary_equilibrium(self):
+        return _FakeVCEquilibrium(self.tokamak.coil.current, self.target)
+
+
 def test_profile_adjuster_can_mark_equilibrium_as_solved():
     """A VC profile adjuster may solve the equilibrium itself."""
     handler = virtual_circuits.VirtualCircuitHandling()
@@ -85,6 +128,38 @@ def test_profile_adjuster_returning_profile_is_solved_by_handler():
     assert hasattr(returned_profiles, "jtor")
     assert eq.solved
     assert solver.calls == 1
+
+
+def test_calculate_vc_uses_adjusted_baseline_targets():
+    """Shape derivatives use targets from the adjusted baseline equilibrium."""
+    handler = virtual_circuits.VirtualCircuitHandling()
+    handler.define_solver(_FakeSolver())
+    eq = _FakeVCEquilibrium()
+    profiles = _FakeVCProfile()
+    profile_states = []
+
+    def adjuster(eq, profiles, solver, target_relative_tolerance):
+        profile_states.append(profiles.state)
+        profiles.state += 1
+        current = eq.tokamak["C1"].current
+        eq.target = 10.0 + 2.0 * current
+        profiles.jtor = np.array([1.0 + current])
+        return profiles, True
+
+    handler.calculate_VC(
+        eq=eq,
+        profiles=profiles,
+        coils=["C1"],
+        target_names=["target"],
+        target_calculator=lambda equilibrium: np.array([equilibrium.target]),
+        target_dIy=1.0,
+        starting_dI=np.array([1.0]),
+        name="adjusted_baseline",
+        profile_adjuster=adjuster,
+    )
+
+    assert np.allclose(handler.adjusted_baseline.shape_matrix, [[2.0]])
+    assert profile_states == [0, 1, 1]
 
 
 def test_make_lao85_betap_li_profile_adjuster_uses_reference_targets(monkeypatch):

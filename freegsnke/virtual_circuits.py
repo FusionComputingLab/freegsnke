@@ -327,6 +327,10 @@ class VirtualCircuitHandling:
             Modifies the class (and other private) object(s) in place.
         """
 
+        # Profile-adjusted finite differences must share one fitted baseline.
+        if self.profile_adjuster is not None:
+            self._profiles2 = self._baseline_profiles.copy()
+
         # assign currents
         self.assign_currents(currents_vec, coils, eq=self._eq2)
 
@@ -572,6 +576,8 @@ class VirtualCircuitHandling:
             target_relative_tolerance)`` and returns either an updated profile
             object or ``(updated_profile, solved)``. If ``solved`` is true, the
             callback is assumed to have already solved the static GS problem.
+            Baseline targets are evaluated after this adjustment, and every
+            finite-difference perturbation starts from the same adjusted profile.
 
         Returns
         -------
@@ -588,9 +594,17 @@ class VirtualCircuitHandling:
             raise ValueError("You need to input a 'target_calculator' function!")
         self.target_calculator = target_calculator
 
-        # calculate the targets from the equilibrium
-        self._targets_vec = self.target_calculator(eq)
+        self.profile_adjuster = profile_adjuster
 
+        # Establish the adjusted baseline before evaluating finite differences.
+        profiles = self.solve_GS_with_profile_adjuster(
+            eq=eq,
+            profiles=profiles,
+            target_relative_tolerance=self.target_relative_tolerance,
+            profile_adjuster=profile_adjuster,
+        )
+
+        self._targets_vec = self.target_calculator(eq)
         if target_names is None:
             raise ValueError("You need to input a list of 'target_names'!")
         elif len(target_names) != len(self._targets_vec):
@@ -598,16 +612,6 @@ class VirtualCircuitHandling:
                 "Number of 'target_names' does not match length of array from 'target_calculator' function!"
             )
         self.target_names = target_names
-
-        self.profile_adjuster = profile_adjuster
-
-        # solve static GS problem (it's already solved?)
-        profiles = self.solve_GS_with_profile_adjuster(
-            eq=eq,
-            profiles=profiles,
-            target_relative_tolerance=self.target_relative_tolerance,
-            profile_adjuster=profile_adjuster,
-        )
 
         # store the flattened plasma current vector (and its norm)
         self.Iy = eq.limiter_handler.Iy_from_jtor(profiles.jtor).copy()
@@ -633,7 +637,8 @@ class VirtualCircuitHandling:
         # make copies of the newly solved equilibrium and profile objects
         # these are used for all GS solves below
         self._eq2 = eq.create_auxiliary_equilibrium()
-        self._profiles2 = profiles.copy()
+        self._baseline_profiles = profiles.copy()
+        self._profiles2 = self._baseline_profiles.copy()
 
         # for each coil, prepare by inferring delta(I_j) corresponding to a change delta(I_y)
         # with norm(delta(I_y)) = target_dIy

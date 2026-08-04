@@ -29,7 +29,7 @@ These problems can be solved in a **user-specified tokamak geometry** that can i
 | ------ | ------ | ------ | ------ |
 | Active poloidal field coils | Can be assigned (voltage-driven) currents that influence plasma shape and position. | Locations, sizes (areas), wirings (series/anti-series), polarities (+1 or -1), resistivities (of coil materials), and number of windings. | Blue rectangles |
 | Passive conducting structures  | Can be assigned induced eddy currents that also impact plasma shape and position. In evolutive forward mode, these are solved self-consistently. | Locations, sizes, orientations (if available), and filaments (as passives can be refined if needed). | Dark grey parallelograms |
-| Wall and/or limiter contours  | Confines the plasma boundary (for computational purposes). | Locations. | Solid black line |
+| Wall and/or limiter contours  | Confines the plasma boundary (for computational purposes). | Locations; the limiter contour must lie strictly inside the equilibrium solution domain. | Solid black line |
 | Magnetic diagnostic probes  | Can measure the poloidal flux (fluxloops) or the magnetic field strength (pickup coils) at specified locations. | Locations (for both) and orientations (for pickup coils). | Orange diamonds (fluxloops) and brown dots/lines (pickup coils) |
 
 Static Grad-Shafranov problems are solved using **fourth-order accurate finite differences** and a **purpose-built Newton-Krylov method** for additional **stability and convergence** speed (over the Picard iterations used in FreeGS). An implicit Euler method and the same Newton-Krylov solver are used to tackle the evolutive problem.
@@ -39,6 +39,27 @@ Static Grad-Shafranov problems are solved using **fourth-order accurate finite d
 </div>
 
 In the left panel above we show an example of a dynamic equilibrium calculated using FreeGSNKE's forward solver, simulating the flat-phase of a **MAST-U** plasma discharge. On the right is the sequence of EFIT equilibrium reconstructions from the actual MAST-U shot (re-plotted using FreeGSNKE). We can see clear agreement between the simulation and the reconstructions in both the plasma shape and the currents in the poloidal field coils, illustrating FreeGSNKE's accuracy. The contours represent constant poloidal flux and the different tokamak features are plotted in various colours (refer back to table above - noting magnetic probes not shown here).
+
+## Coordinate and flux conventions
+
+FreeGSNKE inherits its magnetic sign and flux conventions from FreeGS4E. Internally, the poloidal flux function `psi` is stored in Webers per radian (`Wb/rad`, equivalently `Webers/2pi`) and the Grad-Shafranov operator is written as:
+
+```text
+Delta* psi = - mu0 R J_phi
+```
+
+The poloidal magnetic field components are obtained from:
+
+```text
+B_R = -(1/R) dpsi/dZ
+B_Z =  (1/R) dpsi/dR
+```
+
+or, equivalently, `B_p = grad(psi) x grad(phi)` in the usual right-handed cylindrical coordinate system `(R, phi, Z)`. The toroidal field function is `F = R B_phi`, and the plasma current `Ip` is the integral of `J_phi` over the poloidal cross-section.
+
+Using the Sauter-Medvedev COCOS sign flags, these internal equations correspond to a **COCOS-7-like convention**: `exp_Bp = 0`, `sigma_Bp = -1`, `sigma_RpZ = +1`, and `sigma_rhotp = +1`.
+
+The low-level `cocos` argument in the current FreeGS4E G-EQDSK parser is only a partial conversion helper: `cocos < 10` leaves `psi` in `Wb/rad`, while `cocos > 10` divides `psi`, `simagx`, and `sibdry` by `2pi`. It does not apply the full set of sign changes required to transform arbitrary COCOS conventions. In practical terms, when importing or exporting equilibria from external tools, check both the `2pi` flux scaling and the signs of `psi`, `Ip`, `B_phi`, `F`, and `q`. The higher-level FreeGS4E equilibrium import path should also be validated for your use case before relying on it in production workflows.
 
 ## Feature roadmap
 FreeGSNKE is constantly evolving and so we hope to provide users with more advanced features over time:

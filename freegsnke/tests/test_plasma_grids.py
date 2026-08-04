@@ -7,6 +7,28 @@ import pytest
 from freegsnke import build_machine, equilibrium_update, limiter_func
 
 
+def simple_active_coils_data():
+    """Return the minimal active coil data needed to instantiate a test tokamak."""
+    return {
+        "P1": {
+            "R": [0.5],
+            "Z": [0.0],
+            "dR": 0.05,
+            "dZ": 0.05,
+            "resistivity": 1e-8,
+            "polarity": 1.0,
+            "multiplier": 1.0,
+        }
+    }
+
+
+def rectangular_limiter(z_extent):
+    """Return a rectangular limiter/wall contour with the requested half-height."""
+    wall_R = [0.6, 1.3, 1.3, 0.6, 0.6]
+    wall_Z = [-z_extent, -z_extent, z_extent, z_extent, -z_extent]
+    return [{"R": r, "Z": z} for r, z in zip(wall_R, wall_Z)]
+
+
 @pytest.fixture
 def create_machine():
 
@@ -74,6 +96,50 @@ def test_make_layer_mask(create_machine, plasma_domain_masks):
     assert (
         np.sum(layer_mask * mask_inside_limiter) == 0
     ), "Layer mask and limiter mask are overlapping"
+
+
+def test_limiter_must_be_inside_solution_domain():
+    """Limiter boundary interpolation requires the limiter to be inside the grid."""
+    limiter_data = rectangular_limiter(z_extent=0.65)
+    tokamak = build_machine.tokamak(
+        active_coils_data=simple_active_coils_data(),
+        limiter_data=limiter_data,
+        wall_data=limiter_data,
+    )
+
+    with pytest.raises(ValueError, match="Limiter coordinates must be strictly inside"):
+        equilibrium_update.Equilibrium(
+            tokamak=tokamak,
+            Rmin=0.55,
+            Rmax=1.35,
+            Zmin=-0.5,
+            Zmax=0.5,
+            nx=33,
+            ny=33,
+        )
+
+
+def test_limiter_boundary_flux_is_available_inside_domain():
+    """Flux can be interpolated on a limiter fully contained by the solution grid."""
+    limiter_data = rectangular_limiter(z_extent=0.45)
+    tokamak = build_machine.tokamak(
+        active_coils_data=simple_active_coils_data(),
+        limiter_data=limiter_data,
+        wall_data=limiter_data,
+    )
+    eq = equilibrium_update.Equilibrium(
+        tokamak=tokamak,
+        Rmin=0.55,
+        Rmax=1.35,
+        Zmin=-0.5,
+        Zmax=0.5,
+        nx=33,
+        ny=33,
+    )
+
+    psi = -((eq.R - 0.95) ** 2 + eq.Z**2)
+    psi_on_limiter = eq.limiter_handler.psi_on_limiter_boundary(psi)
+    assert len(psi_on_limiter) > 0, "No limiter boundary flux samples were produced"
 
 
 # def test_Myy(grids):

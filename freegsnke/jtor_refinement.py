@@ -1,25 +1,62 @@
+"""
+Contains various functions for refining the plasma current density map.  
+
+Copyright 2025 UKAEA, UKRI-STFC, and The Authors, as per the COPYRIGHT and README files.
+
+This file is part of FreeGSNKE.
+
+FreeGSNKE is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Lesser General Public License for more details.
+
+FreeGSNKE is free software: you can redistribute it and/or modify
+it under the terms of the GNU Lesser General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+  
+You should have received a copy of the GNU Lesser General Public License
+along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
+"""
+
 import numpy as np
 
 from .copying import copy_into
 
 
 class Jtor_refiner:
-    """Class to allow for the refinement of the toroidal plasma current Jtor.
-    Currently applied to the Lao85 profile family when 'refine_flag=True'.
-    Only grid cells that are crossed by the separatrix are refined.
+    """
+    Refines the toroidal plasma current (Jtor) on a structured grid.
+
+    This class implements a local sub-grid refinement strategy for Jtor,
+    currently used primarily for Lao85-type profiles when refinement is enabled.
+
+    Refinement is applied selectively to grid cells, typically those:
+    - intersected by the separatrix (LCFS),
+    - exhibiting large Jtor magnitude, or
+    - showing strong spatial gradients.
+
+    The goal is to improve resolution of sharp features without globally
+    increasing grid resolution.
     """
 
     def __init__(self, eq, nnx, nny):
-        """Instantiates the object and prepares necessary quantities.
+        """
+        Initialise the Jtor refiner and precompute geometric and indexing data.
 
         Parameters
         ----------
-        eq : freegs4e Equilibrium object
-            Specifies the domain properties
-        nnx : even integer
-            refinement factor in the R direction
-        nny : even integer
-            refinement factor in the Z direction
+        eq : freegs4e.Equilibrium
+            Equilibrium object defining the computational grid and limiter geometry.
+        nnx : int (even)
+            Refinement factor in the R-direction (number of subcells per cell).
+        nny : int (even)
+            Refinement factor in the Z-direction (number of subcells per cell).
+
+        Notes
+        -----
+        The grid is assumed to be uniform in R and Z, and refinement is performed
+        by subdividing each selected cell into an nnx × nny subgrid.
         """
 
         self.eqR = eq.R
@@ -46,6 +83,23 @@ class Jtor_refiner:
         self.edges_mask[:, -1] = 0
 
     def copy(self):
+        """
+        Create a deep copy of the Jtor_refiner object.
+
+        Returns
+        -------
+        Jtor_refiner
+            A new instance with the same configuration and precomputed refinement
+            structures.
+
+        Notes
+        -----
+        - Array-like attributes such as grid geometry and masks are copied using
+        `copy_into`.
+        - Derived refinement structures are recomputed via `prepare_for_refinement()`.
+        - Optional attributes (e.g. LCFS and refinement masks) are copied if present,
+        otherwise they are ignored (`strict=False`).
+        """
         obj = type(self).__new__(type(self))
 
         copy_into(self, obj, "eqR", mutable=True)
@@ -76,7 +130,26 @@ class Jtor_refiner:
     def prepare_for_refinement(
         self,
     ):
-        """Prepares necessary quantities to operate refinement."""
+        """
+        Precompute geometric, interpolation, and masking structures used in Jtor refinement.
+
+        This method builds all static quantities required for sub-grid refinement,
+        including:
+        - coarse-grid index maps (Ridx, Zidx),
+        - sub-cell coordinate systems,
+        - bilinear interpolation weights,
+        - limiter-based inside/outside masks at refined resolution,
+        - quadrant decomposition masks for vectorised operations.
+
+        These arrays are reused across refinement calls to avoid recomputation.
+
+        Notes
+        -----
+        - Assumes a uniform structured grid in (R, Z).
+        - Sub-cell structure is defined by (nnx × nny) refinement per cell.
+        - Limiter geometry is accessed via `self.path.contains_points`.
+        """
+
         self.Ridx = np.tile(np.arange(self.nx), (self.ny, 1)).T
         self.Zidx = np.tile(np.arange(self.ny), (self.nx, 1))
 
@@ -140,19 +213,30 @@ class Jtor_refiner:
         self.quartermasks = quartermasks
 
     def get_indexes_for_refinement(self, mask_to_refine):
-        """Generates the indexes of psi values to be used for bilinear interpolation.
+        """
+        Construct index arrays for bilinear interpolation on refined cells.
+
+        For each selected coarse grid cell, this function returns the indices of
+        the 2×2 stencil (four surrounding vertices) required to perform bilinear
+        interpolation of ψ on the refined subgrid.
 
         Parameters
         ----------
-        mask_to_refine : np.array
-            Mask of all domain cells to be refined
+        mask_to_refine : np.ndarray (bool)
+            Boolean mask of coarse grid cells selected for refinement.
 
         Returns
         -------
-        np.array
-            indexes of psi values to be used for bilinear interpolation
-            4 points per cell to refine, already set in 2-by-2 matrix for vectorised interpolation
-            dimensions = (no of cells to refine, 2, 2)
+        RRidxs : np.ndarray
+            R-index stencil for each refined cell, shape
+            (n_cells, 2, 2, 2) depending on internal packing.
+        ZZidxs : np.ndarray
+            Z-index stencil matching RRidxs structure.
+
+        Notes
+        -----
+        Each cell contributes a structured 2×2 vertex stencil used for vectorised
+        bilinear interpolation of ψ on the nnx × nny subgrid.
         """
         RRidxs = np.concatenate(
             (
@@ -321,16 +405,27 @@ class Jtor_refiner:
         return RRidxs, ZZidxs
 
     def build_jtor_value_mask(self, unrefined_jtor, threshold, quantiles=(0.5, 0.9)):
-        """Selects the cells that need to be refined based on their value of jtor.
-        Selection is such that it includes cells where jtor exceeds the value calculated
-        based on the quantiles and threshold[0].
+        """
+        Construct a refinement mask based on the magnitude of Jtor.
+
+        Cells are selected for refinement if their Jtor value exceeds a scaled
+        threshold defined relative to two quantiles of the Jtor distribution.
 
         Parameters
         ----------
-        unrefined_jtor : np.array
-            The jtor distribution
-        thresholds : float
-            the relevant value (in the tuple) used to identify where to apply refinement
+        unrefined_jtor : np.ndarray
+            Coarse-grid toroidal current density field.
+        threshold : float
+            Scaling factor applied to the inter-quantile range to determine
+            refinement sensitivity.
+        quantiles : tuple of float, optional
+            Two quantiles (q_low, q_high) used to define a reference range.
+            Default is (0.5, 0.9).
+
+        Returns
+        -------
+        np.ndarray (bool)
+            Boolean mask indicating cells selected for refinement.
         """
 
         jtor_quantiles = np.quantile(unrefined_jtor.reshape(-1), quantiles)
@@ -340,16 +435,32 @@ class Jtor_refiner:
         return mask
 
     def build_jtor_gradient_mask(self, unrefined_jtor, threshold, quantiles=(0.5, 0.9)):
-        """Selects the cells that need to be refined based on their value of the gradient of jtor.
-        Selection is such that it includes cells where the norm of the gradient exceeds the value calculated
-        based on the quantiles and threshold[1].
+        """
+        Construct a refinement mask based on local finite-difference variations of Jtor.
+
+        Cells are selected when the magnitude of local Jtor differences between
+        neighbouring grid points exceeds a threshold derived from the distribution
+        of these differences.
+
+        The method approximates spatial variation using forward finite differences
+        in both R and Z directions, and applies a quantile-based thresholding
+        strategy (via `build_jtor_value_mask`) to identify large-gradient regions.
 
         Parameters
         ----------
-        unrefined_jtor : np.array
-            The jtor distribution
-        thresholds : float
-            the relevant value (in the tuple) used to identify where to apply refinement
+        unrefined_jtor : np.ndarray
+            Coarse-grid toroidal current density field.
+        threshold : float
+            Scaling factor applied to the inter-quantile range of gradient
+            magnitudes used for refinement.
+        quantiles : tuple of float, optional
+            (q_low, q_high) quantiles used to normalise gradient magnitude
+            thresholds. Default is (0.5, 0.9).
+
+        Returns
+        -------
+        np.ndarray (bool)
+            Boolean mask indicating cells selected for refinement.
         """
         gradient_mask = np.zeros_like(unrefined_jtor)
 
@@ -372,13 +483,32 @@ class Jtor_refiner:
         return gradient_mask > 0
 
     def build_LCFS_mask(self, core_mask):
-        """Builds a mask composed of all gridpoints connected to edges crossed by the LCFS.
-        These trigger refinement.
+        """
+        Construct a refinement mask identifying grid points adjacent to the LCFS.
+
+        The mask is built by detecting interfaces between plasma and vacuum
+        cells in the binary `core_mask`. Any grid cell that shares an edge
+        with a cell of opposite classification (inside/outside plasma core)
+        is marked for refinement.
+
+        The resulting mask is additive: cells adjacent to multiple LCFS edges
+        may accumulate values greater than 1. This is primarily used as a
+        selection indicator, not a strict boolean mask.
 
         Parameters
         ----------
-        core_mask : np.array
-            Plasma core mask on the standard domain (self.nx, self.ny)
+        core_mask : np.ndarray of shape (nx, ny)
+            Binary plasma core mask on the structured grid.
+            Expected values:
+                - 1 (or True): inside plasma core
+                - 0 (or False): outside plasma core
+
+        Returns
+        -------
+        np.ndarray of shape (nx, ny)
+            LCFS refinement indicator array. Entries are non-zero where grid
+            cells are adjacent to a change in `core_mask` across a grid edge.
+            Higher values indicate multiple adjacent LCFS crossings.
         """
 
         core_mask = core_mask.astype(float)
@@ -402,16 +532,44 @@ class Jtor_refiner:
         return lcfs_mask
 
     def build_mask_to_refine(self, unrefined_jtor, core_mask, thresholds):
-        """Selects the cells that need to be refined, using the user-defined thresholds
+        """
+        Construct the global refinement mask combining LCFS location,
+        Jtor magnitude, and Jtor gradient criteria.
+
+        This method aggregates multiple refinement indicators into a single
+        cell-wise mask. A cell is marked for refinement if it satisfies any
+        of the following conditions:
+
+            1. It lies adjacent to the LCFS (core–vacuum interface)
+            2. Its Jtor value exceeds a threshold based on distribution quantiles
+            3. Its Jtor gradient exceeds a threshold based on distribution quantiles
+
+        Boundary cells are excluded from refinement.
+
+        The intermediate masks are also stored as attributes for diagnostics:
+            - self.lcfs_mask
+            - self.value_mask
+            - self.gradient_mask
 
         Parameters
         ----------
-        unrefined_jtor : np.array
-            The jtor distribution
-        core_mask : np.array
-            Plasma core mask on the standard domain (self.nx, self.ny)
-        thresholds : tuple (threshold for jtor criterion, threshold for gradient criterion)
-            tuple of values used to identify where to apply refinement, by default None
+        unrefined_jtor : np.ndarray of shape (nx, ny)
+            Toroidal current density on the coarse grid.
+
+        core_mask : np.ndarray of shape (nx, ny)
+            Binary mask identifying plasma core cells.
+            Typically 1 inside plasma, 0 outside.
+
+        thresholds : tuple of float
+            (jtor_threshold, gradient_threshold)
+            Scaling factors applied to inter-quantile ranges used to define
+            refinement sensitivity.
+
+        Returns
+        -------
+        None
+            The result is stored in:
+                self.mask_to_refine : np.ndarray (bool)
         """
 
         mask_to_refine = np.zeros_like(unrefined_jtor)
@@ -437,20 +595,49 @@ class Jtor_refiner:
         self.mask_to_refine = mask_to_refine.astype(bool)
 
     def build_bilinear_psi_interp(self, psi, core_mask, unrefined_jtor, thresholds):
-        """Builds the mask of cells on which to operate refinement.
-        Cells that are crossed by the separatrix and cells with large gradient on jtor are considered.
-        Refines psi in the same cells.
+        """
+        Construct a refined representation of the poloidal flux `psi` on a
+        sub-grid using bilinear interpolation in selected refinement cells.
+
+        Cells are selected for refinement based on a combined criterion:
+            - proximity to the LCFS (core–vacuum interface)
+            - large values of Jtor (based on quantile thresholding)
+            - large gradients in Jtor (based on quantile thresholding)
+
+        For each selected coarse-grid cell, a higher-resolution sub-grid is
+        generated and psi is reconstructed via bilinear interpolation.
 
         Parameters
         ----------
-        psi : np.array
-            Psi on the standard domain (self.nx, self.ny)
-        core_mask : np.array
-            Plasma core mask on the standard domain (self.nx, self.ny)
-        unrefined_jtor : np.array
-            The jtor distribution
-        thresholds : tuple (threshold for jtor criterion, threshold for gradient criterion)
-            tuple of values used to identify where to apply refinement, by default None
+        psi : np.ndarray of shape (nx, ny)
+            Poloidal flux on the coarse grid.
+
+        core_mask : np.ndarray of shape (nx, ny)
+            Binary plasma core mask defining LCFS location.
+
+        unrefined_jtor : np.ndarray of shape (nx, ny)
+            Toroidal current density on the coarse grid.
+
+        thresholds : tuple of float
+            (jtor_threshold, gradient_threshold)
+            Scaling factors used in refinement criteria via inter-quantile ranges.
+
+        Returns
+        -------
+        format_bilinear_psi : np.ndarray of shape (n_refined, nnx, nny)
+            Bilinearly interpolated psi values on refined sub-grids for each
+            selected coarse cell.
+
+        refined_R : np.ndarray of shape (n_refined, nnx, nny)
+            R-coordinate values corresponding to each refined sub-grid point.
+
+        Notes
+        -----
+        - The refinement mask is computed internally via `build_mask_to_refine`.
+        - Each selected coarse cell is subdivided into an `nnx × nny` sub-grid.
+        - Bilinear interpolation is performed using precomputed vertex weights
+        (`self.xxxx`, `self.yyyy`).
+        - Output is structured per refined cell, not a full fine global grid.
         """
 
         self.build_mask_to_refine(unrefined_jtor, core_mask, thresholds)
@@ -491,19 +678,36 @@ class Jtor_refiner:
         return format_bilinear_psi, refined_R
 
     def build_from_refined_jtor(self, unrefined_jtor, refined_jtor):
-        """Averages the refined maps to the (nx, ny) domain grid.
+        """
+        Reconstruct a coarse-grid Jtor field by averaging refined sub-grid values
+        back onto the original (nx, ny) mesh.
+
+        For each selected coarse cell, the corresponding refined sub-grid
+        (nnx × nny) is first masked to remove points outside the limiter.
+        The remaining values are then spatially averaged and used to replace
+        the coarse-grid value.
 
         Parameters
         ----------
-        unrefined_jtor : np.array
-            (nx, ny) jtor map from unresolved method
-        refined_jtor : np.array
-             maps of the refined jtor, dimension = (no cells to refine, nnx, nny)
+        unrefined_jtor : np.ndarray of shape (nx, ny)
+            Original coarse-grid toroidal current density.
 
+        refined_jtor : np.ndarray of shape (n_refined, nnx, nny)
+            Refined Jtor values on sub-grids for each selected coarse cell.
 
         Returns
         -------
-        Refined jtor on the (nx, ny) domain grid
+        np.ndarray of shape (nx, ny)
+            Updated Jtor field where selected cells have been replaced by
+            averaged refined values and all other cells remain unchanged.
+
+        Notes
+        -----
+        - Refinement contributions are masked using `self.full_masks` to
+        exclude points outside the limiter.
+        - Each coarse cell is updated independently; no smoothing is applied
+        between neighboring refined regions.
+        - The output preserves the original grid structure.
         """
         # mask out refinement points that are outside the limiter
         masked_refined_jtor = (

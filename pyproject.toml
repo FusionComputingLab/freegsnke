@@ -19,7 +19,7 @@ classifiers = [
 dynamic = ["dependencies", "optional-dependencies"]
 
 [tool.setuptools]
-packages = ["freegsnke"]
+packages = ["freegsnke", "freegsnke.control_loop"]
 
 [tool.setuptools.dynamic]
 dependencies = {file = ["requirements.txt"]}
@@ -30,3 +30,8 @@ optional-dependencies.docs = { file = ["requirements-docs.txt"] }
 
 [project.urls]
 Homepage = "https://github.com/FusionComputingLab/freegsnke"
+
+[tool.interrogate]
+fail-under = 95
+exclude = ["freegsnke/tests"]
+verbose = 2

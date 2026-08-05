@@ -72,6 +72,32 @@ def test_reused_starting_dI_uses_tighter_rescaling_guard():
     )
 
 
+def test_accepted_first_perturbation_records_current_linearization_point():
+    solver = bare_solver()
+    solver.approved_target_dIy = np.array([0.01])
+    solver.starting_dI = np.array([10.0])
+    solver.final_dI_record = np.array([10.0])
+    solver.current_at_last_linearization = np.array([-1.0])
+    solver.currents_vec = np.array([42.0])
+    solver.R0 = 1.0
+    solver.Z0 = 0.0
+    solver.initial_plasma_descriptors = np.array([0.0])
+    solver.eq2 = SimpleNamespace(
+        psi=lambda: np.zeros((2, 2)),
+        Rcurrent=lambda: 1.0,
+        Zcurrent=lambda: 0.0,
+    )
+    solver.NK.initial_rel_residual = 0.0
+    solver.NK.relative_change = 0.0
+    solver._column_plasma_descriptor_function = lambda _: np.array([0.0])
+    solver.prepare_build_dIydI_j = lambda *args, **kwargs: (np.ones(2), 0.01)
+
+    result = solver._build_dIydI_column(0, 1e-8, False, False)
+
+    assert result[-1] == solver.currents_vec[0]
+    assert solver.current_at_last_linearization[0] == solver.currents_vec[0]
+
+
 def fake_column_builder(self, column, *args):
     """Return enough information to identify one dispatched column."""
     return int(column)

@@ -1704,6 +1704,7 @@ class nl_solver:
         starting_dI = float(self.starting_dI[j])
         final_dI = float(self.final_dI_record[j])
         self.starting_dI[j] = final_dI
+        self.current_at_last_linearization[j] = self.currents_vec[j]
         perturbed_psi = np.copy(self.eq2.psi())
         dRZdI = np.array(
             (

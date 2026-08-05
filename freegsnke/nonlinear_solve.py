@@ -38,7 +38,6 @@ from .linear_solve import linear_solver
 from .Myy_builder import Myy_handler
 from .simplified_solve import simplified_solver_J1
 
-
 _parallel_linearization_solver = None
 
 
@@ -1784,7 +1783,7 @@ class nl_solver:
             del self._column_plasma_descriptor_function
 
     def _profile_parameters_for_column(self, profiles, j, delta):
-        """Return a complete profile-parameter set with column ``j`` perturbed."""
+        """Return independent profile parameters with column ``j`` perturbed."""
         if self.profiles_param is not None:
             parameters = {
                 "alpha_m": profiles.alpha_m,
@@ -1795,17 +1794,13 @@ class nl_solver:
             parameters[parameter_name] += delta
             return parameters
 
-        alpha = profiles.alpha.copy()
-        beta = profiles.beta.copy()
+        alpha = profiles.alpha[: self.n_profiles_parameters_alpha].copy()
+        beta = profiles.beta[: self.n_profiles_parameters_beta].copy()
         if j < self.n_profiles_parameters_alpha:
             alpha[j] += delta
-            if profiles.alpha_logic:
-                alpha[-1] -= delta
         else:
             beta_index = j - self.n_profiles_parameters_alpha
             beta[beta_index] += delta
-            if profiles.beta_logic:
-                beta[-1] -= delta
         return {"alpha": alpha, "beta": beta}
 
     def _profile_parameter_name(self, j):

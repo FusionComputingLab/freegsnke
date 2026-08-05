@@ -185,10 +185,11 @@ def test_dIydI_columns_preserve_order_with_multiple_workers(monkeypatch):
     assert results == [4, 2, 3]
 
 
-def test_profile_parameter_shift_preserves_lao_constraints():
+def test_profile_parameter_shift_supplies_independent_lao_coefficients():
     solver = bare_solver()
     solver.profiles_param = None
     solver.n_profiles_parameters_alpha = 2
+    solver.n_profiles_parameters_beta = 1
     profiles = SimpleNamespace(
         alpha=np.array([1.0, 2.0, -3.0]),
         beta=np.array([4.0, -4.0]),
@@ -199,10 +200,10 @@ def test_profile_parameter_shift_preserves_lao_constraints():
     alpha_shift = solver._profile_parameters_for_column(profiles, 1, 0.25)
     beta_shift = solver._profile_parameters_for_column(profiles, 2, 0.5)
 
-    np.testing.assert_allclose(alpha_shift["alpha"], [1.0, 2.25, -3.25])
-    np.testing.assert_allclose(alpha_shift["beta"], profiles.beta)
-    np.testing.assert_allclose(beta_shift["alpha"], profiles.alpha)
-    np.testing.assert_allclose(beta_shift["beta"], [4.5, -4.5])
+    np.testing.assert_allclose(alpha_shift["alpha"], [1.0, 2.25])
+    np.testing.assert_allclose(alpha_shift["beta"], [4.0])
+    np.testing.assert_allclose(beta_shift["alpha"], [1.0, 2.0])
+    np.testing.assert_allclose(beta_shift["beta"], [4.5])
     np.testing.assert_allclose(profiles.alpha, [1.0, 2.0, -3.0])
     np.testing.assert_allclose(profiles.beta, [4.0, -4.0])
 

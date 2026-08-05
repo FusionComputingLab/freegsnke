@@ -224,6 +224,8 @@ def test_full_inverse_jacobian_forwards_symmetry_to_all_solves():
         coil_current_limits=None,
         psi_norm_limits=None,
         rebuild_full_current_vec=np.asarray,
+        build_plasma_vals=lambda trial_plasma_psi: None,
+        build_lsq=lambda currents: None,
     )
 
     def optimize_currents(full_currents_vec, **kwargs):

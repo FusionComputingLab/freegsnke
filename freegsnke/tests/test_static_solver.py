@@ -132,7 +132,15 @@ def create_test_files_static_solve(create_machine):
     test_psi = np.load(STATIC_PSI_BASELINE)
 
 
-def test_static_solve(create_machine):
+@pytest.mark.parametrize(
+    "solver,order,error,error_msg",
+    [
+        ("xx", 2, ValueError, "Solver type xx"),
+        ("LUsparse", 3, ValueError, "operator of order 3"),
+        ("DST", 4, Warning, "ignored"),
+    ],
+)
+def test_NKGS_invalid(create_machine, solver, order, error, error_msg):
     """Tests the implementation of the static solver.
 
     Parameters
@@ -145,7 +153,59 @@ def test_static_solve(create_machine):
 
     from freegsnke import GSstaticsolver
 
-    NK = GSstaticsolver.NKGSsolver(eq)
+    catcher = pytest.warns if issubclass(error, Warning) else pytest.raises
+
+    with catcher(error, match=error_msg):
+        NK = GSstaticsolver.NKGSsolver(
+            eq,
+            solver_type=solver,
+            gs_operator_order=order,
+        )
+
+#    if issubclass(error,Warning):
+#        with pytest.warns(error,match=error_msg):
+#            NK = GSstaticsolver.NKGSsolver(
+#                eq,
+#                solver_type=solver,
+#                gs_operator_order=order,
+#            )
+#    else:
+#        with pytest.raises(error,match=error_msg):
+#            NK = GSstaticsolver.NKGSsolver(
+#                eq,
+#                solver_type=solver,
+#                gs_operator_order=order,
+#            )
+
+
+@pytest.mark.parametrize(
+    "cache,solver,order",
+    [
+        (True, "LUsparse", 4),
+        (False, "DST", None),
+        (True, "LUsparse", 2),
+        pytest.param(True, "multigrid", 2, marks=pytest.mark.xfail),
+    ],
+)
+def test_static_solve(create_machine, cache, solver, order):
+    """Tests the implementation of the static solver.
+
+    Parameters
+    ----------
+    create_machine : pytest.fixture
+        the equilibirum, profiles and constrain object to generate the test set
+        from.
+    """
+    eq, profiles, constrain = create_machine
+
+    from freegsnke import GSstaticsolver
+
+    NK = GSstaticsolver.NKGSsolver(
+        eq,
+        cache_greens=cache,
+        solver_type=solver,
+        gs_operator_order=order,
+    )
 
     # from freegsnke import newtonkrylov
     # NK = newtonkrylov.NewtonKrylov(eq)
@@ -201,6 +261,7 @@ def test_second_order_static_solve(create_machine):
     assert np.allclose(eq.psi(), reference_psi, atol=tolerance)
 
 
+@pytest.mark.skip(reason="this should be covered by test_NKGS_invalid above")
 def test_static_solver_rejects_invalid_operator_order(create_machine):
     """Only the two finite-difference operators supplied by FreeGS4E are valid."""
     eq, _, _ = create_machine

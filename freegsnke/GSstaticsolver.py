@@ -438,6 +438,8 @@ class NKGSsolver:
                 - profiles.opt : O-point / magnetic axis data
                 - profiles.psi_bndry : Boundary flux value
                 - profiles.flag_limiter : Limiter configuration flag
+                - profiles.has_relevant_xpoint : Whether an X-point defines a
+                  relevant separatrix in the solution domain
                 - profiles.jtor : Toroidal current density profile
 
         Returns
@@ -463,6 +465,9 @@ class NKGSsolver:
 
         eq.psi_bndry = profiles.psi_bndry
         eq.flag_limiter = profiles.flag_limiter
+        eq.has_relevant_xpoint = getattr(
+            profiles, "has_relevant_xpoint", len(profiles.xpt) > 0
+        )
 
         eq._current = np.sum(profiles.jtor) * self.dRdZ
         eq._profiles = profiles.copy()

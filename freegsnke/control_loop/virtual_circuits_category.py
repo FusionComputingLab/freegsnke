@@ -19,7 +19,7 @@ You should have received a copy of the GNU Lesser General Public License
 along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 """
 
-from typing import Any, Optional, Protocol, Tuple
+from typing import Any, Optional, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -37,7 +37,7 @@ class VirtualCircuitsController:
     waveforms.
 
     This class supports both spline-based (linear) and step-based interpolation of control signals
-    for coils and plasma shaping parameters. It optionally integrates with an emulated virtual
+    for coils and plasma shaping parameters. It optionally integrates with a virtual
     circuit provider for enhanced control capabilities.
 
     Parameters
@@ -61,12 +61,10 @@ class VirtualCircuitsController:
         The list of plasma parameters being managed.
 
     vc_generator : object, optional
-        An optional class object for applying emulated virtual circuits. If not
-        provided, deafult waveform-defined VCs will be used.
-
-    vc_update_rate : float, optional
-        Optional argument to specify how often, in seconds, new VCs are computed with vc_generator.
-        If None provided, defaults to zero and new VC computed at every time step.
+        An optional class object for updating virtual circuits during simulation. If not
+        provided, deafult waveform-defined VCs will be used. Its `vc_update_rate`
+        attribute (set when the generator was initialised) controls how often, in
+        seconds, new VCs are computed.
 
     """
 
@@ -78,7 +76,6 @@ class VirtualCircuitsController:
         ctrl_targets: list[str],
         plasma_target: list[str],
         vc_generator=None,
-        vc_update_rate: Optional[float] = None,
     ) -> None:
         """
         Initialise the virtual circuits controller.
@@ -87,7 +84,7 @@ class VirtualCircuitsController:
         validates that the required per-coil reference data and per-target
         (shape and plasma) data are present in `data`, stores a reference to
         the data, and builds the spline/step interpolants used to evaluate
-        them at arbitrary times. Optionally sets up state for an emulated
+        them at arbitrary times. Optionally sets up state for a
         virtual circuit generator.
 
         Parameters
@@ -115,13 +112,11 @@ class VirtualCircuitsController:
             Names of the plasma parameter(s) to be controlled. Determines
             which additional keys are required in `data`.
         vc_generator : object, optional
-            Emulated virtual circuit generator. If provided, enables
-            emulated-VC bookkeeping (see Attributes). If None, this
-            controller does not emulate virtual circuits.
-        vc_update_rate : float, optional
-            How often to update emulated virtual circuits, in seconds. Only
-            used if `vc_generator` is provided. Defaults to 0.0 if not
-            specified.
+            Virtual circuit generator. If provided, enables automatic VC
+            updating (see Attributes). If None, this
+            controller uses existing VC schedule. Its
+            `vc_update_rate` attribute controls how often VCs are
+            updated, in seconds.
 
         Attributes
         ----------
@@ -146,25 +141,25 @@ class VirtualCircuitsController:
             Internal reference to the input `data`.
         vc_generator : object or None
             Stored copy of `vc_generator`.
-        vc_update_rate : float
-            Only set if `vc_generator` is provided. How often emulated VCs
-            are updated, in seconds.
         latest_vc_time : None
             Only set if `vc_generator` is provided. Placeholder for the
-            timestamp of the most recently computed emulated virtual
+            timestamp of the most recently computed virtual
             circuit.
         latest_vc : None
             Only set if `vc_generator` is provided. Placeholder for the most
-            recently computed emulated virtual circuit.
-        emulated_jacobian_list : list
-            Only set if `vc_generator` is provided. Accumulated jacobians
-            used to generate emulated virtual circuits.
-        emulated_vc_list : list
-            Only set if `vc_generator` is provided. Accumulated emulated
+            recently computed virtual circuit.
+        jacobian_list : list
+            Only set if `vc_generator` is provided. Accumulated shape
+            (Jacobian) matrices used to generate each virtual circuit in
+            `vc_list` (same order/indexing), read from
+            `vc_generator.latest_shape_matrix` after each recomputation. `None`
+            for entries where `vc_generator` does not expose this attribute.
+        vc_list : list
+            Only set if `vc_generator` is provided. Accumulated
             virtual circuits.
-        emulated_vc_times : list
+        vc_times : list
             Only set if `vc_generator` is provided. Timestamps corresponding
-            to `emulated_vc_list`.
+            to `vc_list` and `jacobian_list`.
         full_vc_matrix : list
             Only set if `vc_generator` is provided. Accumulated full virtual
             circuit matrix.
@@ -182,7 +177,7 @@ class VirtualCircuitsController:
         Notes
         -----
         Calls `update_interpolants` after validating `data`, before the
-        emulated-VC state is set up.
+        VC state is set up.
         """
 
         # active coils list (used for shape control)
@@ -231,22 +226,17 @@ class VirtualCircuitsController:
         # storage
         self.full_vc_matrix = []
 
-        # use emulated VCs class if present
+        # use if VCs class if present
         self.vc_generator = vc_generator
         if self.vc_generator:
-            # how often to update emulated VCs (in seconds)
-            if vc_update_rate is None:
-                vc_update_rate = 0.0
-            self.vc_update_rate = vc_update_rate
-
             # set placeholders for most recent VCs
             self.latest_vc_time = None
             self.latest_vc = None
 
-            # store emulated VCs that were used
-            self.emulated_jacobian_list = []
-            self.emulated_vc_list = []
-            self.emulated_vc_times = []
+            # store VCs that were used
+            self.jacobian_list = []
+            self.vc_list = []
+            self.vc_times = []
 
     def update_interpolants(self) -> None:
         """
@@ -275,21 +265,18 @@ class VirtualCircuitsController:
         dip_dt: float,
         dT_dt: np.ndarray,
         I_approved_prev: np.ndarray,
-        emulated_VC_targets: Optional[list[str]] = None,
-        emulated_VC_targets_calc: Optional[list[str]] = None,
-        emulator_coils_calc: Optional[list[str]] = None,
-        emu_inputs: Optional[np.ndarray] = None,
+        vcg_inputs: Optional[np.ndarray] = None,
+        tikhonov_lambda: Optional[np.ndarray] = None,
         verbose: bool = False,
     ) -> Tuple[np.ndarray, np.ndarray]:
         """
         Computes the unapproved coil currents and their rates of change based on feedforward
         coil current references and virtual circuit transformations.
 
-        This method extracts coil current reference derivatives, applies virtual circuit matrices
-        (either from an emulator or interpolated data), and computes the unapproved coil
-        current updates using Euler integration.
+        This method extracts coil current reference derivatives, applies virtual circuit matrices,
+        and computes the unapproved coil current updates using Euler integration.
 
-        There is also the option to provide VCs from an emulator class object.
+        There is also the option to provide VCs from a class object.
 
         Parameters
         ----------
@@ -308,19 +295,12 @@ class VirtualCircuitsController:
         I_approved_prev : numpy.ndarray
             Previously approved coil currents [A].
 
-        emulated_VC_targets : list of str , optional
-            List of targets to be controlled using the emulated VC's. Must be subset of
-            ctrl_targets, and subset/equal to emulated_VC_targets_calc. Those not defined in this list will be taken from waveform-defined
-            VCs.
+        vcg_inputs : np.ndarray , optional
+            Array of input values for calculating new VCs on the fly.
 
-        emulated_VC_targets_calc : list of str , optional
-            List of targets to be used when performing pseudoinverse of jacobian when calculating the emulated VC.
-
-        emulator_coils_calc : list of str, optional
-            List of coils to use in emulated VC compuation. These are coils to use in computing shape sensitivity matrix.
-
-        emu_inputs : np.ndarray , optional
-            Array of input values for all input parameters (currents and other plasma parameters) of the Neural Network emulator.
+        tikhonov_lambda : numpy.ndarray , optional
+            Array of regularisation values for Tikhonov regularisation in VC matrix inversion.
+            Must be same length as coils_calc.
 
         verbose : bool
             Print some output if True.
@@ -351,76 +331,63 @@ class VirtualCircuitsController:
         VC_plasma = self.extract_values(t=t, targets=self.plasma_target)
         VC_plasma = VC_plasma[:, self._coil_permutation]
 
-        # if emulated VCs to be used, extract the data and overwrite relevant VC
+        # if self-updating VCs to be used, extract the data and overwrite relevant VC
         # matrix columns
-        if (
-            (self.vc_generator is not None)
-            and (emulated_VC_targets is not None)
-            and (emulated_VC_targets_calc is not None)
-            and (emulator_coils_calc is not None)
-        ):
-            # error checks
-            assert (
-                self.vc_generator is not None
-            ), "Need to provide a VC emulator class to `VirtualCircuitsController`."
-            assert (
-                emulated_VC_targets is not None
-            ), "Need to provide targets for the VC emulator."
-            assert (
-                emulated_VC_targets_calc is not None
-            ), "Need to provide targets for calculation in the VC emulator."
-
+        if self.vc_generator is not None:
             if self.latest_vc is None:
-                # compute first emulated VC
+                # compute first new VC
                 if verbose:
-                    print("...first emulated VCs being used.")
-                VC_shape_emu = self.vc_generator.get_vc(
-                    targets=emulated_VC_targets,
-                    targets_calc=emulated_VC_targets_calc,
+                    print("      calculating new VCs...")
+                VC_shape_new = self.vc_generator.get_vc(
+                    targets=self.vc_generator.targets_ctrl,
+                    targets_calc=self.vc_generator.targets_calc,
                     coils=self.ctrl_coils,
-                    coils_calc=emulator_coils_calc,
-                    input_data=emu_inputs,
+                    coils_calc=self.vc_generator.coils_calc,
+                    input_data=vcg_inputs,
+                    tikhonov_lambda=tikhonov_lambda,
                 )
                 # update latest vcs/times
                 self.latest_vc_time = 1.0 * t
-                self.latest_vc = VC_shape_emu
+                self.latest_vc = VC_shape_new
 
             # calculate time since last VC update
             delta_t_vc = t - self.latest_vc_time
 
             # update with new VCs if required
-            if delta_t_vc >= self.vc_update_rate:
-
+            if delta_t_vc >= self.vc_generator.vc_update_rate:
                 if verbose:
-                    print("...updating the emulated VCs being used.")
-                VC_shape_emu = self.vc_generator.get_vc(
-                    targets=emulated_VC_targets,
-                    targets_calc=emulated_VC_targets_calc,
+                    print("      calculating new VCs...")
+                VC_shape_new = self.vc_generator.get_vc(
+                    targets=self.vc_generator.targets_ctrl,
+                    targets_calc=self.vc_generator.targets_calc,
                     coils=self.ctrl_coils,
-                    coils_calc=emulator_coils_calc,
-                    input_data=emu_inputs,
+                    coils_calc=self.vc_generator.coils_calc,
+                    input_data=vcg_inputs,
+                    tikhonov_lambda=tikhonov_lambda,
                 )
 
                 # update latest VCs and times
                 self.latest_vc_time = 1.0 * t
-                self.latest_vc = VC_shape_emu
+                self.latest_vc = VC_shape_new
 
-                # store sensitivity matrix (Jacobian)
-                # self.emulated_jacobian_list.append(self.vc_generator.jacobian_matrix)
-                # self.emulated_vc_list.append(self.vc_generator.vc_matrix)
-                self.emulated_vc_times.append(t)
+                # store sensitivity matrix (Jacobian) and the VC computed from it
+                self.jacobian_list.append(
+                    getattr(self.vc_generator, "latest_shape_matrix", None)
+                )
+                self.vc_list.append(self.latest_vc)
+                self.vc_times.append(t)
 
             else:
-                # use the existing emulated VC
-                VC_shape_emu = self.latest_vc
+                # use the existing VC
+                VC_shape_new = self.latest_vc
 
-            # fill appropriate columns from emulated vcs
+            # fill appropriate columns from new VCs
             ctrl_target_order = {
                 target: i for i, target in enumerate(self.ctrl_targets)
             }
-            for j, emu_targ in enumerate(emulated_VC_targets):
+            for j, targ in enumerate(self.vc_generator.targets_ctrl):
                 # expand array as apropriate
-                VC_shape[ctrl_target_order[emu_targ], :] = 1.0 * VC_shape_emu[:, j]
+                VC_shape[ctrl_target_order[targ], :] = 1.0 * VC_shape_new[:, j]
 
         # unapproved coil currents rates of change
         dI_dt_unapproved = dI_dt_ref + (dT_dt @ VC_shape) + (dip_dt * VC_plasma)

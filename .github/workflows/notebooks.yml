@@ -36,6 +36,8 @@ jobs:
         run: jupyter nbconvert --execute --to notebook --inplace "examples/example05b - linear_evolution_without_GS.ipynb"
       - name: Check evolutive forward solve notebook (5c)
         run: jupyter nbconvert --execute --to notebook --inplace "examples/example05c - linear_evolution_with_relinearisation.ipynb"
+      - name: Check self-contained machine symmetrisation notebook
+        run: jupyter nbconvert --execute --to notebook --inplace "examples/example06d - self_contained_up_down_machine_symmetrization.ipynb"
       - name: Check static inverse solve Anamak notebook
         run: jupyter nbconvert --execute --to notebook --inplace "examples/example07a - Anamak"
       - name: Check static inverse solve SPARC notebook

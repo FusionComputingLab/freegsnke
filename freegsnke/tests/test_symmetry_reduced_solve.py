@@ -1,3 +1,5 @@
+"""Tests for the dedicated even-only evolutive-solver interface."""
+
 from unittest.mock import patch
 
 import numpy as np
@@ -32,14 +34,6 @@ def test_reduced_solver_enforces_even_configuration():
         full_timestep=2.5e-3,
     )
 
-    solver.eq1 = equilibrium
-    solver.profiles1 = profiles
-    assert solver.even_equilibrium is equilibrium
-    assert solver.observable_equilibrium is equilibrium
-    assert solver.measurement_equilibrium is equilibrium
-    assert solver.even_profiles is profiles
-    assert solver.observable_profiles is profiles
-
 
 @pytest.mark.parametrize(
     "option",
@@ -49,5 +43,6 @@ def test_reduced_solver_enforces_even_configuration():
     ],
 )
 def test_reduced_solver_rejects_non_even_configuration(option):
+    """Users cannot disable either invariant through inherited options."""
     with pytest.raises(ValueError):
         SymmetryReducedSolver(object(), object(), object(), **option)

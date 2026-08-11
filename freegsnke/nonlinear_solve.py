@@ -168,7 +168,8 @@ class nl_solver:
             passive-mode basis as a reference while still constraining all
             Grad-Shafranov solves and plasma-response Jacobians to be even.
         symmetry_tolerance : float, default=1e-8
-            Tolerance used to classify passive modes as even or odd.
+            Maximum relative commutator error permitted between passive
+            dynamics and reflection.
         """
         print("-----")
 
@@ -322,14 +323,15 @@ class nl_solver:
             symmetry_tolerance=symmetry_tolerance,
         )
         self.n_metal_modes = self.evol_metal_curr.n_independent_vars
-        self.n_passive_modes = self.n_metal_modes - self.n_active_coils
-        if fix_n_vessel_modes > self.n_passive_modes:
+        self.n_available_passive_modes = self.n_metal_modes - self.n_active_coils
+        if fix_n_vessel_modes > self.n_available_passive_modes:
             print(
                 f"'fix_n_vessel_modes' ({fix_n_vessel_modes}) exceeds the "
-                f"number of available passive modes ({self.n_passive_modes}); "
-                f"setting it to {self.n_passive_modes}."
+                "number of available passive modes "
+                f"({self.n_available_passive_modes}); setting it to "
+                f"{self.n_available_passive_modes}."
             )
-            fix_n_vessel_modes = self.n_passive_modes
+            fix_n_vessel_modes = self.n_available_passive_modes
 
         # prepare the vectorised green functions of the vessel modes
         self.vessel_modes_greens = (
@@ -464,6 +466,7 @@ class nl_solver:
 
         # this is the number of independent normal mode currents being used
         self.n_metal_modes = self.evol_metal_curr.n_independent_vars
+        self.n_passive_modes = self.n_metal_modes - self.n_active_coils
         self.arange_currents = np.arange(self.n_metal_modes + 1)
         # re-build vector of vessel mode currents after mode selection
         self.build_current_vec(eq, profiles)
@@ -971,6 +974,7 @@ class nl_solver:
 
         self.evol_metal_curr.initialize_for_eig(selected_modes_mask)
         self.n_metal_modes = self.evol_metal_curr.n_independent_vars
+        self.n_passive_modes = self.n_metal_modes - self.n_active_coils
         self.extensive_currents_dim = self.n_metal_modes + 1
         self.arange_currents = np.arange(self.n_metal_modes + 1)
         self.currents_vec = np.zeros(self.extensive_currents_dim)

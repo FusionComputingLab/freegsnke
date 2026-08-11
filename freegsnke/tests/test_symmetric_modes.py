@@ -1,3 +1,5 @@
+"""Regression tests for parity-aware passive-mode reduction."""
+
 from types import SimpleNamespace
 
 import numpy as np
@@ -80,6 +82,35 @@ def test_odd_passive_modes_can_be_retained_for_full_mode_reference():
     assert np.count_nonzero(currents.normal_modes.passive_mode_parity < 0) == 2
     assert currents.n_independent_vars == _Tokamak.n_coils
     np.testing.assert_allclose(currents.P, currents.normal_modes.Pmatrix)
+
+
+def test_degenerate_passive_modes_have_definite_parity():
+    """Degenerate eigenvalues cannot mix the even and odd subspaces."""
+    tokamak = SimpleNamespace(
+        n_active_coils=1,
+        n_coils=5,
+        coil_resist=np.ones(5),
+        coil_self_ind=np.eye(5),
+    )
+    currents = metal_currents(
+        eq=SimpleNamespace(tokamak=tokamak),
+        flag_vessel_eig=True,
+        flag_plasma=False,
+        max_mode_frequency=np.inf,
+        max_internal_timestep=1e-3,
+        full_timestep=1e-3,
+        passive_reflection_operator=_Tokamak.reflection,
+        remove_odd_passive_modes=False,
+    )
+
+    parity = currents.normal_modes.passive_mode_parity
+    assert np.count_nonzero(parity > 0) == 2
+    assert np.count_nonzero(parity < 0) == 2
+    np.testing.assert_allclose(
+        _Tokamak.reflection @ currents.P[1:, 1:],
+        currents.P[1:, 1:] * parity[np.newaxis, :],
+        atol=1e-14,
+    )
 
 
 def test_even_reduced_dynamics_match_full_symmetric_dynamics():

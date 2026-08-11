@@ -22,6 +22,6 @@ These example Jupyter notebooks are intended to be the **first port of call for 
 | Example 09 | Learn how to use and build virtual circuits for plasma shape control. | Anyone |
 | Example 10 | Learn how to calculate growth rates associated with vertically unstable modes. | Anyone |
 | Example 11 | Learn how to use the evolutive solver alongside a virtual plasma control system (FreeGSNKE Pulse Design Tool). | Anyone |
-| Example 11a | Use an exactly up-down symmetric machine and plasma to run the Pulse Design Tool with odd passive modes removed and a longer evolutive timestep. | Anyone |
+| Example 11a | Build a self-contained analytic symmetric machine and run the Pulse Design Tool with odd passive modes removed and a longer evolutive timestep. | Anyone |
 
 If a new example has been created, please add a new line to the table explaining its purpose!

@@ -50,7 +50,8 @@ class mode_decomposition:
             Matrix mapping passive currents to their up-down reflected counterparts.
             When supplied, passive modes are classified as even or odd in Z.
         symmetry_tolerance : float, optional
-            Maximum departure of a mode's parity from exactly +1 or -1.
+            Maximum relative commutator error permitted between passive
+            dynamics and the supplied reflection operator.
         """
 
         # check number of coils is compatible with data provided
@@ -78,16 +79,15 @@ class mode_decomposition:
         # 2. passive structures
         rm1 = np.diag(self.coil_resist[self.n_active_coils :] ** -1)
         mm = self.coil_self_ind[self.n_active_coils :, self.n_active_coils :]
-        w, v = np.linalg.eig(rm1 @ mm)
-        # w as calculated here are timescales
-        # here we switch to frequencies
-        w = 1.0 / w
-        ordw = np.argsort(w)
-        self.w_passive = w[ordw]
-        Pmatrix_passive = v[:, ordw]
-
+        passive_dynamics = rm1 @ mm
         self.passive_mode_parity = None
-        if passive_reflection_operator is not None:
+        if passive_reflection_operator is None:
+            timescales, modes = np.linalg.eig(passive_dynamics)
+            frequencies = 1.0 / timescales
+            order = np.argsort(frequencies)
+            self.w_passive = frequencies[order]
+            Pmatrix_passive = modes[:, order]
+        else:
             reflection = np.asarray(passive_reflection_operator)
             n_passive = self.n_coils - self.n_active_coils
             if reflection.shape != (n_passive, n_passive):
@@ -95,22 +95,46 @@ class mode_decomposition:
                     "'passive_reflection_operator' must have shape "
                     f"({n_passive}, {n_passive})."
                 )
-            parity = np.einsum(
-                "im,ij,jm->m", Pmatrix_passive, reflection, Pmatrix_passive
-            ) / np.einsum("im,im->m", Pmatrix_passive, Pmatrix_passive)
-            if np.any(np.abs(np.abs(parity) - 1) > symmetry_tolerance):
+            identity = np.eye(n_passive)
+            if not np.allclose(reflection, reflection.T) or not np.allclose(
+                reflection @ reflection, identity
+            ):
                 raise ValueError(
-                    "Passive normal modes are not purely even or odd in Z. "
-                    "Check that the machine resistance and inductance data are "
-                    "up-down symmetric."
+                    "'passive_reflection_operator' must be a symmetric involution."
                 )
-            self.passive_mode_parity = np.where(parity >= 0, 1, -1)
-            Pmatrix_passive = 0.5 * (
-                Pmatrix_passive
-                + reflection
-                @ (Pmatrix_passive * self.passive_mode_parity[np.newaxis, :])
-            )
-            Pmatrix_passive /= np.linalg.norm(Pmatrix_passive, axis=0)
+            relative_commutator = np.linalg.norm(
+                reflection @ passive_dynamics - passive_dynamics @ reflection
+            ) / np.linalg.norm(passive_dynamics)
+            if relative_commutator > symmetry_tolerance:
+                raise ValueError(
+                    "Passive dynamics do not commute with up-down reflection. "
+                    "Check the machine resistance and inductance data."
+                )
+
+            reflection_values, reflection_vectors = np.linalg.eigh(reflection)
+            frequencies = []
+            modes = []
+            parities = []
+            # Solve each parity block separately so degenerate even and odd
+            # eigenvalues cannot be returned as arbitrary mixed modes.
+            for parity in (-1, 1):
+                basis = reflection_vectors[:, np.isclose(reflection_values, parity)]
+                if not basis.shape[1]:
+                    continue
+                timescales, reduced_modes = np.linalg.eig(
+                    basis.T @ passive_dynamics @ basis
+                )
+                frequencies.extend(1.0 / timescales)
+                modes.extend((basis @ reduced_modes).T)
+                parities.extend([parity] * len(timescales))
+
+            frequencies = np.real_if_close(np.asarray(frequencies))
+            modes = np.real_if_close(np.asarray(modes).T)
+            parities = np.asarray(parities)
+            order = np.argsort(frequencies)
+            self.w_passive = frequencies[order]
+            Pmatrix_passive = modes[:, order]
+            self.passive_mode_parity = parities[order]
 
         if np.any(w_active < 0):
             print(

@@ -112,7 +112,8 @@ class metal_currents:
             coupling. This is useful as a full-mode reference for an
             even-plasma evolution.
         symmetry_tolerance : float, optional
-            Tolerance used to classify passive modes as even or odd.
+            Maximum relative commutator error permitted between passive
+            dynamics and reflection.
         verbose : bool
             If True, enable diagnostic output during setup.
         """

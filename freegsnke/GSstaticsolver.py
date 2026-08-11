@@ -424,9 +424,9 @@ class NKGSsolver:
                 raise TypeError("mg_kwargs needs to be of type dict")
 
             self.linear_GS_solver = createMultigridSolver(
-                nx=self.nx,
-                ny=self.ny,
-                order=order,
+                self.R,
+                self.Z,
+                order,
                 **mg_kwargs,
             )
 

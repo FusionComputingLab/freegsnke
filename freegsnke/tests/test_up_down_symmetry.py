@@ -181,3 +181,52 @@ def test_odd_series_circuit_requires_explicit_exclusion():
     assert prepared.original_active_names == ("even",)
     assert prepared.even_active_names == ("even",)
     assert "vertical_control" not in prepared.active_coils_data
+
+
+def test_geometry_mismatch_is_rms_point_distance():
+    """A displacement in both coordinates uses Euclidean point distances."""
+    active = {
+        "a_upper": _active_element([1.0], [1.0]),
+        "a_lower": _active_element([0.97], [-0.96]),
+    }
+
+    prepared = prepare_up_down_symmetric_machine(active)
+
+    np.testing.assert_allclose(
+        prepared.maximum_geometry_discrepancy.reflected_rms,
+        0.05,
+    )
+
+
+def test_unknown_explicit_passive_pair_has_clear_error():
+    """Invalid explicit labels fail before geometry lookup."""
+    passive = [
+        _passive_element("upper", "case", [1.0], [0.5]),
+        _passive_element("lower", "case", [1.0], [-0.5]),
+    ]
+
+    with pytest.raises(ValueError, match="missing"):
+        prepare_up_down_symmetric_machine(
+            {},
+            passive,
+            passive_pairs=(("upper", "missing"),),
+        )
+
+
+def test_boundary_tolerates_roundoff_at_midplane_vertices():
+    """Near-zero trigonometric coordinates count as vertices, not crossings."""
+    theta = np.linspace(0.0, 2 * np.pi, 96, endpoint=False)
+    limiter = [
+        {"R": 1.0 + 0.4 * np.cos(angle), "Z": 0.4 * np.sin(angle)} for angle in theta
+    ]
+    active = {"self": _active_element([0.2, 0.2], [-0.5, 0.5])}
+
+    prepared = prepare_up_down_symmetric_machine(active, limiter_data=limiter)
+
+    points = np.asarray([[entry["R"], entry["Z"]] for entry in prepared.limiter_data])
+    reflected = points.copy()
+    reflected[:, 1] *= -1
+    distances = np.linalg.norm(
+        points[:, np.newaxis] - reflected[np.newaxis, :], axis=-1
+    )
+    np.testing.assert_allclose(np.min(distances, axis=1), 0.0, atol=1e-14)

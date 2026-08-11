@@ -649,12 +649,15 @@ def _symmetrise_boundary_with_mismatch(boundary_data, z_midplane):
         if not augmented or not np.allclose(point, augmented[-1]):
             augmented.append(point)
         current_index = len(augmented) - 1
-        if abs(point[1] - z_midplane) <= tolerance:
+        current_side = point[1] - z_midplane
+        if abs(current_side) <= tolerance:
+            current_side = 0.0
             crossing_indices.append(current_index)
 
         next_point = points[(index + 1) % len(points)]
-        current_side = point[1] - z_midplane
         next_side = next_point[1] - z_midplane
+        if abs(next_side) <= tolerance:
+            next_side = 0.0
         if current_side * next_side < 0:
             fraction = -current_side / (next_side - current_side)
             crossing = point + fraction * (next_point - point)
@@ -682,7 +685,7 @@ def _symmetrise_boundary_with_mismatch(boundary_data, z_midplane):
     lower_path = _resample_path(lower_path, path_count)
     reflected_lower = lower_path.copy()
     reflected_lower[:, 1] = 2 * z_midplane - reflected_lower[:, 1]
-    mismatch = float(np.sqrt(np.mean((upper_path - reflected_lower) ** 2)))
+    mismatch = _point_rms_distance(upper_path, reflected_lower)
     symmetric_upper = 0.5 * (upper_path + reflected_lower)
     symmetric_upper[[0, -1], 1] = z_midplane
     symmetric_lower = symmetric_upper.copy()
@@ -711,6 +714,11 @@ def _resample_path(points, count):
             np.interp(target, coordinate, points[:, 1]),
         )
     )
+
+
+def _point_rms_distance(first, second):
+    """Return the root-mean-square Euclidean distance between paired points."""
+    return float(np.sqrt(np.mean(np.sum((first - second) ** 2, axis=-1))))
 
 
 def _geometry_bounds_midplane(active_data, passive_data):
@@ -927,14 +935,15 @@ def _identify_passive_pairs(passive_data, names, explicit_pairs, z_midplane):
     """Identify passive pairs by grouped reflected-geometry assignment."""
     by_name = dict(zip(names, passive_data))
     if explicit_pairs is not None:
+        requested = {name for pair in explicit_pairs for name in pair}
+        unknown = requested.difference(names)
+        if unknown:
+            raise ValueError(f"Unknown passive pair labels: {sorted(unknown)}")
         pairs = [
             (upper, lower, _passive_group(by_name[upper], upper))
             for upper, lower in explicit_pairs
         ]
         paired = {name for upper, lower, _ in pairs for name in (upper, lower)}
-        unknown = paired.difference(names)
-        if unknown:
-            raise ValueError(f"Unknown passive pair labels: {sorted(unknown)}")
         return pairs, [name for name in names if name not in paired]
 
     grouped = {}
@@ -993,8 +1002,14 @@ def _best_point_assignment(upper_points, reflected_lower_points, polygon):
         for direction in (indices, indices[::-1]):
             for shift in range(count):
                 candidate = np.roll(direction, shift)
-                difference = upper_points - reflected_lower_points[candidate]
-                candidates.append((np.sqrt(np.mean(difference**2)), candidate))
+                candidates.append(
+                    (
+                        _point_rms_distance(
+                            upper_points, reflected_lower_points[candidate]
+                        ),
+                        candidate,
+                    )
+                )
         return min(candidates, key=lambda item: item[0])[1]
     costs = np.linalg.norm(
         upper_points[:, np.newaxis, :] - reflected_lower_points[np.newaxis, :, :],
@@ -1013,7 +1028,7 @@ def _geometry_mismatch(upper, lower, z_midplane, polygon):
     reflected_lower = lower_points.copy()
     reflected_lower[:, 1] = 2 * z_midplane - reflected_lower[:, 1]
     assignment = _best_point_assignment(upper_points, reflected_lower, polygon)
-    return float(np.sqrt(np.mean((upper_points - reflected_lower[assignment]) ** 2)))
+    return _point_rms_distance(upper_points, reflected_lower[assignment])
 
 
 def _active_part_winding(part):
@@ -1153,9 +1168,7 @@ def _symmetrise_element_pair(upper, lower, z_midplane, polygon):
     reflected_lower = lower_points.copy()
     reflected_lower[:, 1] = 2 * z_midplane - reflected_lower[:, 1]
     assignment = _best_point_assignment(upper_points, reflected_lower, polygon)
-    mismatch = float(
-        np.sqrt(np.mean((upper_points - reflected_lower[assignment]) ** 2))
-    )
+    mismatch = _point_rms_distance(upper_points, reflected_lower[assignment])
 
     symmetric_upper = 0.5 * (upper_points + reflected_lower[assignment])
     symmetric_lower_aligned = symmetric_upper.copy()

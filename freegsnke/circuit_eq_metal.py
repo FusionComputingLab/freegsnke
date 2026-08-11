@@ -202,12 +202,18 @@ class metal_currents:
         - otherwise, apply `self.max_mode_frequency` and then, if provided, the
           plasma-coupling inclusion and exclusion masks.
 
+        Coupling masks describe the plasma response at the equilibrium where they
+        were calculated. If the plasma is expected to move or change shape
+        substantially, the retained modes should be validated at representative
+        equilibria or selected using equilibrium-independent timescale criteria.
+
         Parameters
         ----------
         mode_coupling_masks : tuple of ndarray or None
             Optional pair of boolean masks used to:
             - reintroduce strongly coupled modes
             - remove weakly coupled modes
+            These masks are local to the equilibrium used to calculate them.
         verbose : bool
             If True, print diagnostic information about mode selection.
         fixed_n_passive_modes : int or None

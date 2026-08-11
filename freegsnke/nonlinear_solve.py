@@ -133,6 +133,13 @@ class nl_solver:
             used to include or exclude modes, including after the full Jacobian is
             built. The no-GS response is still evaluated to calibrate finite-
             difference perturbation sizes.
+            Coupling-based selection is evaluated about the equilibrium supplied
+            at initialisation. Use it with caution when the plasma position or
+            shape is expected to change substantially, because the mode coupling
+            can evolve with the equilibrium and the initially retained set may
+            cease to be representative. In such cases, prefer timescale-only
+            selection or validate the coupling-selected set across representative
+            equilibria.
         threshold_dIy_dI : float, default=0.025
             Relative coupling threshold for including vessel modes (must be a
             number in [0,1]).

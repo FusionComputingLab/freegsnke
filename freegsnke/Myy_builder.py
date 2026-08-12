@@ -25,7 +25,7 @@ import abc
 import numexpr as ne
 import numpy as np
 from freegs4e.gradshafranov import Greens
-from freegs4e.parallel_funcs import threaded_take
+from freegs4e.parallel import threaded_take
 
 
 def make_Myy_handler(

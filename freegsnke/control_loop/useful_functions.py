@@ -34,19 +34,73 @@ class ConstantInterpolant:
 
     It preserves the output shapes of the SciPy interpolants used for
     non-constant waveforms and provides a compatible `derivative` method.
+
+    Parameters
+    ----------
+    value : array_like
+        The constant value returned for any input time. Stored as a
+        NumPy array.
+
+    Attributes
+    ----------
+    value : np.ndarray
+        The constant value returned by the interpolant.
     """
 
     def __init__(self, value: Any) -> None:
+        """
+        Initialize the interpolant with a constant value.
+
+        Parameters
+        ----------
+        value : array_like
+            The constant value to store, converted to a NumPy array
+            via `np.asarray`.
+        """
         self.value = np.asarray(value)
 
     def __call__(self, t: Any) -> np.ndarray:
-        """Return the constant value with the same leading shape as ``t``."""
+        """
+        Return the constant value broadcast to match the shape of ``t``.
+
+        Parameters
+        ----------
+        t : array_like
+            Time point(s) at which to evaluate the interpolant. Only the
+            shape of ``t`` is used; its values do not affect the output.
+
+        Returns
+        -------
+        np.ndarray
+            Array of shape ``np.shape(t) + self.value.shape`` containing
+            copies of ``self.value``, one for each element of ``t``.
+        """
 
         result = np.broadcast_to(self.value, np.shape(t) + self.value.shape)
         return np.array(result, copy=True)
 
     def derivative(self, n: int = 1) -> "ConstantInterpolant":
-        """Return this interpolant for order zero, otherwise a zero interpolant."""
+        """
+        Return the ``n``-th derivative of this constant interpolant.
+
+        Parameters
+        ----------
+        n : int, optional
+            Order of the derivative. Must be non-negative. Default is 1.
+
+        Returns
+        -------
+        ConstantInterpolant
+            ``self`` if ``n == 0`` (the value is unchanged), otherwise a
+            new `ConstantInterpolant` whose value is zero everywhere,
+            since the derivative of a constant is zero for any order
+            greater than zero.
+
+        Raises
+        ------
+        ValueError
+            If ``n`` is negative.
+        """
 
         if n < 0:
             raise ValueError("Derivative order must be non-negative.")

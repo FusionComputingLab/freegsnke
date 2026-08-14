@@ -267,6 +267,22 @@ class VCGenerator(VirtualCircuitProvider):
         else:
             # reorder the target calculator outputs if targets are different order or a subset
             def array_func(eq):
+                """
+                Evaluate all requested target quantities for a given equilibrium.
+
+                Parameters
+                ----------
+                eq : object
+                    Equilibrium (or similar state) object passed to each target
+                    calculator function.
+
+                Returns
+                -------
+                np.ndarray
+                    1D array of computed target values, in the same order as
+                    `targets`, obtained by calling ``self.target_calculator_dict[targ](eq)``
+                    for each ``targ`` in `targets`.
+                """
                 return np.array(
                     [self.target_calculator_dict[targ](eq) for targ in targets]
                 )

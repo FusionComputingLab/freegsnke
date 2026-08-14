@@ -1208,6 +1208,7 @@ class NKGSsolver:
         relative_psit_size=1e-3,
         l2_reg=1e-12,
         verbose=False,
+        force_up_down_symmetric=False,
     ):
         """
         Compute coil current updates using the full (plasma-aware) Jacobian.
@@ -1282,6 +1283,10 @@ class NKGSsolver:
         verbose : bool, optional
             If True, prints progress during Jacobian construction.
 
+        force_up_down_symmetric : bool, optional (default=False)
+            If True, enforce up-down symmetry in the baseline and perturbed
+            forward solves used to construct the full Jacobian.
+
         Returns
         -------
         Newton_delta_current : ndarray
@@ -1319,6 +1324,7 @@ class NKGSsolver:
             eq=eq,
             profiles=profiles,
             target_relative_tolerance=target_relative_tolerance,
+            force_up_down_symmetric=force_up_down_symmetric,
             suppress=True,
         )
 
@@ -1370,6 +1376,7 @@ class NKGSsolver:
                 eq=self.eq2,
                 profiles=profiles,
                 target_relative_tolerance=target_relative_tolerance,
+                force_up_down_symmetric=force_up_down_symmetric,
                 suppress=True,
             )
 
@@ -1578,7 +1585,8 @@ class NKGSsolver:
             L2 regularisation factor applied when using the full Jacobian.
 
         force_up_down_symmetric : bool, optional (default=False)
-            If True, enforces up–down symmetry during forward solve.
+            If True, projects the initial plasma flux and enforces up-down
+            symmetry in all main and full-Jacobian forward solves.
 
         verbose : bool, optional (default=False)
             If True, prints iteration progress and diagnostic information.
@@ -1609,6 +1617,9 @@ class NKGSsolver:
         # suppress overrides verbose output
         if suppress:
             verbose = False
+
+        if force_up_down_symmetric:
+            eq.plasma_psi = 0.5 * (eq.plasma_psi + eq.plasma_psi[:, ::-1])
 
         if verbose:
             print("-----")
@@ -1735,6 +1746,7 @@ class NKGSsolver:
                     target_relative_tolerance=target_relative_tolerance,
                     relative_psit_size=this_max_rel_psit,
                     l2_reg=l2_reg_fj,
+                    force_up_down_symmetric=force_up_down_symmetric,
                     verbose=verbose,
                 )
             # use Green's functions (plasma frozen approximation)

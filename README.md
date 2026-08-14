@@ -29,7 +29,7 @@ These problems can be solved in a **user-specified tokamak geometry** that can i
 | ------ | ------ | ------ | ------ |
 | Active poloidal field coils | Can be assigned (voltage-driven) currents that influence plasma shape and position. | Locations, sizes (areas), wirings (series/anti-series), polarities (+1 or -1), resistivities (of coil materials), and number of windings. | Blue rectangles |
 | Passive conducting structures  | Can be assigned induced eddy currents that also impact plasma shape and position. In evolutive forward mode, these are solved self-consistently. | Locations, sizes, orientations (if available), and filaments (as passives can be refined if needed). | Dark grey parallelograms |
-| Wall and/or limiter contours  | Confines the plasma boundary (for computational purposes). | Locations. | Solid black line |
+| Wall and/or limiter contours  | Confines the plasma boundary (for computational purposes). | Locations; the limiter contour must lie strictly inside the equilibrium solution domain. | Solid black line |
 | Magnetic diagnostic probes  | Can measure the poloidal flux (fluxloops) or the magnetic field strength (pickup coils) at specified locations. | Locations (for both) and orientations (for pickup coils). | Orange diamonds (fluxloops) and brown dots/lines (pickup coils) |
 
 Static Grad-Shafranov problems are solved using **fourth-order accurate finite differences** and a **purpose-built Newton-Krylov method** for additional **stability and convergence** speed (over the Picard iterations used in FreeGS). An implicit Euler method and the same Newton-Krylov solver are used to tackle the evolutive problem.

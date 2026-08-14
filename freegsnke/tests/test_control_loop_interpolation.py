@@ -9,9 +9,7 @@ from freegsnke.control_loop.useful_functions import (
     interpolate_spline,
     interpolate_step,
 )
-from freegsnke.control_loop.virtual_circuits_category import (
-    VirtualCircuitsController,
-)
+from freegsnke.control_loop.virtual_circuits_category import VirtualCircuitsController
 
 
 def waveform(values):

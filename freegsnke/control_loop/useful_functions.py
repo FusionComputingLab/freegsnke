@@ -27,14 +27,96 @@ from scipy.interpolate import UnivariateSpline, interp1d
 # a single time-series entry, e.g. {"times": [...], "vals": [...]}
 Waveform = dict[str, Any]
 
+
+class ConstantInterpolant:
+    """
+    Callable interpolant for a waveform whose value is constant in time.
+
+    It preserves the output shapes of the SciPy interpolants used for
+    non-constant waveforms and provides a compatible `derivative` method.
+
+    Parameters
+    ----------
+    value : array_like
+        The constant value returned for any input time. Stored as a
+        NumPy array.
+
+    Attributes
+    ----------
+    value : np.ndarray
+        The constant value returned by the interpolant.
+    """
+
+    def __init__(self, value: Any) -> None:
+        """
+        Initialize the interpolant with a constant value.
+
+        Parameters
+        ----------
+        value : array_like
+            The constant value to store, converted to a NumPy array
+            via `np.asarray`.
+        """
+        self.value = np.asarray(value)
+
+    def __call__(self, t: Any) -> np.ndarray:
+        """
+        Return the constant value broadcast to match the shape of ``t``.
+
+        Parameters
+        ----------
+        t : array_like
+            Time point(s) at which to evaluate the interpolant. Only the
+            shape of ``t`` is used; its values do not affect the output.
+
+        Returns
+        -------
+        np.ndarray
+            Array of shape ``np.shape(t) + self.value.shape`` containing
+            copies of ``self.value``, one for each element of ``t``.
+        """
+
+        result = np.broadcast_to(self.value, np.shape(t) + self.value.shape)
+        return np.array(result, copy=True)
+
+    def derivative(self, n: int = 1) -> "ConstantInterpolant":
+        """
+        Return the ``n``-th derivative of this constant interpolant.
+
+        Parameters
+        ----------
+        n : int, optional
+            Order of the derivative. Must be non-negative. Default is 1.
+
+        Returns
+        -------
+        ConstantInterpolant
+            ``self`` if ``n == 0`` (the value is unchanged), otherwise a
+            new `ConstantInterpolant` whose value is zero everywhere,
+            since the derivative of a constant is zero for any order
+            greater than zero.
+
+        Raises
+        ------
+        ValueError
+            If ``n`` is negative.
+        """
+
+        if n < 0:
+            raise ValueError("Derivative order must be non-negative.")
+        if n == 0:
+            return self
+        return ConstantInterpolant(np.zeros_like(self.value, dtype=float))
+
+
 # an interpolant produced by `interpolate_step`/`interpolate_spline`: callable at a
 # time `t`, and (for splines only) supports `.derivative()`
-Interpolant = Union[interp1d, UnivariateSpline]
+Interpolant = Union[ConstantInterpolant, interp1d, UnivariateSpline]
 
 
 def interpolate_step(
     data: Waveform,
-) -> interp1d:
+) -> Interpolant:
     """
     Creates a step-wise interpolator for time-series data using 'previous' value interpolation.
 
@@ -51,10 +133,18 @@ def interpolate_step(
         Callable function f(t) that returns the step-wise interpolated value at time t.
         For t < min(times), returns the first value.
         For t > max(times), returns the last value.
+
+    Notes
+    -----
+    Constant waveforms use `ConstantInterpolant` to avoid repeated SciPy
+    interpolation overhead during control-loop execution.
     """
 
     times = np.array(data["times"])
     vals = np.stack(data["vals"])
+
+    if np.all(vals == vals[0]):
+        return ConstantInterpolant(vals[0])
 
     # build interpolator
     f_interp = interp1d(
@@ -69,7 +159,7 @@ def interpolate_step(
     return f_interp
 
 
-def interpolate_spline(data: Waveform) -> UnivariateSpline:
+def interpolate_spline(data: Waveform) -> Interpolant:
     """
     Creates a spline interpolator for time-series data in 'data'.
 
@@ -86,10 +176,18 @@ def interpolate_spline(data: Waveform) -> UnivariateSpline:
         Callable function f(t) that returns the spline interpolated value at time t.
         For t < min(times), returns the first value.
         For t > max(times), returns the last value.
+
+    Notes
+    -----
+    Constant waveforms use `ConstantInterpolant` to avoid repeated SciPy
+    interpolation overhead during control-loop execution.
     """
 
     times = np.array(data["times"])
     vals = np.array(data["vals"])
+
+    if np.all(vals == vals[0]):
+        return ConstantInterpolant(vals[0])
 
     # build interpolator
     f_interp = UnivariateSpline(

@@ -176,7 +176,36 @@ def test_static_solve(create_machine):
         eq.psi(), test_psi, atol=(np.max(test_psi) - np.min(test_psi)) * 0.003
     ), "Psi map differs significantly from the test map"
 
+def test_second_order_static_solve(create_machine):
+    """The opt-in second-order GS operator produces a consistent equilibrium."""
+    eq, profiles, _ = create_machine
 
+    from freegsnke import GSstaticsolver
+
+    eq.tokamak.set_coil_current("P6", 0)
+    eq.tokamak["P6"].control = False
+    eq.tokamak["Solenoid"].control = False
+    eq.tokamak.set_coil_current("Solenoid", 15000)
+    eq.tokamak.setControlCurrents(np.load(STATIC_CURRENT_BASELINE))
+
+    solver = GSstaticsolver.NKGSsolver(eq, gs_operator_order=2)
+    solver.forward_solve(eq, profiles, 1e-8, suppress=True)
+
+    reference_psi = np.load(STATIC_PSI_BASELINE)
+    tolerance = np.ptp(reference_psi) * 0.003
+    assert solver.gs_operator_order == 2
+    assert np.allclose(eq.psi(), reference_psi, atol=tolerance)
+
+
+def test_static_solver_rejects_invalid_operator_order(create_machine):
+    """Only the two finite-difference operators supplied by FreeGS4E are valid."""
+    eq, _, _ = create_machine
+
+    from freegsnke import GSstaticsolver
+
+    with pytest.raises(ValueError, match="gs_operator_order"):
+        GSstaticsolver.NKGSsolver(eq, gs_operator_order=3)
+        
 def test_limiter_reduced_boundary_green_is_exact(create_machine):
     """Limiter reduction preserves the boundary flux for confined current."""
     eq, _, _ = create_machine

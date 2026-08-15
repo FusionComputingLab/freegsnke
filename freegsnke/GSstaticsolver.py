@@ -73,6 +73,7 @@ class NKGSsolver:
         l2_reg=1e-6,
         collinearity_reg=1e-6,
         seed=42,
+        gs_operator_order=4,
     ):
         """
         Initialise the Grad–Shafranov nonlinear solver.
@@ -80,7 +81,7 @@ class NKGSsolver:
         The constructor prepares all numerical operators required for
         nonlinear GS solving, including:
 
-            • Linear GS multigrid solver
+            • Direct sparse linear GS solver
             • Green's function boundary response operator
             • Newton–Krylov nonlinear solver backend
             • Random generator for Krylov direction perturbations
@@ -109,6 +110,12 @@ class NKGSsolver:
             Random number generator seed used for:
                 • Krylov perturbation generation
                 • Directional exploration in nonlinear solve
+
+        gs_operator_order : {2, 4}, optional (default=4)
+            Finite-difference order of the linear Grad-Shafranov operator.
+            Fourth order is more accurate; second order reduces sparse matrix
+            construction and factorisation costs when that accuracy trade-off
+            is acceptable.
 
         Attributes
         ----------
@@ -157,6 +164,14 @@ class NKGSsolver:
         dZ = Z[0, 1] - Z[0, 0]
         self.dRdZ = dR * dZ
 
+        if gs_operator_order == 2:
+            gs_operator = freegs4e.gradshafranov.GSsparse
+        elif gs_operator_order == 4:
+            gs_operator = freegs4e.gradshafranov.GSsparse4thOrder
+        else:
+            raise ValueError("gs_operator_order must be either 2 or 4")
+        self.gs_operator_order = gs_operator_order
+
         # nonlinear solver backend
         self.nksolver = nk_solver.nksolver(
             problem_dimension=self.nx * self.ny,
@@ -168,9 +183,7 @@ class NKGSsolver:
         self.linear_GS_solver = freegs4e.multigrid.createVcycle(
             nx,
             ny,
-            freegs4e.gradshafranov.GSsparse4thOrder(
-                eq.R[0, 0], eq.R[-1, 0], eq.Z[0, 0], eq.Z[0, -1]
-            ),
+            gs_operator(eq.R[0, 0], eq.R[-1, 0], eq.Z[0, 0], eq.Z[0, -1]),
             nlevels=1,
             ncycle=1,
             niter=2,
@@ -451,6 +464,8 @@ class NKGSsolver:
                 - profiles.opt : O-point / magnetic axis data
                 - profiles.psi_bndry : Boundary flux value
                 - profiles.flag_limiter : Limiter configuration flag
+                - profiles.has_relevant_xpoint : Whether an X-point defines a
+                  relevant separatrix in the solution domain
                 - profiles.jtor : Toroidal current density profile
 
         Returns
@@ -476,6 +491,9 @@ class NKGSsolver:
 
         eq.psi_bndry = profiles.psi_bndry
         eq.flag_limiter = profiles.flag_limiter
+        eq.has_relevant_xpoint = getattr(
+            profiles, "has_relevant_xpoint", len(profiles.xpt) > 0
+        )
 
         eq._current = np.sum(profiles.jtor) * self.dRdZ
         eq._profiles = profiles.copy()
@@ -1216,6 +1234,7 @@ class NKGSsolver:
         relative_psit_size=1e-3,
         l2_reg=1e-12,
         verbose=False,
+        force_up_down_symmetric=False,
     ):
         """
         Compute coil current updates using the full (plasma-aware) Jacobian.
@@ -1290,6 +1309,10 @@ class NKGSsolver:
         verbose : bool, optional
             If True, prints progress during Jacobian construction.
 
+        force_up_down_symmetric : bool, optional (default=False)
+            If True, enforce up-down symmetry in the baseline and perturbed
+            forward solves used to construct the full Jacobian.
+
         Returns
         -------
         Newton_delta_current : ndarray
@@ -1327,6 +1350,7 @@ class NKGSsolver:
             eq=eq,
             profiles=profiles,
             target_relative_tolerance=target_relative_tolerance,
+            force_up_down_symmetric=force_up_down_symmetric,
             suppress=True,
         )
 
@@ -1378,6 +1402,7 @@ class NKGSsolver:
                 eq=self.eq2,
                 profiles=profiles,
                 target_relative_tolerance=target_relative_tolerance,
+                force_up_down_symmetric=force_up_down_symmetric,
                 suppress=True,
             )
 
@@ -1586,7 +1611,8 @@ class NKGSsolver:
             L2 regularisation factor applied when using the full Jacobian.
 
         force_up_down_symmetric : bool, optional (default=False)
-            If True, enforces up–down symmetry during forward solve.
+            If True, projects the initial plasma flux and enforces up-down
+            symmetry in all main and full-Jacobian forward solves.
 
         verbose : bool, optional (default=False)
             If True, prints iteration progress and diagnostic information.
@@ -1617,6 +1643,9 @@ class NKGSsolver:
         # suppress overrides verbose output
         if suppress:
             verbose = False
+
+        if force_up_down_symmetric:
+            eq.plasma_psi = 0.5 * (eq.plasma_psi + eq.plasma_psi[:, ::-1])
 
         if verbose:
             print("-----")
@@ -1743,6 +1772,7 @@ class NKGSsolver:
                     target_relative_tolerance=target_relative_tolerance,
                     relative_psit_size=this_max_rel_psit,
                     l2_reg=l2_reg_fj,
+                    force_up_down_symmetric=force_up_down_symmetric,
                     verbose=verbose,
                 )
             # use Green's functions (plasma frozen approximation)

@@ -176,6 +176,7 @@ def test_static_solve(create_machine):
         eq.psi(), test_psi, atol=(np.max(test_psi) - np.min(test_psi)) * 0.003
     ), "Psi map differs significantly from the test map"
 
+
 def test_second_order_static_solve(create_machine):
     """The opt-in second-order GS operator produces a consistent equilibrium."""
     eq, profiles, _ = create_machine
@@ -205,7 +206,8 @@ def test_static_solver_rejects_invalid_operator_order(create_machine):
 
     with pytest.raises(ValueError, match="gs_operator_order"):
         GSstaticsolver.NKGSsolver(eq, gs_operator_order=3)
-        
+
+
 def test_limiter_reduced_boundary_green_is_exact(create_machine):
     """Limiter reduction preserves the boundary flux for confined current."""
     eq, _, _ = create_machine

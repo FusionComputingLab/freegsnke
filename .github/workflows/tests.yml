@@ -6,7 +6,7 @@ on:
       - main
 
 jobs:
-  tests:
+  test-matrix:
     strategy:
       fail-fast: false
       matrix:
@@ -28,3 +28,9 @@ jobs:
           freegs4e-path: .freegs4e-source
       - name: Run pytest
         run: python -m pytest -v
+
+  tests:
+    needs: test-matrix
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "All test matrix jobs passed"

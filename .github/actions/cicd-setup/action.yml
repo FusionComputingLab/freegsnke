@@ -7,9 +7,9 @@ inputs:
     required: false
     default: '3.10'
   freegs4e-path:
-    description: 'Optional local FreeGS4E checkout to install before FreeGSNKE'
+    description: 'FreeGS4E path or URL to install before FreeGSNKE'
     required: false
-    default: ''
+    default: 'git+https://github.com/FusionComputingLab/freegs4e.git@coordinated-dependency-stack'
 
 runs:
   using: composite

@@ -122,7 +122,6 @@ class metal_currents:
         self.n_active_coils = eq.tokamak.n_active_coils
         self.verbose = verbose
         self.passive_reflection_operator = passive_reflection_operator
-        self.remove_odd_passive_modes = remove_odd_passive_modes
 
         # prepare resistance data
         if coil_resist is not None:
@@ -235,10 +234,18 @@ class metal_currents:
 
         Returns
         -------
-        None
-            Updates internal attributes:
-            - `self.selected_modes_mask`
-            - `self.n_independent_vars`
+        ndarray of bool
+            Selection mask expressed in the parity-available mode basis. The
+            full-basis selection remains available as
+            ``self.selected_modes_mask``.
+
+        Notes
+        -----
+        Three mode spaces are involved: all modes in the eigendecomposition,
+        parity-available modes after optional odd-mode removal, and the final
+        modes retained by frequency and plasma-coupling criteria. Keeping the
+        returned mask in the second space allows callers to reduce arrays that
+        were already built after parity filtering.
         """
         available_passive = self.available_modes_mask[self.n_active_coils :]
         selected_modes_mask = (
@@ -292,8 +299,8 @@ class metal_currents:
         available_indices = np.flatnonzero(self.available_modes_mask)
         self.selected_modes_mask = np.zeros(self.n_coils, dtype=bool)
         self.selected_modes_mask[available_indices[local_selected_modes_mask]] = True
-        self.last_selection_mask = local_selected_modes_mask
         self.n_independent_vars = np.sum(local_selected_modes_mask)
+        return local_selected_modes_mask
 
     def initialize_for_eig(
         self, selected_modes_mask=None, mode_coupling_masks=None, verbose=True
@@ -325,18 +332,15 @@ class metal_currents:
 
         Returns
         -------
-        None
-            Updates internal solver state including:
-            - mode selection masks
-            - transformation matrices (P, Pm1)
-            - system matrix (Lambdam1)
-            - time integrator solver
-            - forcing term selection
+        ndarray of bool
+            Mask selecting the retained modes relative to the mode basis that
+            was available on entry. Internal mode transformations and the time
+            integrator are updated as side effects.
         """
 
         if selected_modes_mask is None:
             # this is the case when mode_coupling_masks are used to build self.selected_modes_mask
-            self.make_selected_mode_mask(mode_coupling_masks, verbose)
+            selection_mask = self.make_selected_mode_mask(mode_coupling_masks, verbose)
             # Pmatrix is the full matrix that changes the basis in the current space
             # from the normal modes Id (for diagonal) to the metal currents I:
             # I = Pmatrix Id
@@ -349,9 +353,7 @@ class metal_currents:
             # Include all modes available to this solver. In symmetric operation,
             # odd passive modes have already been made unavailable.
             self.selected_modes_mask = self.available_modes_mask.copy()
-            self.last_selection_mask = np.ones(
-                np.sum(self.available_modes_mask), dtype=bool
-            )
+            selection_mask = np.ones(np.sum(self.available_modes_mask), dtype=bool)
             self.n_independent_vars = np.sum(self.selected_modes_mask)
             self.P = self.normal_modes.Pmatrix[:, self.selected_modes_mask]
             self.Pm1 = self.normal_modes.Pmatrix_inverse[self.selected_modes_mask]
@@ -375,7 +377,7 @@ class metal_currents:
             ]
             self.selected_modes_mask[:] = False
             self.selected_modes_mask[retained_full_indices] = True
-            self.last_selection_mask = self.selected_modes_mask_partial
+            selection_mask = self.selected_modes_mask_partial
 
         # this is not needed any longer and now incorrect, the eigenvectors in P are independent but NOT orthogonal
         # self.Pm1 = (self.P).T
@@ -400,6 +402,8 @@ class metal_currents:
             self.forcing_term = self.forcing_term_eig_plasma
         else:
             self.forcing_term = self.forcing_term_eig_no_plasma
+
+        return selection_mask
 
     def reset_active_coil_resistances(self, active_coil_resistances):
         """
@@ -686,6 +690,9 @@ class metal_currents:
                     "The limiter mask must be up-down symmetric when a passive "
                     "reflection operator is supplied."
                 )
+            # Enforce M_ey = S_m M_ey S_y. The column permutation applies
+            # plasma-grid reflection S_y; the matrix product applies metal
+            # reflection S_m.
             mey = 0.5 * (
                 mey + np.einsum("ij,jp->ip", reflection, mey[:, reflected_indices])
             )

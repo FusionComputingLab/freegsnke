@@ -23,7 +23,13 @@ import numpy as np
 
 
 class mode_decomposition:
-    """Sets up the vessel mode decomposition to be used by the dynamic solver(s)"""
+    """Set up the vessel mode decomposition used by the dynamic solvers.
+
+    When a symmetric reflection operator is supplied, the passive dynamics are
+    decomposed into orthogonal even and odd subspaces before their normal modes
+    are calculated. This prevents degenerate eigenvalues from producing modes
+    with arbitrary mixed parity.
+    """
 
     def __init__(
         self,
@@ -46,6 +52,10 @@ class mode_decomposition:
         coil_self_ind : np.array
             2d matrix of mutual inductances between all pairs of machine conducting elements,
             including both active coils and passive structures
+        n_coils : int
+            Total number of active and passive conducting elements.
+        n_active_coils : int
+            Number of active circuits at the start of the current vector.
         passive_reflection_operator : np.array, optional
             Matrix mapping passive currents to their up-down reflected counterparts.
             When supplied, passive modes are classified as even or odd in Z.
@@ -111,12 +121,16 @@ class mode_decomposition:
                     "Check the machine resistance and inductance data."
                 )
 
+            # Let A = R_p^-1 L_p and S be passive reflection. For an exactly
+            # symmetric machine, SA = AS. Since S is a symmetric involution,
+            # its +1 and -1 eigenspaces are orthogonal and invariant under A.
+            # Solving Q_+^T A Q_+ and Q_-^T A Q_- separately therefore gives
+            # dynamically decoupled modes with exact parity, even when their
+            # eigenvalues are degenerate.
             reflection_values, reflection_vectors = np.linalg.eigh(reflection)
             frequencies = []
             modes = []
             parities = []
-            # Solve each parity block separately so degenerate even and odd
-            # eigenvalues cannot be returned as arbitrary mixed modes.
             for parity in (-1, 1):
                 basis = reflection_vectors[:, np.isclose(reflection_values, parity)]
                 if not basis.shape[1]:
@@ -169,9 +183,12 @@ class mode_decomposition:
         )
 
     def normal_modes_greens(self, eq_vgreen, mode_matrix=None):
-        """
-        Calculates the green functions of the vessel normal modes,
-        i.e. the psi flux per unit current for each mode.
+        """Calculate the Green functions of the vessel normal modes.
+
+        If physical metal currents and mode currents obey ``I_m = P @ I_d``,
+        then ``psi = I_m.T @ G_m = I_d.T @ P.T @ G_m``. The modal Green
+        functions are consequently ``P.T @ G_m``. ``P^-1`` is used only for
+        transforming physical currents into mode currents.
 
         Parameters
         ----------
@@ -179,12 +196,9 @@ class mode_decomposition:
             the vectorised green functions of each coil.
             Can be found at eq._vgreen. np.shape(eq_vgreen)=(n_coils, nx, ny)
         mode_matrix : np.array, optional
-            Transformation from retained mode currents to physical currents.
-            Required when calculating Green functions for a reduced basis. If
-            omitted, the existing full-basis transformation is used.
+            Transformation ``P`` from retained mode currents to physical
+            currents. If omitted, the full mode matrix is used.
         """
-
-        if mode_matrix is not None:
-            return np.einsum("im,irz->mrz", mode_matrix, eq_vgreen)
-
-        return np.einsum("mi,irz->mrz", self.Pmatrix_inverse, eq_vgreen)
+        if mode_matrix is None:
+            mode_matrix = self.Pmatrix
+        return np.einsum("im,irz->mrz", mode_matrix, eq_vgreen)

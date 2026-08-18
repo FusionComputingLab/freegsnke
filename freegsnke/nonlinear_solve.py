@@ -218,6 +218,12 @@ class nl_solver:
                     passive_reflection_operator
                 )
 
+            # Reflection-average the machine operators:
+            #   R_sym = (R + S_m R) / 2,
+            #   L_sym = (L + S_m L S_m) / 2,
+            #   G_sym(R, Z) = (G(R, Z) + S_m G(R, -Z)) / 2.
+            # These forms commute with reflection and leave the even and odd
+            # metal-current subspaces dynamically independent.
             resistance = (
                 eq.tokamak.coil_resist
                 if custom_coil_resist is None
@@ -236,9 +242,6 @@ class nl_solver:
                 "ij,jrz->irz", metal_reflection, eq._vgreen[:, :, ::-1]
             )
             eq._vgreen = 0.5 * (eq._vgreen + reflected_greens)
-            self.metal_reflection_operator = metal_reflection
-        else:
-            self.metal_reflection_operator = None
 
         # setting up reduced domain for plasma circuit eq.:
         self.limiter_handler = eq.limiter_handler
@@ -323,15 +326,15 @@ class nl_solver:
             symmetry_tolerance=symmetry_tolerance,
         )
         self.n_metal_modes = self.evol_metal_curr.n_independent_vars
-        self.n_available_passive_modes = self.n_metal_modes - self.n_active_coils
-        if fix_n_vessel_modes > self.n_available_passive_modes:
+        n_available_passive_modes = self.n_metal_modes - self.n_active_coils
+        if fix_n_vessel_modes > n_available_passive_modes:
             print(
                 f"'fix_n_vessel_modes' ({fix_n_vessel_modes}) exceeds the "
                 "number of available passive modes "
-                f"({self.n_available_passive_modes}); setting it to "
-                f"{self.n_available_passive_modes}."
+                f"({n_available_passive_modes}); setting it to "
+                f"{n_available_passive_modes}."
             )
-            fix_n_vessel_modes = self.n_available_passive_modes
+            fix_n_vessel_modes = n_available_passive_modes
 
         # prepare the vectorised green functions of the vessel modes
         self.vessel_modes_greens = (
@@ -443,7 +446,7 @@ class nl_solver:
             mode_coupling_mask_exclude,
         )
 
-        self.evol_metal_curr.initialize_for_eig(
+        selected_available_modes = self.evol_metal_curr.initialize_for_eig(
             selected_modes_mask=None,
             mode_coupling_masks=mode_coupling_masks,
             verbose=(fix_n_vessel_modes < 0),
@@ -472,10 +475,8 @@ class nl_solver:
         self.build_current_vec(eq, profiles)
 
         # select modes accordingly
-        self.starting_dI = self.starting_dI[self.evol_metal_curr.last_selection_mask]
-        self.approved_target_dIy = self.approved_target_dIy[
-            self.evol_metal_curr.last_selection_mask
-        ]
+        self.starting_dI = self.starting_dI[selected_available_modes]
+        self.approved_target_dIy = self.approved_target_dIy[selected_available_modes]
         # add the plasma
         self.starting_dI = np.concatenate(
             (self.starting_dI, [target_dIy * profiles.Ip / plasma_norm_factor])
@@ -864,7 +865,7 @@ class nl_solver:
         self.starting_dI = 1.0 * starting_dI
 
     def _project_plasma_vectors_even(self, vectors):
-        """Project reduced-domain plasma vectors onto the even-in-Z subspace."""
+        """Apply ``(I + S_y) / 2`` to reduced-domain plasma vectors."""
         if not self.force_up_down_symmetric:
             return vectors
 

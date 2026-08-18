@@ -65,6 +65,10 @@ def test_odd_passive_modes_are_removed_before_mode_selection():
         mode_greens,
         np.einsum("im,irz->mrz", currents.P, greens),
     )
+    np.testing.assert_allclose(
+        currents.normal_modes.normal_modes_greens(greens),
+        np.einsum("im,irz->mrz", currents.normal_modes.Pmatrix, greens),
+    )
 
 
 def test_odd_passive_modes_can_be_retained_for_full_mode_reference():

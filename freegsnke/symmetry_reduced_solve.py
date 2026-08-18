@@ -10,6 +10,11 @@ class SymmetryReducedSolver(nl_solver):
     :class:`~freegsnke.nonlinear_solve.nl_solver`. It adds no new dynamics: the
     inherited solver remains the even-state evolution engine.
 
+    Around an even plasma in an even machine, the linearised evolution operator
+    commutes with up-down reflection. Its even and odd state subspaces are
+    therefore orthogonal and dynamically decoupled. This solver retains the
+    even subspace and projects every Grad-Shafranov response back onto it.
+
     Parameters
     ----------
     profiles, eq, GSStaticSolver

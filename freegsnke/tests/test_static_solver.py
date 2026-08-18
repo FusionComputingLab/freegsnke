@@ -175,6 +175,9 @@ def test_static_solve(create_machine):
     assert np.allclose(
         eq.psi(), test_psi, atol=(np.max(test_psi) - np.min(test_psi)) * 0.003
     ), "Psi map differs significantly from the test map"
+    assert np.allclose(
+        eq.psi_func(eq.R, eq.Z, grid=False), eq.plasma_psi
+    ), "Plasma-flux interpolator is stale after the solve"
 
 
 def test_second_order_static_solve(create_machine):

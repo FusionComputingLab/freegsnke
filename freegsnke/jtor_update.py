@@ -322,7 +322,8 @@ class Jtor_universal:
         """
 
         # prepare psi_map to use
-        psi_map = np.copy(psi)
+        current_sign = np.sign(self.Ip)
+        psi_map = current_sign * np.copy(psi)
         self.psi_map = psi_map
         min_psi = np.amin(psi_map)
         psi_map[:, 0] = psi_map[0, :] = psi_map[-1, :] = psi_map[:, -1] = min_psi
@@ -392,18 +393,19 @@ class Jtor_universal:
         self.lcfs = all_regions[regions_order[idx]][:-1]
         self.lcfs = self.lcfs * self.dR_dZ[np.newaxis] + self.R0Z0[np.newaxis]
         # build xpt
-        psi_bndry = current_psi_level * del_psi
+        psi_bndry = current_sign * current_psi_level * del_psi
         dist = np.linalg.norm(
             self.lcfs[:, np.newaxis] - self.lcfs[np.newaxis, :], axis=-1
         ) + 10 * np.eye(len(self.lcfs))
         mask = dist == np.amin(dist)
-        xpt_coords = (
-            np.mean(self.lcfs[np.any(mask, axis=0)], axis=0) * self.dR_dZ + self.R0Z0
-        )
+        xpt_coords = np.mean(self.lcfs[np.any(mask, axis=0)], axis=0)
         xpt = np.concatenate((xpt_coords, [psi_bndry]))[np.newaxis]
         # build opt
         opt = np.concatenate(
-            (idx_valid_max * self.dR_dZ + self.R0Z0, [valid_max_psi * del_psi])
+            (
+                idx_valid_max * self.dR_dZ + self.R0Z0,
+                [current_sign * valid_max_psi * del_psi],
+            )
         )[np.newaxis]
         # build diverted_core_mask
         diverted_core_mask = path.contains_points(self.idx_grid_points).reshape(

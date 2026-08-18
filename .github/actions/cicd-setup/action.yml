@@ -1,13 +1,19 @@
 name: CICD Setup
 description: 'Set up the CI/CD environment for FreeGSNKE'
 
+inputs:
+  python-version:
+    description: 'Python version used by the job'
+    required: false
+    default: '3.10'
+
 runs:
   using: composite
   steps:
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
-        python-version: '3.10'
+        python-version: ${{ inputs.python-version }}
     - name: Install freegsnke and dependencies
       run: |
         python -m pip install --upgrade pip

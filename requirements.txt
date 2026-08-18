@@ -1,9 +1,10 @@
-scipy~=1.15.3
-numpy~=1.26.4
-threadpoolctl~=3.6.0
-matplotlib~=3.10.3
-h5py~=3.13.0
-deepdiff~=7.0.1
-scikit-image~=0.25.2
-notebook~=7.4.2
-cvxpy~=1.7.5
+# Keep the shared scientific stack within FreeGS4E's supported envelope.
+numpy>=1.26.4,<2.5
+scipy>=1.15.3,<2
+threadpoolctl>=3.6.0,<4
+matplotlib>=3.10.3,<4
+h5py>=3.13,<4
+deepdiff>=7.0.1,<9
+scikit-image>=0.25.2,<1
+notebook>=7.4.2,<8
+cvxpy>=1.7.5,<2

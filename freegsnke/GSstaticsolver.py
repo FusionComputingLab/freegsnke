@@ -73,6 +73,7 @@ class NKGSsolver:
         l2_reg=1e-6,
         collinearity_reg=1e-6,
         seed=42,
+        gs_operator_order=4,
     ):
         """
         Initialise the Grad–Shafranov nonlinear solver.
@@ -80,7 +81,7 @@ class NKGSsolver:
         The constructor prepares all numerical operators required for
         nonlinear GS solving, including:
 
-            • Linear GS multigrid solver
+            • Direct sparse linear GS solver
             • Green's function boundary response operator
             • Newton–Krylov nonlinear solver backend
             • Random generator for Krylov direction perturbations
@@ -110,6 +111,12 @@ class NKGSsolver:
                 • Krylov perturbation generation
                 • Directional exploration in nonlinear solve
 
+        gs_operator_order : {2, 4}, optional (default=4)
+            Finite-difference order of the linear Grad-Shafranov operator.
+            Fourth order is more accurate; second order reduces sparse matrix
+            construction and factorisation costs when that accuracy trade-off
+            is acceptable.
+
         Attributes
         ----------
         self.R, self.Z : ndarray
@@ -125,7 +132,8 @@ class NKGSsolver:
             Multigrid solver for linearised GS equation.
 
         self.greenfunc
-            Boundary response Green's function matrix.
+            Boundary response Green's function matrix for source points inside
+            the limiter, where the plasma current is confined.
 
         self.nksolver
             Newton–Krylov nonlinear solver backend.
@@ -145,9 +153,6 @@ class NKGSsolver:
         self.R = R
         self.Z = Z
 
-        R_1D = R[:, 0]
-        Z_1D = Z[0, :]
-
         # number of grid points
         nx, ny = np.shape(R)
         self.nx = nx
@@ -158,6 +163,14 @@ class NKGSsolver:
         dR = R[1, 0] - R[0, 0]
         dZ = Z[0, 1] - Z[0, 0]
         self.dRdZ = dR * dZ
+
+        if gs_operator_order == 2:
+            gs_operator = freegs4e.gradshafranov.GSsparse
+        elif gs_operator_order == 4:
+            gs_operator = freegs4e.gradshafranov.GSsparse4thOrder
+        else:
+            raise ValueError("gs_operator_order must be either 2 or 4")
+        self.gs_operator_order = gs_operator_order
 
         # nonlinear solver backend
         self.nksolver = nk_solver.nksolver(
@@ -170,9 +183,7 @@ class NKGSsolver:
         self.linear_GS_solver = freegs4e.multigrid.createVcycle(
             nx,
             ny,
-            freegs4e.gradshafranov.GSsparse4thOrder(
-                eq.R[0, 0], eq.R[-1, 0], eq.Z[0, 0], eq.Z[0, -1]
-            ),
+            gs_operator(eq.R[0, 0], eq.R[-1, 0], eq.Z[0, 0], eq.Z[0, -1]),
             nlevels=1,
             ncycle=1,
             niter=2,
@@ -190,22 +201,12 @@ class NKGSsolver:
         )
         self.bndry_indices = bndry_indices
 
-        # Compute Green's function mapping:
-        #
-        #   Jtor(R',Z') → ψ_boundary(R,Z)
-        greenfunc = Greens(
-            R[np.newaxis, :, :],
-            Z[np.newaxis, :, :],
-            R_1D[bndry_indices[:, 0]][:, np.newaxis, np.newaxis],
-            Z_1D[bndry_indices[:, 1]][:, np.newaxis, np.newaxis],
+        # Plasma current is confined inside the limiter, so only those Green
+        # columns contribute to the free-boundary condition.
+        self.plasma_source_mask = np.asarray(
+            eq.limiter_handler.mask_inside_limiter, dtype=bool
         )
-
-        # remove singular self-interaction terms
-        zeros = np.ones_like(greenfunc)
-        zeros[
-            np.arange(len(bndry_indices)), bndry_indices[:, 0], bndry_indices[:, 1]
-        ] = 0
-        self.greenfunc = greenfunc * zeros * self.dRdZ
+        self.greenfunc = self._build_boundary_green(self.plasma_source_mask)
 
         # Precompute geometric RHS coefficient
         # Comes from GS equation:
@@ -214,6 +215,35 @@ class NKGSsolver:
 
         # random generator used for NK search direction exploration
         self.rng = np.random.default_rng(seed=seed)
+
+    def _build_boundary_green(self, source_mask):
+        """Build the boundary Green matrix for a selected set of source points."""
+        source_indices = np.flatnonzero(source_mask)
+        boundary_indices = np.ravel_multi_index(
+            (self.bndry_indices[:, 0], self.bndry_indices[:, 1]),
+            (self.nx, self.ny),
+        )
+        flat_R = self.R.reshape(-1)
+        flat_Z = self.Z.reshape(-1)
+        greenfunc = Greens(
+            flat_R[source_indices][np.newaxis, :],
+            flat_Z[source_indices][np.newaxis, :],
+            flat_R[boundary_indices][:, np.newaxis],
+            flat_Z[boundary_indices][:, np.newaxis],
+        )
+
+        # Remove singular self-interactions when the selected sources include
+        # points on the computational boundary.
+        positions = np.searchsorted(source_indices, boundary_indices)
+        valid = positions < len(source_indices)
+        matches = np.zeros_like(valid)
+        matches[valid] = source_indices[positions[valid]] == boundary_indices[valid]
+        greenfunc[np.flatnonzero(matches), positions[matches]] = 0.0
+        return np.ascontiguousarray(greenfunc * self.dRdZ)
+
+    def _boundary_flux_from_jtor(self, jtor):
+        """Return boundary flux from plasma current inside the limiter."""
+        return self.greenfunc @ jtor[self.plasma_source_mask]
 
     def freeboundary(self, plasma_psi, tokamak_psi, profiles):
         """
@@ -293,15 +323,11 @@ class NKGSsolver:
         #
         # psi_boundary = ∫ G(R,Z; R',Z') Jtor(R',Z') dR'dZ'
         #
-        # Implemented using tensor contraction:
-        #
-        # Contract:
-        #   greenfunc axis (1,2) with jtor axis (0,1)
-        #
-        # Result is flattened boundary flux vector.
+        # Implemented as a matrix-vector product over source points inside the
+        # limiter, outside which the plasma current is identically zero.
         # ------------------------------------------------------------
         self.psi_boundary = np.zeros_like(self.R)
-        psi_bnd = np.tensordot(self.greenfunc, self.jtor, axes=([1, 2], [0, 1]))
+        psi_bnd = self._boundary_flux_from_jtor(self.jtor)
 
         # ------------------------------------------------------------
         # Map flattened Green's solution back to boundary grid
@@ -438,6 +464,8 @@ class NKGSsolver:
                 - profiles.opt : O-point / magnetic axis data
                 - profiles.psi_bndry : Boundary flux value
                 - profiles.flag_limiter : Limiter configuration flag
+                - profiles.has_relevant_xpoint : Whether an X-point defines a
+                  relevant separatrix in the solution domain
                 - profiles.jtor : Toroidal current density profile
 
         Returns
@@ -463,6 +491,9 @@ class NKGSsolver:
 
         eq.psi_bndry = profiles.psi_bndry
         eq.flag_limiter = profiles.flag_limiter
+        eq.has_relevant_xpoint = getattr(
+            profiles, "has_relevant_xpoint", len(profiles.xpt) > 0
+        )
 
         eq._current = np.sum(profiles.jtor) * self.dRdZ
         eq._profiles = profiles.copy()
@@ -1203,6 +1234,7 @@ class NKGSsolver:
         relative_psit_size=1e-3,
         l2_reg=1e-12,
         verbose=False,
+        force_up_down_symmetric=False,
     ):
         """
         Compute coil current updates using the full (plasma-aware) Jacobian.
@@ -1277,6 +1309,10 @@ class NKGSsolver:
         verbose : bool, optional
             If True, prints progress during Jacobian construction.
 
+        force_up_down_symmetric : bool, optional (default=False)
+            If True, enforce up-down symmetry in the baseline and perturbed
+            forward solves used to construct the full Jacobian.
+
         Returns
         -------
         Newton_delta_current : ndarray
@@ -1314,6 +1350,7 @@ class NKGSsolver:
             eq=eq,
             profiles=profiles,
             target_relative_tolerance=target_relative_tolerance,
+            force_up_down_symmetric=force_up_down_symmetric,
             suppress=True,
         )
 
@@ -1365,6 +1402,7 @@ class NKGSsolver:
                 eq=self.eq2,
                 profiles=profiles,
                 target_relative_tolerance=target_relative_tolerance,
+                force_up_down_symmetric=force_up_down_symmetric,
                 suppress=True,
             )
 
@@ -1573,7 +1611,8 @@ class NKGSsolver:
             L2 regularisation factor applied when using the full Jacobian.
 
         force_up_down_symmetric : bool, optional (default=False)
-            If True, enforces up–down symmetry during forward solve.
+            If True, projects the initial plasma flux and enforces up-down
+            symmetry in all main and full-Jacobian forward solves.
 
         verbose : bool, optional (default=False)
             If True, prints iteration progress and diagnostic information.
@@ -1604,6 +1643,9 @@ class NKGSsolver:
         # suppress overrides verbose output
         if suppress:
             verbose = False
+
+        if force_up_down_symmetric:
+            eq.plasma_psi = 0.5 * (eq.plasma_psi + eq.plasma_psi[:, ::-1])
 
         if verbose:
             print("-----")
@@ -1730,6 +1772,7 @@ class NKGSsolver:
                     target_relative_tolerance=target_relative_tolerance,
                     relative_psit_size=this_max_rel_psit,
                     l2_reg=l2_reg_fj,
+                    force_up_down_symmetric=force_up_down_symmetric,
                     verbose=verbose,
                 )
             # use Green's functions (plasma frozen approximation)

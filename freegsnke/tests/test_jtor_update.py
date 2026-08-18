@@ -1,11 +1,34 @@
 import os
 
 import freegs4e
+import matplotlib.pyplot as plt
 import numpy as np
 import pytest
 
 import freegsnke.jtor_update as jtor
 from freegsnke import build_machine, equilibrium_update
+
+
+def simple_active_coils_data():
+    """Return the minimal active coil data needed to instantiate a test tokamak."""
+    return {
+        "P1": {
+            "R": [0.5],
+            "Z": [0.0],
+            "dR": 0.05,
+            "dZ": 0.05,
+            "resistivity": 1e-8,
+            "polarity": 1.0,
+            "multiplier": 1.0,
+        }
+    }
+
+
+def rectangular_limiter(z_extent):
+    """Return a rectangular limiter/wall contour with the requested half-height."""
+    wall_R = [0.6, 1.3, 1.3, 0.6, 0.6]
+    wall_Z = [-z_extent, -z_extent, z_extent, z_extent, -z_extent]
+    return [{"R": r, "Z": z} for r, z in zip(wall_R, wall_Z)]
 
 
 @pytest.fixture()
@@ -76,3 +99,188 @@ def test_profiles_BetapIp(create_machine):
         and hasattr(profiles, "opt")
         and hasattr(profiles, "jtor")
     ), "The profiles object does not have the xpt, opt and jtor attributes"
+
+
+def test_profile_geometry_is_shared_and_fallback_indices_are_lazy(create_machine):
+    eq, _ = create_machine
+    profiles = jtor.ConstrainPaxisIp(eq, 8.1e3, 6.2e5, 0.5)
+    profiles.inputs = []
+    copied_profiles = jtor.Jtor_universal.copy(profiles)
+    handler = eq.limiter_handler
+
+    for name in (
+        "dR_dZ",
+        "R0Z0",
+        "eqRidx",
+        "eqZidx",
+        "mask_inside_limiter",
+        "mask_outside_limiter",
+        "limiter_mask_out",
+    ):
+        assert getattr(profiles, name) is getattr(handler, name)
+        assert getattr(copied_profiles, name) is getattr(handler, name)
+
+    assert handler._idx_grid_points is None
+    assert handler.idx_grid_points.shape == (eq.nx * eq.ny, 2)
+    expected_indices = np.indices((eq.nx, eq.ny)).reshape(2, -1).T
+    assert np.array_equal(handler.idx_grid_points, expected_indices)
+    assert handler.idx_grid_points is handler._idx_grid_points
+
+
+def test_contour_fallback_coordinates_and_current_sign(create_machine):
+    """The contour fallback is invariant under simultaneous psi and Ip reversal."""
+    eq, _ = create_machine
+    positive_psi = -((eq.R - 1.0) ** 2 + (eq.Z / 1.5) ** 2)
+    results = []
+
+    for current_sign in (1, -1):
+        profiles = jtor.ConstrainPaxisIp(
+            eq,
+            8.1e3,
+            current_sign * 6.2e5,
+            0.5,
+            alpha_m=1.8,
+            alpha_n=1.2,
+        )
+        opt, xpt, core_mask, psi_bndry = profiles.diverted_critical(
+            eq.R,
+            eq.Z,
+            current_sign * positive_psi,
+            mask_outside_limiter=profiles.mask_outside_limiter,
+            rel_tolerance_xpt=1e-4,
+        )
+
+        distances = np.linalg.norm(
+            profiles.lcfs[:, np.newaxis] - profiles.lcfs[np.newaxis, :], axis=-1
+        ) + 10 * np.eye(len(profiles.lcfs))
+        closest_pair = distances == np.amin(distances)
+        expected_xpt = np.mean(profiles.lcfs[np.any(closest_pair, axis=0)], axis=0)
+        assert np.allclose(xpt[0, :2], expected_xpt)
+        assert np.isclose(xpt[0, 2], psi_bndry)
+        results.append((opt, xpt, core_mask, psi_bndry))
+
+    positive, negative = results
+    assert np.allclose(positive[0][0, :2], negative[0][0, :2])
+    assert np.allclose(positive[1][0, :2], negative[1][0, :2])
+    assert np.array_equal(positive[2], negative[2])
+    assert np.isclose(positive[0][0, 2], -negative[0][0, 2])
+    assert np.isclose(positive[3], -negative[3])
+
+
+def test_no_diverted_mask_falls_back_to_limiter_boundary():
+    """If no X-point mask is available, the plasma boundary is limiter-defined."""
+    limiter_data = rectangular_limiter(z_extent=0.45)
+    tokamak = build_machine.tokamak(
+        active_coils_data=simple_active_coils_data(),
+        limiter_data=limiter_data,
+        wall_data=limiter_data,
+    )
+    eq = equilibrium_update.Equilibrium(
+        tokamak=tokamak,
+        Rmin=0.55,
+        Rmax=1.35,
+        Zmin=-0.5,
+        Zmax=0.5,
+        nx=33,
+        ny=33,
+    )
+    profiles = jtor.ConstrainPaxisIp(
+        eq,
+        8.1e3,
+        6.2e5,
+        0.5,
+        alpha_m=1.8,
+        alpha_n=1.2,
+    )
+    psi = -((eq.R - 0.95) ** 2 + eq.Z**2)
+
+    def no_diverted_mask(R, Z, psi, psi_bndry=None, mask_outside_limiter=None):
+        opt = np.array([[0.95, 0.0, np.amax(psi)]])
+        xpt = np.empty((0, 3))
+        return opt, xpt, None, None
+
+    def mask_as_current(R, Z, psi, psi_axis, psi_bndry, mask):
+        return mask.astype(float)
+
+    (
+        jtor_map,
+        _,
+        xpt,
+        psi_bndry,
+        diverted_core_mask,
+        limiter_core_mask,
+        flag_limiter,
+    ) = profiles.Jtor_build(
+        no_diverted_mask,
+        mask_as_current,
+        eq.limiter_handler.core_mask_limiter,
+        eq.R,
+        eq.Z,
+        psi,
+        None,
+        profiles.mask_outside_limiter,
+        profiles.limiter_mask_out,
+    )
+
+    assert len(xpt) == 0, "The test setup should not provide an X-point"
+    assert (
+        diverted_core_mask is None
+    ), "The test setup should not provide a diverted mask"
+    assert flag_limiter, "No-diverted-mask cases should be identified as limiter cases"
+    assert not profiles.has_relevant_xpoint
+    assert limiter_core_mask is not None, "Limiter fallback did not produce a core mask"
+    assert np.sum(limiter_core_mask) > 0, "Limiter fallback produced an empty core mask"
+    assert np.all(
+        jtor_map == limiter_core_mask
+    ), "Jtor was not built from the limiter mask"
+    assert np.isclose(
+        psi_bndry, np.amax(eq.limiter_handler.psi_on_limiter_boundary(psi))
+    )
+
+    profiles.Ip *= -1
+    negative_result = profiles.Jtor_build(
+        no_diverted_mask,
+        mask_as_current,
+        eq.limiter_handler.core_mask_limiter,
+        eq.R,
+        eq.Z,
+        -psi,
+        None,
+        profiles.mask_outside_limiter,
+        profiles.limiter_mask_out,
+    )
+    assert np.array_equal(negative_result[5], limiter_core_mask)
+    assert np.isclose(negative_result[3], -psi_bndry)
+
+    diverted_psi_bndry = -0.25
+    diverted_core_mask = psi > diverted_psi_bndry
+    positive_limited = eq.limiter_handler.core_mask_limiter(
+        psi,
+        diverted_psi_bndry,
+        diverted_core_mask,
+        profiles.limiter_mask_out,
+        1.0,
+    )
+    negative_limited = eq.limiter_handler.core_mask_limiter(
+        -psi,
+        -diverted_psi_bndry,
+        diverted_core_mask,
+        profiles.limiter_mask_out,
+        -1.0,
+    )
+    assert positive_limited[2] and negative_limited[2]
+    assert np.array_equal(positive_limited[1], negative_limited[1])
+    assert np.isclose(positive_limited[0], -negative_limited[0])
+
+    profiles.jtor = jtor_map
+    profiles.opt = np.array([[0.95, 0.0, np.amax(psi)]])
+    profiles.xpt = xpt
+    profiles.psi_bndry = psi_bndry
+    profiles.flag_limiter = flag_limiter
+    eq._profiles = profiles
+    eq.psi_bndry = psi_bndry
+    eq.has_relevant_xpoint = profiles.has_relevant_xpoint
+
+    axis = eq.plot(show=False)
+    assert axis is not None
+    plt.close(axis.figure)

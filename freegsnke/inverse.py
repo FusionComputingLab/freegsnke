@@ -26,6 +26,21 @@ import numpy as np
 from scipy import interpolate
 
 
+def _solve_regularized_lstsq(A, b, regularization):
+    """Solve ``min ||A x - b||² + xᵀ diag(regularization) x`` in augmented form."""
+    regularization = np.asarray(regularization)
+    if regularization.shape != (A.shape[1],):
+        raise ValueError(
+            "Regularization must contain one value per least-squares variable."
+        )
+    if not np.all(np.isfinite(regularization)) or np.any(regularization < 0):
+        raise ValueError("Regularization values must be finite and non-negative.")
+
+    augmented_A = np.vstack((A, np.diag(np.sqrt(regularization))))
+    augmented_b = np.concatenate((b, np.zeros(A.shape[1])))
+    return np.linalg.lstsq(augmented_A, augmented_b, rcond=None)[0]
+
+
 class Inverse_optimizer:
     """This class implements a gradient based optimiser for the coil currents,
     used to perform (static) inverse Grad-Shafranov solves.
@@ -1198,13 +1213,13 @@ class Inverse_optimizer:
 
         This method computes optimal coil current corrections by solving:
 
-            min_I || A I − b ||² + λ || I ||²
+            min_I || A I − b ||² + Iᵀ R I
 
         where:
 
             A = combined constraint Jacobian matrix
             b = combined constraint residual vector
-            λ = Tikhonov (L2) regularisation parameter
+            R = diagonal Tikhonov regularisation matrix
 
         The optimisation accounts for:
 
@@ -1237,10 +1252,10 @@ class Inverse_optimizer:
             Tikhonov regularisation parameter.
 
             If float:
-                λ I² penalty is applied uniformly.
+                R is the scalar value times the identity matrix.
 
             If array:
-                Allows coil-wise regularisation weighting.
+                R contains the supplied coil-wise values on its diagonal.
 
         Returns
         -------
@@ -1273,7 +1288,7 @@ class Inverse_optimizer:
         #     Use quadratic programming solver.
         #
         # Otherwise:
-        #     Solve normal equations directly.
+        #     Solve the augmented regularised least-squares system directly.
         # ------------------------------------------------------------
         if self.coil_current_limits is not None or self.psi_norm_limits is not None:
             delta_current, loss = self.optimize_currents_quadratic(
@@ -1282,8 +1297,8 @@ class Inverse_optimizer:
         else:
             # TODO: should we just use the quadratic solver all the time, regardless
             # of whether coil limits are specified?
-            delta_current = np.linalg.solve(
-                self.A.T @ self.A + reg_matrix, self.A.T @ self.b
+            delta_current = _solve_regularized_lstsq(
+                self.A, self.b, np.diag(reg_matrix)
             )
             loss = np.linalg.norm(self.loss)
 
@@ -1955,12 +1970,8 @@ class Inverse_optimizer:
 
         Notes
         -----
-        The solution is computed via normal equations:
-
-            x = (AᵀA + R)⁻¹ Aᵀ b
-
-        Since the system dimension is small (2×2), direct inversion
-        is computationally inexpensive.
+        The regularisation is appended to the least-squares system before
+        solving, avoiding the condition-number squaring of normal equations.
         """
 
         # assemble least-squares system
@@ -1972,13 +1983,8 @@ class Inverse_optimizer:
         else:
             reg_matrix = np.diag(l2_reg)
 
-        # --------------------------------------------------------------
-        # Solve regularised normal equations:
-        #
-        #   (AᵀA + R) x = Aᵀ b
-        # --------------------------------------------------------------
-        lhs = self.A_plasma.T @ self.A_plasma + reg_matrix
-        rhs = self.A_plasma.T @ self.b_plasma
-        delta_current = np.linalg.solve(lhs, rhs)
+        delta_current = _solve_regularized_lstsq(
+            self.A_plasma, self.b_plasma, np.diag(reg_matrix)
+        )
 
         return delta_current, self.loss_plasma

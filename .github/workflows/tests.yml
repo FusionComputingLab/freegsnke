@@ -6,12 +6,24 @@ on:
       - main
 
 jobs:
-  tests:
+  test-matrix:
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.12", "3.14"]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
       - name: Setup
         uses: './.github/actions/cicd-setup'
+        with:
+          python-version: ${{ matrix.python-version }}
       - name: Run pytest
         run: python -m pytest -v
+
+  tests:
+    needs: test-matrix
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "All test matrix jobs passed"

@@ -91,6 +91,11 @@ FreeGSNKE is constantly evolving and so we hope to provide users with more advan
 
 FreeGSNKE can be installed using pip or built from source.
 
+FreeGSNKE supports Python 3.10 through 3.14. Its runtime requirements are kept
+within the dependency envelope supported by FreeGS4E. Compatibility changes to
+Python or shared scientific dependencies are tested against both repositories
+as one coordinated stack.
+
 ### Installing with pip
 
 The following stages describe how to set up a virtual environment and install FreeGSNKE with pip.

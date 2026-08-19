@@ -32,7 +32,8 @@ class Limiter_handler:
     objects to determine whether grid points lie inside the allowable plasma
     region and to support limiter-dependent calculations.
 
-    Each profile object typically instantiates its own Limiter_handler.
+    An equilibrium owns one handler; profile objects share its fixed grid geometry
+    and limiter masks.
 
     Notes
     -----
@@ -61,6 +62,8 @@ class Limiter_handler:
 
         self.dR = self.eqR[1, 0] - self.eqR[0, 0]
         self.dZ = self.eqZ[0, 1] - self.eqZ[0, 0]
+        self.dR_dZ = np.array([self.dR, self.dZ])
+        self.R0Z0 = np.array([self.eqR_1D[0], self.eqZ_1D[0]])
         self.dRdZ = self.dR * self.dZ
         self.nx, self.ny = np.shape(eq.R)
         self.nxny = self.nx * self.ny
@@ -70,9 +73,22 @@ class Limiter_handler:
 
         self.validate_limiter_inside_domain()
         self.build_mask_inside_limiter()
+        self.mask_outside_limiter = (
+            2 * np.logical_not(self.mask_inside_limiter)
+        ).astype(float)
         self.limiter_points()
         self.plasma_pts = self.extract_plasma_pts(eq.R, eq.Z, self.mask_inside_limiter)
         self.idxs_mask = self.extract_index_mask(self.mask_inside_limiter)
+        self._idx_grid_points = None
+
+    @property
+    def idx_grid_points(self):
+        """Grid indices for contour fallback, built only when first required."""
+        if self._idx_grid_points is None:
+            self._idx_grid_points = np.column_stack(
+                (self.eqRidx.reshape(-1), self.eqZidx.reshape(-1))
+            )
+        return self._idx_grid_points
 
     def validate_limiter_inside_domain(self):
         """Raise a clear error if the limiter is not inside the solution domain.

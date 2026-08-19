@@ -4,15 +4,20 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "freegsnke"
-version = "3.0.1"
+version = "3.1.0"
 authors = [
     {name = "The FreeGSNKE Developers"}
 ]
 description = "FreeGSNKE: A Python code for evolutive free-boundary tokamak plasma equilibrium simulations"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 classifiers = [
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Operating System :: OS Independent",
     "License :: OSI Approved :: GNU Lesser General Public License v3 (LGPLv3)"
 ]

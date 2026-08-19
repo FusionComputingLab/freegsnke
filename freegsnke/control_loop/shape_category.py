@@ -73,6 +73,10 @@ class ShapeController:
         A nested dictionary storing interpolation functions of each input waveform for each
         shape target.
         Structure: {target: {spline/step key: interpolant_function}}
+
+    interpolant_derivatives : dict
+        A nested dictionary storing derivatives of the spline interpolants. These are
+        constructed with `interpolants` so control steps only evaluate them.
     """
 
     def __init__(
@@ -196,21 +200,25 @@ class ShapeController:
         """
         Recompute all interpolant functions from the current `self.data`.
 
-        This method clears the existing `self.interpolants` dictionary and
-        rebuilds it by applying either `interpolate_spline` or `interpolate_step`
-        depending on whether each key belongs to `self.keys_to_spline` or
-        `self.keys_to_step`.
+        This method rebuilds `self.interpolants` by applying either
+        `interpolate_spline` or `interpolate_step`, and rebuilds the cached
+        derivatives of every spline interpolant.
 
         """
 
-        # create a dictionary to store the spline funcions
+        # create dictionaries to store the interpolants and spline derivatives
         self.interpolants = {}
+        self.interpolant_derivatives = {}
 
         # interpolate the input data
         for targ in self.ctrl_targets:
             self.interpolants[targ] = {}
+            self.interpolant_derivatives[targ] = {}
             for key in self.keys_to_spline:
                 self.interpolants[targ][key] = interpolate_spline(self.data[targ][key])
+                self.interpolant_derivatives[targ][key] = self.interpolants[targ][
+                    key
+                ].derivative()
             for key in self.keys_to_step:
                 self.interpolants[targ][key] = interpolate_step(self.data[targ][key])
 
@@ -511,12 +519,12 @@ class ShapeController:
         Notes
         -----
         - Assumes that `self.interpolants[target][key]` is a valid `scipy.interpolate` object.
-        - If `deriv=True`, the method calls `.derivative()` on the interpolant before evaluation.
+        - Spline derivatives are constructed by `update_interpolants` and reused here.
         """
 
         if deriv:
             return np.array(
-                [self.interpolants[target][key].derivative()(t) for target in targets]
+                [self.interpolant_derivatives[target][key](t) for target in targets]
             )
         else:
             return np.array([self.interpolants[target][key](t) for target in targets])
@@ -560,7 +568,7 @@ class ShapeController:
         # find out which control is ON and when
         FF_reference = self.interpolants[targ]["ff"](t)
         FF_mask = (self.interpolants[targ]["blend"](t) < 1) * (
-            np.abs(self.interpolants[targ]["ff"].derivative()(t)) > 0
+            np.abs(self.interpolant_derivatives[targ]["ff"](t)) > 0
         )
         FB_reference = self.interpolants[targ]["ref"](t)
         FB_mask = (self.interpolants[targ]["blend"](t) > 0) * (

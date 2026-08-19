@@ -162,6 +162,8 @@ class Inverse_optimizer:
         -----
         Increasing the weights/penalty factors causes the least-squares optimisation
         to prioritise satisfying the higher-weighted/penalised constraints.
+        Constraint weights multiply residual rows before squaring, so their
+        contribution to the objective scales with the square of the supplied value.
         """
         # ------------------------------------------------------------
         # Isoflux constraint processing
@@ -183,7 +185,7 @@ class Inverse_optimizer:
                     self.isoflux_set.append(iso_set)
                     self.isoflux_weight.append(weights)
             # rebuild as list of numpy arrays for numerical stability
-            except TypeError:
+            except (TypeError, IndexError):
                 self.isoflux_set = np.array(self.isoflux_set)[np.newaxis]
                 self.isoflux_weight = np.ones(self.isoflux_set.shape[1])[np.newaxis]
             # number of isoflux points per constraint set
@@ -911,8 +913,14 @@ class Inverse_optimizer:
         # loop over each isoflux set
         for i, isoflux in enumerate(self.isoflux_set):
 
+            # Weight the complete linearised pair residual, including both its
+            # Green response and its present flux mismatch.
+            pair_weights = np.array(
+                list(itertools.combinations(self.isoflux_weight[i], 2))
+            ).min(axis=1)
+
             # pairwise Greens' flux differences (only in control coils)
-            A.append(self.dG_set[i][self.control_mask].T)
+            A.append(self.dG_set[i][self.control_mask].T * pair_weights[:, np.newaxis])
 
             # tokamak flux contribution
             b_val = np.sum(self.dG_set[i] * full_currents_vec[:, np.newaxis], axis=0)
@@ -922,10 +930,8 @@ class Inverse_optimizer:
 
             # isoflux constraint violation are for pairs of constraints within the isoflux set
             # e.g. 8 isoflux constraints means b has 28 elements (28 choose 2).
-            # We weight the element of b by the minimum weight of the two constraints that make the pair
-            b_val *= np.array(
-                list(itertools.combinations(self.isoflux_weight[i], 2))
-            ).min(axis=1)
+            # Use the smaller point weight for each pairwise residual row.
+            b_val *= pair_weights
             # total
             b.append(-b_val)
 
@@ -1037,6 +1043,7 @@ class Inverse_optimizer:
 
         Mean flux removal is applied to remove arbitrary vertical flux offsets,
         since the Grad–Shafranov equation is invariant under constant flux shifts.
+        The same mean removal is applied to each coil-response column in ``A``.
 
         Parameters
         ----------
@@ -1072,8 +1079,9 @@ class Inverse_optimizer:
             min_I || G I + ψ_plasma − ψ_target ||²
         """
 
-        # flux response wrt coil currents
+        # Flux response wrt coil currents, with the same offset removal as b.
         A = self.G[self.control_mask].T
+        A -= np.mean(A, axis=0)
 
         # tokamak coil flux
         b = np.sum(self.G * full_currents_vec[:, np.newaxis], axis=0)
@@ -1154,7 +1162,7 @@ class Inverse_optimizer:
         # isfolux constrains
         if self.isoflux_set is not None:
             A_i, b_i, l = self.build_isoflux_lsq(full_currents_vec)
-            A = np.concatenate(A_i, axis=0)
+            A = np.concatenate(A_i, axis=0) * self.weight_isoflux
             b = np.concatenate(b_i, axis=0) * self.weight_isoflux
             self.isoflux_dim = len(b)
             loss = loss + l
@@ -1162,16 +1170,16 @@ class Inverse_optimizer:
         # null point constraints
         if self.null_points is not None:
             A_np, b_np, l = self.build_null_points_lsq(full_currents_vec)
-            A = np.concatenate((A, A_np), axis=0)
-            b = np.concatenate((b, b_np), axis=0) * self.weight_nulls
+            A = np.concatenate((A, A_np * self.weight_nulls), axis=0)
+            b = np.concatenate((b, b_np * self.weight_nulls), axis=0)
             self.nullp_dim = len(b)
             loss = loss + l
 
         # direct flux value constraints
         if self.psi_vals is not None:
             A_pv, b_pv, l = self.build_psi_vals_lsq(full_currents_vec)
-            A = np.concatenate((A, A_pv), axis=0)
-            b = np.concatenate((b, b_pv), axis=0) * self.weight_psi
+            A = np.concatenate((A, A_pv * self.weight_psi), axis=0)
+            b = np.concatenate((b, b_pv * self.weight_psi), axis=0)
             self.psiv_dim = len(b)
             loss = loss + l
 

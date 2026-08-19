@@ -101,6 +101,7 @@ class nl_solver:
         collinearity_reg=1e-6,
         verbose=False,
         plasma_descriptor_function=None,
+        mode_selection="coupling",
         n_linearization_workers=1,
     ):
         """
@@ -134,9 +135,30 @@ class nl_solver:
         blend_hatJ : float, default=0
             Coefficient for blending plasma current distributions at t and t+dt.
         max_mode_frequency : float, optional
-            Threshold frequency for retaining vessel modes.
+            Maximum passive-mode frequency retained when
+            `mode_selection="timescale"` and `fix_n_vessel_modes=-1`. In
+            coupling mode it provides the initial frequency mask before the
+            coupling criteria are applied.
         fix_n_vessel_modes : int, default=-1
-            Fix number of passive vessel modes; -1 = auto-selection.
+            Fix the number of passive vessel modes; -1 uses the criteria selected
+            by `mode_selection`. With `mode_selection="coupling"`, a non-negative
+            value retains the strongest-coupled modes. With
+            `mode_selection="timescale"`, it retains the lowest-frequency
+            (longest-timescale) modes.
+        mode_selection : {"coupling", "timescale"}, default="coupling"
+            Strategy used to select passive vessel modes. `"coupling"` preserves
+            the existing plasma-response-based selection. `"timescale"` uses only
+            the passive modes' electromagnetic frequencies: no coupling metric is
+            used to include or exclude modes, including after the full Jacobian is
+            built. The no-GS response is still evaluated to calibrate finite-
+            difference perturbation sizes.
+            Coupling-based selection is evaluated about the equilibrium supplied
+            at initialisation. Use it with caution when the plasma position or
+            shape is expected to change substantially, because the mode coupling
+            can evolve with the equilibrium and the initially retained set may
+            cease to be representative. In such cases, prefer timescale-only
+            selection or validate the coupling-selected set across representative
+            equilibria.
         threshold_dIy_dI : float, default=0.025
             Relative coupling threshold for including vessel modes (must be a
             number in [0,1]).
@@ -145,6 +167,8 @@ class nl_solver:
             number in [0,1]).
         mode_removal : bool, default=True
             If True, remove weakly coupled vessel modes after Jacobian calculation.
+            This option applies only when `mode_selection="coupling"`; it is
+            disabled for timescale-only selection.
         linearize : bool, default=True
             Whether to set up the linearised problem.
         dIydI : ndarray, optional
@@ -193,8 +217,21 @@ class nl_solver:
         self.limiter_handler = eq.limiter_handler
         self.plasma_domain_size = np.sum(self.limiter_handler.mask_inside_limiter)
 
+        valid_mode_selections = ("coupling", "timescale")
+        if mode_selection not in valid_mode_selections:
+            raise ValueError(
+                f"mode_selection must be one of {valid_mode_selections}; "
+                f"received {mode_selection!r}."
+            )
+        self.mode_selection = mode_selection
+
+        # Coupling-based removal after the full Jacobian would violate the
+        # contract of timescale-only mode selection.
+        if mode_selection == "timescale":
+            mode_removal = False
+
         # check threshold values
-        if fix_n_vessel_modes < 0:
+        if mode_selection == "coupling" and fix_n_vessel_modes < 0:
             if min_dIy_dI > threshold_dIy_dI:
                 raise ValueError(
                     "Inputs require that 'min_dIy_dI' <= 'threshold_dIy_dI', please adjust parameters."
@@ -307,13 +344,33 @@ class nl_solver:
                 verbose,
             )
 
-            # select modes according to the provided thresholds:
-            # include all modes that couple more than the threshold_dIy_dI
-            # with respect to the strongest coupling vessel mode
-            ordered_ndIydI_no_GS = np.sort(self.ndIydI_no_GS[self.n_active_coils :])
-            strongest_coupling_vessel_mode = ordered_ndIydI_no_GS[-1]
+            fixed_n_timescale_modes = None
+            if mode_selection == "timescale":
+                # build_dIydI_noGS above calibrates the finite-difference steps,
+                # but its coupling norms deliberately do not enter this mask.
+                mode_coupling_masks = None
+                if fix_n_vessel_modes >= 0:
+                    fixed_n_timescale_modes = fix_n_vessel_modes
+                    print(
+                        "      'mode_selection=timescale' selected: retaining "
+                        f"the {fix_n_vessel_modes} lowest-frequency passive modes."
+                    )
+                else:
+                    print(
+                        "      'mode_selection=timescale' selected: retaining only "
+                        "passive modes below 'max_mode_frequency'."
+                    )
+                print(
+                    "      Plasma-coupling metrics are not used for mode selection "
+                    "or subsequent mode removal."
+                )
+            else:
+                # Coupling selection starts from the no-GS response norm. The
+                # frequency mask may also include slow modes in the threshold mode.
+                ordered_ndIydI_no_GS = np.sort(self.ndIydI_no_GS[self.n_active_coils :])
+                strongest_coupling_vessel_mode = ordered_ndIydI_no_GS[-1]
 
-            if fix_n_vessel_modes >= 0:
+            if mode_selection == "coupling" and fix_n_vessel_modes >= 0:
                 # select modes based on ndIydI_no_GS up to fix_n_modes exactly
                 print(
                     f"      'fix_n_vessel_modes' option selected --> passive structure modes that couple most to the strongest passive structure mode are being selected."
@@ -340,7 +397,7 @@ class nl_solver:
                 )
                 # the number of modes is being fixed:
                 mode_removal = False
-            else:
+            elif mode_selection == "coupling":
                 print(
                     f"      'threshold_dIy_dI', 'min_dIy_dI', and 'max_mode_frequency' options selected --> passive structure modes are selected according to these thresholds."
                 )
@@ -360,6 +417,11 @@ class nl_solver:
                         >= min_dIy_dI * strongest_coupling_vessel_mode,
                     )
                 )
+            if mode_selection == "coupling":
+                mode_coupling_masks = (
+                    mode_coupling_mask_include,
+                    mode_coupling_mask_exclude,
+                )
         else:
             print("      no passive modes present!")
 
@@ -372,22 +434,21 @@ class nl_solver:
             # set mode removal to false
             mode_removal = False
 
+            mode_coupling_masks = None
+            fixed_n_timescale_modes = None
+
         print("-----")
 
         print(f"Initial mode selection:")
         # enact the mode selection
-        mode_coupling_masks = (
-            mode_coupling_mask_include,
-            mode_coupling_mask_exclude,
-        )
-
         self.evol_metal_curr.initialize_for_eig(
             selected_modes_mask=None,
             mode_coupling_masks=mode_coupling_masks,
-            verbose=(fix_n_vessel_modes < 0),
+            verbose=(mode_selection == "timescale" or fix_n_vessel_modes < 0),
+            fixed_n_passive_modes=fixed_n_timescale_modes,
         )
 
-        if fix_n_vessel_modes >= 0:
+        if mode_selection == "coupling" and fix_n_vessel_modes >= 0:
             print(f"   Active coils")
             print(
                 f"      total selected = {self.n_active_coils} (out of {self.n_active_coils})"
@@ -701,8 +762,10 @@ class nl_solver:
 
         This routine evaluates the plasma current response to perturbations in each
         coil or mode current using only the modified tokamak Green’s functions
-        (no Grad–Shafranov solves). The resulting Jacobian norm is used for an
-        initial sifting of passive vessel modes before a full linearisation.
+        (no Grad–Shafranov solves). It calibrates the perturbation amplitudes used
+        by the full linearisation. When `mode_selection="coupling"`, the resulting
+        Jacobian norms are also used for an initial sifting of passive vessel modes;
+        timescale-only selection deliberately ignores those norms.
 
         If `force_core_mask_linearization` is True, the perturbation size for each
         mode is adjusted to ensure that the diverted core mask of the perturbed
@@ -730,7 +793,10 @@ class nl_solver:
             Approximate Jacobian of plasma current distribution wrt coil currents,
             computed without GS solves.
         self.ndIydI_no_GS : ndarray, shape (n_coils,)
-            Norm of dIy/dI for each coil/mode, used in mode selection.
+            Norm of the finite-difference dIy/dI column for each coil/mode,
+            used in coupling-based mode selection. Each norm uses the same
+            perturbation as its corresponding response, before preparing the next
+            perturbation.
         self.rel_ndIy : ndarray, shape (n_coils,)
             Relative plasma current perturbation norms for each mode.
         self.starting_dI : ndarray
@@ -779,8 +845,7 @@ class nl_solver:
 
             self.dIydI_noGS[:, j] = dIydInoGS
             self.rel_ndIy[j] = rel_ndIy
-            # self.final_dI_record[j] = starting_dI[j] * self.accepted_target_dIy[j] / rel_ndIy
-            self.ndIydI_no_GS[j] = rel_ndIy * self.nIy / starting_dI[j]
+            self.ndIydI_no_GS[j] = np.linalg.norm(dIydInoGS)
         self.starting_dI = 1.0 * starting_dI
 
     def set_solvers(

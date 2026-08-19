@@ -75,7 +75,7 @@ class NKGSsolver:
         l2_reg=1e-6,
         collinearity_reg=1e-6,
         seed=42,
-        gs_operator_order=4,
+        gs_operator_order=None,
         cache_greens=True,
         solver_type="LUsparse",
         mg_kwargs=None,

@@ -150,6 +150,8 @@ class PreparedUpDownMachine:
         """Return the block reflection permutation for all metal currents."""
         active = self.active_reflection_operator
         passive = self.passive_reflection_operator
+        # Active and passive currents occupy separate contiguous blocks in the
+        # machine-current vector, so reflection cannot mix the two populations.
         reflection = np.zeros(
             (
                 len(self.original_active_names) + len(self.passive_names),
@@ -284,6 +286,8 @@ class PreparedUpDownMachine:
         currents = np.asarray(currents)
         if currents.shape[0] != self.reflection_operator.shape[0]:
             raise ValueError("Metal current vector has the wrong length.")
+        # For an involution R, (I + R) / 2 is the projector onto vectors that
+        # are unchanged by reflection. This removes the odd current component.
         return 0.5 * (currents + self.reflection_operator @ currents)
 
     def symmetrise_square_operator(self, operator):
@@ -297,6 +301,8 @@ class PreparedUpDownMachine:
         reflection = self.reflection_operator
         if operator.shape != reflection.shape:
             raise ValueError("Operator shape is incompatible with the machine.")
+        # Conjugating by R reflects both the input and output current bases.
+        # Averaging A with R A R therefore makes the result commute with R.
         return 0.5 * (operator + reflection @ operator @ reflection)
 
     def symmetrise_even_machine_resistances(self, resistances):
@@ -329,6 +335,8 @@ class PreparedUpDownMachine:
         greens = np.asarray(greens)
         if greens.shape[0] != self.reflection_operator.shape[0]:
             raise ValueError("Green-function coil axis has the wrong length.")
+        # Reflection acts twice here: flip the observation grid in Z, then
+        # exchange every source element with its reflected current partner.
         reflected_fields = np.flip(greens, axis=z_axis)
         reflected_coils = np.einsum(
             "ij,j...->i...", self.reflection_operator, reflected_fields
@@ -397,6 +405,8 @@ def prepare_up_down_symmetric_machine(
         Symmetric full and even-active descriptions, reflection maps, current
         transforms, and auditable pair diagnostics.
     """
+    # Work on private copies throughout: callers often reuse the original
+    # machine description to compare full and symmetry-reduced calculations.
     passive_coils_data = [] if passive_coils_data is None else passive_coils_data
     active_original = deepcopy(active_coils_data)
     passive_original = deepcopy(passive_coils_data)
@@ -408,11 +418,16 @@ def prepare_up_down_symmetric_machine(
         entry.get("name", f"passive_{index}")
         for index, entry in enumerate(passive_original)
     )
+    # Passive entries arrive as a list, unlike the name-keyed active mapping.
+    # Give unnamed entries stable labels so every later pairing is auditable.
     _check_unique(passive_names, "passive")
 
     if isinstance(z_midplane, str):
         if z_midplane.lower() != "auto":
             raise ValueError("'z_midplane' must be a float or 'auto'.")
+        # Automatic recentring is deliberately a two-pass procedure. A rough
+        # plane is sufficient to classify upper/lower candidates, after which
+        # matched points provide a much better estimate of the common plane.
         preliminary_midplane = _geometry_bounds_midplane(
             active_original, passive_original
         )
@@ -437,6 +452,8 @@ def prepare_up_down_symmetric_machine(
                 preliminary_midplane,
             )
         )
+        # The reduced solver assumes that reflection is Z -> -Z. Translate all
+        # supplied geometry together so the fitted source plane becomes zero.
         z_shift = -source_z_midplane
         target_midplane = 0.0
         _shift_active_geometry(active_original, z_shift)
@@ -450,6 +467,8 @@ def prepare_up_down_symmetric_machine(
         midplane_fit_rms = np.nan
         midplane_fit_samples = 0
 
+    # Pair again after any shift. These are the definitive pairings used to
+    # construct geometry, diagnostics, and current-coordinate transforms.
     active_pair_names, active_self = _identify_active_pairs(
         active_original, active_pairs, target_midplane
     )
@@ -457,6 +476,8 @@ def prepare_up_down_symmetric_machine(
         passive_original, passive_names, passive_pairs, target_midplane
     )
 
+    # Geometric reflection is not enough for active circuits: winding polarity
+    # determines whether equal source current produces an even or odd field.
     active_parity = {
         (upper_name, lower_name): _paired_active_parity(
             active_original[upper_name],
@@ -489,6 +510,9 @@ def prepare_up_down_symmetric_machine(
             "'exclude_odd_active=True' to omit and record them explicitly."
         )
     if excluded_odd_active:
+        # Strictly even evolution has no coordinate for an odd source circuit.
+        # Remove it before generating either the full symmetric description or
+        # the reduced series-circuit basis, while retaining its name in output.
         excluded = set(excluded_odd_active)
         for name in excluded:
             active_original.pop(name)
@@ -500,6 +524,9 @@ def prepare_up_down_symmetric_machine(
         ]
         active_self = [name for name in active_self if name not in excluded]
 
+    # First make the retained active geometry exactly reflected. Mismatch is
+    # measured before averaging so the approximation remains quantitatively
+    # visible to the caller.
     symmetric_active = deepcopy(active_original)
     active_diagnostics = []
     geometry_discrepancies = []
@@ -518,6 +545,8 @@ def prepare_up_down_symmetric_machine(
             GeometryDiscrepancy("active", upper_name, lower_name, mismatch)
         )
 
+    # An unpaired circuit is retained only when it spans the midplane and can
+    # therefore be symmetrised internally (for example, a central solenoid).
     for name in active_self:
         mismatch = _self_active_mismatch(symmetric_active[name], target_midplane)
         symmetric_active[name] = _symmetrise_self_active(
@@ -527,6 +556,8 @@ def prepare_up_down_symmetric_machine(
             GeometryDiscrepancy("active", name, name, mismatch)
         )
 
+    # Passive elements retain their original one-element-per-current basis.
+    # Only their geometry is averaged here; reflected currents remain separate.
     passive_by_name = dict(zip(passive_names, deepcopy(passive_original)))
     passive_diagnostics = []
     for upper_name, lower_name, group in passive_pair_names:
@@ -554,7 +585,12 @@ def prepare_up_down_symmetric_machine(
             GeometryDiscrepancy("passive", name, name, mismatch)
         )
 
+    # Restore the original passive ordering because downstream inductance and
+    # resistance arrays use positional, rather than name-based, indexing.
     symmetric_passive = [passive_by_name[name] for name in passive_names]
+
+    # Limiter and wall are continuous closed paths, so they require path-based
+    # resampling rather than the point assignments used for conductor elements.
     if limiter_original is None:
         symmetric_limiter = None
     else:
@@ -573,10 +609,14 @@ def prepare_up_down_symmetric_machine(
         geometry_discrepancies.append(
             GeometryDiscrepancy("wall", "upper path", "lower path", mismatch)
         )
+    # The strict symmetric evolutive solver uses one active coordinate per
+    # reflected pair. Connect each pair as a single series-circuit description.
     even_active, even_names = _build_even_active_description(
         symmetric_active, active_pair_names, active_self
     )
 
+    # Package both geometries and every ordering/transform needed to move
+    # currents and operators between the original and reduced representations.
     prepared = PreparedUpDownMachine(
         active_coils_data=symmetric_active,
         even_active_coils_data=even_active,
@@ -640,8 +680,13 @@ def _symmetrise_boundary_with_mismatch(boundary_data, z_midplane):
     if len(points) < 4:
         raise ValueError("A boundary requires at least four vertices.")
     if np.allclose(points[0], points[-1]):
+        # Internally use an implicit closing edge. Keeping a repeated endpoint
+        # would create a zero-length segment and bias the requested point count.
         points = points[:-1]
 
+    # Insert exact midplane intersections where an edge crosses the plane. This
+    # makes the two half-paths share identical endpoints even when the input
+    # polygon has no vertex exactly on the midplane.
     augmented = []
     crossing_indices = []
     tolerance = 1e-12
@@ -665,6 +710,8 @@ def _symmetrise_boundary_with_mismatch(boundary_data, z_midplane):
             crossing_indices.append(len(augmented) - 1)
 
     augmented = np.asarray(augmented)
+    # A simple closed vessel outline must enter and leave each half-plane once.
+    # More crossings would make the choice of corresponding half-paths ambiguous.
     crossing_indices = list(dict.fromkeys(crossing_indices))
     if len(crossing_indices) != 2:
         raise ValueError(
@@ -672,6 +719,8 @@ def _symmetrise_boundary_with_mismatch(boundary_data, z_midplane):
             f"found {len(crossing_indices)}."
         )
 
+    # Cutting the cyclic polygon at the two crossings produces two open paths.
+    # Reverse the wrap-around path so both paths run between the same endpoints.
     first, second = sorted(crossing_indices)
     first_path = augmented[first : second + 1]
     second_path = np.vstack((augmented[second:], augmented[: first + 1]))[::-1]
@@ -680,16 +729,21 @@ def _symmetrise_boundary_with_mismatch(boundary_data, z_midplane):
     else:
         upper_path, lower_path = second_path, first_path
 
+    # Original upper/lower paths need not have the same vertex placement.
+    # Uniform arc-length coordinates provide meaningful pointwise partners.
     path_count = int(np.ceil((len(points) + 2) / 2))
     upper_path = _resample_path(upper_path, path_count)
     lower_path = _resample_path(lower_path, path_count)
     reflected_lower = lower_path.copy()
     reflected_lower[:, 1] = 2 * z_midplane - reflected_lower[:, 1]
+    # Record the source discrepancy before replacing both halves by their mean.
     mismatch = _point_rms_distance(upper_path, reflected_lower)
     symmetric_upper = 0.5 * (upper_path + reflected_lower)
     symmetric_upper[[0, -1], 1] = z_midplane
     symmetric_lower = symmetric_upper.copy()
     symmetric_lower[:, 1] = 2 * z_midplane - symmetric_upper[:, 1]
+    # Do not duplicate the two midplane endpoints when joining the mirrored
+    # lower path. The returned polygon remains closed through its implicit edge.
     symmetric_points = np.vstack((symmetric_upper, symmetric_lower[-2:0:-1]))
     return (
         [{"R": float(point[0]), "Z": float(point[1])} for point in symmetric_points],
@@ -700,6 +754,8 @@ def _symmetrise_boundary_with_mismatch(boundary_data, z_midplane):
 def _resample_path(points, count):
     """Resample an open polygonal path at uniform normalized arc length."""
     segment_lengths = np.linalg.norm(np.diff(points, axis=0), axis=1)
+    # Drop repeated neighbours before normalising arc length; otherwise the
+    # interpolation coordinate would contain duplicate values.
     keep = np.concatenate(([True], segment_lengths > 0))
     points = points[keep]
     segment_lengths = np.linalg.norm(np.diff(points, axis=0), axis=1)
@@ -731,6 +787,8 @@ def _geometry_bounds_midplane(active_data, passive_data):
         z_values.extend(np.asarray(element["Z"], dtype=float))
     if not z_values:
         raise ValueError("Cannot fit a midplane without machine geometry.")
+    # This estimate is used only to classify candidates for the later matched-
+    # point fit, so the midpoint of the global vertical extent is sufficient.
     return 0.5 * (np.min(z_values) + np.max(z_values))
 
 
@@ -755,6 +813,8 @@ def _pair_z_midpoints(upper, lower, z_midplane, polygon):
     lower_points = np.column_stack((lower["R"], lower["Z"])).astype(float)
     reflected_lower = lower_points.copy()
     reflected_lower[:, 1] = 2 * z_midplane - reflected_lower[:, 1]
+    # Use the preliminary plane only to establish correspondence. Once points
+    # are paired, (Z_upper + Z_lower) / 2 estimates their actual symmetry plane.
     assignment = _best_point_assignment(upper_points, reflected_lower, polygon)
     return 0.5 * (upper_points[:, 1] + lower_points[assignment, 1])
 
@@ -763,6 +823,8 @@ def _active_pair_z_midpoints(upper, lower, z_midplane):
     """Return fitted-plane samples from all parts of an active pair."""
     upper_parts = _active_parts(upper)
     lower_parts = _active_parts(lower)
+    # Compound circuits can store filament bundles under unrelated dictionary
+    # keys. Match bundles geometrically before matching points within a bundle.
     costs = np.asarray(
         [
             [
@@ -801,6 +863,9 @@ def _self_z_midpoints(element, z_midplane):
             "Automatic midplane fitting requires equal upper/lower point counts "
             "in each self-symmetric circuit."
         )
+    # A self-symmetric element supplies both sides of the fit itself; pairing
+    # its upper and reflected-lower points yields the same midpoint samples as
+    # an explicitly named upper/lower element pair.
     reflected_lower = lower.copy()
     reflected_lower[:, 1] = 2 * z_midplane - reflected_lower[:, 1]
     assignment = _best_point_assignment(upper, reflected_lower, False)
@@ -818,6 +883,8 @@ def _fit_source_midplane(
     preliminary_midplane,
 ):
     """Fit the common source-plane offset from all paired geometry points."""
+    # Pool pointwise midplanes across all conductors. This gives detailed
+    # elements proportionally more influence than coarse single-point elements.
     samples = []
     for upper_name, lower_name, _ in active_pairs:
         samples.extend(
@@ -846,6 +913,8 @@ def _fit_source_midplane(
     samples = np.asarray(samples, dtype=float)
     if not len(samples):
         raise ValueError("No reflected point pairs are available to fit a midplane.")
+    # The mean is the least-squares constant plane through all pair midpoints;
+    # the RMS records how well one global plane describes the supplied machine.
     fitted_midplane = float(np.mean(samples))
     fit_rms = float(np.sqrt(np.mean((samples - fitted_midplane) ** 2)))
     return fitted_midplane, fit_rms, len(samples)
@@ -894,8 +963,12 @@ def _identify_active_pairs(active_data, explicit_pairs, z_midplane):
     names = tuple(active_data)
     _check_unique(names, "active")
     if explicit_pairs is not None:
+        # Explicit pairs override naming inference but still pass through all
+        # existence, geometry, and winding-parity checks below.
         pairs = [(upper, lower, _strip_side(upper)) for upper, lower in explicit_pairs]
     else:
+        # Active series circuits are normally named in unambiguous upper/lower
+        # pairs. Removing the side token supplies the reduced-circuit label.
         by_group = {}
         for name in names:
             side = _name_side(name)
@@ -913,6 +986,9 @@ def _identify_active_pairs(active_data, explicit_pairs, z_midplane):
     unknown = paired.difference(names)
     if unknown:
         raise ValueError(f"Unknown active pair labels: {sorted(unknown)}")
+    # Anything not explicitly paired is interpreted as one circuit that is
+    # internally symmetric, rather than silently treating it as an unmatched
+    # upper- or lower-only source.
     self_names = [name for name in names if name not in paired]
     for name in self_names:
         z_values = np.concatenate(
@@ -946,6 +1022,8 @@ def _identify_passive_pairs(passive_data, names, explicit_pairs, z_midplane):
         paired = {name for upper, lower, _ in pairs for name in (upper, lower)}
         return pairs, [name for name in names if name not in paired]
 
+    # Passive structures often contain many nominally identical elements. First
+    # separate structural groups and sides; only compare geometry within a group.
     grouped = {}
     self_names = []
     for name, element in zip(names, passive_data):
@@ -966,6 +1044,8 @@ def _identify_passive_pairs(passive_data, names, explicit_pairs, z_midplane):
                 f"Passive group '{group}' has {len(upper_names)} upper and "
                 f"{len(lower_names)} lower elements."
             )
+        # Find the globally minimum one-to-one reflected assignment. Greedy
+        # nearest-neighbour matching can pair one lower element more than once.
         costs = np.asarray(
             [
                 [
@@ -997,6 +1077,9 @@ def _best_point_assignment(upper_points, reflected_lower_points, polygon):
         )
     count = len(upper_points)
     if polygon and count > 2:
+        # Polygon vertices carry boundary connectivity. Allow cyclic shifts and
+        # traversal reversal, but never an arbitrary permutation that would
+        # scramble edges or create a self-intersecting conductor polygon.
         candidates = []
         indices = np.arange(count)
         for direction in (indices, indices[::-1]):
@@ -1011,6 +1094,8 @@ def _best_point_assignment(upper_points, reflected_lower_points, polygon):
                     )
                 )
         return min(candidates, key=lambda item: item[0])[1]
+    # Filament clouds have no path connectivity, so use unrestricted optimal
+    # one-to-one assignment in Euclidean (R, Z) space.
     costs = np.linalg.norm(
         upper_points[:, np.newaxis, :] - reflected_lower_points[np.newaxis, :, :],
         axis=-1,
@@ -1042,6 +1127,8 @@ def _matched_active_parts(upper_parts, lower_parts, z_midplane):
         return None
     if not upper_parts:
         return []
+    # Part names are not assumed to agree across reflected circuits. Geometry
+    # supplies the correspondence used for both mismatch and polarity checks.
     costs = np.asarray(
         [
             [
@@ -1066,6 +1153,9 @@ def _matched_parts_parity(matched_parts):
         lower_winding = _active_part_winding(lower)
         if not np.isclose(abs(upper_winding), abs(lower_winding)):
             return 0
+        # Equal signed winding gives even magnetic forcing; opposite winding
+        # gives odd forcing. Mixed parity across parts cannot form one valid
+        # reduced current coordinate.
         product = upper_winding * lower_winding
         if product == 0:
             return 0
@@ -1091,6 +1181,8 @@ def _self_active_parity(element, z_midplane):
     middle = [part for _, part in parts if np.isclose(_centroid_z(part), z_midplane)]
     matched = _matched_active_parts(upper, lower, z_midplane)
     parity = 0 if matched is None else _matched_parts_parity(matched)
+    # A part lying on the plane maps to itself and is therefore even. It cannot
+    # be combined consistently with an otherwise odd compound circuit.
     if middle and parity < 0:
         return 0
     return parity if matched else (1 if middle else 0)
@@ -1146,6 +1238,8 @@ def _average_pair_scalars(upper, lower):
         "min_refine_per_length",
         "current_multiplier",
     )
+    # Geometry averaging alone is insufficient: reflected elements must also
+    # have identical material and mesh parameters to produce symmetric dynamics.
     for field in fields:
         if field in upper and field in lower:
             value = 0.5 * (float(upper[field]) + float(lower[field]))
@@ -1170,6 +1264,8 @@ def _symmetrise_element_pair(upper, lower, z_midplane, polygon):
     assignment = _best_point_assignment(upper_points, reflected_lower, polygon)
     mismatch = _point_rms_distance(upper_points, reflected_lower[assignment])
 
+    # Average in the upper half-plane, mirror that average exactly, then undo
+    # the assignment so the lower element keeps its original point ordering.
     symmetric_upper = 0.5 * (upper_points + reflected_lower[assignment])
     symmetric_lower_aligned = symmetric_upper.copy()
     symmetric_lower_aligned[:, 1] = 2 * z_midplane - symmetric_upper[:, 1]
@@ -1193,6 +1289,8 @@ def _symmetrise_active_pair(upper, lower, z_midplane):
     if len(upper_parts) != len(lower_parts):
         raise ValueError("Paired active circuits must contain the same part count.")
 
+    # Match compound-circuit parts independently of dictionary insertion order.
+    # Each matched flat pair can then use the common element-level operation.
     costs = np.asarray(
         [
             [
@@ -1234,6 +1332,8 @@ def _symmetrise_self_element(element, z_midplane):
             "A self-symmetric element must have equal upper/lower point counts."
         )
     if len(upper_indices):
+        # Reuse pair symmetrisation on the two subsets, then write the averaged
+        # points back into their original positions in this single element.
         upper = {"R": points[upper_indices, 0], "Z": points[upper_indices, 1]}
         lower = {"R": points[lower_indices, 0], "Z": points[lower_indices, 1]}
         new_upper, new_lower, _ = _symmetrise_element_pair(
@@ -1243,6 +1343,7 @@ def _symmetrise_self_element(element, z_midplane):
         points[upper_indices, 1] = new_upper["Z"]
         points[lower_indices, 0] = new_lower["R"]
         points[lower_indices, 1] = new_lower["Z"]
+    # Numerical noise on self-reflecting points is removed explicitly.
     points[middle_indices, 1] = z_midplane
     element["R"] = points[:, 0]
     element["Z"] = points[:, 1]
@@ -1265,6 +1366,8 @@ def _symmetrise_self_active(element, z_midplane):
         raise ValueError(
             "A self-symmetric active circuit must have equal upper/lower part counts."
         )
+    # For compound circuits, pair upper/lower parts geometrically and treat any
+    # midplane-spanning part as internally self-symmetric.
     costs = np.asarray(
         [
             [
@@ -1300,6 +1403,8 @@ def _make_diagnostic(upper, lower, group, mismatch):
 
 def _build_even_active_description(active_data, pair_names, self_names):
     """Combine reflected active pairs into series circuits for even evolution."""
+    # Index both labels to the same pair so iteration can preserve the original
+    # active-circuit order without requiring upper members to appear first.
     pair_lookup = {}
     for upper, lower, group in pair_names:
         pair_lookup[upper] = (upper, lower, group)
@@ -1319,9 +1424,13 @@ def _build_even_active_description(active_data, pair_names, self_names):
 
         upper, lower, group = pair_lookup[name]
         reduced_name = group
+        # Distinct source groups can collapse to the same stripped label. Keep
+        # both circuits by falling back to an explicit composite name.
         if reduced_name in even_data:
             reduced_name = f"{upper}__{lower}"
         circuit = {}
+        # A single current through this compound entry drives both reflected
+        # source circuits, which is precisely the retained even coordinate.
         for side, source_name in (("upper", upper), ("lower", lower)):
             for part_key, part in _active_parts(active_data[source_name]):
                 suffix = "coil" if part_key is None else str(part_key)
@@ -1337,13 +1446,17 @@ def _reflection_operator(names, pairs, self_names):
     names = tuple(names)
     indices = {name: index for index, name in enumerate(names)}
     reflection = np.zeros((len(names), len(names)))
+    # Paired coordinates exchange places under reflection.
     for pair in pairs:
         upper_index = indices[pair.upper_name]
         lower_index = indices[pair.lower_name]
         reflection[upper_index, lower_index] = 1
         reflection[lower_index, upper_index] = 1
+    # Internally symmetric coordinates map to themselves.
     for name in self_names:
         reflection[indices[name], indices[name]] = 1
+    # Reflection must be an involution. This also catches missing, duplicated,
+    # or otherwise incomplete pair assignments before matrices are transformed.
     if not np.allclose(reflection @ reflection, np.eye(len(names))):
         raise ValueError("Pairing does not define a complete reflection operator.")
     return reflection
@@ -1358,6 +1471,9 @@ def _parity_transforms(names, pairs, self_names):
         pair_by_name[pair.upper_name] = pair
         pair_by_name[pair.lower_name] = pair
 
+    # Rows map original currents into parity coordinates; columns perform the
+    # inverse reconstruction. The 1/2 appears only in the forward maps so both
+    # transformed coordinates retain physical ampere units.
     even_rows = []
     odd_rows = []
     even_columns = []
@@ -1368,6 +1484,8 @@ def _parity_transforms(names, pairs, self_names):
         if name in consumed:
             continue
         if name in self_names:
+            # A self-symmetric circuit contributes one even coordinate and no
+            # independent odd coordinate.
             row = np.zeros(len(names))
             row[indices[name]] = 1
             even_rows.append(row)
@@ -1378,6 +1496,8 @@ def _parity_transforms(names, pairs, self_names):
         pair = pair_by_name[name]
         upper_index = indices[pair.upper_name]
         lower_index = indices[pair.lower_name]
+        # I_even=(I_upper+I_lower)/2 and
+        # I_odd=(I_upper-I_lower)/2. Reconstruction uses their sum/difference.
         even_row = np.zeros(len(names))
         even_row[[upper_index, lower_index]] = 0.5
         odd_row = np.zeros(len(names))

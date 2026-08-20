@@ -2811,7 +2811,8 @@ class nl_solver:
             Vector of current values to assign. Format:
                 (active coil currents, vessel normal mode currents, total plasma current / plasma_norm_factor)
         eq : FreeGSNKE equilibrium Object
-            Equilibrium object to be modified. Its `_current` attribute and `tokamak.current_vec` are updated.
+            Equilibrium object to be modified. Its `_current` attribute and tokamak
+            coil currents are updated.
         profiles : FreeGSNKE profiles Object
             Profiles object to be modified. Its total plasma current `Ip` is updated.
 
@@ -2829,7 +2830,7 @@ class nl_solver:
         self.vessel_currents_vec = self.evol_metal_curr.IdtoIvessel(
             Id=currents_vec[:-1]
         )
-        eq.tokamak.current_vec = self.vessel_currents_vec.copy()
+        eq.tokamak.set_all_coil_currents(self.vessel_currents_vec)
 
     def assign_currents_solve_GS(self, currents_vec, rtol_NK):
         """

@@ -8,3 +8,4 @@ deepdiff>=7.0.1,<9
 scikit-image>=0.25.2,<1
 notebook>=7.4.2,<8
 cvxpy>=1.7.5,<2
+numexpr~=2.14

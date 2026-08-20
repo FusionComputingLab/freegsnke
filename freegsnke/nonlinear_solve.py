@@ -70,10 +70,8 @@ class nl_solver:
     - Interfaces to Newton–Krylov solvers for plasma flux and circuit equations
     """
 
-
     _MAX_STARTING_DI_RATIO = np.sqrt(10.0)
     _MAX_REUSED_STARTING_DI_RATIO = 4.0 / 3.0
-
 
     # TODO: would be wise to make these kwargs kw-only, to prevent users from using
     # them as positional, which risks human error and regression bugs

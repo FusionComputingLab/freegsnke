@@ -9,8 +9,8 @@ from freegsnke.circuit_eq_metal import metal_currents
 from freegsnke.nonlinear_solve import nl_solver
 
 
-def test_bare_dIydI_rejects_post_jacobian_mode_removal():
-    """A bare Jacobian cannot identify its post-removal current-mode basis."""
+def test_supplied_dIydI_rejects_coupling_selection():
+    """A supplied current Jacobian requires deterministic timescale selection."""
 
     eq = SimpleNamespace(
         nx=2,
@@ -27,14 +27,55 @@ def test_bare_dIydI_rejects_post_jacobian_mode_removal():
         limiter_handler=SimpleNamespace(mask_inside_limiter=np.ones((2, 2), bool)),
     )
 
-    with pytest.raises(ValueError, match="bare 'dIydI'.*mode_removal=True"):
+    with pytest.raises(ValueError, match="supported only.*timescale"):
         nl_solver(
             profiles=SimpleNamespace(),
             eq=eq,
             GSStaticSolver=SimpleNamespace(),
             dIydI=np.zeros((4, 1)),
             mode_selection="coupling",
-            mode_removal=True,
+            mode_removal=False,
+        )
+
+
+def test_supplied_dIydI_validation_also_applies_after_construction():
+    """Later initialization cannot bypass the supplied-Jacobian contract."""
+
+    solver = nl_solver.__new__(nl_solver)
+    solver.mode_selection = "coupling"
+
+    with pytest.raises(ValueError, match="supported only.*timescale"):
+        solver.build_linearization(
+            eq=None,
+            profiles=None,
+            dIydI=np.zeros((4, 1)),
+            dIydtheta=None,
+            target_relative_tolerance_linearization=1e-8,
+            force_core_mask_linearization=False,
+            verbose=False,
+            plasma_descriptor_function=None,
+        )
+
+
+def test_supplied_jacobian_is_shape_checked_and_copied():
+    """The solver must not retain a mutable reference to a caller's cache."""
+
+    supplied = np.zeros((4, 2))
+    stored = nl_solver._copy_supplied_jacobian(
+        "dIydI",
+        supplied,
+        expected_shape=(4, 2),
+        compatibility="the selected mode basis",
+    )
+    stored[0, 0] = 1.0
+    assert supplied[0, 0] == 0.0
+
+    with pytest.raises(ValueError, match=r"shape \(4, 2\).+\(4, 3\)"):
+        nl_solver._copy_supplied_jacobian(
+            "dIydI",
+            supplied,
+            expected_shape=(4, 3),
+            compatibility="the selected mode basis",
         )
 
 

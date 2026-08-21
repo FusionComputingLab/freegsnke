@@ -73,6 +73,30 @@ class nl_solver:
     _MAX_STARTING_DI_RATIO = np.sqrt(10.0)
     _MAX_REUSED_STARTING_DI_RATIO = 4.0 / 3.0
 
+    @staticmethod
+    def _validate_supplied_dIydI(dIydI, mode_selection):
+        """Reject bare current Jacobians without a deterministic mode basis."""
+        if dIydI is not None and mode_selection != "timescale":
+            raise ValueError(
+                "Supplying 'dIydI' is supported only with "
+                "'mode_selection=\"timescale\"'. Coupling-based selection "
+                "depends on the initial equilibrium and may change the current-"
+                "mode basis. Omit 'dIydI' to rebuild the linearisation, or use "
+                "timescale selection with the same settings as the source solver."
+            )
+
+    @staticmethod
+    def _copy_supplied_jacobian(name, value, expected_shape, compatibility):
+        """Validate and detach a user-supplied Jacobian array."""
+        if value is None:
+            return None
+        if np.shape(value) != expected_shape:
+            raise ValueError(
+                f"Supplied '{name}' has shape {np.shape(value)}, but "
+                f"{expected_shape} is required by {compatibility}."
+            )
+        return np.array(value, copy=True)
+
     def __init__(
         self,
         profiles,
@@ -172,8 +196,10 @@ class nl_solver:
         linearize : bool, default=True
             Whether to set up the linearised problem.
         dIydI : ndarray, optional
-            Plasma current Jacobian wrt coil and plasma currents. Bare-matrix
-            reuse requires a fixed mode basis with no post-Jacobian mode removal.
+            Plasma current Jacobian wrt coil and plasma currents. Reuse is
+            supported only with ``mode_selection="timescale"``. The new solver
+            must use the same machine, grid, profile parameterisation, and
+            timescale-selection settings as the solver that built the matrix.
         dIydtheta : ndarray, optional
             Plasma current Jacobian wrt profile parameters.
         target_relative_tolerance_linearization : float, default=1e-8
@@ -231,14 +257,7 @@ class nl_solver:
         if mode_selection == "timescale":
             mode_removal = False
 
-        if dIydI is not None and mode_removal:
-            raise ValueError(
-                "Supplying a bare 'dIydI' with coupling-based "
-                "'mode_removal=True' is not supported because post-Jacobian "
-                "mode removal changes the current-mode basis without recording "
-                "that basis in the matrix. Set 'mode_removal=False' and reuse "
-                "identical mode-selection settings, or omit 'dIydI' to rebuild it."
-            )
+        self._validate_supplied_dIydI(dIydI, mode_selection)
 
         # check threshold values
         if mode_selection == "coupling" and fix_n_vessel_modes < 0:
@@ -603,13 +622,31 @@ class nl_solver:
 
         # self.dIydI is the Jacobian of the plasma current distribution
         # with respect to the independent currents (as in self.currents_vec)
-        self.dIydI_ICs = dIydI
-        self.dIydI = dIydI
+        current_jacobian_shape = (self.plasma_domain_size, self.n_metal_modes + 1)
+        self.dIydI_ICs = self._copy_supplied_jacobian(
+            "dIydI",
+            dIydI,
+            current_jacobian_shape,
+            "the selected timescale mode basis; reuse the same machine, grid, "
+            "and timescale-selection settings as the source solver",
+        )
+        self.dIydI = None if self.dIydI_ICs is None else np.copy(self.dIydI_ICs)
 
         # self.dIydtheta is the Jacobian of the plasma current distribution
         # with respect to the plasma current density profile parameters
-        self.dIydtheta_ICs = dIydtheta
-        self.dIydtheta = dIydtheta
+        profile_jacobian_shape = (
+            self.plasma_domain_size,
+            self.n_profiles_parameters,
+        )
+        self.dIydtheta_ICs = self._copy_supplied_jacobian(
+            "dIydtheta",
+            dIydtheta,
+            profile_jacobian_shape,
+            "the current grid and profile parameterisation",
+        )
+        self.dIydtheta = (
+            None if self.dIydtheta_ICs is None else np.copy(self.dIydtheta_ICs)
+        )
 
         # initialize and set up the linearization
         # input value for dIydI is used when available
@@ -1990,7 +2027,9 @@ class nl_solver:
             Plasma profiles associated with the equilibrium.
         dIydI : np.ndarray or None
             Optional input Jacobian of plasma current density with respect to metal currents.
-            If None, it will be computed internally.
+            If None, it will be computed internally. Supplying it is supported
+            only when this solver uses ``mode_selection="timescale"`` with the
+            same mode-selection settings as its source solver.
         dIydtheta : np.ndarray or None
             Optional input Jacobian of plasma current density with respect to plasma profile parameters.
             If None, it will be computed internally.
@@ -2012,6 +2051,8 @@ class nl_solver:
         - The function also updates the derivatives of coil positions with respect to currents
         in self.dRZdI.
         """
+
+        self._validate_supplied_dIydI(dIydI, self.mode_selection)
 
         # if (dIydI is None) and (self.dIydI is None):
         self.build_current_vec(eq, profiles)
@@ -2102,7 +2143,14 @@ class nl_solver:
             else:
                 self.dIydI = np.copy(self.dIydI_ICs)
         else:
-            self.dIydI = dIydI
+            expected_shape = (self.plasma_domain_size, self.n_metal_modes + 1)
+            self.dIydI = self._copy_supplied_jacobian(
+                "dIydI",
+                dIydI,
+                expected_shape,
+                "the selected timescale mode basis; reuse the same machine, grid, "
+                "and timescale-selection settings as the source solver",
+            )
             self.dIydI_ICs = np.copy(self.dIydI)
 
         # compose the vector of initial delta_theta (profile parameters) to be used for the finite difference calculation
@@ -2218,7 +2266,16 @@ class nl_solver:
             else:
                 self.dIydtheta = np.copy(self.dIydtheta_ICs)
         else:
-            self.dIydtheta = dIydtheta
+            expected_shape = (
+                self.plasma_domain_size,
+                self.n_profiles_parameters,
+            )
+            self.dIydtheta = self._copy_supplied_jacobian(
+                "dIydtheta",
+                dIydtheta,
+                expected_shape,
+                "the current grid and profile parameterisation",
+            )
             self.dIydtheta_ICs = np.copy(self.dIydtheta)
 
     def set_plasma_resistivity(self, plasma_resistivity):
@@ -2543,7 +2600,9 @@ class nl_solver:
         dIydI : np.array, optional
             Jacobian of plasma current distribution with respect to metal currents and total plasma current.
             Shape: (np.sum(plasma_domain_mask), n_metal_modes+1).
-            If not provided, it is computed from the given equilibrium.
+            If not provided, it is computed from the given equilibrium. A supplied
+            matrix requires ``mode_selection="timescale"`` and the same machine,
+            grid, normalization, and mode-selection settings used to build it.
         dIydtheta : np.array, optional
             Jacobian of plasma current distribution with respect to plasma profile parameters.
             If not provided, it is computed from the given equilibrium.

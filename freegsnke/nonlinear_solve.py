@@ -172,7 +172,8 @@ class nl_solver:
         linearize : bool, default=True
             Whether to set up the linearised problem.
         dIydI : ndarray, optional
-            Plasma current Jacobian wrt coil and plasma currents.
+            Plasma current Jacobian wrt coil and plasma currents. Bare-matrix
+            reuse requires a fixed mode basis with no post-Jacobian mode removal.
         dIydtheta : ndarray, optional
             Plasma current Jacobian wrt profile parameters.
         target_relative_tolerance_linearization : float, default=1e-8
@@ -229,6 +230,15 @@ class nl_solver:
         # contract of timescale-only mode selection.
         if mode_selection == "timescale":
             mode_removal = False
+
+        if dIydI is not None and mode_removal:
+            raise ValueError(
+                "Supplying a bare 'dIydI' with coupling-based "
+                "'mode_removal=True' is not supported because post-Jacobian "
+                "mode removal changes the current-mode basis without recording "
+                "that basis in the matrix. Set 'mode_removal=False' and reuse "
+                "identical mode-selection settings, or omit 'dIydI' to rebuild it."
+            )
 
         # check threshold values
         if mode_selection == "coupling" and fix_n_vessel_modes < 0:

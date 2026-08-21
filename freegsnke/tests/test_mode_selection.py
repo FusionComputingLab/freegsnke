@@ -3,9 +3,39 @@
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
 
 from freegsnke.circuit_eq_metal import metal_currents
 from freegsnke.nonlinear_solve import nl_solver
+
+
+def test_bare_dIydI_rejects_post_jacobian_mode_removal():
+    """A bare Jacobian cannot identify its post-removal current-mode basis."""
+
+    eq = SimpleNamespace(
+        nx=2,
+        ny=2,
+        R=np.zeros((2, 2)),
+        Z=np.zeros((2, 2)),
+        dR=1.0,
+        dZ=1.0,
+        tokamak=SimpleNamespace(
+            n_active_coils=0,
+            n_coils=0,
+            coils_dict={},
+        ),
+        limiter_handler=SimpleNamespace(mask_inside_limiter=np.ones((2, 2), bool)),
+    )
+
+    with pytest.raises(ValueError, match="bare 'dIydI'.*mode_removal=True"):
+        nl_solver(
+            profiles=SimpleNamespace(),
+            eq=eq,
+            GSStaticSolver=SimpleNamespace(),
+            dIydI=np.zeros((4, 1)),
+            mode_selection="coupling",
+            mode_removal=True,
+        )
 
 
 def test_no_gs_coupling_norm_uses_evaluated_perturbation():

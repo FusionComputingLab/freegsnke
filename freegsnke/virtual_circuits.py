@@ -33,7 +33,20 @@ _parallel_virtual_circuit_handler = None
 
 
 def _build_shape_matrix_column_worker(arguments):
-    """Build one virtual-circuit shape-matrix column in a worker process."""
+    """
+    Build one virtual-circuit shape-matrix column in a worker process.
+
+    Parameters
+    ----------
+    arguments : tuple
+        Positional arguments unpacked and passed to
+        ``_parallel_virtual_circuit_handler._build_shape_matrix_column``.
+
+    Returns
+    -------
+    object
+        The computed shape-matrix column.
+    """
     return _parallel_virtual_circuit_handler._build_shape_matrix_column(*arguments)
 
 
@@ -350,7 +363,20 @@ class VirtualCircuitHandling:
         target_dIy: float,
         starting_dI: float,
     ) -> tuple[int, float, np.ndarray]:
-        """Build one independent shape-matrix column for virtual circuits."""
+        """
+        Build one virtual-circuit shape-matrix column in a worker process.
+
+        Parameters
+        ----------
+        arguments : tuple[int, list[str], float, float]
+            ``(j, coils, target_dIy, starting_dI)``, unpacked and passed to
+            ``_parallel_virtual_circuit_handler._build_shape_matrix_column``.
+
+        Returns
+        -------
+        tuple[int, float, np.ndarray]
+            ``(j, final_dI, shape_matrix_column)``.
+        """
         self.prepare_build_dIydI_j(j, coils, target_dIy, starting_dI)
         return (
             j,
@@ -365,7 +391,34 @@ class VirtualCircuitHandling:
         starting_dI: np.ndarray,
         n_vc_workers: int,
     ) -> list[tuple[int, float, np.ndarray]]:
-        """Build VC shape-matrix columns serially or in isolated processes."""
+        """
+        Build VC shape-matrix columns serially or in isolated processes.
+
+        Parameters
+        ----------
+        coils : list[str]
+            Coil names defining the virtual circuits.
+        target_dIy : float
+            Target dIy value used to build each column.
+        starting_dI : np.ndarray
+            Per-coil starting dI values, indexed by coil position.
+        n_vc_workers : int
+            Number of worker processes to use. If 1 (or fewer than two
+            columns are needed), columns are built serially in-process;
+            otherwise a fork-based `ProcessPoolExecutor` is used.
+
+        Returns
+        -------
+        list[tuple[int, float, np.ndarray]]
+            One ``(j, final_dI, shape_matrix_column)`` tuple per coil,
+            in coil order.
+
+        Raises
+        ------
+        RuntimeError
+            If parallel execution is requested but the 'fork' start
+            method is unavailable.
+        """
         arguments = [
             (int(j), coils, target_dIy, float(starting_dI[j]))
             for j in np.arange(len(coils))

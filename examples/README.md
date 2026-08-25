@@ -13,6 +13,7 @@ These example Jupyter notebooks are intended to be the **first port of call for 
 | Example 05a | Learn how to use the nonlinear and linear (with GS) evolutive solver to simulate time-dependent equilibria. | Anyone |
 | Example 05b | Learn how to use the linear evolutive solver without solving GS at each timestep. | Anyone |
 | Example 05c | Learn how to use the linear evolutive solver (with or without solving GS) with automatic relinearisation enabled. | Anyone |
+| Example 05d | Learn how to reuse a calculated evolutive-solver linearisation with deterministic timescale-based mode truncation. | Anyone |
 | Example 06a/b | Simulate (static) MAST-U equilibria over an entire shot using inputs from EFIT++ (requires internal UKAEA MAST-U database). | UKAEA employees + collaborators |
 | Example 07a | Static inverse solve in the "Anamak" toy tokamak. | Anyone |
 | Example 07b | Static inverse solve in a SPARC-like tokamak. | Anyone |

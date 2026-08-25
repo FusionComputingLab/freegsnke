@@ -32,7 +32,8 @@ class Limiter_handler:
     objects to determine whether grid points lie inside the allowable plasma
     region and to support limiter-dependent calculations.
 
-    Each profile object typically instantiates its own Limiter_handler.
+    An equilibrium owns one handler; profile objects share its fixed grid geometry
+    and limiter masks.
 
     Notes
     -----
@@ -61,6 +62,8 @@ class Limiter_handler:
 
         self.dR = self.eqR[1, 0] - self.eqR[0, 0]
         self.dZ = self.eqZ[0, 1] - self.eqZ[0, 0]
+        self.dR_dZ = np.array([self.dR, self.dZ])
+        self.R0Z0 = np.array([self.eqR_1D[0], self.eqZ_1D[0]])
         self.dRdZ = self.dR * self.dZ
         self.nx, self.ny = np.shape(eq.R)
         self.nxny = self.nx * self.ny
@@ -68,10 +71,51 @@ class Limiter_handler:
         self.eqRidx = np.tile(np.arange(self.nx)[:, np.newaxis], (1, self.ny))
         self.eqZidx = np.tile(np.arange(self.ny)[:, np.newaxis], (1, self.nx)).T
 
+        self.validate_limiter_inside_domain()
         self.build_mask_inside_limiter()
+        self.mask_outside_limiter = (
+            2 * np.logical_not(self.mask_inside_limiter)
+        ).astype(float)
         self.limiter_points()
         self.plasma_pts = self.extract_plasma_pts(eq.R, eq.Z, self.mask_inside_limiter)
         self.idxs_mask = self.extract_index_mask(self.mask_inside_limiter)
+        self._idx_grid_points = None
+
+    @property
+    def idx_grid_points(self):
+        """Grid indices for contour fallback, built only when first required."""
+        if self._idx_grid_points is None:
+            self._idx_grid_points = np.column_stack(
+                (self.eqRidx.reshape(-1), self.eqZidx.reshape(-1))
+            )
+        return self._idx_grid_points
+
+    def validate_limiter_inside_domain(self):
+        """Raise a clear error if the limiter is not inside the solution domain.
+
+        Limiter boundary interpolation assumes that every limiter segment lies
+        strictly inside the rectangular solver grid, so that each refined
+        boundary point belongs to a valid interpolation cell.
+        """
+        limiter_R = np.asarray(self.limiter.R)
+        limiter_Z = np.asarray(self.limiter.Z)
+        Rmin, Rmax = self.eqR_1D[0], self.eqR_1D[-1]
+        Zmin, Zmax = self.eqZ_1D[0], self.eqZ_1D[-1]
+
+        limiter_inside_domain = (
+            (np.amin(limiter_R) > Rmin)
+            and (np.amax(limiter_R) < Rmax)
+            and (np.amin(limiter_Z) > Zmin)
+            and (np.amax(limiter_Z) < Zmax)
+        )
+        if not limiter_inside_domain:
+            raise ValueError(
+                "Limiter coordinates must be strictly inside the solution domain. "
+                f"Limiter bounds are R=[{np.amin(limiter_R):.6g}, "
+                f"{np.amax(limiter_R):.6g}], Z=[{np.amin(limiter_Z):.6g}, "
+                f"{np.amax(limiter_Z):.6g}], while the solution domain is "
+                f"R=[{Rmin:.6g}, {Rmax:.6g}], Z=[{Zmin:.6g}, {Zmax:.6g}]."
+            )
 
     def extract_index_mask(self, mask):
         """Extracts the indices of the R and Z coordinates of the grid points in the reduced plasma domain
@@ -432,12 +476,37 @@ class Limiter_handler:
         # vals = np.concatenate(vals)
         return vals, idxs
 
+    def psi_on_limiter_boundary(self, psi):
+        """Interpolate the flux function on all refined limiter boundary points.
+
+        Parameters
+        ----------
+        psi : np.ndarray
+            Total poloidal flux on the solver grid.
+
+        Returns
+        -------
+        np.ndarray
+            Flux values interpolated on the refined limiter boundary.
+        """
+        vals = []
+        for id_R, id_Z in self.fine_point_per_cell:
+            vals_, _ = self.interp_on_limiter_points_cell(id_R, id_Z, psi)
+            if len(vals_):
+                vals.append(vals_)
+
+        if not vals:
+            return np.array([])
+
+        return np.concatenate(vals)
+
     def core_mask_limiter(
         self,
         psi,
         psi_bndry,
         core_mask,
         limiter_mask_out,
+        current_sign=1.0,
         #   limiter_mask_in,
         #   linear_coeff=.5
     ):
@@ -461,6 +530,8 @@ class Limiter_handler:
         limiter_mask_out : np.array
             The mask identifying the border of the limiter, including points just inside it, the 'last' accessible to the plasma.
             Same size as psi.
+        current_sign : float, optional
+            Sign of the plasma current, used to orient flux comparisons.
 
 
 
@@ -501,11 +572,13 @@ class Limiter_handler:
 
         if len(self.interpolated_on_limiter):
             self.interpolated_on_limiter = np.concatenate(self.interpolated_on_limiter)
-            psi_on_limiter = np.amax(self.interpolated_on_limiter)
-            if psi_on_limiter > psi_bndry:
+            psi_on_limiter = self.interpolated_on_limiter[
+                np.argmax(current_sign * self.interpolated_on_limiter)
+            ]
+            if current_sign * (psi_on_limiter - psi_bndry) > 0:
                 self.flag_limiter = True
                 psi_bndry = 1.0 * psi_on_limiter
-                core_mask = (psi > psi_bndry) * core_mask
+                core_mask = (current_sign * (psi - psi_bndry) > 0) * core_mask
 
         # if np.any(offending_mask):
         #     # psi_max_out = np.amax(psi[offending_mask])

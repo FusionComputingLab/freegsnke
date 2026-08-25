@@ -181,7 +181,12 @@ class metal_currents:
 
         self.rm1l_non_symm = np.diag(self.coil_resist**-1.0) @ self.coil_self_ind
 
-    def make_selected_mode_mask(self, mode_coupling_masks, verbose):
+    def make_selected_mode_mask(
+        self,
+        mode_coupling_masks,
+        verbose,
+        fixed_n_passive_modes=None,
+    ):
         """
         Build selection mask for vessel normal modes used in circuit equations.
 
@@ -189,10 +194,18 @@ class metal_currents:
         reduced-order circuit model based on a frequency cutoff and optional
         plasma-coupling criteria.
 
-        Active coil variables are always included, while passive vessel modes are
-        filtered according to:
-        - maximum mode frequency (`self.max_mode_frequency`)
-        - optional coupling thresholds provided in `mode_coupling_masks`
+        Active coil variables are always included. Passive vessel modes are selected
+        in one of two ways:
+
+        - if `fixed_n_passive_modes` is provided, retain exactly that many modes,
+          starting with the lowest-frequency (longest-timescale) modes;
+        - otherwise, apply `self.max_mode_frequency` and then, if provided, the
+          plasma-coupling inclusion and exclusion masks.
+
+        Coupling masks describe the plasma response at the equilibrium where they
+        were calculated. If the plasma is expected to move or change shape
+        substantially, the retained modes should be validated at representative
+        equilibria or selected using equilibrium-independent timescale criteria.
 
         Parameters
         ----------
@@ -200,8 +213,12 @@ class metal_currents:
             Optional pair of boolean masks used to:
             - reintroduce strongly coupled modes
             - remove weakly coupled modes
+            These masks are local to the equilibrium used to calculate them.
         verbose : bool
             If True, print diagnostic information about mode selection.
+        fixed_n_passive_modes : int or None
+            If provided, retain exactly this many lowest-frequency passive modes.
+            `mode_coupling_masks` must be None in this mode.
 
         Returns
         -------
@@ -210,8 +227,22 @@ class metal_currents:
             - `self.selected_modes_mask`
             - `self.n_independent_vars`
         """
-        # this is for passives alone
-        selected_modes_mask = self.normal_modes.w_passive < self.max_mode_frequency
+        if fixed_n_passive_modes is not None:
+            if mode_coupling_masks is not None:
+                raise ValueError(
+                    "fixed_n_passive_modes cannot be combined with coupling masks."
+                )
+            n_passive_modes = self.n_coils - self.n_active_coils
+            if not 0 <= fixed_n_passive_modes <= n_passive_modes:
+                raise ValueError(
+                    "fixed_n_passive_modes must be between zero and the number "
+                    f"of passive modes ({n_passive_modes}); received "
+                    f"{fixed_n_passive_modes}."
+                )
+            selected_modes_mask = np.zeros(n_passive_modes, dtype=bool)
+            selected_modes_mask[:fixed_n_passive_modes] = True
+        else:
+            selected_modes_mask = self.normal_modes.w_passive < self.max_mode_frequency
         freq_only_number = np.sum(selected_modes_mask)
 
         # selected_modes_mask = [True,...,True, False,...,False]
@@ -225,9 +256,13 @@ class metal_currents:
                 f"      total selected = {self.n_active_coils} (out of {self.n_active_coils})"
             )
             print(f"   Passive structures")
-            print(
-                f"      {freq_only_number} selected with characteristic timescales larger than 'max_mode_frequency'"
-            )
+            if fixed_n_passive_modes is None:
+                print(f"      {freq_only_number} selected below 'max_mode_frequency'")
+            else:
+                print(
+                    f"      {freq_only_number} lowest-frequency "
+                    "(longest-timescale) modes selected"
+                )
 
         if mode_coupling_masks is not None:
             # reintroduce modes that couple strongly
@@ -262,7 +297,11 @@ class metal_currents:
         self.n_independent_vars = np.sum(self.selected_modes_mask)
 
     def initialize_for_eig(
-        self, selected_modes_mask=None, mode_coupling_masks=None, verbose=True
+        self,
+        selected_modes_mask=None,
+        mode_coupling_masks=None,
+        verbose=True,
+        fixed_n_passive_modes=None,
     ):
         """
         Initialise the metal current system in eigenmode representation.
@@ -288,6 +327,9 @@ class metal_currents:
             Only used when `selected_modes_mask is None`.
         verbose : bool
             If True, print diagnostic information about mode reduction.
+        fixed_n_passive_modes : int, optional
+            Retain exactly this many lowest-frequency passive modes. This is a
+            timescale-only selection and cannot be combined with coupling masks.
 
         Returns
         -------
@@ -302,7 +344,11 @@ class metal_currents:
 
         if selected_modes_mask is None:
             # this is the case when mode_coupling_masks are used to build self.selected_modes_mask
-            self.make_selected_mode_mask(mode_coupling_masks, verbose)
+            self.make_selected_mode_mask(
+                mode_coupling_masks,
+                verbose,
+                fixed_n_passive_modes=fixed_n_passive_modes,
+            )
             # Pmatrix is the full matrix that changes the basis in the current space
             # from the normal modes Id (for diagonal) to the metal currents I:
             # I = Pmatrix Id

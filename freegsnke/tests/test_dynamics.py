@@ -90,13 +90,24 @@ def create_machine():
         full_timestep=3e-3,
         plasma_resistivity=5e-7,
         automatic_timestep=False,
+        # This regression deliberately selects the 50 longest-timescale passive
+        # modes. Plasma-coupling metrics may calibrate finite-difference steps but
+        # must not change which modes are retained.
+        mode_selection="timescale",
     )
     return tokamak, eq, profiles, stepping
 
 
 def test_linearised_growth_rate(create_machine):
     tokamak, eq, profiles, stepping = create_machine
-    true_GR = 0.0586
+    selected_passive_modes = stepping.evol_metal_curr.selected_modes_mask[
+        stepping.n_active_coils :
+    ]
+    np.testing.assert_array_equal(
+        np.flatnonzero(selected_passive_modes),
+        np.arange(50),
+    )
+    true_GR = 0.05900
     # check that
     assert (
         abs((stepping.linearised_sol.instability_timescale[0] - true_GR) / true_GR)

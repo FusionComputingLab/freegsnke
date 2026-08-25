@@ -175,6 +175,7 @@ class VCGenerator(VirtualCircuitProvider):
         coils_calc: list[str],
         coils: list[str] | None = None,
         vc_update_rate: float = 0.0,
+        n_vc_workers: int = 1,
         verbose: bool = False,
     ) -> None:
         """
@@ -209,6 +210,9 @@ class VCGenerator(VirtualCircuitProvider):
             How often, in seconds, ``VirtualCircuitsController.run_control`` should
             recompute the emulated VC via ``get_vc``. Default is 0.0, i.e. a new VC
             is computed at every control step.
+        n_vc_workers : int, optional
+            Number of worker processes used to build independent virtual-circuit
+            shape-matrix columns. Default is 1, retaining serial calculation.
         verbose : bool, optional
             If True, print the configuration used for VC computations.
             Default is False.
@@ -223,6 +227,7 @@ class VCGenerator(VirtualCircuitProvider):
             verbose=verbose,
         )
         self.coils = coils
+        self.n_vc_workers = n_vc_workers
 
         self.VCH = VirtualCircuitHandling()
         self.VCH.define_solver(solver)
@@ -267,6 +272,22 @@ class VCGenerator(VirtualCircuitProvider):
         else:
             # reorder the target calculator outputs if targets are different order or a subset
             def array_func(eq):
+                """
+                Evaluate all requested target quantities for a given equilibrium.
+
+                Parameters
+                ----------
+                eq : object
+                    Equilibrium (or similar state) object passed to each target
+                    calculator function.
+
+                Returns
+                -------
+                np.ndarray
+                    1D array of computed target values, in the same order as
+                    `targets`, obtained by calling ``self.target_calculator_dict[targ](eq)``
+                    for each ``targ`` in `targets`.
+                """
                 return np.array(
                     [self.target_calculator_dict[targ](eq) for targ in targets]
                 )
@@ -387,6 +408,7 @@ class VCGenerator(VirtualCircuitProvider):
             tikhonov_lambda=tikhonov_lambda,
             name="latest_VC",
             verbose=verbose,
+            n_vc_workers=self.n_vc_workers,
         )
         vc_matrix = self.VCH.latest_VC.VCs_matrix
 

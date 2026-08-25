@@ -101,6 +101,72 @@ def test_profiles_BetapIp(create_machine):
     ), "The profiles object does not have the xpt, opt and jtor attributes"
 
 
+def test_profile_geometry_is_shared_and_fallback_indices_are_lazy(create_machine):
+    eq, _ = create_machine
+    profiles = jtor.ConstrainPaxisIp(eq, 8.1e3, 6.2e5, 0.5)
+    profiles.inputs = []
+    copied_profiles = jtor.Jtor_universal.copy(profiles)
+    handler = eq.limiter_handler
+
+    for name in (
+        "dR_dZ",
+        "R0Z0",
+        "eqRidx",
+        "eqZidx",
+        "mask_inside_limiter",
+        "mask_outside_limiter",
+        "limiter_mask_out",
+    ):
+        assert getattr(profiles, name) is getattr(handler, name)
+        assert getattr(copied_profiles, name) is getattr(handler, name)
+
+    assert handler._idx_grid_points is None
+    assert handler.idx_grid_points.shape == (eq.nx * eq.ny, 2)
+    expected_indices = np.indices((eq.nx, eq.ny)).reshape(2, -1).T
+    assert np.array_equal(handler.idx_grid_points, expected_indices)
+    assert handler.idx_grid_points is handler._idx_grid_points
+
+
+def test_contour_fallback_coordinates_and_current_sign(create_machine):
+    """The contour fallback is invariant under simultaneous psi and Ip reversal."""
+    eq, _ = create_machine
+    positive_psi = -((eq.R - 1.0) ** 2 + (eq.Z / 1.5) ** 2)
+    results = []
+
+    for current_sign in (1, -1):
+        profiles = jtor.ConstrainPaxisIp(
+            eq,
+            8.1e3,
+            current_sign * 6.2e5,
+            0.5,
+            alpha_m=1.8,
+            alpha_n=1.2,
+        )
+        opt, xpt, core_mask, psi_bndry = profiles.diverted_critical(
+            eq.R,
+            eq.Z,
+            current_sign * positive_psi,
+            mask_outside_limiter=profiles.mask_outside_limiter,
+            rel_tolerance_xpt=1e-4,
+        )
+
+        distances = np.linalg.norm(
+            profiles.lcfs[:, np.newaxis] - profiles.lcfs[np.newaxis, :], axis=-1
+        ) + 10 * np.eye(len(profiles.lcfs))
+        closest_pair = distances == np.amin(distances)
+        expected_xpt = np.mean(profiles.lcfs[np.any(closest_pair, axis=0)], axis=0)
+        assert np.allclose(xpt[0, :2], expected_xpt)
+        assert np.isclose(xpt[0, 2], psi_bndry)
+        results.append((opt, xpt, core_mask, psi_bndry))
+
+    positive, negative = results
+    assert np.allclose(positive[0][0, :2], negative[0][0, :2])
+    assert np.allclose(positive[1][0, :2], negative[1][0, :2])
+    assert np.array_equal(positive[2], negative[2])
+    assert np.isclose(positive[0][0, 2], -negative[0][0, 2])
+    assert np.isclose(positive[3], -negative[3])
+
+
 def test_no_diverted_mask_falls_back_to_limiter_boundary():
     """If no X-point mask is available, the plasma boundary is limiter-defined."""
     limiter_data = rectangular_limiter(z_extent=0.45)

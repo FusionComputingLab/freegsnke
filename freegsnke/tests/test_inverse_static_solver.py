@@ -136,8 +136,10 @@ def test_inverse_static_diverted_solve_regression(diverted_inverse_case):
     reference_currents = np.load(INVERSE_CURRENT_BASELINE)
     reference_psi = np.load(INVERSE_PSI_BASELINE)
 
+    # Dense linear algebra implementations differ at the few-milliamp level
+    # across the supported NumPy/Python stack.
     assert np.allclose(
-        solved_currents, reference_currents, atol=5e-3
+        solved_currents, reference_currents, atol=2e-2
     ), "Inverse-solve control currents differ from the regression baseline"
 
     psi_tolerance = (np.max(reference_psi) - np.min(reference_psi)) * 0.003

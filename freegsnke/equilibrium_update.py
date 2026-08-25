@@ -65,6 +65,11 @@ class Equilibrium(freegs4e.equilibrium.Equilibrium):
             float
         )
 
+    def _updatePlasmaPsi(self, plasma_psi):
+        """Update plasma flux while retaining the checked FreeGSNKE interpolator."""
+        super()._updatePlasmaPsi(plasma_psi)
+        self.psi_func_interp = self.__dict__.pop("psi_func")
+
     def update_machine_description(
         self,
         active_coils_data=None,

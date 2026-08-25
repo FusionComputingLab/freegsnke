@@ -19,7 +19,9 @@ You should have received a copy of the GNU Lesser General Public License
 along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 """
 
+import multiprocessing
 import warnings
+from concurrent.futures import ProcessPoolExecutor
 from copy import deepcopy
 
 import matplotlib.pyplot as plt
@@ -27,6 +29,7 @@ import numpy as np
 from freegs4e import bilinear_interpolation
 from freegs4e.gradshafranov import GreensBr, GreensdBrdz
 from scipy.signal import convolve2d
+from threadpoolctl import threadpool_limits
 
 from . import nk_solver_H as nk_solver
 from .circuit_eq_metal import metal_currents
@@ -34,6 +37,18 @@ from .GSstaticsolver import NKGSsolver
 from .linear_solve import linear_solver
 from .Myy_builder import Myy_handler
 from .simplified_solve import simplified_solver_J1
+
+_parallel_linearization_solver = None
+
+
+def _build_dIydI_column_worker(arguments):
+    """Build one current-response column in an isolated worker process."""
+    return _parallel_linearization_solver._build_dIydI_column(*arguments)
+
+
+def _build_dIydtheta_column_worker(arguments):
+    """Build one profile-response column in an isolated worker process."""
+    return _parallel_linearization_solver._build_dIydtheta_column(*arguments)
 
 
 class nl_solver:
@@ -54,6 +69,9 @@ class nl_solver:
     - Support for regularization in nonlinear solves
     - Interfaces to Newton–Krylov solvers for plasma flux and circuit equations
     """
+
+    _MAX_STARTING_DI_RATIO = np.sqrt(10.0)
+    _MAX_REUSED_STARTING_DI_RATIO = 4.0 / 3.0
 
     def __init__(
         self,
@@ -83,6 +101,8 @@ class nl_solver:
         collinearity_reg=1e-6,
         verbose=False,
         plasma_descriptor_function=None,
+        mode_selection="coupling",
+        n_linearization_workers=1,
     ):
         """
         Initialize the nonlinear solver.
@@ -115,9 +135,30 @@ class nl_solver:
         blend_hatJ : float, default=0
             Coefficient for blending plasma current distributions at t and t+dt.
         max_mode_frequency : float, optional
-            Threshold frequency for retaining vessel modes.
+            Maximum passive-mode frequency retained when
+            `mode_selection="timescale"` and `fix_n_vessel_modes=-1`. In
+            coupling mode it provides the initial frequency mask before the
+            coupling criteria are applied.
         fix_n_vessel_modes : int, default=-1
-            Fix number of passive vessel modes; -1 = auto-selection.
+            Fix the number of passive vessel modes; -1 uses the criteria selected
+            by `mode_selection`. With `mode_selection="coupling"`, a non-negative
+            value retains the strongest-coupled modes. With
+            `mode_selection="timescale"`, it retains the lowest-frequency
+            (longest-timescale) modes.
+        mode_selection : {"coupling", "timescale"}, default="coupling"
+            Strategy used to select passive vessel modes. `"coupling"` preserves
+            the existing plasma-response-based selection. `"timescale"` uses only
+            the passive modes' electromagnetic frequencies: no coupling metric is
+            used to include or exclude modes, including after the full Jacobian is
+            built. The no-GS response is still evaluated to calibrate finite-
+            difference perturbation sizes.
+            Coupling-based selection is evaluated about the equilibrium supplied
+            at initialisation. Use it with caution when the plasma position or
+            shape is expected to change substantially, because the mode coupling
+            can evolve with the equilibrium and the initially retained set may
+            cease to be representative. In such cases, prefer timescale-only
+            selection or validate the coupling-selected set across representative
+            equilibria.
         threshold_dIy_dI : float, default=0.025
             Relative coupling threshold for including vessel modes (must be a
             number in [0,1]).
@@ -126,6 +167,8 @@ class nl_solver:
             number in [0,1]).
         mode_removal : bool, default=True
             If True, remove weakly coupled vessel modes after Jacobian calculation.
+            This option applies only when `mode_selection="coupling"`; it is
+            disabled for timescale-only selection.
         linearize : bool, default=True
             Whether to set up the linearised problem.
         dIydI : ndarray, optional
@@ -144,6 +187,10 @@ class nl_solver:
             Additional penalty for collinear terms in nonlinear solver.
         verbose : bool, default=False
             Print diagnostic output during initialization.
+        n_linearization_workers : int, default=1
+            Number of worker processes used to build independent ``dIydI`` and
+            ``dIydtheta`` columns during initial and later linearisations. A value
+            of 1 retains the serial calculation.
         """
         print("-----")
 
@@ -170,8 +217,21 @@ class nl_solver:
         self.limiter_handler = eq.limiter_handler
         self.plasma_domain_size = np.sum(self.limiter_handler.mask_inside_limiter)
 
+        valid_mode_selections = ("coupling", "timescale")
+        if mode_selection not in valid_mode_selections:
+            raise ValueError(
+                f"mode_selection must be one of {valid_mode_selections}; "
+                f"received {mode_selection!r}."
+            )
+        self.mode_selection = mode_selection
+
+        # Coupling-based removal after the full Jacobian would violate the
+        # contract of timescale-only mode selection.
+        if mode_selection == "timescale":
+            mode_removal = False
+
         # check threshold values
-        if fix_n_vessel_modes < 0:
+        if mode_selection == "coupling" and fix_n_vessel_modes < 0:
             if min_dIy_dI > threshold_dIy_dI:
                 raise ValueError(
                     "Inputs require that 'min_dIy_dI' <= 'threshold_dIy_dI', please adjust parameters."
@@ -216,6 +276,13 @@ class nl_solver:
         self.max_internal_timestep = max_internal_timestep
         self.set_plasma_resistivity(plasma_resistivity)
         self.target_dIy = target_dIy
+        if (
+            isinstance(n_linearization_workers, (bool, np.bool_))
+            or not isinstance(n_linearization_workers, (int, np.integer))
+            or n_linearization_workers < 1
+        ):
+            raise ValueError("'n_linearization_workers' must be a positive integer.")
+        self.n_linearization_workers = int(n_linearization_workers)
 
         # prepare for mode selection
         if max_mode_frequency is None:
@@ -277,13 +344,33 @@ class nl_solver:
                 verbose,
             )
 
-            # select modes according to the provided thresholds:
-            # include all modes that couple more than the threshold_dIy_dI
-            # with respect to the strongest coupling vessel mode
-            ordered_ndIydI_no_GS = np.sort(self.ndIydI_no_GS[self.n_active_coils :])
-            strongest_coupling_vessel_mode = ordered_ndIydI_no_GS[-1]
+            fixed_n_timescale_modes = None
+            if mode_selection == "timescale":
+                # build_dIydI_noGS above calibrates the finite-difference steps,
+                # but its coupling norms deliberately do not enter this mask.
+                mode_coupling_masks = None
+                if fix_n_vessel_modes >= 0:
+                    fixed_n_timescale_modes = fix_n_vessel_modes
+                    print(
+                        "      'mode_selection=timescale' selected: retaining "
+                        f"the {fix_n_vessel_modes} lowest-frequency passive modes."
+                    )
+                else:
+                    print(
+                        "      'mode_selection=timescale' selected: retaining only "
+                        "passive modes below 'max_mode_frequency'."
+                    )
+                print(
+                    "      Plasma-coupling metrics are not used for mode selection "
+                    "or subsequent mode removal."
+                )
+            else:
+                # Coupling selection starts from the no-GS response norm. The
+                # frequency mask may also include slow modes in the threshold mode.
+                ordered_ndIydI_no_GS = np.sort(self.ndIydI_no_GS[self.n_active_coils :])
+                strongest_coupling_vessel_mode = ordered_ndIydI_no_GS[-1]
 
-            if fix_n_vessel_modes >= 0:
+            if mode_selection == "coupling" and fix_n_vessel_modes >= 0:
                 # select modes based on ndIydI_no_GS up to fix_n_modes exactly
                 print(
                     f"      'fix_n_vessel_modes' option selected --> passive structure modes that couple most to the strongest passive structure mode are being selected."
@@ -310,7 +397,7 @@ class nl_solver:
                 )
                 # the number of modes is being fixed:
                 mode_removal = False
-            else:
+            elif mode_selection == "coupling":
                 print(
                     f"      'threshold_dIy_dI', 'min_dIy_dI', and 'max_mode_frequency' options selected --> passive structure modes are selected according to these thresholds."
                 )
@@ -330,6 +417,11 @@ class nl_solver:
                         >= min_dIy_dI * strongest_coupling_vessel_mode,
                     )
                 )
+            if mode_selection == "coupling":
+                mode_coupling_masks = (
+                    mode_coupling_mask_include,
+                    mode_coupling_mask_exclude,
+                )
         else:
             print("      no passive modes present!")
 
@@ -342,22 +434,21 @@ class nl_solver:
             # set mode removal to false
             mode_removal = False
 
+            mode_coupling_masks = None
+            fixed_n_timescale_modes = None
+
         print("-----")
 
         print(f"Initial mode selection:")
         # enact the mode selection
-        mode_coupling_masks = (
-            mode_coupling_mask_include,
-            mode_coupling_mask_exclude,
-        )
-
         self.evol_metal_curr.initialize_for_eig(
             selected_modes_mask=None,
             mode_coupling_masks=mode_coupling_masks,
-            verbose=(fix_n_vessel_modes < 0),
+            verbose=(mode_selection == "timescale" or fix_n_vessel_modes < 0),
+            fixed_n_passive_modes=fixed_n_timescale_modes,
         )
 
-        if fix_n_vessel_modes >= 0:
+        if mode_selection == "coupling" and fix_n_vessel_modes >= 0:
             print(f"   Active coils")
             print(
                 f"      total selected = {self.n_active_coils} (out of {self.n_active_coils})"
@@ -390,6 +481,7 @@ class nl_solver:
         self.approved_target_dIy = np.concatenate(
             (self.approved_target_dIy, [target_dIy])
         )
+        self.initial_starting_dI = np.copy(self.starting_dI)
 
         # starting dtheta values for Jacobian calculation
         self.approved_target_dtheta = target_dIy * np.ones(self.n_profiles_parameters)
@@ -569,6 +661,9 @@ class nl_solver:
                 self.retained_modes_mask
             ]
             self.starting_dI = self.starting_dI[self.retained_modes_mask]
+            self.initial_starting_dI = self.initial_starting_dI[
+                self.retained_modes_mask
+            ]
 
             self.remove_modes(eq, self.retained_modes_mask[:-1])
 
@@ -667,8 +762,10 @@ class nl_solver:
 
         This routine evaluates the plasma current response to perturbations in each
         coil or mode current using only the modified tokamak Green’s functions
-        (no Grad–Shafranov solves). The resulting Jacobian norm is used for an
-        initial sifting of passive vessel modes before a full linearisation.
+        (no Grad–Shafranov solves). It calibrates the perturbation amplitudes used
+        by the full linearisation. When `mode_selection="coupling"`, the resulting
+        Jacobian norms are also used for an initial sifting of passive vessel modes;
+        timescale-only selection deliberately ignores those norms.
 
         If `force_core_mask_linearization` is True, the perturbation size for each
         mode is adjusted to ensure that the diverted core mask of the perturbed
@@ -696,7 +793,10 @@ class nl_solver:
             Approximate Jacobian of plasma current distribution wrt coil currents,
             computed without GS solves.
         self.ndIydI_no_GS : ndarray, shape (n_coils,)
-            Norm of dIy/dI for each coil/mode, used in mode selection.
+            Norm of the finite-difference dIy/dI column for each coil/mode,
+            used in coupling-based mode selection. Each norm uses the same
+            perturbation as its corresponding response, before preparing the next
+            perturbation.
         self.rel_ndIy : ndarray, shape (n_coils,)
             Relative plasma current perturbation norms for each mode.
         self.starting_dI : ndarray
@@ -745,8 +845,7 @@ class nl_solver:
 
             self.dIydI_noGS[:, j] = dIydInoGS
             self.rel_ndIy[j] = rel_ndIy
-            # self.final_dI_record[j] = starting_dI[j] * self.accepted_target_dIy[j] / rel_ndIy
-            self.ndIydI_no_GS[j] = rel_ndIy * self.nIy / starting_dI[j]
+            self.ndIydI_no_GS[j] = np.linalg.norm(dIydInoGS)
         self.starting_dI = 1.0 * starting_dI
 
     def set_solvers(
@@ -1412,6 +1511,13 @@ class nl_solver:
 
         return dIydtheta, rel_ndIy, dvdtheta
 
+    def _reset_linearization_solve_state(self):
+        """Reset auxiliary plasma state before a finite-difference GS solve."""
+        self.profiles2 = self.profiles1.copy()
+        self.eq2.plasma_psi = np.copy(self.eq1.plasma_psi)
+        if hasattr(self, "_linearization_rng_state"):
+            self.NK.rng.bit_generator.state = deepcopy(self._linearization_rng_state)
+
     def prepare_build_dIydI_j(
         self,
         j,
@@ -1453,8 +1559,7 @@ class nl_solver:
         current_ = np.copy(self.currents_vec)
         current_[j] += starting_dI
 
-        # reset the auxiliary equilibrium
-        self.eq2.plasma_psi = np.copy(self.eq1.plasma_psi)
+        self._reset_linearization_solve_state()
         if GS:
             # solve
             self.assign_currents_solve_GS(current_, rtol_NK)
@@ -1474,6 +1579,54 @@ class nl_solver:
         # final_dI = np.clip(final_dI, min_curr, max_curr)
         self.final_dI_record[j] = final_dI
         return dIy_0 / starting_dI, rel_ndIy_0
+
+    def update_starting_dI(self):
+        """Reuse perturbations accepted by the previous linearisation.
+
+        The first linearisation retains the geometry-based perturbations
+        prepared during solver construction. Each rebuilt column subsequently
+        records its accepted finite-difference amplitude in
+        ``final_dI_record``. Reusing that value gives the next relinearisation a
+        state-informed initial guess without extrapolating from a stale
+        Jacobian.
+
+        Missing, zero, or incompatible accepted amplitudes leave the existing
+        perturbations unchanged.
+
+        Returns
+        -------
+        ndarray of bool
+            Mask identifying perturbations updated from the stored Jacobian.
+        """
+
+        updated = np.zeros_like(self.starting_dI, dtype=bool)
+        if np.shape(self.final_dI_record) != np.shape(self.starting_dI):
+            return updated
+
+        accepted = np.abs(np.asarray(self.final_dI_record))
+        updated = np.isfinite(accepted) & (accepted > 0)
+        self.starting_dI[updated] = accepted[updated]
+        return updated
+
+    @classmethod
+    def starting_dI_requires_rescaling(
+        cls,
+        starting_dI,
+        scaled_dI,
+        max_ratio=None,
+    ):
+        """Return whether a calibrated perturbation requires a second GS solve."""
+
+        if max_ratio is None:
+            max_ratio = cls._MAX_STARTING_DI_RATIO
+        if (
+            not np.isfinite(starting_dI)
+            or not np.isfinite(scaled_dI)
+            or starting_dI == 0
+        ):
+            return True
+        ratio = np.abs(scaled_dI / starting_dI)
+        return ratio < 1.0 / max_ratio or ratio > max_ratio
 
     def build_dIydI_j(self, j, rtol_NK):
         """
@@ -1505,8 +1658,7 @@ class nl_solver:
         current_ = np.copy(self.currents_vec)
         current_[j] += final_dI
 
-        # reset the auxiliary equilibrium
-        self.eq2.plasma_psi = np.copy(self.eq1.plasma_psi)
+        self._reset_linearization_solve_state()
         # solve
         self.assign_currents_solve_GS(current_, rtol_NK)
 
@@ -1536,6 +1688,266 @@ class nl_solver:
             + current_contribution
             + profile_contribution
         )
+
+    def _core_mask_matches(self):
+        """Return whether the reference and perturbed plasma masks match."""
+        return np.array_equal(
+            self.profiles1.diverted_core_mask,
+            self.profiles2.diverted_core_mask,
+        )
+
+    def _build_dIydI_column(
+        self,
+        j,
+        target_relative_tolerance_linearization,
+        force_core_mask_linearization,
+        reused_starting_dI,
+    ):
+        """Build and return one independent current-response column."""
+        this_target_dIy = float(self.approved_target_dIy[j])
+        dIydIj, ndIy = self.prepare_build_dIydI_j(
+            j,
+            target_relative_tolerance_linearization,
+            this_target_dIy,
+            self.starting_dI[j],
+            GS=True,
+        )
+
+        if force_core_mask_linearization:
+            while not self._core_mask_matches():
+                self.starting_dI[j] /= 1.5
+                this_target_dIy /= 1.5
+                dIydIj, ndIy = self.prepare_build_dIydI_j(
+                    j,
+                    target_relative_tolerance_linearization,
+                    this_target_dIy,
+                    self.starting_dI[j],
+                )
+
+        if reused_starting_dI and self.starting_dI_requires_rescaling(
+            self.starting_dI[j],
+            self.final_dI_record[j],
+            max_ratio=self._MAX_REUSED_STARTING_DI_RATIO,
+        ):
+            # Discard a stale amplitude that is no longer predictive and use
+            # the original geometry-based path.
+            self.starting_dI[j] = self.initial_starting_dI[j]
+            dIydIj, ndIy = self.prepare_build_dIydI_j(
+                j,
+                target_relative_tolerance_linearization,
+                this_target_dIy,
+                self.starting_dI[j],
+                GS=True,
+            )
+            reused_starting_dI = False
+
+        rel_ndIy = ndIy
+        if self.starting_dI_requires_rescaling(
+            self.starting_dI[j],
+            self.final_dI_record[j],
+            max_ratio=(
+                self._MAX_REUSED_STARTING_DI_RATIO
+                if reused_starting_dI
+                else self._MAX_STARTING_DI_RATIO
+            ),
+        ):
+            dIydIj, rel_ndIy = self.build_dIydI_j(
+                j,
+                target_relative_tolerance_linearization,
+            )
+            if force_core_mask_linearization:
+                while not self._core_mask_matches():
+                    self.final_dI_record[j] /= 1.2
+                    dIydIj, rel_ndIy = self.build_dIydI_j(
+                        j,
+                        target_relative_tolerance_linearization,
+                    )
+        else:
+            self.final_dI_record[j] = self.starting_dI[j]
+
+        starting_dI = float(self.starting_dI[j])
+        final_dI = float(self.final_dI_record[j])
+        self.starting_dI[j] = final_dI
+        self.current_at_last_linearization[j] = self.currents_vec[j]
+        perturbed_psi = np.copy(self.eq2.psi())
+        dRZdI = np.array(
+            (
+                (self.eq2.Rcurrent() - self.R0) / final_dI,
+                (self.eq2.Zcurrent() - self.Z0) / final_dI,
+            )
+        )
+        dvdI = (
+            np.asarray(self._column_plasma_descriptor_function(self.eq2))
+            - self.initial_plasma_descriptors
+        ) / final_dI
+
+        return (
+            j,
+            np.copy(dIydIj),
+            perturbed_psi,
+            dRZdI,
+            dvdI,
+            starting_dI,
+            final_dI,
+            float(ndIy),
+            float(rel_ndIy),
+            float(self.NK.initial_rel_residual),
+            float(self.NK.relative_change),
+            float(self.current_at_last_linearization[j]),
+        )
+
+    def _build_dIydI_columns(
+        self,
+        target_relative_tolerance_linearization,
+        force_core_mask_linearization,
+        reused_starting_dI,
+        plasma_descriptor_function,
+    ):
+        """Build current-response columns serially or in isolated processes."""
+        arguments = [
+            (
+                int(j),
+                target_relative_tolerance_linearization,
+                force_core_mask_linearization,
+                bool(reused_starting_dI[j]),
+            )
+            for j in self.arange_currents
+        ]
+        self._column_plasma_descriptor_function = plasma_descriptor_function
+        self._linearization_rng_state = deepcopy(self.NK.rng.bit_generator.state)
+        try:
+            if self.n_linearization_workers == 1 or len(arguments) < 2:
+                return [self._build_dIydI_column(*argument) for argument in arguments]
+
+            if "fork" not in multiprocessing.get_all_start_methods():
+                raise RuntimeError(
+                    "Parallel linearization requires multiprocessing support for "
+                    "the 'fork' start method. Set n_linearization_workers=1."
+                )
+
+            global _parallel_linearization_solver
+            _parallel_linearization_solver = self
+            # Each worker gets one native BLAS/OpenMP thread so the requested
+            # worker count is also the total CPU-thread budget.
+            with threadpool_limits(limits=1):
+                with ProcessPoolExecutor(
+                    max_workers=min(self.n_linearization_workers, len(arguments)),
+                    mp_context=multiprocessing.get_context("fork"),
+                ) as executor:
+                    return list(
+                        executor.map(
+                            _build_dIydI_column_worker,
+                            arguments,
+                            chunksize=1,
+                        )
+                    )
+        finally:
+            _parallel_linearization_solver = None
+            self.NK.rng.bit_generator.state = self._linearization_rng_state
+            del self._linearization_rng_state
+            del self._column_plasma_descriptor_function
+
+    def _profile_parameters_for_column(self, profiles, j, delta):
+        """Return independent profile parameters with column ``j`` perturbed."""
+        if self.profiles_param is not None:
+            parameters = {
+                "alpha_m": profiles.alpha_m,
+                "alpha_n": profiles.alpha_n,
+                self.profiles_param: getattr(profiles, self.profiles_param),
+            }
+            parameter_name = ("alpha_m", "alpha_n", self.profiles_param)[j]
+            parameters[parameter_name] += delta
+            return parameters
+
+        alpha = profiles.alpha[: self.n_profiles_parameters_alpha].copy()
+        beta = profiles.beta[: self.n_profiles_parameters_beta].copy()
+        if j < self.n_profiles_parameters_alpha:
+            alpha[j] += delta
+        else:
+            beta_index = j - self.n_profiles_parameters_alpha
+            beta[beta_index] += delta
+        return {"alpha": alpha, "beta": beta}
+
+    def _profile_parameter_name(self, j):
+        """Return the user-facing name of independent profile parameter ``j``."""
+        if self.profiles_param is not None:
+            return ("alpha_m", "alpha_n", self.profiles_param)[j]
+        if j < self.n_profiles_parameters_alpha:
+            return f"alpha_{j}"
+        return f"beta_{j - self.n_profiles_parameters_alpha}"
+
+    def _build_dIydtheta_column(self, j, delta, rtol_NK):
+        """Build and return one independent profile-response column."""
+        self._reset_linearization_solve_state()
+        self.check_and_change_profiles(
+            self._profile_parameters_for_column(self._column_profiles, j, delta)
+        )
+        self.assign_currents_solve_GS(np.copy(self.currents_vec), rtol_NK)
+
+        dIy = self.limiter_handler.Iy_from_jtor(self.profiles2.jtor) - self.Iy
+        dv = (
+            np.asarray(self._column_plasma_descriptor_function(self.eq2))
+            - self.initial_plasma_descriptors
+        )
+        return (
+            j,
+            dIy / delta,
+            float(np.linalg.norm(dIy) / self.nIy),
+            dv / delta,
+            float(self.NK.initial_rel_residual),
+            float(self.NK.relative_change),
+        )
+
+    def _build_dIydtheta_columns(
+        self,
+        profiles,
+        rtol_NK,
+        perturbations,
+        plasma_descriptor_function,
+    ):
+        """Build profile-response columns serially or in isolated processes."""
+        arguments = [
+            (int(j), float(perturbations[j]), rtol_NK)
+            for j in range(self.n_profiles_parameters)
+        ]
+        self._column_profiles = profiles.copy()
+        self._column_plasma_descriptor_function = plasma_descriptor_function
+        self._linearization_rng_state = deepcopy(self.NK.rng.bit_generator.state)
+        try:
+            if self.n_linearization_workers == 1 or len(arguments) < 2:
+                return [
+                    self._build_dIydtheta_column(*argument) for argument in arguments
+                ]
+
+            if "fork" not in multiprocessing.get_all_start_methods():
+                raise RuntimeError(
+                    "Parallel linearization requires multiprocessing support for "
+                    "the 'fork' start method. Set n_linearization_workers=1."
+                )
+
+            global _parallel_linearization_solver
+            _parallel_linearization_solver = self
+            with threadpool_limits(limits=1):
+                with ProcessPoolExecutor(
+                    max_workers=min(self.n_linearization_workers, len(arguments)),
+                    mp_context=multiprocessing.get_context("fork"),
+                ) as executor:
+                    return list(
+                        executor.map(
+                            _build_dIydtheta_column_worker,
+                            arguments,
+                            chunksize=1,
+                        )
+                    )
+        finally:
+            _parallel_linearization_solver = None
+            self.NK.rng.bit_generator.state = self._linearization_rng_state
+            del self._linearization_rng_state
+            self.check_and_change_profiles(
+                self._profile_parameters_for_column(self._column_profiles, 0, 0.0)
+            )
+            del self._column_profiles
+            del self._column_plasma_descriptor_function
 
     def build_linearization(
         self,
@@ -1610,6 +2022,14 @@ class nl_solver:
         # dIydI = 1
         if dIydI is None:
             if self.dIydI_ICs is None:
+                if force_core_mask_linearization:
+                    self.starting_dI = np.copy(self.initial_starting_dI)
+                    reused_starting_dI = np.zeros_like(
+                        self.starting_dI,
+                        dtype=bool,
+                    )
+                else:
+                    reused_starting_dI = self.update_starting_dI()
                 print(
                     f"Building the {self.plasma_domain_size} x {self.n_metal_modes + 1} Jacobian (dIy/dI)",
                     "of plasma current density (inside the LCFS)",
@@ -1626,113 +2046,47 @@ class nl_solver:
                 )
                 self.initial_currents_plasma_descriptor = np.copy(self.currents_vec)
 
-                for j in self.arange_currents:
-                    this_target_dIy = 1.0 * self.approved_target_dIy[j]
-                    dIydIj, ndIy = self.prepare_build_dIydI_j(
-                        j,
-                        target_relative_tolerance_linearization,
-                        this_target_dIy,
-                        self.starting_dI[j],
-                        GS=True,
-                    )
-                    core_check = (
-                        np.sum(
-                            np.abs(
-                                self.profiles1.diverted_core_mask.astype(float)
-                                - self.profiles2.diverted_core_mask.astype(float)
-                            )
-                        )
-                        == 0
-                    )
-                    if force_core_mask_linearization:
-                        while core_check == False:
-                            self.starting_dI[j] /= 1.5
-                            this_target_dIy /= 1.5
-                            dIydIj, ndIy = self.prepare_build_dIydI_j(
-                                j,
-                                target_relative_tolerance_linearization,
-                                this_target_dIy,
-                                self.starting_dI[j],
-                            )
-                            core_check = (
-                                np.sum(
-                                    np.abs(
-                                        self.profiles1.diverted_core_mask.astype(float)
-                                        - self.profiles2.diverted_core_mask.astype(
-                                            float
-                                        )
-                                    )
-                                )
-                                == 0
-                            )
-
-                    if (
-                        np.abs(np.log10(self.final_dI_record[j] / self.starting_dI[j]))
-                        > 0.5
-                    ):
-                        dIydIj, rel_ndIy = self.build_dIydI_j(
-                            j,
-                            target_relative_tolerance_linearization,
-                        )
-                        core_check = (
-                            np.sum(
-                                np.abs(
-                                    self.profiles1.diverted_core_mask.astype(float)
-                                    - self.profiles2.diverted_core_mask.astype(float)
-                                )
-                            )
-                            == 0
-                        )
-                        if force_core_mask_linearization:
-                            while core_check == False:
-                                self.final_dI_record[j] /= 1.2
-                                dIydIj, rel_ndIy = self.build_dIydI_j(
-                                    j,
-                                    target_relative_tolerance_linearization,
-                                )
-                                core_check = (
-                                    np.sum(
-                                        np.abs(
-                                            self.profiles1.diverted_core_mask.astype(
-                                                float
-                                            )
-                                            - self.profiles2.diverted_core_mask.astype(
-                                                float
-                                            )
-                                        )
-                                    )
-                                    == 0
-                                )
-                    else:
-                        self.final_dI_record[j] = 1.0 * self.starting_dI[j]
-                        rel_ndIy = ndIy
-
+                column_results = self._build_dIydI_columns(
+                    target_relative_tolerance_linearization,
+                    force_core_mask_linearization,
+                    reused_starting_dI,
+                    plasma_descriptor_function,
+                )
+                for (
+                    j,
+                    dIydIj,
+                    perturbed_psi,
+                    dRZdI,
+                    dvdI,
+                    starting_dI,
+                    final_dI,
+                    ndIy,
+                    rel_ndIy,
+                    initial_rel_residual,
+                    relative_change,
+                    current_at_last_linearization,
+                ) in column_results:
                     if verbose:
                         print("")
                         print(f"Mode: {j}")
-                        print(f"  Initial delta_current = {self.starting_dI[j]}")
+                        print(f"  Initial delta_current = {starting_dI}")
                         print(f"  Initial relative Iy change = {ndIy}")
-                        print(f"  Final delta_current = {self.final_dI_record[j]}")
+                        print(f"  Final delta_current = {final_dI}")
                         print("")
-                        if "rel_ndIy" in locals():
-                            print(f"  Final relative Iy change = {rel_ndIy}")
-                        else:
-                            print(f"  Final relative Iy change = {ndIy}")
+                        print(f"  Final relative Iy change = {rel_ndIy}")
                         print(
-                            f"  Initial vs. Final GS residual: {self.NK.initial_rel_residual} vs. {self.NK.relative_change}"
+                            f"  Initial vs. Final GS residual: {initial_rel_residual} vs. {relative_change}"
                         )
 
-                    self.dIydI[:, j] = np.copy(dIydIj)
-                    self.psideltaI[j] = np.copy(self.eq2.psi())
-                    R0 = self.eq2.Rcurrent()
-                    Z0 = self.eq2.Zcurrent()
-                    self.dRZdI[0, j] = (R0 - self.R0) / self.final_dI_record[j]
-                    self.dRZdI[1, j] = (Z0 - self.Z0) / self.final_dI_record[j]
-
-                    v0 = plasma_descriptor_function(self.eq2)
-                    self.dvdId[:, j] = (
-                        v0 - self.initial_plasma_descriptors
-                    ) / self.final_dI_record[j]
+                    self.dIydI[:, j] = dIydIj
+                    self.psideltaI[j] = perturbed_psi
+                    self.dRZdI[:, j] = dRZdI
+                    self.dvdId[:, j] = dvdI
+                    self.starting_dI[j] = final_dI
+                    self.final_dI_record[j] = final_dI
+                    self.current_at_last_linearization[j] = (
+                        current_at_last_linearization
+                    )
 
                 self.dIydI_ICs = np.copy(self.dIydI)
             else:
@@ -1765,33 +2119,79 @@ class nl_solver:
 
                 profiles_copy = profiles.copy()
 
-                # prepare to build the Jacobian by finding appropriate step size
-                dIydtheta, ndIy, dvdtheta = self.prepare_build_dIydtheta(
-                    profiles=profiles_copy,
-                    rtol_NK=target_relative_tolerance_linearization,
-                    target_dIy=self.approved_target_dtheta,
-                    starting_dtheta=self.starting_dtheta,
-                    plasma_descriptor_function=plasma_descriptor_function,
-                    verbose=verbose,
+                if self.profiles_param is not None:
+                    self.initial_profiles_plasma_descriptor = np.array(
+                        [
+                            profiles.alpha_m,
+                            profiles.alpha_n,
+                            getattr(profiles, self.profiles_param),
+                        ]
+                    )
+                else:
+                    self.initial_profiles_plasma_descriptor = np.concatenate(
+                        (
+                            profiles.alpha[: self.n_profiles_parameters_alpha],
+                            profiles.beta[: self.n_profiles_parameters_beta],
+                        )
+                    )
+
+                # First estimate perturbations that produce the requested Iy change.
+                column_results = self._build_dIydtheta_columns(
+                    profiles_copy,
+                    target_relative_tolerance_linearization,
+                    self.starting_dtheta,
+                    plasma_descriptor_function,
                 )
+                for j, column, ndIy, descriptor_column, _, _ in column_results:
+                    self.dIydtheta[:, j] = column
+                    self.dvdtheta[:, j] = descriptor_column
+                    self.final_dtheta_record[j] = (
+                        self.starting_dtheta[j] * self.approved_target_dtheta[j] / ndIy
+                    )
+                    if verbose:
+                        print("")
+                        print(f"Profile parameter: {self._profile_parameter_name(j)}:")
+                        print(f"  Initial delta parameter = {self.starting_dtheta[j]}")
+                        print(f"  Initial relative Iy change = {ndIy}")
+                        print(
+                            f"  Final delta parameter = {self.final_dtheta_record[j]}"
+                        )
 
                 if (
                     np.abs(np.log10(self.final_dtheta_record / self.starting_dtheta))
                     > 0.5
                 ).any():
-                    dIydtheta, rel_ndIy, dvdtheta = self.build_dIydtheta(
-                        profiles=profiles_copy,
-                        rtol_NK=target_relative_tolerance_linearization,
-                        plasma_descriptor_function=plasma_descriptor_function,
-                        verbose=verbose,
+                    column_results = self._build_dIydtheta_columns(
+                        profiles_copy,
+                        target_relative_tolerance_linearization,
+                        self.final_dtheta_record,
+                        plasma_descriptor_function,
                     )
+                    for (
+                        j,
+                        column,
+                        rel_ndIy,
+                        descriptor_column,
+                        initial_rel_residual,
+                        relative_change,
+                    ) in column_results:
+                        self.dIydtheta[:, j] = column
+                        self.dvdtheta[:, j] = descriptor_column
+                        if verbose:
+                            print("")
+                            print(
+                                f"Profile parameter: {self._profile_parameter_name(j)}:"
+                            )
+                            print(f"  Final relative Iy change = {rel_ndIy}")
+                            print(
+                                "  Initial vs. Final GS residual: "
+                                f"{initial_rel_residual} vs. {relative_change}"
+                            )
 
                 else:
                     self.final_dtheta_record = 1.0 * self.starting_dtheta
 
-                self.dIydtheta = np.copy(dIydtheta)
                 self.dIydtheta_ICs = np.copy(self.dIydtheta)
-                self.dvdtheta = np.copy(dvdtheta)
 
                 if plasma_descriptor_function is not None:
                     print(
@@ -2411,7 +2811,8 @@ class nl_solver:
             Vector of current values to assign. Format:
                 (active coil currents, vessel normal mode currents, total plasma current / plasma_norm_factor)
         eq : FreeGSNKE equilibrium Object
-            Equilibrium object to be modified. Its `_current` attribute and `tokamak.current_vec` are updated.
+            Equilibrium object to be modified. Its `_current` attribute and tokamak
+            coil currents are updated.
         profiles : FreeGSNKE profiles Object
             Profiles object to be modified. Its total plasma current `Ip` is updated.
 
@@ -2429,7 +2830,7 @@ class nl_solver:
         self.vessel_currents_vec = self.evol_metal_curr.IdtoIvessel(
             Id=currents_vec[:-1]
         )
-        eq.tokamak.current_vec = self.vessel_currents_vec.copy()
+        eq.tokamak.set_all_coil_currents(self.vessel_currents_vec)
 
     def assign_currents_solve_GS(self, currents_vec, rtol_NK):
         """

@@ -1253,6 +1253,7 @@ class GeneralPprimeFFprime(freegs4e.jtor.GeneralPprimeFFprime, Jtor_universal):
         copy_into(self, obj, "Ip_logic")
         copy_into(self, obj, "L")
         copy_into(self, obj, "fast")
+        copy_into(self, obj, "interpolator")
         copy_into(self, obj, "psi_n", mutable=True)
         copy_into(self, obj, "pprime_data", mutable=True)
         copy_into(self, obj, "ffprime_data", mutable=True)

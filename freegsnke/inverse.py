@@ -929,7 +929,7 @@ class Inverse_optimizer:
             b_val += self.d_psi_plasma_vals_iso[i]
 
             # isoflux constraint violation are for pairs of constraints within the isoflux set
-            # e.g. 8 isoflux constraints means b has 28 elements (28 choose 2).
+            # e.g. 8 isoflux constraints means b has 28 elements (8 choose 2).
             # Use the smaller point weight for each pairwise residual row.
             b_val *= pair_weights
             # total

@@ -24,8 +24,8 @@ def test_constraint_weights_scale_matching_matrix_and_rhs_blocks():
     optimizer = object.__new__(Inverse_optimizer)
     optimizer.n_control_coils = 1
     optimizer.isoflux_set = [object()]
-    optimizer.null_points = np.empty((2, 1))
-    optimizer.psi_vals = np.empty((3, 1))
+    optimizer.null_points = ...
+    optimizer.psi_vals = ...
     optimizer.null_points_2nd_order = None
     optimizer.weight_isoflux = 0.2
     optimizer.weight_nulls = 3.0

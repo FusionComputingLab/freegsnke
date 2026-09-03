@@ -181,9 +181,10 @@ If you are also planning to co-develop [FreeGS4E](https://github.com/FusionCompu
 pip install -e ".[dev]"
 ```
 If the editable FreeGS4E installation reports a version satisfying FreeGSNKE's
-required version range (`freegs4e>=0.14,<0.15`), pip will retain it. Otherwise,
+required version range, pip will retain it. Otherwise,
 pip may install a compatible FreeGS4E release from PyPI instead.
-Please also install the pre-commit hooks ([Black](https://github.com/psf/black) and [isort](https://pycqa.github.io/isort/)) for code formatting. The [pre-commit](https://pre-commit.com/) library is included in `requirements-dev.txt` and will be installed automatically using the `dev` extra included in the commands above. To install the pre-commit hooks, run the following in the root FreeGSNKE directory after installation:
+
+Please also install the pre-commit hooks for code formatting. The [pre-commit](https://pre-commit.com/) library is included in `requirements-dev.txt` and will be installed automatically using the `dev` extra included in the commands above. To install the pre-commit hooks, run the following in the root FreeGSNKE directory after installation:
 ```shell
 pre-commit install
 ```

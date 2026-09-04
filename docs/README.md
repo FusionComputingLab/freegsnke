@@ -16,7 +16,7 @@ pip install ".[docs]"
 Other extras can be installed at the same time, for example:
 
 ```bash
-pip install -e ".[freegs4e,dev,docs]"
+pip install -e ".[dev,docs]"
 ```
 
 The documentation can then be built by running the following command from the `docs/` directory:

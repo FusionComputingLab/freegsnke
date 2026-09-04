@@ -44,10 +44,8 @@ class Equilibrium(freegs4e.equilibrium.Equilibrium):
         if self.equilibrium_path is not None:
             self.initialize_from_equilibrium()
 
-        # redefine interpolating function
-        self.psi_func_interp = interpolate.RectBivariateSpline(
-            self.R[:, 0], self.Z[0, :], self.plasma_psi
-        )
+        # Retain FreeGSNKE's checked interpolator after FreeGS4E initialisation.
+        self._refresh_plasma_psi_interpolator()
 
         self.nxh = len(self.R) // 2
         self.nyh = len(self.Z[0]) // 2
@@ -69,6 +67,23 @@ class Equilibrium(freegs4e.equilibrium.Equilibrium):
         """Update plasma flux while retaining the checked FreeGSNKE interpolator."""
         super()._updatePlasmaPsi(plasma_psi)
         self.psi_func_interp = self.__dict__.pop("psi_func")
+
+    def _refresh_plasma_psi_interpolator(self):
+        """Rebuild the plasma-flux spline without recalculating plasma topology."""
+        self.psi_func_interp = interpolate.RectBivariateSpline(
+            self.R[:, 0], self.Z[0, :], self.plasma_psi
+        )
+
+    def set_plasma_psi(self, plasma_psi):
+        """Install plasma flux and synchronise its interpolation cache.
+
+        Unlike FreeGS4E's ``_updatePlasmaPsi``, this lightweight update does not
+        recalculate critical points, masks, or boundary flux. Solvers should use
+        it when committing a flux map before updating topology through their
+        existing profile-aware path.
+        """
+        self.plasma_psi = np.array(plasma_psi, copy=True)
+        self._refresh_plasma_psi_interpolator()
 
     def update_machine_description(
         self,
@@ -557,7 +572,7 @@ class Equilibrium(freegs4e.equilibrium.Equilibrium):
                 # except:
                 #     diverted_flag = True
 
-        self.plasma_psi = n_plasma_psi.copy()
+        self.set_plasma_psi(n_plasma_psi)
 
     def psi_func(self, R, Z, *args, **kwargs):
         """Scipy interpolation of plasma_psi function.
@@ -587,10 +602,7 @@ class Equilibrium(freegs4e.equilibrium.Equilibrium):
             print(
                 "Dicrepancy between psi_func and plasma_psi detected. psi_func has been re-set."
             )
-            # redefine interpolating function
-            self.psi_func_interp = interpolate.RectBivariateSpline(
-                self.R[:, 0], self.Z[0, :], self.plasma_psi
-            )
+            self._refresh_plasma_psi_interpolator()
 
         return self.psi_func_interp(R, Z, *args, **kwargs)
 
@@ -634,7 +646,7 @@ class Equilibrium(freegs4e.equilibrium.Equilibrium):
         )
 
         # extract the values on the grid given in the eq object (this is the initial guess)
-        self.plasma_psi = plasma_psi_func(self.R, self.Z, grid=False)
+        self.set_plasma_psi(plasma_psi_func(self.R, self.Z, grid=False))
 
         print(
             "Initial guess for plasma flux initialised using file provided at EQUILIBRIUM_PATH."

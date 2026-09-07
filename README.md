@@ -8,7 +8,7 @@
 
 FreeGSNKE (pronounced "free-gee-snake") is a **Python**-based code for **simulating the evolution of free-boundary tokamak plasma equilibria**.
 
-Based on the well-established [FreeGS](https://github.com/bendudson/freegs) code, it utilises [FreeGS4E](https://github.com/FusionComputingLab/freegs4e) (a fork of FreeGS) to solve different types of free-boundary Grad-Shafranov equilibrium problem and contains a number of new capabilities over FreeGS. 
+FreeGSNKE uses [FreeGS4E](https://github.com/FusionComputingLab/freegs4e), an LGPL-licensed fork of [FreeGS](https://github.com/bendudson/freegs), as its Grad-Shafranov equilibrium backend.
 
 **NOTE:**  We recommended reading this page in its entirety before attempting to install or run FreeGSNKE!
 
@@ -76,7 +76,7 @@ FreeGSNKE is constantly evolving and so we hope to provide users with more advan
 
 ## Getting started
 
-**Get familiar with FreeGS(NKE)**: given FreeGSNKE relies on some core FreeGS functionality, it is strongly recommended to first familiarise yourself with how it works by taking a look at the documentation [here](https://freegs.readthedocs.io/en/latest/).
+**Get familiar with FreeGSNKE**: start with the FreeGSNKE user guide and examples below. The original [FreeGS documentation](https://freegs.readthedocs.io/en/latest/) provides useful background, but does not define the FreeGSNKE or FreeGS4E APIs.
 
 **After installation (see below), check out the FreeGSNKE user guide**: the FreeGSNKE docs are hosted at [docs.freegsnke.com](https://docs.freegsnke.com/), and the [user guide](https://docs.freegsnke.com/user_guide/) contains several examples to get started. You can also build the documentation yourself by following the instructions in the `docs/README.md` file. The user guide is built from Jupyter notebooks in the `examples/` directory, where you can also find more demos beyond those included in the user guide.
 
@@ -120,10 +120,10 @@ The recommended way to install FreeGSNKE is inside a virtual environment, for ex
 #### Stage two: install FreeGSNKE
 
    ```shell
-   pip install "freegsnke[freegs4e]"
+   pip install freegsnke
    ```
 
-The extra `freegs4e` dependency installs [FreeGS4E](https://github.com/FusionComputingLab/freegs4e) automatically (and is required for FreeGSNKE to run). 
+[FreeGS4E](https://github.com/FusionComputingLab/freegs4e) is a required dependency and is installed automatically.
 
 If you are planning to develop FreeGSNKE, see the below section on [contributing](#contributing) code.
 
@@ -171,18 +171,20 @@ git clone https://github.com/FusionComputingLab/freegsnke
 From your FreeGSNKE root directory, run:
 
 ```shell
-pip install -e ".[freegs4e,dev]"
+pip install -e ".[dev]"
 ```
 
 This will install FreeGSNKE in editable mode, including the optional development dependencies.
 
-If you are also planning to co-develop [FreeGS4E](https://github.com/FusionComputingLab/freegs4e), you will need to install it in editable mode as well. This can be done by cloning the FreeGS4E repository, installing using the development instructions, and then installing FreeGSNKE in editable mode with:
+If you are also planning to co-develop [FreeGS4E](https://github.com/FusionComputingLab/freegs4e), clone and install FreeGS4E in editable mode first, then install FreeGSNKE in editable mode with:
 ```shell
 pip install -e ".[dev]"
 ```
-Notice that the `freegs4e` extra has been omitted from the FreeGSNKE installation command in this case.
+If the editable FreeGS4E installation reports a version satisfying FreeGSNKE's
+required version range, pip will retain it. Otherwise,
+pip may install a compatible FreeGS4E release from PyPI instead.
 
-Please also install the pre-commit hooks ([Black](https://github.com/psf/black) and [isort](https://pycqa.github.io/isort/)) for code formatting. The [pre-commit](https://pre-commit.com/) library is included in `requirements-dev.txt` and will be installed automatically using the `dev` extra included in the commands above. To install the pre-commit hooks, run the following in the root FreeGSNKE directory after installation:
+Please also install the pre-commit hooks for code formatting. The [pre-commit](https://pre-commit.com/) library is included in `requirements-dev.txt` and will be installed automatically using the `dev` extra included in the commands above. To install the pre-commit hooks, run the following in the root FreeGSNKE directory after installation:
 ```shell
 pre-commit install
 ```

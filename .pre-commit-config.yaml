@@ -10,10 +10,3 @@ repos:
     hooks:
       - id: isort
         name: isort (python)
-
-  - repo: https://github.com/kynan/nbstripout
-    rev: 0.9.1
-    hooks:
-      - id: nbstripout
-        name: nbstripout (notebooks)
-        files: ^examples/.*\.ipynb$

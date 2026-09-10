@@ -147,7 +147,7 @@ FreeGSNKE also interfaces with [UDA](https://github.com/ukaea/UDA), for example,
    pip install "uda-mast @ git+ssh://git@gitlab.ukaea.uk/MAST-U/mastcodes.git@1.3.10#subdirectory=uda/python"
    ```
 
-### Building from source
+### Installing from source
 
 To install FreeGSNKE from source, set up your environment as in Stage 1 above. 
 
@@ -182,7 +182,13 @@ If contributing code (see below), please also install the [pre-commit](https://p
 pre-commit install
 ```
 
-The hooks include formatting the code with [black](https://github.com/psf/black), sort imports with [isort](https://github.com/pycqa/isort), and stripping notebooks output with [nbstripout](https://github.com/kynan/nbstripout).
+The hooks include formatting the code with [black](https://github.com/psf/black) and sorting imports with [isort](https://github.com/pycqa/isort).
+
+Before opening a PR, also strip the outputs from any notebooks in `examples/` that you've added or modified — CI rejects PRs where they're still present (see below), but they are **not** cleared automatically on every commit, so you're free to keep outputs in your local, unpushed notebooks while developing. To strip them, run (for example):
+```shell
+nbstripout examples/"your_notebook.ipynb"
+```
+[nbstripout](https://github.com/kynan/nbstripout) is installed as part of the `dev` extra above.
 
 ## Contributing
 
@@ -206,6 +212,7 @@ We welcome contributions including **issues**, **questions**, **bug fixes**, and
 - Make sure the [pre-commit](https://pre-commit.com/) hooks pass in the CI. These will run automatically when you commit if you have installed the pre-commit hooks (see above). 
 - Make sure the full test [pytest](https://docs.pytest.org/en) suite passes locally (`python -m pytest -v`); CI re-runs it against Python 3.10, 3.12, and 3.14. Specific tests can be run with, e.g. `python -m pytest -v freegsnke/tests/test_static_solver.py`. 
 - Keep docstring coverage above the 95% threshold enforced in CI by [interrogate](https://interrogate.readthedocs.io/).
+- Clear the outputs of any Jupyter notebooks you've added or modified in `examples/` (e.g. with `nbstripout`, see above) — CI checks the notebooks on the PR branch and rejects it if any still have outputs, but nothing strips them for you locally.
 - Update the user documentation, API documentation, and notebook examples if the PR changes FreeGSNKE's behaviour or public API.
 - Note that the notebook execution checks only run once a maintainer applies the `ready-for-final-tests` label, so don't expect them to appear immediately when you open the PR.
 

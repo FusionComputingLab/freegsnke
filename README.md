@@ -177,10 +177,12 @@ If you are planning to make code contributions, see the [pull requests](#pull-re
 
 ### Extras (for contributing)
 
-If contributing code (see below), please also install the [pre-commit](https://pre-commit.com/) hooks for code formatting by running the following in the root FreeGSNKE directory after (from source) installation:
+If contributing code (see below), please also install the [pre-commit](https://pre-commit.com/) hooks by running the following in the root FreeGSNKE directory after (from source) installation:
 ```shell
 pre-commit install
 ```
+
+The hooks include formatting the code with [black](https://github.com/psf/black), sort imports with [isort](https://github.com/pycqa/isort), and stripping notebooks output with [nbstripout](https://github.com/kynan/nbstripout).
 
 ## Contributing
 
@@ -201,10 +203,9 @@ We welcome contributions including **issues**, **questions**, **bug fixes**, and
 **When opening a pull request (PR), please do the following**:
 - Open the PR with a clear title and description of what changed and why.
 - If the PR addresses an open issue, reference it in the description (e.g. `Closes #123`).
-- Make sure the [pre-commit](https://pre-commit.com/) hooks pass: they format the code with [black](https://github.com/psf/black) and sort imports with [isort](https://github.com/pycqa/isort), both of which are also checked in CI. These will run automatically when you commit if you have installed the pre-commit hooks (see above). 
+- Make sure the [pre-commit](https://pre-commit.com/) hooks pass in the CI. These will run automatically when you commit if you have installed the pre-commit hooks (see above). 
 - Make sure the full test pytest](https://docs.pytest.org/en) suite passes locally (`python -m pytest -v`); CI re-runs it against Python 3.10, 3.12, and 3.14. Specific tests can be run with, e.g. `python -m pytest -v freegsnke/tests/test_static_solver.py`. 
 - Keep docstring coverage above the 95% threshold enforced in CI by [interrogate](https://interrogate.readthedocs.io/).
-- Clear the outputs of any Jupyter notebooks you've added or modified in the Examples directory.
 - Update the user documentation, API documentation, and notebook examples if the PR changes FreeGSNKE's behaviour or public API.
 - Note that the notebook execution checks only run once a maintainer applies the `ready-for-final-tests` label, so don't expect them to appear immediately when you open the PR.
 

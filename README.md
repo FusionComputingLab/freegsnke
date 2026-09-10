@@ -21,7 +21,7 @@ FreeGSNKE uses [FreeGS4E](https://github.com/FusionComputingLab/freegs4e), an LG
 - [Installation](#installation)
   - [Installing with pip](#installing-with-pip)
   - [Installing with UDA](#installing-with-uda)
-  - [Building from source](#building-from-source)
+  - [Installing from source](#installing-from-source)
   - [Extras (for contributing)](#extras-for-contributing)
 - [Contributing](#contributing)
   - [Issues](#issues)
@@ -130,7 +130,7 @@ The recommended way to install FreeGSNKE is inside a virtual environment, for ex
 
 [FreeGS4E](https://github.com/FusionComputingLab/freegs4e) is a required dependency and is installed automatically.
 
-If you are planning to develop FreeGSNKE, see the [building from source](#building-from-source) section below instead.
+If you are planning to develop FreeGSNKE, see the [installing from source](#installing-from-source) section below instead.
 
 ### Installing with UDA
 
@@ -204,7 +204,7 @@ We welcome contributions including **issues**, **questions**, **bug fixes**, and
 - Open the PR with a clear title and description of what changed and why.
 - If the PR addresses an open issue, reference it in the description (e.g. `Closes #123`).
 - Make sure the [pre-commit](https://pre-commit.com/) hooks pass in the CI. These will run automatically when you commit if you have installed the pre-commit hooks (see above). 
-- Make sure the full test pytest](https://docs.pytest.org/en) suite passes locally (`python -m pytest -v`); CI re-runs it against Python 3.10, 3.12, and 3.14. Specific tests can be run with, e.g. `python -m pytest -v freegsnke/tests/test_static_solver.py`. 
+- Make sure the full test [pytest](https://docs.pytest.org/en) suite passes locally (`python -m pytest -v`); CI re-runs it against Python 3.10, 3.12, and 3.14. Specific tests can be run with, e.g. `python -m pytest -v freegsnke/tests/test_static_solver.py`. 
 - Keep docstring coverage above the 95% threshold enforced in CI by [interrogate](https://interrogate.readthedocs.io/).
 - Update the user documentation, API documentation, and notebook examples if the PR changes FreeGSNKE's behaviour or public API.
 - Note that the notebook execution checks only run once a maintainer applies the `ready-for-final-tests` label, so don't expect them to appear immediately when you open the PR.

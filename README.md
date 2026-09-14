@@ -114,7 +114,7 @@ The recommended way to install FreeGSNKE is inside a virtual environment, for ex
 2. Create a new conda environment with:
 
    ```shell
-   conda create -n freegsnke python=3.10
+   conda create -n freegsnke python=3.10 pip
    ```
 3. Activate the new environment with:
 

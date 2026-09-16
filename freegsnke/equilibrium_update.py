@@ -187,6 +187,205 @@ class Equilibrium(freegs4e.equilibrium.Equilibrium):
         self.refresh_machine_dependent_state(refresh_limiter=False)
         return self
 
+    def add_active_coil(self, coil_name, active_coil_data):
+        """
+        Add one new active coil/circuit and extend equilibrium-level coil caches.
+
+        Parameters
+        ----------
+        coil_name : str
+            Label for the new active coil/circuit.
+        active_coil_data : dict
+            Machine-description entry for the new active coil/circuit.
+
+        Returns
+        -------
+        Equilibrium
+            This equilibrium object, updated in place.
+
+        Notes
+        -----
+        Only the Greens functions for the new coil are calculated; existing
+        coil Greens functions and the limiter handler are reused. Existing
+        solver objects should still be reinstantiated after a geometry change
+        because they cache machine-dependent matrices and mode data, whose
+        dimensionality will itself have changed.
+        """
+
+        self.tokamak.add_active_coil(
+            coil_name=coil_name, active_coil_data=active_coil_data
+        )
+        insert_index = self.tokamak.coil_order[coil_name]
+        coil = self.tokamak[coil_name]
+
+        self._pgreen = dict(self._pgreen)
+        self._pgreen[coil_name] = coil.createPsiGreens(self.R, self.Z)
+        new_vgreen_row = coil.createPsiGreensVec(self.R, self.Z)[np.newaxis, ...]
+        self._vgreen = np.concatenate(
+            [self._vgreen[:insert_index], new_vgreen_row, self._vgreen[insert_index:]],
+            axis=0,
+        )
+
+        self.tokamak_psi = self.tokamak.calcPsiFromGreens(pgreen=self._pgreen)
+        return self
+
+    def remove_active_coil(self, coil_name):
+        """
+        Remove one active coil/circuit and shrink equilibrium-level coil caches.
+
+        Parameters
+        ----------
+        coil_name : str
+            Existing active coil/circuit label to remove.
+
+        Returns
+        -------
+        Equilibrium
+            This equilibrium object, updated in place.
+
+        Notes
+        -----
+        Greens functions for the remaining coils and the limiter handler are
+        reused. Existing solver objects should still be reinstantiated after a
+        geometry change because they cache machine-dependent matrices and mode
+        data, whose dimensionality will itself have changed.
+        """
+
+        if coil_name not in self.tokamak.coil_order:
+            raise ValueError(f"Tokamak does not contain active coil label '{coil_name}'.")
+        index = self.tokamak.coil_order[coil_name]
+
+        self.tokamak.remove_active_coil(coil_name)
+
+        self._pgreen = {k: v for k, v in self._pgreen.items() if k != coil_name}
+        self._vgreen = np.delete(self._vgreen, index, axis=0)
+
+        self.tokamak_psi = self.tokamak.calcPsiFromGreens(pgreen=self._pgreen)
+        return self
+
+    def update_passive_structure(
+        self, name, passive_data, preserve_current=True, refine_mode="G"
+    ):
+        """
+        Update one passive structure and refresh equilibrium-level coil caches.
+
+        Parameters
+        ----------
+        name : str
+            Existing passive-structure label to replace.
+        passive_data : dict
+            Machine-description entry for ``name``.
+        preserve_current : bool, optional
+            If True, the old current on ``name`` is copied onto the
+            replacement passive structure. Defaults to True.
+        refine_mode : str, optional
+            Refinement mode for extended (polygonal) passive structures.
+            Defaults to ``"G"``.
+
+        Returns
+        -------
+        Equilibrium
+            This equilibrium object, updated in place.
+
+        Notes
+        -----
+        This method refreshes only the Greens functions affected by the
+        updated passive structure. Limiter masks are reused because the
+        limiter geometry is not modified by a passive-structure update.
+        Existing solver objects should still be reinstantiated after a
+        geometry change because they cache machine-dependent matrices and
+        mode data.
+        """
+
+        self.tokamak.update_passive_structure(
+            name=name,
+            passive_data=passive_data,
+            preserve_current=preserve_current,
+            refine_mode=refine_mode,
+        )
+        self.refresh_machine_dependent_state(refresh_limiter=False)
+        return self
+
+    def add_passive_structure(self, passive_data, name=None, refine_mode="G"):
+        """
+        Add one new passive structure and extend equilibrium-level coil caches.
+
+        Parameters
+        ----------
+        passive_data : dict
+            Machine-description entry for the new passive structure.
+        name : str, optional
+            Label for the new passive structure. If omitted, ``passive_data["name"]``
+            is used, and if that is also absent a default of the form
+            ``f"passive_{self.tokamak.n_passive_coils}"`` is used.
+        refine_mode : str, optional
+            Refinement mode for extended (polygonal) passive structures.
+            Defaults to ``"G"``.
+
+        Returns
+        -------
+        Equilibrium
+            This equilibrium object, updated in place.
+
+        Notes
+        -----
+        Only the Greens functions for the new passive structure are
+        calculated; existing coil Greens functions and the limiter handler are
+        reused. Existing solver objects should still be reinstantiated after a
+        geometry change because they cache machine-dependent matrices and mode
+        data, whose dimensionality will itself have changed.
+        """
+
+        self.tokamak.add_passive_structure(
+            passive_data=passive_data, name=name, refine_mode=refine_mode
+        )
+        added_name = self.tokamak.coils_list[-1]
+        coil = self.tokamak[added_name]
+
+        self._pgreen = dict(self._pgreen)
+        self._pgreen[added_name] = coil.createPsiGreens(self.R, self.Z)
+        new_vgreen_row = coil.createPsiGreensVec(self.R, self.Z)[np.newaxis, ...]
+        self._vgreen = np.concatenate([self._vgreen, new_vgreen_row], axis=0)
+
+        self.tokamak_psi = self.tokamak.calcPsiFromGreens(pgreen=self._pgreen)
+        return self
+
+    def remove_passive_structure(self, name):
+        """
+        Remove one passive structure and shrink equilibrium-level coil caches.
+
+        Parameters
+        ----------
+        name : str
+            Existing passive-structure label to remove.
+
+        Returns
+        -------
+        Equilibrium
+            This equilibrium object, updated in place.
+
+        Notes
+        -----
+        Greens functions for the remaining coils and the limiter handler are
+        reused. Existing solver objects should still be reinstantiated after a
+        geometry change because they cache machine-dependent matrices and mode
+        data, whose dimensionality will itself have changed.
+        """
+
+        if name not in self.tokamak.coil_order:
+            raise ValueError(
+                f"Tokamak does not contain passive structure label '{name}'."
+            )
+        index = self.tokamak.coil_order[name]
+
+        self.tokamak.remove_passive_structure(name)
+
+        self._pgreen = {k: v for k, v in self._pgreen.items() if k != name}
+        self._vgreen = np.delete(self._vgreen, index, axis=0)
+
+        self.tokamak_psi = self.tokamak.calcPsiFromGreens(pgreen=self._pgreen)
+        return self
+
     def refresh_machine_dependent_state(self, refresh_limiter=True):
         """
         Refresh cached data derived from the current tokamak description.

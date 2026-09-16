@@ -129,6 +129,141 @@ def build_tokamak_R_and_M(tokamak, rebuild=False, changed_coils=None):
         )
 
 
+def append_tokamak_R_and_M_entries(tokamak, new_labels):
+    """
+    Extend the existing resistance (R) and inductance (M) matrices with
+    entries for coil labels that have just been appended to the machine.
+
+    Parameters
+    ----------
+    tokamak : class
+        The tokamak object. ``tokamak.coils_list`` and ``tokamak.coils_dict``
+        must already include ``new_labels``, appended in order at the end of
+        ``coils_list``, and ``tokamak.coil_resist``/``tokamak.coil_self_ind``
+        must already exist for every other (pre-existing) label.
+    new_labels : list of str
+        Labels of the newly appended coils, in the order they were appended.
+
+    Returns
+    -------
+    None
+        ``tokamak.coil_resist`` and ``tokamak.coil_self_ind`` are replaced in
+        place with the extended matrices.
+    """
+
+    old_n = len(tokamak.coil_resist)
+    new_n = old_n + len(new_labels)
+
+    R = np.zeros(new_n)
+    R[:old_n] = tokamak.coil_resist
+    M = np.zeros((new_n, new_n))
+    M[:old_n, :old_n] = tokamak.coil_self_ind
+
+    for offset, name_i in enumerate(new_labels):
+        i = old_n + offset
+        R[i] = _calc_resistance_entry(tokamak, name_i) * 2 * np.pi
+
+        for j, name_j in enumerate(tokamak.coils_list):
+            if j > i:
+                continue
+            val = _calc_mutual_inductance_entry(tokamak, name_j, name_i) * 2 * np.pi
+            M[i, j] = val
+            M[j, i] = val
+
+    tokamak.coil_resist = R
+    tokamak.coil_self_ind = M
+
+
+def insert_tokamak_R_and_M_entries(tokamak, index, new_labels):
+    """
+    Insert resistance (R) and inductance (M) matrix entries for coil labels
+    that have just been inserted into the machine at a given position, shifting
+    any existing entries at or after that position along.
+
+    Unlike :func:`append_tokamak_R_and_M_entries`, this supports inserting new
+    coils before existing ones (e.g. a new active coil, which must be inserted
+    immediately before the first passive structure to keep the active/passive
+    partition of ``tokamak.coils_list`` contiguous).
+
+    Parameters
+    ----------
+    tokamak : class
+        The tokamak object. ``tokamak.coils_list`` and ``tokamak.coils_dict``
+        must already include ``new_labels``, inserted in order starting at
+        ``index``, and ``tokamak.coil_resist``/``tokamak.coil_self_ind`` must
+        already exist for every other (pre-existing) label.
+    index : int
+        Position at which ``new_labels`` were inserted into ``tokamak.coils_list``.
+    new_labels : list of str
+        Labels of the newly inserted coils, in the order they were inserted.
+
+    Returns
+    -------
+    None
+        ``tokamak.coil_resist`` and ``tokamak.coil_self_ind`` are replaced in
+        place with the extended matrices.
+    """
+
+    old_n = len(tokamak.coil_resist)
+    n_new = len(new_labels)
+    new_n = old_n + n_new
+
+    old_R = tokamak.coil_resist
+    old_M = tokamak.coil_self_ind
+
+    R = np.zeros(new_n)
+    R[:index] = old_R[:index]
+    R[index + n_new :] = old_R[index:]
+
+    M = np.zeros((new_n, new_n))
+    M[:index, :index] = old_M[:index, :index]
+    M[:index, index + n_new :] = old_M[:index, index:]
+    M[index + n_new :, :index] = old_M[index:, :index]
+    M[index + n_new :, index + n_new :] = old_M[index:, index:]
+
+    for offset, name_i in enumerate(new_labels):
+        i = index + offset
+        R[i] = _calc_resistance_entry(tokamak, name_i) * 2 * np.pi
+
+        for j, name_j in enumerate(tokamak.coils_list):
+            if j > i:
+                continue
+            val = _calc_mutual_inductance_entry(tokamak, name_j, name_i) * 2 * np.pi
+            M[i, j] = val
+            M[j, i] = val
+
+    tokamak.coil_resist = R
+    tokamak.coil_self_ind = M
+
+
+def remove_tokamak_R_and_M_entry(tokamak, index):
+    """
+    Remove the resistance (R) and inductance (M) matrix entries at a given
+    coil position.
+
+    Parameters
+    ----------
+    tokamak : class
+        The tokamak object, with ``coil_resist``/``coil_self_ind`` already
+        built for the machine prior to removal.
+    index : int
+        Position (row/column) to remove from the existing matrices. This
+        should be the coil's index before it is removed from
+        ``tokamak.coils_list``.
+
+    Returns
+    -------
+    None
+        ``tokamak.coil_resist`` and ``tokamak.coil_self_ind`` are replaced in
+        place with the shrunk matrices.
+    """
+
+    tokamak.coil_resist = np.delete(tokamak.coil_resist, index)
+    tokamak.coil_self_ind = np.delete(
+        np.delete(tokamak.coil_self_ind, index, axis=0), index, axis=1
+    )
+
+
 def _update_tokamak_R_and_M_entries(tokamak, changed_coils):
     """Update only R/M entries affected by changed coil labels."""
 

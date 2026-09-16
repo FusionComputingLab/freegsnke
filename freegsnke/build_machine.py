@@ -594,9 +594,7 @@ def update_passive_structure(
     """
 
     if not hasattr(tokamak, "coil_order") or name not in tokamak.coil_order:
-        raise ValueError(
-            f"Tokamak does not contain passive structure label '{name}'."
-        )
+        raise ValueError(f"Tokamak does not contain passive structure label '{name}'.")
     if tokamak.coils_dict.get(name, {}).get("active", False):
         raise ValueError(f"Coil label '{name}' is not a passive structure.")
 
@@ -776,9 +774,7 @@ def remove_passive_structure(tokamak, name):
     """
 
     if not hasattr(tokamak, "coil_order") or name not in tokamak.coil_order:
-        raise ValueError(
-            f"Tokamak does not contain passive structure label '{name}'."
-        )
+        raise ValueError(f"Tokamak does not contain passive structure label '{name}'.")
     if tokamak.coils_dict.get(name, {}).get("active", False):
         raise ValueError(f"Coil label '{name}' is not a passive structure.")
 

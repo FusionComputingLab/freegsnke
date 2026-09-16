@@ -252,7 +252,9 @@ class Equilibrium(freegs4e.equilibrium.Equilibrium):
         """
 
         if coil_name not in self.tokamak.coil_order:
-            raise ValueError(f"Tokamak does not contain active coil label '{coil_name}'.")
+            raise ValueError(
+                f"Tokamak does not contain active coil label '{coil_name}'."
+            )
         index = self.tokamak.coil_order[coil_name]
 
         self.tokamak.remove_active_coil(coil_name)

@@ -522,9 +522,7 @@ def test_passive_structure_can_be_added_without_rebuilding_full_machine():
     n_coils_before = tokamak.n_coils
     n_passive_before = tokamak.n_passive_coils
 
-    returned = tokamak.add_passive_structure(
-        _point_passive_data(), name="new_passive"
-    )
+    returned = tokamak.add_passive_structure(_point_passive_data(), name="new_passive")
 
     assert returned is tokamak
     assert tokamak.n_coils == n_coils_before + 1
@@ -555,9 +553,7 @@ def test_passive_structure_can_be_removed_without_rebuilding_full_machine():
     )
 
     passive_label = tokamak.coils_list[tokamak.n_active_coils]
-    remaining_labels = [
-        label for label in tokamak.coils_list if label != passive_label
-    ]
+    remaining_labels = [label for label in tokamak.coils_list if label != passive_label]
     old_coil_objects = {label: tokamak[label] for label in remaining_labels}
     n_coils_before = tokamak.n_coils
     n_passive_before = tokamak.n_passive_coils

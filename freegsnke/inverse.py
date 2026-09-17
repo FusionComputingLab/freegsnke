@@ -227,9 +227,14 @@ class Inverse_optimizer:
             # as 1D axis vectors (rather than a flattened meshgrid) lets
             # prepare_for_solve reuse the equilibrium's own cached Greens
             # functions instead of recomputing them pointwise.
-            if Rcoords.ndim == 1 and Zcoords.ndim == 1 and psi_values.shape == (
-                Rcoords.size,
-                Zcoords.size,
+            if (
+                Rcoords.ndim == 1
+                and Zcoords.ndim == 1
+                and psi_values.shape
+                == (
+                    Rcoords.size,
+                    Zcoords.size,
+                )
             ):
                 self.full_grid = True
                 self.psi_vals = [Rcoords, Zcoords, psi_values.reshape(-1)]

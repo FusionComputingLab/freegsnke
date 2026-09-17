@@ -35,7 +35,7 @@ from . import nk_solver_H as nk_solver
 from .circuit_eq_metal import metal_currents
 from .GSstaticsolver import NKGSsolver
 from .linear_solve import linear_solver
-from .Myy_builder import Myy_handler
+from .Myy_builder import make_Myy_handler
 from .simplified_solve import simplified_solver_J1
 
 _parallel_linearization_solver = None
@@ -73,6 +73,8 @@ class nl_solver:
     _MAX_STARTING_DI_RATIO = np.sqrt(10.0)
     _MAX_REUSED_STARTING_DI_RATIO = 4.0 / 3.0
 
+    # TODO: would be wise to make these kwargs kw-only, to prevent users from using
+    # them as positional, which risks human error and regression bugs
     def __init__(
         self,
         profiles,
@@ -103,6 +105,8 @@ class nl_solver:
         plasma_descriptor_function=None,
         mode_selection="coupling",
         n_linearization_workers=1,
+        myy_type="reduced",
+        cache_myy=True,
     ):
         """
         Initialize the nonlinear solver.
@@ -191,6 +195,11 @@ class nl_solver:
             Number of worker processes used to build independent ``dIydI`` and
             ``dIydtheta`` columns during initial and later linearisations. A value
             of 1 retains the serial calculation.
+        myy_type: str, default="reduced"
+            Either "reduced" to define Myy over reduced domain in real space, or "fft" to define Myy
+            over the full domain in Fourier space.
+        cache_myy: bool, default=True
+            Controls whether the Myy matrix is cached at initialization or rebuilt for every product.
         """
         print("-----")
 
@@ -266,7 +275,9 @@ class nl_solver:
         self.nIy = np.linalg.norm(self.Iy)
 
         # instantiate the Myy_handler object
-        self.handleMyy = Myy_handler(eq.limiter_handler)
+        self.handleMyy = make_Myy_handler(
+            myy_type, eq.limiter_handler, cache_myy=cache_myy
+        )
 
         # Extract relevant information on the type of profiles function used and on the actual value of associated parameters
         self.get_profiles_values(profiles)

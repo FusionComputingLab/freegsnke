@@ -168,6 +168,7 @@ def _calc_mutual_inductance_entry(tokamak, name_i, name_j):
         coords_i[1][np.newaxis, :],
         coords_j[0][:, np.newaxis],
         coords_j[1][:, np.newaxis],
+        limit_threading=True,
     )
 
     if name_j == name_i:

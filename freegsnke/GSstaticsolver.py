@@ -24,6 +24,8 @@ from copy import deepcopy
 import freegs4e
 import numpy as np
 from freegs4e.gradshafranov import Greens
+from freegs4e.gs_solver import GSDSTSolver, GSLUSolver
+from freegs4e.multigrid import createMultigridSolver
 
 from . import nk_solver_H as nk_solver
 
@@ -73,7 +75,11 @@ class NKGSsolver:
         l2_reg=1e-6,
         collinearity_reg=1e-6,
         seed=42,
-        gs_operator_order=4,
+        gs_operator_order=None,
+        cache_greens=True,
+        solver_type="LUsparse",
+        mg_kwargs=None,
+        max_batch_size=2_000_000_000,
     ):
         """
         Initialise the Grad–Shafranov nonlinear solver.
@@ -111,11 +117,33 @@ class NKGSsolver:
                 • Krylov perturbation generation
                 • Directional exploration in nonlinear solve
 
-        gs_operator_order : {2, 4}, optional (default=4)
+        gs_operator_order : {2, 4}, optional (default=None)
             Finite-difference order of the linear Grad-Shafranov operator.
-            Fourth order is more accurate; second order reduces sparse matrix
-            construction and factorisation costs when that accuracy trade-off
-            is acceptable.
+            Fourth order is more accurate; second order may reduce execution
+            time. Default is the highest value supported by `solver_type`. It
+            is STRONGLY recommended to leave the default value.
+
+        cache_greens : bool, optional (default=True)
+            Determines whether the Greens function should be pre-calculated and
+            stored, or re-calculated every time the boundary flux is computed
+            (reducing memory usage by up to an order of magnitude).
+
+        solver_type: str (default='LUsparse')
+            The type of linear solver to use for the GS equation. Supported
+            options are 'LUsparse', 'DST', 'multigrid'. 'LUsparse' supports
+            order 2,4. The 'DST' solver is faster, but only supports order 2.
+            Use of 'multigrid' is discouraged and is planned to be deprecated.
+
+        mg_kwargs
+            dict with optional keyword arguments to pass to
+            `freegs4e.multigrid.createMultigridSolver` during multigrid solver
+            initialization. Ignored whenever `solver_type` != 'multigrid'.
+
+        max_batch_size : int, float (default=2_000_000_000)
+            Sets a maximum size (number of entries) for the batches of the Greens function when calculating the
+            boundary flux, allowing for further reduction in memory footprint. Only applicable when
+            `cache_greens=False`, ignored otherwise. Float type values supported for convenience (to allow for
+            use of scientific notation, e.g. `max_batch_size=2e9`).
 
         Attributes
         ----------
@@ -164,14 +192,6 @@ class NKGSsolver:
         dZ = Z[0, 1] - Z[0, 0]
         self.dRdZ = dR * dZ
 
-        if gs_operator_order == 2:
-            gs_operator = freegs4e.gradshafranov.GSsparse
-        elif gs_operator_order == 4:
-            gs_operator = freegs4e.gradshafranov.GSsparse4thOrder
-        else:
-            raise ValueError("gs_operator_order must be either 2 or 4")
-        self.gs_operator_order = gs_operator_order
-
         # nonlinear solver backend
         self.nksolver = nk_solver.nksolver(
             problem_dimension=self.nx * self.ny,
@@ -179,16 +199,8 @@ class NKGSsolver:
             collinearity_reg=collinearity_reg,
         )
 
-        # linear GS solver used inside nonlinear iteration
-        self.linear_GS_solver = freegs4e.multigrid.createVcycle(
-            nx,
-            ny,
-            gs_operator(eq.R[0, 0], eq.R[-1, 0], eq.Z[0, 0], eq.Z[0, -1]),
-            nlevels=1,
-            ncycle=1,
-            niter=2,
-            direct=True,
-        )
+        # define the GS linear solver (del*Psi=RHS with fixed RHS)
+        self.configureLinearSolver(solver_type, gs_operator_order, mg_kwargs)
 
         # collect boundary grid indices for Dirichlet conditions
         bndry_indices = np.concatenate(
@@ -201,12 +213,13 @@ class NKGSsolver:
         )
         self.bndry_indices = bndry_indices
 
-        # Plasma current is confined inside the limiter, so only those Green
-        # columns contribute to the free-boundary condition.
-        self.plasma_source_mask = np.asarray(
-            eq.limiter_handler.mask_inside_limiter, dtype=bool
-        )
-        self.greenfunc = self._build_boundary_green(self.plasma_source_mask)
+        # Cache Greens function if necessary
+        if cache_greens:
+            self.greenfunc = self._build_full_boundary_greens()
+            self._max_batch_size = None
+        else:
+            self.greenfunc = None
+            self._max_batch_size = int(max_batch_size)
 
         # Precompute geometric RHS coefficient
         # Comes from GS equation:
@@ -216,7 +229,134 @@ class NKGSsolver:
         # random generator used for NK search direction exploration
         self.rng = np.random.default_rng(seed=seed)
 
-    def _build_boundary_green(self, source_mask):
+    def _build_full_boundary_greens(self):
+        """
+        Calculates the Greens function giving the responses of boundary nodes to internal nodes:
+        Jtor(R',Z') → ψ_boundary(R,Z)
+
+        Fills the array sequentially to optimize memory usage.
+        """
+
+        bndry_indices = self.bndry_indices
+        n_bndry_nodes = bndry_indices.shape[0]
+
+        R_1D = self.R[:, 0]
+        Z_1D = self.Z[0, :]
+
+        # Pre-allocate full array
+        greenfunc = np.empty(
+            (n_bndry_nodes, self.R.shape[0], self.R.shape[1]),
+        )
+
+        # Computation is performed in batches, to limit memory consumption
+        # Batches correspond to slices over ROWS of the Green's function
+
+        num_batches = 16  # fine-tuned to balance memory vs. compute needs
+        batch_len = n_bndry_nodes // num_batches  # number of rows in the batch
+
+        for i in range(num_batches):
+
+            start = i * batch_len
+            end = start + batch_len
+            end = (
+                end if i != num_batches - 1 else n_bndry_nodes
+            )  # last batch gets the remainder
+
+            # Fill up slice of greenfunc in-place. Applies dRdZ factor automatically.
+            Greens(
+                self.R[np.newaxis, :, :],
+                self.Z[np.newaxis, :, :],
+                R_1D[bndry_indices[:, 0]][start:end, np.newaxis, np.newaxis],
+                Z_1D[bndry_indices[:, 1]][start:end, np.newaxis, np.newaxis],
+                scale_factor=self.dRdZ,
+                out=greenfunc[start:end, :, :],
+            )
+
+            # filter out Greens(x,y;x,y), to prevent infinity/NaNs
+            greenfunc[start:end, bndry_indices[:, 0], bndry_indices[:, 1]] = 0
+
+        return greenfunc
+
+    def _calculate_boundary_flux(self):
+        """
+        Compute boundary flux via Green's function convolution: psi_bnd = ∫ G(R,Z; R',Z') Jtor(R',Z') dR'dZ'
+
+        Implemented using tensor contraction.
+
+        If Green's function was precomputed, uses the cached version. Otherwise, computes it on the fly.
+
+        Returns
+        -------
+            Boundary flux vector as a flattened array
+        """
+
+        # Implemented using tensor contraction:
+        # Contract:
+        #  greenfunc axis (1,2) with jtor axis (0,1)
+
+        if self.greenfunc is not None:
+            psi_bnd = np.tensordot(self.greenfunc, self.jtor, axes=([1, 2], [0, 1]))
+
+        else:
+
+            # Computation is performed in batches, to limit memory consumption
+            # Batches correspond to contiguous groups of FULL ROWS of the Green's function
+            # (only last dimension is sliced)
+
+            bndry_indices = self.bndry_indices
+            n_bndry_nodes = bndry_indices.shape[0]
+
+            R_1D = self.R[:, 0]
+            Z_1D = self.Z[0, :]
+
+            psi_bnd = np.empty(n_bndry_nodes)
+
+            # calculating psi_bnd in 16 batches reduces total RSS contribution to 0.25*greenfunc.nbytes
+            default_num_batches = 16
+
+            # determine maximum number of rows allowed for a batch
+            max_batch_len = self._max_batch_size // (self.nx * self.ny)
+
+            # determine number of rows in a batch
+            batch_len = n_bndry_nodes // default_num_batches
+            batch_len = min(batch_len, max_batch_len)
+            batch_len = max(batch_len, 2)  # ensure at least two rows are in a batch
+
+            # calculate number of batches (adds one more if there is a remainder)
+            num_batches = (n_bndry_nodes - 1) // batch_len + 1
+
+            # pre-allocate re-usable buffer
+            greenfunc_buff = np.empty((batch_len, self.nx, self.ny))
+
+            for i in range(num_batches):
+
+                start = i * batch_len
+                end = start + batch_len
+                end = min(end, n_bndry_nodes)  # last batch can be smaller
+
+                greenfunc = greenfunc_buff[: end - start]
+
+                # Calculate greenfunc for these boundary nodes. Applies dRdZ factor automatically.
+                Greens(
+                    self.R[np.newaxis, :, :],
+                    self.Z[np.newaxis, :, :],
+                    R_1D[bndry_indices[:, 0]][start:end, np.newaxis, np.newaxis],
+                    Z_1D[bndry_indices[:, 1]][start:end, np.newaxis, np.newaxis],
+                    scale_factor=self.dRdZ,
+                    out=greenfunc,
+                )
+
+                # filter out values at boundary Greens(x,y;x,y), to prevent infinity/NaNs
+                greenfunc[:, bndry_indices[:, 0], bndry_indices[:, 1]] = 0
+
+                # weighted sum over the last two axes
+                psi_bnd[start:end] = np.tensordot(
+                    greenfunc, self.jtor, axes=([1, 2], [0, 1])
+                )
+
+        return psi_bnd
+
+    def _build_masked_boundary_greens(self, source_mask):
         """Build the boundary Green matrix for a selected set of source points."""
         source_indices = np.flatnonzero(source_mask)
         boundary_indices = np.ravel_multi_index(
@@ -241,9 +381,61 @@ class NKGSsolver:
         greenfunc[np.flatnonzero(matches), positions[matches]] = 0.0
         return np.ascontiguousarray(greenfunc * self.dRdZ)
 
-    def _boundary_flux_from_jtor(self, jtor):
+    def _calculate_masked_boundary_flux(self, jtor):
         """Return boundary flux from plasma current inside the limiter."""
         return self.greenfunc @ jtor[self.plasma_source_mask]
+
+    def configureLinearSolver(self, solver_type, order, mg_kwargs):
+        """
+        Creates and assigns the linear solver `self.linear_GS_solver` using the arguments provided.
+
+        Also sets the attribute `self.gs_operator_order`.
+
+        Parameters
+        ----------
+        solver_type: str
+            The type of linear solver to use for the GS equation. Supported options are 'LUsparse',
+            'DST', 'multigrid'.
+        order : int
+            Order of differential operators used in calculations.
+            Must be either 2 or 4.
+        mg_kwargs
+            dict with kwargs to pass to `freegs4e.multigrid.createMultigridSolver` during multigrid solver
+            initialization. Ignored whenever `solver_type` != 'multigrid'.
+        """
+
+        if solver_type == "LUsparse":
+            if order is None:
+                order = 4
+            self.linear_GS_solver = GSLUSolver(self.R, self.Z, order=order)
+
+        elif solver_type == "DST":
+            if order is None:
+                order = 2
+            self.linear_GS_solver = GSDSTSolver(self.R, self.Z, order=order)
+
+        elif solver_type == "multigrid":
+
+            if order is None:
+                order = 4
+            if mg_kwargs is None:
+                mg_kwargs = {}
+            elif not isinstance(mg_kwargs, dict):
+                raise TypeError("mg_kwargs needs to be of type dict")
+
+            self.linear_GS_solver = createMultigridSolver(
+                self.R,
+                self.Z,
+                order,
+                **mg_kwargs,
+            )
+
+        else:
+            raise ValueError(f"Solver type {solver_type} not recognized")
+
+        self.gs_operator_order = order
+
+        return self.linear_GS_solver
 
     def freeboundary(self, plasma_psi, tokamak_psi, profiles):
         """
@@ -319,22 +511,19 @@ class NKGSsolver:
         self.rhs = self.rhs_before_jtor * self.jtor
 
         # ------------------------------------------------------------
-        # Compute boundary flux via Green's function convolution
-        #
-        # psi_boundary = ∫ G(R,Z; R',Z') Jtor(R',Z') dR'dZ'
-        #
-        # Implemented as a matrix-vector product over source points inside the
-        # limiter, outside which the plasma current is identically zero.
+        # Calculate boundary flux (flat array)
         # ------------------------------------------------------------
-        self.psi_boundary = np.zeros_like(self.R)
-        psi_bnd = self._boundary_flux_from_jtor(self.jtor)
+        psi_bnd = self._calculate_boundary_flux()
 
         # ------------------------------------------------------------
         # Map flattened Green's solution back to boundary grid
         # ------------------------------------------------------------
+        self.psi_boundary = np.zeros_like(self.R)
+
         # Vertical boundaries
         self.psi_boundary[:, 0] = psi_bnd[: self.nx]
         self.psi_boundary[:, -1] = psi_bnd[self.nx : 2 * self.nx]
+
         # Horizontal boundaries
         self.psi_boundary[0, 1 : self.ny - 1] = psi_bnd[
             2 * self.nx : 2 * self.nx + self.ny - 2

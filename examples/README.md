@@ -9,6 +9,7 @@ These example Jupyter notebooks are intended to be the **first port of call for 
 | Example 01b | Learn how to use more advanced features of the static inverse solver. | Anyone |
 | Example 02 | Learn how to use the static forward solver. | Anyone |
 | Example 03 | Learn how to extract results from a calculated equilibrium. | Anyone |
+| Example 03c | Learn how to read/write equilibrium data to/from an IMAS equilibrium IDS (netCDF), via IMAS-Python. | Anyone |
 | Example 04 | Learn how to use the magnetic probes object. | Anyone |
 | Example 05a | Learn how to use the nonlinear and linear (with GS) evolutive solver to simulate time-dependent equilibria. | Anyone |
 | Example 05b | Learn how to use the linear evolutive solver without solving GS at each timestep. | Anyone |

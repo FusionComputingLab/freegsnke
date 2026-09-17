@@ -5,6 +5,16 @@
 
 # FreeGSNKE: Free-boundary Grad-Shafranov Newton-Krylov Evolve
 
+<div align="center">
+
+[![Tests](https://github.com/FusionComputingLab/freegsnke/actions/workflows/tests.yml/badge.svg)](https://github.com/FusionComputingLab/freegsnke/actions/workflows/tests.yml)
+[![PyPI version](https://img.shields.io/pypi/v/freegsnke.svg)](https://pypi.org/project/freegsnke/)
+[![Python versions](https://img.shields.io/pypi/pyversions/freegsnke.svg)](https://pypi.org/project/freegsnke/)
+[![License: LGPL v3](https://img.shields.io/badge/License-LGPLv3-blue.svg)](https://www.gnu.org/licenses/lgpl-3.0)
+[![Docs](https://img.shields.io/badge/docs-latest-brightgreen.svg)](https://docs.freegsnke.com)
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+
+</div>
 
 FreeGSNKE (pronounced "free-gee-snake") is a **Python**-based code for **simulating the evolution of free-boundary tokamak plasma equilibria**.
 

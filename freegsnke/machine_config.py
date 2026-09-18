@@ -226,7 +226,12 @@ def insert_tokamak_R_and_M_entries(tokamak, index, new_labels):
         R[i] = _calc_resistance_entry(tokamak, name_i) * 2 * np.pi
 
         for j, name_j in enumerate(tokamak.coils_list):
-            if j > i:
+            # Skip only a *later* new coil in this same batch (index <= j < index
+            # + n_new): its coupling with name_i will be computed when we reach
+            # it as name_i in a later iteration of this loop. Every other coil -
+            # including pre-existing ones that now sit at j > i because name_i
+            # was inserted before them - must still be computed here.
+            if index <= j < index + n_new and j > i:
                 continue
             val = _calc_mutual_inductance_entry(tokamak, name_j, name_i) * 2 * np.pi
             M[i, j] = val

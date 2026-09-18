@@ -987,7 +987,7 @@ class NKGSsolver:
                 self.Z,
                 (self.tokamak_psi + trial_plasma_psi).reshape(self.nx, self.ny),
             )
-        eq.plasma_psi = trial_plasma_psi.reshape(self.nx, self.ny).copy()
+        eq.set_plasma_psi(trial_plasma_psi.reshape(self.nx, self.ny))
         self.port_critical(eq=eq, profiles=profiles)
 
         # ------------------------------------------------------------

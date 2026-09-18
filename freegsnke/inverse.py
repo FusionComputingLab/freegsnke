@@ -108,7 +108,7 @@ class Inverse_optimizer:
                 [Rcoords, Zcoords, psi_values]
 
             where:
-                Rcoords, Zcoords, psi_values must have identical shapes.
+                Rcoords, Zcoords, psi_values must have identical flattened shapes.
 
             Used to enforce ψ(R,Z) = ψ_target at specified locations.
 
@@ -214,18 +214,11 @@ class Inverse_optimizer:
         self.psi_vals = psi_vals
         if self.psi_vals is not None:
 
-            # Flag indicating that constraint is not defined on full grid
-            self.full_grid = False
-            self.psi_vals = np.array(self.psi_vals)
-
-            # Reshape to:
-            #   [Rcoords, Zcoords, psi_values]
-            self.psi_vals = self.psi_vals.reshape((3, -1))
-
-            # Remove arbitrary vertical offset
-            # This improves numerical conditioning because GS equations
-            # are invariant under constant vertical flux shifts.
-            self.psi_vals[2] -= np.mean(self.psi_vals[2])
+            Rcoords, Zcoords, psi_values = self.psi_vals
+            Rcoords = np.asarray(Rcoords).reshape(-1)
+            Zcoords = np.asarray(Zcoords).reshape(-1)
+            psi_values = np.asarray(psi_values).reshape(-1)
+            self.psi_vals = [Rcoords, Zcoords, psi_values.reshape(-1)]
 
             # Store magnitude scale of flux constraints
             # Used for normalisation in optimisation loss
@@ -638,14 +631,16 @@ class Inverse_optimizer:
         # ------------------------------------------------------------
         if self.psi_vals is not None:
 
-            # detect if psi constraints are defined on full grid
-            if (
-                self.psi_vals[0].shape == eq.R_1D.shape
-                and self.psi_vals[1].shape == eq.Z_1D.shape
-                and np.all(self.psi_vals[0] == eq.R_1D)
-                and np.all(self.psi_vals[1] == eq.Z_1D)
-            ):
-                self.full_grid = True
+            # detect if the constraint was built directly on this equilibrium's
+            # own (R, Z) grid, rather than an arbitrary/sparse set of points.
+            self.full_grid = np.array_equal(
+                self.psi_vals[0], eq.R.reshape(-1)
+            ) and np.array_equal(self.psi_vals[1], eq.Z.reshape(-1))
+
+            if self.full_grid:
+                # constraint was built directly from this equilibrium's own grid
+                # axes - reuse its cached Greens functions instead
+                # of recomputing them pointwise
                 self.G = np.copy(eq._vgreen).reshape((self.n_coils, -1))
 
             # sparse or pointwise constraint case
@@ -1080,8 +1075,6 @@ class Inverse_optimizer:
         # add plasma flux
         b += self.psi_plasma_vals
 
-        # subtract mean value as Gs invariant to constant flux shifts
-        b -= np.mean(b)
         b -= self.psi_vals[2]
         b *= -1
 

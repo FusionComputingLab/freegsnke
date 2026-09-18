@@ -100,7 +100,10 @@ def _flux_surface_geometry(eq, psi_n, fpol_1d):
         ]
     }
 
+    # loop over each poloidal flux surface
     for i, val in enumerate(psi_n):
+
+        # get the coords
         lines = [line for line in cont_gen.lines(val) if line.shape[0] > 0]
         distances = [
             np.min(np.linalg.norm(line - [mag_r, mag_z], axis=1)) for line in lines
@@ -256,25 +259,7 @@ def write_equilibrium_to_ids(
     )
     time_slice.profiles_1d.j_phi = flux_averaged_jtor.squeeze()
 
-    # Remaining profiles all derive from one pass of flux-surface tracing,
-    # plus the safety factor q above. See the write-up accompanying this
-    # change for the full derivation; in short:
-    #
-    # q is defined as q(psi) = (1/2*pi) * d(Phi_tor)/d|psi|, where Phi_tor is
-    # the toroidal flux enclosed by the surface and |psi| = psi_n * |psi_bndry
-    # - psi_axis| is the (unsigned) distance in psi from the axis - unsigned
-    # because q itself is built from |Bp|, not signed Bp, so it already gives
-    # the *magnitude* of the flux-expansion rate regardless of which way psi
-    # runs from axis to edge (freegs4e's psi_axis can be above or below
-    # psi_bndry depending on the current/field directions - here that would
-    # otherwise flip the sign of a naively-integrated Phi_tor). Integrating
-    # gives:
-    #   Phi_tor(psi_n) = integral_0^psi_n  2*pi*q(psi_n') |psi_bndry-psi_axis| dpsi_n'
-    # which we verified against a direct 2D area integral of B_tor over the
-    # enclosed region (agreement to ~1-3%, consistent with the grid
-    # resolution and the missing "wedge" between the axis and our innermost
-    # traced surface, added back in below assuming q is ~constant over that
-    # small residual gap).
+    # Remaining profiles all derive from one pass of flux-surface tracing
     geom = _flux_surface_geometry(eq, psi_n, fpol_1d)
 
     psi_mag = psi_n * abs(eq.psi_bndry - eq.psi_axis)
@@ -282,31 +267,27 @@ def write_equilibrium_to_ids(
     phi_1d = phi_1d + 2 * np.pi * q_1d[0] * psi_mag[0]  # innermost wedge
 
     b0 = ids_out.vacuum_toroidal_field.b0[0]
-    # rho_tor = sqrt(Phi/(pi*b0)) (IMAS DD definition); rho_tor_norm is its
-    # ratio to the boundary value, which cancels the pi*b0 factor
     rho_tor = np.sqrt(phi_1d / (np.pi * b0))
     rho_tor_norm = np.sqrt(phi_1d / phi_1d[-1])
-
-    # |grad(rho_tor)| = (d(rho_tor)/d|psi|) * |grad(psi)| = (d(rho_tor)/d|psi|) * R*Bp,
-    # and d(rho_tor)/d|psi| = q/(b0*rho_tor) (chain rule through Phi_tor, using
-    # the same relation as above) - constant on a given flux surface, so it
-    # factors out of each flux-surface average below
     drho_dpsi_mag = q_1d / (b0 * rho_tor)
     gm1 = geom["avg_inv_R2"]  # <1/R^2>
-    gm9 = geom["avg_inv_R"]  # <1/R>
-    gm7 = drho_dpsi_mag * geom["avg_R_Bp"]  # <|grad(rho_tor)|>
-    gm3 = drho_dpsi_mag**2 * geom["avg_R2_Bp2"]  # <|grad(rho_tor)|^2>
     gm2 = drho_dpsi_mag**2 * geom["avg_Bp2"]  # <|grad(rho_tor)|^2/R^2>
+    gm3 = drho_dpsi_mag**2 * geom["avg_R2_Bp2"]  # <|grad(rho_tor)|^2>
+    gm4 = geom["avg_inv_B2"]  # <1/B^2>
+    gm5 = geom["avg_B2"]  # <B^2>
+    gm7 = drho_dpsi_mag * geom["avg_R_Bp"]  # <|grad(rho_tor)|>
+    gm9 = geom["avg_inv_R"]  # <1/R>
 
-    time_slice.profiles_1d.phi = phi_1d.squeeze()
-    time_slice.profiles_1d.rho_tor_norm = rho_tor_norm.squeeze()
     time_slice.profiles_1d.gm1 = gm1.squeeze()
     time_slice.profiles_1d.gm2 = gm2.squeeze()
     time_slice.profiles_1d.gm3 = gm3.squeeze()
+    time_slice.profiles_1d.gm4 = gm4.squeeze()
+    time_slice.profiles_1d.gm5 = gm5.squeeze()
     time_slice.profiles_1d.gm7 = gm7.squeeze()
     time_slice.profiles_1d.gm9 = gm9.squeeze()
-    time_slice.profiles_1d.gm4 = geom["avg_inv_B2"].squeeze()  # <1/B^2>
-    time_slice.profiles_1d.gm5 = geom["avg_B2"].squeeze()  # <B^2>
+
+    time_slice.profiles_1d.phi = phi_1d.squeeze()
+    time_slice.profiles_1d.rho_tor_norm = rho_tor_norm.squeeze()
     time_slice.profiles_1d.r_inboard = geom["r_inboard"].squeeze()
     time_slice.profiles_1d.r_outboard = geom["r_outboard"].squeeze()
     time_slice.profiles_1d.volume = geom["volume"].squeeze()

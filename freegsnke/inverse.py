@@ -108,7 +108,7 @@ class Inverse_optimizer:
                 [Rcoords, Zcoords, psi_values]
 
             where:
-                Rcoords, Zcoords, psi_values must have identical shapes.
+                Rcoords, Zcoords, psi_values must have identical flattened shapes.
 
             Used to enforce ψ(R,Z) = ψ_target at specified locations.
 
@@ -213,38 +213,12 @@ class Inverse_optimizer:
 
         self.psi_vals = psi_vals
         if self.psi_vals is not None:
-            Rcoords, Zcoords, psi_values = self.psi_vals
-            Rcoords = np.asarray(Rcoords)
-            Zcoords = np.asarray(Zcoords)
-            psi_values = np.asarray(psi_values)
 
-            # Full-grid case: Rcoords/Zcoords are the 1D grid axes (as in
-            # eq.R_1D/eq.Z_1D) and psi_values is the matching 2D array (e.g.
-            # eq.psi()). Rcoords and Zcoords generally have different lengths
-            # from each other and from the flattened psi_values, so this can't
-            # be forced into a single rectangular (3, -1) array - store the
-            # three components as a plain list instead. Keeping Rcoords/Zcoords
-            # as 1D axis vectors (rather than a flattened meshgrid) lets
-            # prepare_for_solve reuse the equilibrium's own cached Greens
-            # functions instead of recomputing them pointwise.
-            if (
-                Rcoords.ndim == 1
-                and Zcoords.ndim == 1
-                and psi_values.shape
-                == (
-                    Rcoords.size,
-                    Zcoords.size,
-                )
-            ):
-                self.full_grid = True
-                self.psi_vals = [Rcoords, Zcoords, psi_values.reshape(-1)]
-            else:
-                self.full_grid = False
-                self.psi_vals = [
-                    Rcoords.reshape(-1),
-                    Zcoords.reshape(-1),
-                    psi_values.reshape(-1),
-                ]
+            Rcoords, Zcoords, psi_values = self.psi_vals
+            Rcoords = np.asarray(Rcoords).reshape(-1)
+            Zcoords = np.asarray(Zcoords).reshape(-1)
+            psi_values = np.asarray(psi_values).reshape(-1)
+            self.psi_vals = [Rcoords, Zcoords, psi_values.reshape(-1)]
 
             # Store magnitude scale of flux constraints
             # Used for normalisation in optimisation loss
@@ -657,9 +631,15 @@ class Inverse_optimizer:
         # ------------------------------------------------------------
         if self.psi_vals is not None:
 
+            # detect if the constraint was built directly on this equilibrium's
+            # own (R, Z) grid, rather than an arbitrary/sparse set of points.
+            self.full_grid = np.array_equal(
+                self.psi_vals[0], eq.R.reshape(-1)
+            ) and np.array_equal(self.psi_vals[1], eq.Z.reshape(-1))
+
             if self.full_grid:
                 # constraint was built directly from this equilibrium's own grid
-                # axes (see __init__) - reuse its cached Greens functions instead
+                # axes - reuse its cached Greens functions instead
                 # of recomputing them pointwise
                 self.G = np.copy(eq._vgreen).reshape((self.n_coils, -1))
 

@@ -17,6 +17,20 @@ SIMPLE_FORMAT = "%(message)s"
 _default_handler: Optional[logging.Handler] = None
 
 
+def _normalize_level(level: Union[int, str]) -> int:
+    """Validate and normalize logging level to integer."""
+    if isinstance(level, str):
+        level_name = level.upper()
+        if hasattr(logging, level_name):
+            val = getattr(logging, level_name)
+            if isinstance(val, int):
+                return val
+        raise ValueError(f"Invalid log level: {level!r}")
+    if isinstance(level, int):
+        return level
+    raise ValueError(f"Invalid log level: {level!r}")
+
+
 def get_logger(name: Optional[str] = None) -> logging.Logger:
     """Return a logger hierarchically scoped under freegsnke.
 
@@ -65,21 +79,21 @@ def setup_logging(
     global _default_handler
     logger = logging.getLogger(PACKAGE_LOGGER_NAME)
 
-    if isinstance(level, str):
-        level = getattr(logging, level.upper(), logging.INFO)
-
-    logger.setLevel(level)
+    norm_level = _normalize_level(level)
+    logger.setLevel(norm_level)
 
     if force:
         logger.handlers.clear()
         _default_handler = None
+    elif _default_handler is not None and _default_handler in logger.handlers:
+        logger.removeHandler(_default_handler)
+        _default_handler = None
 
-    if not logger.handlers:
-        handler = logging.StreamHandler(stream)
-        handler.setLevel(level)
-        handler.setFormatter(logging.Formatter(fmt or DEFAULT_FORMAT))
-        logger.addHandler(handler)
-        _default_handler = handler
+    handler = logging.StreamHandler(stream)
+    handler.setLevel(norm_level)
+    handler.setFormatter(logging.Formatter(fmt or DEFAULT_FORMAT))
+    logger.addHandler(handler)
+    _default_handler = handler
 
     return logger
 
@@ -92,28 +106,29 @@ def set_log_level(level: Union[int, str]) -> None:
     level : int or str
         Logging level (e.g. logging.DEBUG, logging.INFO, "DEBUG", "WARNING").
     """
-    if isinstance(level, str):
-        level = getattr(logging, level.upper(), logging.INFO)
-
+    norm_level = _normalize_level(level)
     logger = logging.getLogger(PACKAGE_LOGGER_NAME)
-    logger.setLevel(level)
+    logger.setLevel(norm_level)
     for handler in logger.handlers:
-        handler.setLevel(level)
+        handler.setLevel(norm_level)
 
 
 def enable_default_handler() -> None:
     """Ensure a default stdout handler is attached to the freegsnke logger if missing."""
     global _default_handler
     logger = logging.getLogger(PACKAGE_LOGGER_NAME)
-    if not logger.handlers:
-        setup_logging(level=logging.INFO, stream=sys.stdout)
+    # Remove NullHandler if present
+    for nh in [h for h in logger.handlers if isinstance(h, logging.NullHandler)]:
+        logger.removeHandler(nh)
+    if _default_handler is None or _default_handler not in logger.handlers:
+        setup_logging(level=logger.level or logging.INFO, stream=sys.stdout)
 
 
 def disable_default_handler() -> None:
     """Remove default handler and attach a NullHandler (pure library behavior)."""
     global _default_handler
     logger = logging.getLogger(PACKAGE_LOGGER_NAME)
-    if _default_handler in logger.handlers:
+    if _default_handler is not None and _default_handler in logger.handlers:
         logger.removeHandler(_default_handler)
         _default_handler = None
     if not any(isinstance(h, logging.NullHandler) for h in logger.handlers):

@@ -19,7 +19,11 @@ You should have received a copy of the GNU Lesser General Public License
 along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.   
 """
 
+import logging
+
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 
 class mode_decomposition:
@@ -81,11 +85,11 @@ class mode_decomposition:
         # Pmatrix_passive_m1 = np.linalg.inv(Pmatrix_passive)
 
         if np.any(w_active < 0):
-            print(
+            logger.warning(
                 "Negative eigenvalues in active coils! Please check coil sizes and coordinates."
             )
         if np.any(self.w_passive < 0):
-            print(
+            logger.warning(
                 "Negative eigenvalues in passive vessel! Please check coil sizes and coordinates."
             )
 

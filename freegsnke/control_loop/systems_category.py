@@ -19,10 +19,13 @@ You should have received a copy of the GNU Lesser General Public License
 along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 """
 
+import logging
 from typing import Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 from freegsnke.control_loop.useful_functions import (
     Waveform,
@@ -231,19 +234,19 @@ class SystemsController:
         )
 
         # print if required
-        if verbose:
-            print("---")
+        if verbose or logger.isEnabledFor(logging.INFO):
+            logger.info("---")
 
             if not np.allclose(I_approved, I_perturbed):
-                print("    Coil currents clipped (according to `min/max_coil_limits`).")
+                logger.info("    Coil currents clipped (according to `min/max_coil_limits`).")
 
             if not np.allclose(dI_dt_approved, dI_dt_perturbed):
-                print(
+                logger.info(
                     "    Coil current deltas clipped (according to `max_coil_delta_limits`)."
                 )
 
-            print(f"    Approved coil currents = {I_approved}")
-            print(f"    Approved delta coil currents = {dI_dt_approved}")
+            logger.info("    Approved coil currents = %s", I_approved)
+            logger.info("    Approved delta coil currents = %s", dI_dt_approved)
 
         return I_approved.squeeze(), dI_dt_approved.squeeze()
 

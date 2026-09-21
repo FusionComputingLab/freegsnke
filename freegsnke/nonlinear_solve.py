@@ -19,10 +19,13 @@ You should have received a copy of the GNU Lesser General Public License
 along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 """
 
+import logging
 import multiprocessing
 import warnings
 from concurrent.futures import ProcessPoolExecutor
 from copy import deepcopy
+
+logger = logging.getLogger(__name__)
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -192,8 +195,6 @@ class nl_solver:
             ``dIydtheta`` columns during initial and later linearisations. A value
             of 1 retains the serial calculation.
         """
-        print("-----")
-
         # grid parameters
         self.nx = eq.nx
         self.ny = eq.ny
@@ -239,13 +240,16 @@ class nl_solver:
 
         # check number of passives
         if self.n_passive_coils < fix_n_vessel_modes:
-            print(
-                f"'fix_n_vessel_modes' ({fix_n_vessel_modes}) exceeds number of passive strucutres ({self.n_passive_coils}), setting 'fix_n_vessel_modes' to {self.n_passive_coils} "
+            logger.warning(
+                "'fix_n_vessel_modes' (%s) exceeds number of passive structures (%s), setting 'fix_n_vessel_modes' to %s",
+                fix_n_vessel_modes,
+                self.n_passive_coils,
+                self.n_passive_coils,
             )
             fix_n_vessel_modes = self.n_passive_coils
 
         # check input eq and profiles are a GS solution
-        print("Checking that the provided 'eq' and 'profiles' are a GS solution...")
+        logger.info("Checking that the provided 'eq' and 'profiles' are a GS solution...")
 
         # storing the static solver
         self.NK = GSStaticSolver
@@ -255,7 +259,6 @@ class nl_solver:
             target_relative_tolerance=target_relative_tolerance_linearization,
             verbose=False,
         )
-        print("-----")
 
         # set internal copy of the equilibrium and profile
         self.eq1 = eq.create_auxiliary_equilibrium()
@@ -287,15 +290,14 @@ class nl_solver:
         # prepare for mode selection
         if max_mode_frequency is None:
             self.max_mode_frequency = 1 / (5 * full_timestep)
-            print(
-                "Value of 'max_mode_frequency' has not been provided. Set to",
+            logger.info(
+                "Value of 'max_mode_frequency' has not been provided. Set to %s based on value of 'full_timestep' as provided.",
                 self.max_mode_frequency,
-                "based on value of 'full_timestep' as provided.",
             )
         else:
             self.max_mode_frequency = max_mode_frequency
 
-        print("Instantiating nonlinear solver objects...")
+        logger.info("Instantiating nonlinear solver objects...")
 
         # handles the metal circuit eq, mode properties, and performs the vessel mode decomposition
         self.evol_metal_curr = metal_currents(
@@ -331,10 +333,8 @@ class nl_solver:
         self.starting_dI = target_dIy / mode_coupling_metric
         self.final_dI_record = np.zeros_like(self.starting_dI)
         self.approved_target_dIy = target_dIy * np.ones_like(self.starting_dI)
-        print("done.")
-        print("-----")
 
-        print("Identifying mode selection criteria...")
+        logger.info("Identifying mode selection criteria...")
         if self.n_passive_coils > 0:
             # prepare ndIydI_no_GS for mode selection
             self.build_dIydI_noGS(
@@ -351,18 +351,16 @@ class nl_solver:
                 mode_coupling_masks = None
                 if fix_n_vessel_modes >= 0:
                     fixed_n_timescale_modes = fix_n_vessel_modes
-                    print(
-                        "      'mode_selection=timescale' selected: retaining "
-                        f"the {fix_n_vessel_modes} lowest-frequency passive modes."
+                    logger.info(
+                        "      'mode_selection=timescale' selected: retaining the %s lowest-frequency passive modes.",
+                        fix_n_vessel_modes,
                     )
                 else:
-                    print(
-                        "      'mode_selection=timescale' selected: retaining only "
-                        "passive modes below 'max_mode_frequency'."
+                    logger.info(
+                        "      'mode_selection=timescale' selected: retaining only passive modes below 'max_mode_frequency'."
                     )
-                print(
-                    "      Plasma-coupling metrics are not used for mode selection "
-                    "or subsequent mode removal."
+                logger.info(
+                    "      Plasma-coupling metrics are not used for mode selection or subsequent mode removal."
                 )
             else:
                 # Coupling selection starts from the no-GS response norm. The
@@ -372,8 +370,8 @@ class nl_solver:
 
             if mode_selection == "coupling" and fix_n_vessel_modes >= 0:
                 # select modes based on ndIydI_no_GS up to fix_n_modes exactly
-                print(
-                    f"      'fix_n_vessel_modes' option selected --> passive structure modes that couple most to the strongest passive structure mode are being selected."
+                logger.info(
+                    "      'fix_n_vessel_modes' option selected --> passive structure modes that couple most to the strongest passive structure mode are being selected."
                 )
 
                 if fix_n_vessel_modes > 0:
@@ -398,8 +396,8 @@ class nl_solver:
                 # the number of modes is being fixed:
                 mode_removal = False
             elif mode_selection == "coupling":
-                print(
-                    f"      'threshold_dIy_dI', 'min_dIy_dI', and 'max_mode_frequency' options selected --> passive structure modes are selected according to these thresholds."
+                logger.info(
+                    "      'threshold_dIy_dI', 'min_dIy_dI', and 'max_mode_frequency' options selected --> passive structure modes are selected according to these thresholds."
                 )
                 # select modes based on ndIydI_no_GS using values of threshold_dIy_dI
                 mode_coupling_mask_include = np.concatenate(
@@ -423,7 +421,7 @@ class nl_solver:
                     mode_coupling_mask_exclude,
                 )
         else:
-            print("      no passive modes present!")
+            logger.info("      no passive modes present!")
 
             # only active coils selected
             mode_coupling_mask_include = [True] * self.n_active_coils
@@ -437,9 +435,7 @@ class nl_solver:
             mode_coupling_masks = None
             fixed_n_timescale_modes = None
 
-        print("-----")
-
-        print(f"Initial mode selection:")
+        logger.info("Initial mode selection:")
         # enact the mode selection
         self.evol_metal_curr.initialize_for_eig(
             selected_modes_mask=None,
@@ -449,19 +445,23 @@ class nl_solver:
         )
 
         if mode_selection == "coupling" and fix_n_vessel_modes >= 0:
-            print(f"   Active coils")
-            print(
-                f"      total selected = {self.n_active_coils} (out of {self.n_active_coils})"
+            logger.info("   Active coils")
+            logger.info(
+                "      total selected = %d (out of %d)",
+                self.n_active_coils,
+                self.n_active_coils,
             )
-            print(f"   Passive structures")
-            print(f"      {fix_n_vessel_modes} selected using 'fix_n_vessel_modes'")
-            print(
-                f"   Total number of modes = {self.evol_metal_curr.n_independent_vars} ({self.n_active_coils} active coils + {fix_n_vessel_modes} passive structures)"
+            logger.info("   Passive structures")
+            logger.info("      %s selected using 'fix_n_vessel_modes'", fix_n_vessel_modes)
+            logger.info(
+                "   Total number of modes = %d (%d active coils + %s passive structures)",
+                self.evol_metal_curr.n_independent_vars,
+                self.n_active_coils,
+                fix_n_vessel_modes,
             )
-            print(
-                f"      (Note: some additional modes may be removed after Jacobian calculation if 'mode_removal=True')"
+            logger.info(
+                "      (Note: some additional modes may be removed after Jacobian calculation if 'mode_removal=True')"
             )
-        print("-----")
 
         # this is the number of independent normal mode currents being used
         self.n_metal_modes = self.evol_metal_curr.n_independent_vars
@@ -627,7 +627,6 @@ class nl_solver:
                 force_core_mask_linearization=force_core_mask_linearization,
                 plasma_descriptor_function=plasma_descriptor_function,
             )
-            print("-----")
 
         # remove passive normal modes that have norm(dIydI) < min_dIy_dI*strongest mode
         if mode_removal:
@@ -667,14 +666,13 @@ class nl_solver:
 
             self.remove_modes(eq, self.retained_modes_mask[:-1])
 
-            print(
-                f"   Re-sizing the Jacobian matrix to account for any removed modes (if required)."
+            logger.info(
+                "   Re-sizing the Jacobian matrix to account for any removed modes (if required)."
             )
-            print("-----")
 
         # check if input equilibrium and associated linearization have an instability, and its timescale
         if automatic_timestep_flag + mode_removal + linearize:
-            print("Stability paramters:")
+            logger.info("Stability parameters:")
             self.linearised_sol.calculate_linear_growth_rate()
             self.linearised_sol.calculate_stability_margin()
             self.calculate_Leuer_parameter()
@@ -682,53 +680,58 @@ class nl_solver:
             if len(self.linearised_sol.growth_rates):
                 self.unstable_mode_deformations()
                 # deformable plasma metrics
-                print(f"   Deformable plasma metrics:")
-                print(f"      Growth rate = {self.linearised_sol.growth_rates} [1/s]")
-                print(
-                    f"      Instability timescale = {self.linearised_sol.instability_timescale} [s]"
+                logger.info("   Deformable plasma metrics:")
+                logger.info("      Growth rate = %s [1/s]", self.linearised_sol.growth_rates)
+                logger.info(
+                    "      Instability timescale = %s [s]",
+                    self.linearised_sol.instability_timescale,
                 )
-                print(
-                    f"      Inductive stability margin = {self.linearised_sol.stability_margin}"
+                logger.info(
+                    "      Inductive stability margin = %s",
+                    self.linearised_sol.stability_margin,
                 )
 
                 # rigid plasma metrics
-                print(f"   Rigid plasma metrics:")
-                print(
-                    f"      Leuer parameter (ratio of stabilsing to de-stabilising force gradients):"
+                logger.info("   Rigid plasma metrics:")
+                logger.info(
+                    "      Leuer parameter (ratio of stabilising to de-stabilising force gradients):"
                 )
-                print(
-                    f"          between all metals and all metals = {self.Leuer_metals_stab_over_metals_destab}"
+                logger.info(
+                    "          between all metals and all metals = %s",
+                    self.Leuer_metals_stab_over_metals_destab,
                 )
-                print(
-                    f"          between all metals and active metals = {self.Leuer_metals_stab_over_active_destab}"
+                logger.info(
+                    "          between all metals and active metals = %s",
+                    self.Leuer_metals_stab_over_active_destab,
                 )
-                print(
-                    f"          between passive metals and active metals = {self.Leuer_passive_stab_over_active_destab}"
+                logger.info(
+                    "          between passive metals and active metals = %s",
+                    self.Leuer_passive_stab_over_active_destab,
                 )
 
             else:
-                print(
-                    f"      No unstable modes found: either plasma stable, or more likely, it is Alfven unstable (i.e. needs more stabilisation from coils and passives)."
+                logger.warning(
+                    "      No unstable modes found: either plasma stable, or more likely, it is Alfven unstable (i.e. needs more stabilisation from coils and passives)."
                 )
                 if fix_n_vessel_modes >= 0:
-                    print(
-                        f"      Try adding more passive modes (by increasing 'fix_n_vessel_modes')."
+                    logger.warning(
+                        "      Try adding more passive modes (by increasing 'fix_n_vessel_modes')."
                     )
                 else:
-                    print(
-                        f"      Try adding more passive modes (by increasing 'max_mode_frequency' and/or 'threshold_dIy_dI' and/or reducing 'min_dIy_dI'."
+                    logger.warning(
+                        "      Try adding more passive modes (by increasing 'max_mode_frequency' and/or 'threshold_dIy_dI' and/or reducing 'min_dIy_dI')."
                     )
-        print("-----")
 
         # if automatic_timestep, reset the timestep accordingly,
         # note that this requires having found an instability
-        print("Evolutive solver timestep:")
+        logger.info("Evolutive solver timestep:")
         if automatic_timestep_flag is False:
-            print(
-                f"      Solver timestep 'dt_step' has been set to {self.dt_step} as requested."
+            logger.info(
+                "      Solver timestep 'dt_step' has been set to %s as requested.",
+                self.dt_step,
             )
-            print(
-                f"      Ensure it is smaller than the growth rate else you may find numerical instability in any subsequent evoltuive simulations!"
+            logger.info(
+                "      Ensure it is smaller than the growth rate else you may find numerical instability in any subsequent evolutive simulations!"
             )
         else:
             if len(self.linearised_sol.growth_rates):
@@ -739,15 +742,14 @@ class nl_solver:
                     full_timestep=dt_step,
                     max_internal_timestep=dt_step / automatic_timestep[1],
                 )
-                print(
-                    f"      Solver timestep 'dt_step' has been reset to {self.dt_step} using the growth rate and scaling factors in 'automatic_timestep'."
+                logger.info(
+                    "      Solver timestep 'dt_step' has been reset to %s using the growth rate and scaling factors in 'automatic_timestep'.",
+                    self.dt_step,
                 )
             else:
-                print(
-                    f"      Given no unstable modes found, it is impossible to automatically set the timestep! Please do so manually."
+                logger.warning(
+                    "      Given no unstable modes found, it is impossible to automatically set the timestep! Please do so manually."
                 )
-
-        print("-----")
 
         # text for verbose mode
         self.text_nk_cycle = "This is NK cycle no {nkcycle}."
@@ -1081,12 +1083,11 @@ class nl_solver:
                 starting_dtheta[0] * target_dIy[0] / rel_ndIy_0[0]
             )
 
-            if verbose:
-                print("")
-                print("Profile parameter: alpha_m:")
-                print(f"  Initial delta parameter = {starting_dtheta[0]}")
-                print(f"  Initial relative Iy change = {rel_ndIy_0[0]}")
-                print(f"  Final delta parameter = {self.final_dtheta_record[0]}")
+            if verbose or logger.isEnabledFor(logging.DEBUG):
+                logger.debug("Profile parameter: alpha_m:")
+                logger.debug("  Initial delta parameter = %s", starting_dtheta[0])
+                logger.debug("  Initial relative Iy change = %s", rel_ndIy_0[0])
+                logger.debug("  Final delta parameter = %s", self.final_dtheta_record[0])
 
             # vary alpha_n
             self.check_and_change_profiles(
@@ -1111,12 +1112,11 @@ class nl_solver:
                 starting_dtheta[1] * target_dIy[1] / rel_ndIy_0[1]
             )
 
-            if verbose:
-                print("")
-                print("Profile parameter: alpha_n:")
-                print(f"  Initial delta parameter = {starting_dtheta[1]}")
-                print(f"  Initial relative Iy change = {rel_ndIy_0[1]}")
-                print(f"  Final delta parameter = {self.final_dtheta_record[1]}")
+            if verbose or logger.isEnabledFor(logging.DEBUG):
+                logger.debug("Profile parameter: alpha_n:")
+                logger.debug("  Initial delta parameter = %s", starting_dtheta[1])
+                logger.debug("  Initial relative Iy change = %s", rel_ndIy_0[1])
+                logger.debug("  Final delta parameter = %s", self.final_dtheta_record[1])
 
             # vary paxis, betap or Beta0
             self.check_and_change_profiles(
@@ -1142,12 +1142,11 @@ class nl_solver:
                 starting_dtheta[2] * target_dIy[2] / rel_ndIy_0[2]
             )
 
-            if verbose:
-                print("")
-                print(f"Profile parameter: {self.profiles_param}:")
-                print(f"  Initial delta parameter = {starting_dtheta[2]}")
-                print(f"  Initial relative Iy change = {rel_ndIy_0[2]}")
-                print(f"  Final delta parameter = {self.final_dtheta_record[2]}")
+            if verbose or logger.isEnabledFor(logging.DEBUG):
+                logger.debug("Profile parameter: %s:", self.profiles_param)
+                logger.debug("  Initial delta parameter = %s", starting_dtheta[2])
+                logger.debug("  Initial relative Iy change = %s", rel_ndIy_0[2])
+                logger.debug("  Final delta parameter = %s", self.final_dtheta_record[2])
 
             # reset profiles in profiles1 and profiles2 objects
             self.check_and_change_profiles(
@@ -1217,12 +1216,11 @@ class nl_solver:
                     starting_dtheta[i] * target_dIy[i] / rel_ndIy_0[i]
                 )
 
-                if verbose:
-                    print("")
-                    print(f"Profile parameter: alpha_{i}:")
-                    print(f"  Initial delta parameter = {starting_dtheta[i]}")
-                    print(f"  Initial relative Iy change = {rel_ndIy_0[i]}")
-                    print(f"  Final delta parameter = {self.final_dtheta_record[i]}")
+                if verbose or logger.isEnabledFor(logging.DEBUG):
+                    logger.debug("Profile parameter: alpha_%s:", i)
+                    logger.debug("  Initial delta parameter = %s", starting_dtheta[i])
+                    logger.debug("  Initial relative Iy change = %s", rel_ndIy_0[i])
+                    logger.debug("  Final delta parameter = %s", self.final_dtheta_record[i])
 
             # for each beta coefficient
             beta_base = profiles.beta.copy()
@@ -1262,17 +1260,19 @@ class nl_solver:
                     / rel_ndIy_0[i + self.n_profiles_parameters_alpha]
                 )
 
-                if verbose:
-                    print("")
-                    print(f"Profile parameter: beta_{i}:")
-                    print(
-                        f"  Initial delta parameter = {starting_dtheta[i + self.n_profiles_parameters_alpha]}"
+                if verbose or logger.isEnabledFor(logging.DEBUG):
+                    logger.debug("Profile parameter: beta_%s:", i)
+                    logger.debug(
+                        "  Initial delta parameter = %s",
+                        starting_dtheta[i + self.n_profiles_parameters_alpha],
                     )
-                    print(
-                        f"  Initial relative Iy change = {rel_ndIy_0[i + self.n_profiles_parameters_alpha]}"
+                    logger.debug(
+                        "  Initial relative Iy change = %s",
+                        rel_ndIy_0[i + self.n_profiles_parameters_alpha],
                     )
-                    print(
-                        f"  Final delta parameter = {self.final_dtheta_record[i + self.n_profiles_parameters_alpha]}"
+                    logger.debug(
+                        "  Final delta parameter = %s",
+                        self.final_dtheta_record[i + self.n_profiles_parameters_alpha],
                     )
 
                 # reset profiles in profiles1 and profiles2 objects
@@ -1353,12 +1353,13 @@ class nl_solver:
             dIydtheta[:, 0] = dIy_1 / final_theta[0]
             dv = plasma_descriptor_function(self.eq2) - self.initial_plasma_descriptors
             dvdtheta[:, 0] = dv / final_theta[0]
-            if verbose:
-                print("")
-                print(f"Profile parameter: alpha_m:")
-                print(f"  Final relative Iy change = {rel_ndIy[0]}")
-                print(
-                    f"  Initial vs. Final GS residual: {self.NK.initial_rel_residual} vs. {self.NK.relative_change}"
+            if verbose or logger.isEnabledFor(logging.DEBUG):
+                logger.debug("Profile parameter: alpha_m:")
+                logger.debug("  Final relative Iy change = %s", rel_ndIy[0])
+                logger.debug(
+                    "  Initial vs. Final GS residual: %s vs. %s",
+                    self.NK.initial_rel_residual,
+                    self.NK.relative_change,
                 )
 
             # vary alpha_n
@@ -1377,12 +1378,13 @@ class nl_solver:
             dIydtheta[:, 1] = dIy_1 / final_theta[1]
             dv = plasma_descriptor_function(self.eq2) - self.initial_plasma_descriptors
             dvdtheta[:, 1] = dv / final_theta[1]
-            if verbose:
-                print("")
-                print(f"Profile parameter: alpha_n:")
-                print(f"  Final relative Iy change = {rel_ndIy[1]}")
-                print(
-                    f"  Initial vs. Final GS residual: {self.NK.initial_rel_residual} vs. {self.NK.relative_change}"
+            if verbose or logger.isEnabledFor(logging.DEBUG):
+                logger.debug("Profile parameter: alpha_n:")
+                logger.debug("  Final relative Iy change = %s", rel_ndIy[1])
+                logger.debug(
+                    "  Initial vs. Final GS residual: %s vs. %s",
+                    self.NK.initial_rel_residual,
+                    self.NK.relative_change,
                 )
 
             # vary paxis, betap or Beta0
@@ -1402,12 +1404,13 @@ class nl_solver:
             dIydtheta[:, 2] = dIy_1 / final_theta[2]
             dv = plasma_descriptor_function(self.eq2) - self.initial_plasma_descriptors
             dvdtheta[:, 2] = dv / final_theta[2]
-            if verbose:
-                print("")
-                print(f"Profile parameter: {self.profiles_param}:")
-                print(f"  Final relative Iy change = {rel_ndIy[2]}")
-                print(
-                    f"  Initial vs. Final GS residual: {self.NK.initial_rel_residual} vs. {self.NK.relative_change}"
+            if verbose or logger.isEnabledFor(logging.DEBUG):
+                logger.debug("Profile parameter: %s:", self.profiles_param)
+                logger.debug("  Final relative Iy change = %s", rel_ndIy[2])
+                logger.debug(
+                    "  Initial vs. Final GS residual: %s vs. %s",
+                    self.NK.initial_rel_residual,
+                    self.NK.relative_change,
                 )
 
             # reset profiles in profiles1 and profiles2 objects
@@ -1448,12 +1451,13 @@ class nl_solver:
                     - self.initial_plasma_descriptors
                 )
                 dvdtheta[:, i] = dv / final_theta[i]
-                if verbose:
-                    print("")
-                    print(f"Profile parameter: alpha_{i}:")
-                    print(f"  Final relative Iy change = {rel_ndIy[i]}")
-                    print(
-                        f"  Initial vs. Final GS residual: {self.NK.initial_rel_residual} vs. {self.NK.relative_change}"
+                if verbose or logger.isEnabledFor(logging.DEBUG):
+                    logger.debug("Profile parameter: alpha_%s:", i)
+                    logger.debug("  Final relative Iy change = %s", rel_ndIy[i])
+                    logger.debug(
+                        "  Initial vs. Final GS residual: %s vs. %s",
+                        self.NK.initial_rel_residual,
+                        self.NK.relative_change,
                     )
 
             # for each beta coefficient
@@ -1491,14 +1495,16 @@ class nl_solver:
                     dv / final_theta[i + self.n_profiles_parameters_alpha]
                 )
 
-                if verbose:
-                    print("")
-                    print(f"Profile parameter: beta_{i}:")
-                    print(
-                        f"  Final relative Iy change = {rel_ndIy[i + self.n_profiles_parameters_alpha]}"
+                if verbose or logger.isEnabledFor(logging.DEBUG):
+                    logger.debug("Profile parameter: beta_%s:", i)
+                    logger.debug(
+                        "  Final relative Iy change = %s",
+                        rel_ndIy[i + self.n_profiles_parameters_alpha],
                     )
-                    print(
-                        f"  Initial vs. Final GS residual: {self.NK.initial_rel_residual} vs. {self.NK.relative_change}"
+                    logger.debug(
+                        "  Initial vs. Final GS residual: %s vs. %s",
+                        self.NK.initial_rel_residual,
+                        self.NK.relative_change,
                     )
 
             # reset profiles in profiles1 and profiles2 objects
@@ -2030,10 +2036,10 @@ class nl_solver:
                     )
                 else:
                     reused_starting_dI = self.update_starting_dI()
-                print(
-                    f"Building the {self.plasma_domain_size} x {self.n_metal_modes + 1} Jacobian (dIy/dI)",
-                    "of plasma current density (inside the LCFS)",
-                    "with respect to all metal currents and the total plasma current.",
+                logger.info(
+                    "Building the %s x %s Jacobian (dIy/dI) of plasma current density (inside the LCFS) with respect to all metal currents and the total plasma current.",
+                    self.plasma_domain_size,
+                    self.n_metal_modes + 1,
                 )
 
                 self.dIydI = np.zeros((self.plasma_domain_size, self.n_metal_modes + 1))
@@ -2066,16 +2072,16 @@ class nl_solver:
                     relative_change,
                     current_at_last_linearization,
                 ) in column_results:
-                    if verbose:
-                        print("")
-                        print(f"Mode: {j}")
-                        print(f"  Initial delta_current = {starting_dI}")
-                        print(f"  Initial relative Iy change = {ndIy}")
-                        print(f"  Final delta_current = {final_dI}")
-                        print("")
-                        print(f"  Final relative Iy change = {rel_ndIy}")
-                        print(
-                            f"  Initial vs. Final GS residual: {initial_rel_residual} vs. {relative_change}"
+                    if verbose or logger.isEnabledFor(logging.DEBUG):
+                        logger.debug("Mode: %s", j)
+                        logger.debug("  Initial delta_current = %s", starting_dI)
+                        logger.debug("  Initial relative Iy change = %s", ndIy)
+                        logger.debug("  Final delta_current = %s", final_dI)
+                        logger.debug("  Final relative Iy change = %s", rel_ndIy)
+                        logger.debug(
+                            "  Initial vs. Final GS residual: %s vs. %s",
+                            initial_rel_residual,
+                            relative_change,
                         )
 
                     self.dIydI[:, j] = dIydIj
@@ -2101,10 +2107,10 @@ class nl_solver:
         # build/update dIydtheta
         if dIydtheta is None and force_core_mask_linearization is False:
             if self.dIydtheta_ICs is None:
-                print(
-                    f"Building the {self.plasma_domain_size} x {self.n_profiles_parameters} Jacobian (dIy/dtheta)",
-                    "of plasma current density (inside the LCFS)",
-                    "with respect to all plasma current density profile parameters within Jtor.",
+                logger.info(
+                    "Building the %s x %s Jacobian (dIy/dtheta) of plasma current density (inside the LCFS) with respect to all plasma current density profile parameters within Jtor.",
+                    self.plasma_domain_size,
+                    self.n_profiles_parameters,
                 )
 
                 self.dIydtheta = np.zeros(
@@ -2148,13 +2154,12 @@ class nl_solver:
                     self.final_dtheta_record[j] = (
                         self.starting_dtheta[j] * self.approved_target_dtheta[j] / ndIy
                     )
-                    if verbose:
-                        print("")
-                        print(f"Profile parameter: {self._profile_parameter_name(j)}:")
-                        print(f"  Initial delta parameter = {self.starting_dtheta[j]}")
-                        print(f"  Initial relative Iy change = {ndIy}")
-                        print(
-                            f"  Final delta parameter = {self.final_dtheta_record[j]}"
+                    if verbose or logger.isEnabledFor(logging.DEBUG):
+                        logger.debug("Profile parameter: %s:", self._profile_parameter_name(j))
+                        logger.debug("  Initial delta parameter = %s", self.starting_dtheta[j])
+                        logger.debug("  Initial relative Iy change = %s", ndIy)
+                        logger.debug(
+                            "  Final delta parameter = %s", self.final_dtheta_record[j]
                         )
 
                 if (
@@ -2177,15 +2182,15 @@ class nl_solver:
                     ) in column_results:
                         self.dIydtheta[:, j] = column
                         self.dvdtheta[:, j] = descriptor_column
-                        if verbose:
-                            print("")
-                            print(
-                                f"Profile parameter: {self._profile_parameter_name(j)}:"
+                        if verbose or logger.isEnabledFor(logging.DEBUG):
+                            logger.debug(
+                                "Profile parameter: %s:", self._profile_parameter_name(j)
                             )
-                            print(f"  Final relative Iy change = {rel_ndIy}")
-                            print(
-                                "  Initial vs. Final GS residual: "
-                                f"{initial_rel_residual} vs. {relative_change}"
+                            logger.debug("  Final relative Iy change = %s", rel_ndIy)
+                            logger.debug(
+                                "  Initial vs. Final GS residual: %s vs. %s",
+                                initial_rel_residual,
+                                relative_change,
                             )
 
                 else:
@@ -2194,15 +2199,15 @@ class nl_solver:
                 self.dIydtheta_ICs = np.copy(self.dIydtheta)
 
                 if plasma_descriptor_function is not None:
-                    print(
-                        f"Built the {len(self.initial_plasma_descriptors)} x {self.n_metal_modes + 1} Jacobian (ds/dI)",
-                        "of plasma descriptors",
-                        "with respect to all metal currents and the total plasma current.",
+                    logger.info(
+                        "Built the %s x %s Jacobian (ds/dI) of plasma descriptors with respect to all metal currents and the total plasma current.",
+                        len(self.initial_plasma_descriptors),
+                        self.n_metal_modes + 1,
                     )
-                    print(
-                        f"Built the {len(self.initial_plasma_descriptors)} x {self.n_profiles_parameters} Jacobian (ds/dtheta)",
-                        "of plasma descriptors",
-                        "with respect to all plasma current density profile parameters within Jtor.",
+                    logger.info(
+                        "Built the %s x %s Jacobian (ds/dtheta) of plasma descriptors with respect to all plasma current density profile parameters within Jtor.",
+                        len(self.initial_plasma_descriptors),
+                        self.n_profiles_parameters,
                     )
 
             else:
@@ -2657,8 +2662,8 @@ class nl_solver:
 
         """
 
-        if verbose:
-            print("Relinearising around the current plasma")
+        if verbose or logger.isEnabledFor(logging.INFO):
+            logger.info("Relinearising around the current plasma")
 
         # create and store auxiliary copies of eq and profiles
         original_eq1 = self.eq1.create_auxiliary_equilibrium()
@@ -3429,21 +3434,23 @@ class nl_solver:
                 relinearise = self.relinearise_criteria >= relinearise_threshold
 
         if linear_only and relinearise:
-            print("Re-linearising around current equilibrium!")
+            logger.info("Re-linearising around current equilibrium!")
             # before relinearisation we need to solve GS to update the eq object and obtain new plasma descriptors
             if no_GS:
                 self.assign_currents_solve_GS(self.trial_currents, 1e-7)
                 # sync eq1/profiles1 to the trial solution for relinearise() to use,
                 # without completing a timestep (this is not a real time advancement)
                 self.assign_trial_solution_state(from_linear=True)
-                print(
-                    f"   Absolute relinearisation criteria change = {np.round(self.relinearise_criteria, 3)} "
-                    f"(threshold = {np.round(relinearise_threshold, 3)}) "
+                logger.info(
+                    "   Absolute relinearisation criteria change = %s (threshold = %s)",
+                    np.round(self.relinearise_criteria, 3),
+                    np.round(relinearise_threshold, 3),
                 )
             else:
-                print(
-                    f"   Relative relinearisation criteria change = {np.round(self.relinearise_criteria * 100, 3)}% "
-                    f"(threshold = {np.round(relinearise_threshold * 100, 3)}%) "
+                logger.info(
+                    "   Relative relinearisation criteria change = %s%% (threshold = %s%%)",
+                    np.round(self.relinearise_criteria * 100, 3),
+                    np.round(relinearise_threshold * 100, 3),
                 )
             self.relinearise(verbose=verbose)
 
@@ -3502,10 +3509,9 @@ class nl_solver:
             # assign currents and plasma flux to self.currents_vec, self.eq1 and self.profiles1 and complete step
             self.step_complete_assign(working_relative_tol_GS, from_linear=True)
             if myy_flag:
-                print(
-                    "The plasma used for calculating the adopted linearization and the plasma in this evolution have departed by more than",
+                logger.warning(
+                    "The plasma used for calculating the adopted linearization and the plasma in this evolution have departed by more than %s domain pixels. The linearization may not be accurate.",
                     self.handleMyy.tolerance,
-                    "domain pixels. The linearization may not be accurate.",
                 )
 
             # when not solving GS, evolve the plasma descriptors
@@ -3528,8 +3534,8 @@ class nl_solver:
             # seek solution of the full nonlinear problem
 
             if myy_flag:
-                if verbose:
-                    print("The Myy matrix is being recalculated.")
+                if verbose or logger.isEnabledFor(logging.DEBUG):
+                    logger.debug("The Myy matrix is being recalculated.")
                 # recalculate Myy
                 self.handleMyy.force_build_Myy(self.hatIy)
 
@@ -3551,12 +3557,10 @@ class nl_solver:
 
             args_nk = [active_voltage_vec, self.rtol_NK]
 
-            if verbose:
-                print("starting numerical solve:")
-                print(
-                    "max(residual on current eqs) =",
+            if verbose or logger.isEnabledFor(logging.DEBUG):
+                logger.debug(
+                    "starting numerical solve: max(residual on current eqs) = %s mean(residual on current eqs) = %s",
                     np.amax(rel_curr_res),
-                    "mean(residual on current eqs) =",
                     np.mean(rel_curr_res),
                 )
             log = []
@@ -3565,9 +3569,9 @@ class nl_solver:
             iterations = 0
 
             while control and (iterations < max_solving_iterations):
-                if verbose:
+                if verbose or logger.isEnabledFor(logging.DEBUG):
                     for _ in log:
-                        print(_)
+                        logger.debug("%s", _)
 
                 log = [self.text_nk_cycle.format(nkcycle=iterations)]
 
@@ -3683,19 +3687,25 @@ class nl_solver:
 
             # if max_iterations exceeded, print warning
             if iterations >= max_solving_iterations:
-                print(f"Forward evolutive solve DID NOT CONVERGE.")
+                logger.warning("Forward evolutive solve DID NOT CONVERGE.")
                 self.converged = False
             else:
-                print(f"Forward evolutive solve SUCCESS.")
+                logger.info("Forward evolutive solve SUCCESS.")
                 self.converged = True
-            print(
-                f"   Last max. relative currents change: {np.max(rel_curr_res):.2e} (vs. requested {target_relative_tol_currents:.2e})."
+            logger.info(
+                "   Last max. relative currents change: %.2e (vs. requested %.2e).",
+                np.max(rel_curr_res),
+                target_relative_tol_currents,
             )
-            print(
-                f"   Last max. relative flux change: {np.max(r_res_GS):.2e} (vs. requested {target_relative_tol_GS:.2e})."
+            logger.info(
+                "   Last max. relative flux change: %.2e (vs. requested %.2e).",
+                np.max(r_res_GS),
+                target_relative_tol_GS,
             )
-            print(
-                f"   Iterations taken: {int(iterations)}/{int(max_solving_iterations)}."
+            logger.info(
+                "   Iterations taken: %d/%d.",
+                int(iterations),
+                int(max_solving_iterations),
             )
 
     def unstable_mode_deformations(self, starting_dI=50, rtol_NK=1e-7, target_dIy=2e-3):

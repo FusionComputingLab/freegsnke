@@ -19,7 +19,11 @@ You should have received a copy of the GNU Lesser General Public License
 along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.   
 """
 
+import logging
+
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 
 class nksolver:
@@ -109,7 +113,7 @@ class nksolver:
 
         # if self.force_sign_alignment and (dot_product > 0):
         #     # need sign reversal!
-        #     print(f"term {self.n_it} being reversed")
+        #     logger.debug("term %s being reversed", self.n_it)
         #     res_calculated = False
         #     dx1 = -np.copy(dx)
         #     self.Qn[:, self.n_it] *= -1
@@ -130,7 +134,7 @@ class nksolver:
         self.collinearity[: self.n_it, self.n_it] = np.sum(
             self.Gn[:, self.n_it, np.newaxis] * self.Gn[:, : self.n_it], axis=0
         )
-        # print('coll', self.n_it, self.collinearity[:self.n_it, self.n_it])
+        logger.debug("coll %s %s", self.n_it, self.collinearity[: self.n_it, self.n_it])
 
         if build_next:
             # append to Hessenberg matrix

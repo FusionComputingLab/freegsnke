@@ -1847,7 +1847,9 @@ class NKGSsolver:
 
                     if resize:
                         if verbose or logger.isEnabledFor(logging.INFO):
-                            logger.info("Resizing of the control current update triggered!")
+                            logger.info(
+                                "Resizing of the control current update triggered!"
+                            )
                         delta_current *= 0.75
                         delta_tokamak_psi *= 0.75
                         previous_rel_delta_psit *= 0.75

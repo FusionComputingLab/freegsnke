@@ -77,8 +77,12 @@ def generate_refinement(R, Z, n_refine, refine_mode):
     elif refine_mode == "LH":
         return generate_refinement_LH(R, Z, n_refine)
     else:
-        logger.error("refine_mode '%s' not recognised!, please use 'G' or 'LH'.", refine_mode)
-        raise ValueError(f"refine_mode '{refine_mode}' not recognised!, please use 'G' or 'LH'.")
+        logger.error(
+            "refine_mode '%s' not recognised!, please use 'G' or 'LH'.", refine_mode
+        )
+        raise ValueError(
+            f"refine_mode '{refine_mode}' not recognised!, please use 'G' or 'LH'."
+        )
 
 
 def generate_refinement_LH(R, Z, n_refine):

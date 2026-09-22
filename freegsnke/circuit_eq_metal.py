@@ -263,7 +263,9 @@ class metal_currents:
             )
             logger.info("   Passive structures")
             if fixed_n_passive_modes is None:
-                logger.info("      %d selected below 'max_mode_frequency'", freq_only_number)
+                logger.info(
+                    "      %d selected below 'max_mode_frequency'", freq_only_number
+                )
             else:
                 logger.info(
                     "      %d lowest-frequency (longest-timescale) modes selected",

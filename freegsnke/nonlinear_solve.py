@@ -249,7 +249,9 @@ class nl_solver:
             fix_n_vessel_modes = self.n_passive_coils
 
         # check input eq and profiles are a GS solution
-        logger.info("Checking that the provided 'eq' and 'profiles' are a GS solution...")
+        logger.info(
+            "Checking that the provided 'eq' and 'profiles' are a GS solution..."
+        )
 
         # storing the static solver
         self.NK = GSStaticSolver
@@ -452,7 +454,9 @@ class nl_solver:
                 self.n_active_coils,
             )
             logger.info("   Passive structures")
-            logger.info("      %s selected using 'fix_n_vessel_modes'", fix_n_vessel_modes)
+            logger.info(
+                "      %s selected using 'fix_n_vessel_modes'", fix_n_vessel_modes
+            )
             logger.info(
                 "   Total number of modes = %d (%d active coils + %s passive structures)",
                 self.evol_metal_curr.n_independent_vars,
@@ -681,7 +685,9 @@ class nl_solver:
                 self.unstable_mode_deformations()
                 # deformable plasma metrics
                 logger.info("   Deformable plasma metrics:")
-                logger.info("      Growth rate = %s [1/s]", self.linearised_sol.growth_rates)
+                logger.info(
+                    "      Growth rate = %s [1/s]", self.linearised_sol.growth_rates
+                )
                 logger.info(
                     "      Instability timescale = %s [s]",
                     self.linearised_sol.instability_timescale,
@@ -1087,7 +1093,9 @@ class nl_solver:
                 logger.debug("Profile parameter: alpha_m:")
                 logger.debug("  Initial delta parameter = %s", starting_dtheta[0])
                 logger.debug("  Initial relative Iy change = %s", rel_ndIy_0[0])
-                logger.debug("  Final delta parameter = %s", self.final_dtheta_record[0])
+                logger.debug(
+                    "  Final delta parameter = %s", self.final_dtheta_record[0]
+                )
 
             # vary alpha_n
             self.check_and_change_profiles(
@@ -1116,7 +1124,9 @@ class nl_solver:
                 logger.debug("Profile parameter: alpha_n:")
                 logger.debug("  Initial delta parameter = %s", starting_dtheta[1])
                 logger.debug("  Initial relative Iy change = %s", rel_ndIy_0[1])
-                logger.debug("  Final delta parameter = %s", self.final_dtheta_record[1])
+                logger.debug(
+                    "  Final delta parameter = %s", self.final_dtheta_record[1]
+                )
 
             # vary paxis, betap or Beta0
             self.check_and_change_profiles(
@@ -1146,7 +1156,9 @@ class nl_solver:
                 logger.debug("Profile parameter: %s:", self.profiles_param)
                 logger.debug("  Initial delta parameter = %s", starting_dtheta[2])
                 logger.debug("  Initial relative Iy change = %s", rel_ndIy_0[2])
-                logger.debug("  Final delta parameter = %s", self.final_dtheta_record[2])
+                logger.debug(
+                    "  Final delta parameter = %s", self.final_dtheta_record[2]
+                )
 
             # reset profiles in profiles1 and profiles2 objects
             self.check_and_change_profiles(
@@ -1220,7 +1232,9 @@ class nl_solver:
                     logger.debug("Profile parameter: alpha_%s:", i)
                     logger.debug("  Initial delta parameter = %s", starting_dtheta[i])
                     logger.debug("  Initial relative Iy change = %s", rel_ndIy_0[i])
-                    logger.debug("  Final delta parameter = %s", self.final_dtheta_record[i])
+                    logger.debug(
+                        "  Final delta parameter = %s", self.final_dtheta_record[i]
+                    )
 
             # for each beta coefficient
             beta_base = profiles.beta.copy()
@@ -2155,8 +2169,12 @@ class nl_solver:
                         self.starting_dtheta[j] * self.approved_target_dtheta[j] / ndIy
                     )
                     if verbose or logger.isEnabledFor(logging.DEBUG):
-                        logger.debug("Profile parameter: %s:", self._profile_parameter_name(j))
-                        logger.debug("  Initial delta parameter = %s", self.starting_dtheta[j])
+                        logger.debug(
+                            "Profile parameter: %s:", self._profile_parameter_name(j)
+                        )
+                        logger.debug(
+                            "  Initial delta parameter = %s", self.starting_dtheta[j]
+                        )
                         logger.debug("  Initial relative Iy change = %s", ndIy)
                         logger.debug(
                             "  Final delta parameter = %s", self.final_dtheta_record[j]
@@ -2184,7 +2202,8 @@ class nl_solver:
                         self.dvdtheta[:, j] = descriptor_column
                         if verbose or logger.isEnabledFor(logging.DEBUG):
                             logger.debug(
-                                "Profile parameter: %s:", self._profile_parameter_name(j)
+                                "Profile parameter: %s:",
+                                self._profile_parameter_name(j),
                             )
                             logger.debug("  Final relative Iy change = %s", rel_ndIy)
                             logger.debug(

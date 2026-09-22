@@ -238,7 +238,9 @@ class SystemsController:
             logger.info("---")
 
             if not np.allclose(I_approved, I_perturbed):
-                logger.info("    Coil currents clipped (according to `min/max_coil_limits`).")
+                logger.info(
+                    "    Coil currents clipped (according to `min/max_coil_limits`)."
+                )
 
             if not np.allclose(dI_dt_approved, dI_dt_perturbed):
                 logger.info(

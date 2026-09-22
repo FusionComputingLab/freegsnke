@@ -731,7 +731,9 @@ class Equilibrium(freegs4e.equilibrium.Equilibrium):
             )
             limiter_size = np.sum(self.mask_inside_limiter)
             diverted_size = np.sum(diverted_core_mask)
-            logger.info("Size of the diverted core in number of domain pts = %s", diverted_size)
+            logger.info(
+                "Size of the diverted core in number of domain pts = %s", diverted_size
+            )
 
             diverted_flag = diverted_size > 0.5 * limiter_size
             while diverted_flag == False and n_up < 6:

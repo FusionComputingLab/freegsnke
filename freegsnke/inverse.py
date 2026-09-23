@@ -1098,6 +1098,9 @@ class Inverse_optimizer:
         # add plasma flux
         b += self.psi_plasma_vals
 
+        # Remove the arbitrary flux offset consistently with the centred
+        # response columns above.
+        b -= np.mean(b)
         b -= self.psi_vals[2]
         b *= -1
 

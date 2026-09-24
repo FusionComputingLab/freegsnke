@@ -30,9 +30,12 @@ along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 from __future__ import annotations
 
 import abc
+import logging
 from typing import Callable, Optional
 
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 from freegsnke.virtual_circuits import VirtualCircuitHandling
 
@@ -82,10 +85,12 @@ class VirtualCircuitProvider(abc.ABC):
         self.coils_calc = coils_calc
         self.vc_update_rate = vc_update_rate
 
-        if verbose:
-            print(f"New VCs will be computed for {self.targets_ctrl}")
-            print(
-                f"The Jacobian matrix computation and inversion is performed with :\n{self.targets_calc} \n{self.coils_calc}"
+        if verbose or logger.isEnabledFor(logging.INFO):
+            logger.info("New VCs will be computed for %s", self.targets_ctrl)
+            logger.info(
+                "The Jacobian matrix computation and inversion is performed with :\n%s \n%s",
+                self.targets_calc,
+                self.coils_calc,
             )
 
     @abc.abstractmethod
@@ -578,13 +583,13 @@ class VCGenerator(VirtualCircuitProvider):
         }
         schedule["coil_order"] = self.coils
 
-        if verbose:
-            print("Calculating VC schedule...")
+        if verbose or logger.isEnabledFor(logging.INFO):
+            logger.info("Calculating VC schedule...")
 
         for idx, t in enumerate(times):
 
-            if verbose:
-                print(f"---> time {t}s")
+            if verbose or logger.isEnabledFor(logging.INFO):
+                logger.info("---> time %ss", t)
 
             input_data = self.get_inputs_from_eq(eq_list[idx], profile_list[idx])
 
@@ -603,7 +608,7 @@ class VCGenerator(VirtualCircuitProvider):
             for j, targ in enumerate(self.targets_ctrl):
                 schedule[targ]["vals"][idx, :] = vc_matrix_big[:, j]
 
-        if verbose:
-            print("--- done! ---")
+        if verbose or logger.isEnabledFor(logging.INFO):
+            logger.info("--- done! ---")
 
         return schedule

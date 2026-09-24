@@ -20,6 +20,7 @@ You should have received a copy of the GNU Lesser General Public License
 along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.   
 """
 
+import logging
 import os
 import pickle
 from copy import deepcopy
@@ -29,6 +30,8 @@ from deepdiff import DeepDiff
 from freegs4e.gradshafranov import Greens, mu0
 
 from .refine_passive import generate_refinement
+
+logger = logging.getLogger(__name__)
 
 
 def build_tokamak_R_and_M(tokamak, rebuild=False, changed_coils=None):
@@ -77,7 +80,7 @@ def build_tokamak_R_and_M(tokamak, rebuild=False, changed_coils=None):
     if has_matrices and changed_coils is not None and not rebuild:
         changed_coils = [name for name in changed_coils if name in tokamak.coils_list]
         if len(changed_coils) == 0:
-            print(
+            logger.info(
                 "Resistance (R) and inductance (M) matrices --> reused; no coil geometry changes detected."
             )
             return
@@ -86,14 +89,14 @@ def build_tokamak_R_and_M(tokamak, rebuild=False, changed_coils=None):
             tokamak.coil_self_ind
         ) == (tokamak.n_coils, tokamak.n_coils):
             _update_tokamak_R_and_M_entries(tokamak, changed_coils)
-            print(
+            logger.info(
                 "Resistance (R) and inductance (M) matrices --> updated for changed coils only."
             )
             return
 
     # calculate R and M if they don't exist
     if has_matrices and not rebuild:
-        print(
+        logger.warning(
             "Resistance (R) and inductance (M) matrices already exist for these actives (and passives, if present). Check the tokamak object."
         )
     else:
@@ -124,7 +127,7 @@ def build_tokamak_R_and_M(tokamak, rebuild=False, changed_coils=None):
         tokamak.coil_resist = R * 2 * np.pi
         tokamak.coil_self_ind = M * 2 * np.pi
 
-        print(
+        logger.info(
             "Resistance (R) and inductance (M) matrices --> built using actives (and passives if present)."
         )
 

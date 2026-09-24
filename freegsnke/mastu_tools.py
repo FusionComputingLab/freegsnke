@@ -21,9 +21,12 @@ You should have received a copy of the GNU Lesser General Public License
 along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 """
 
+import logging
 import math
 import os
 import pickle
+
+logger = logging.getLogger(__name__)
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -86,7 +89,6 @@ def get_machine_data(
         for grandchild in child.children:
             dict0 = None
             try:
-                # print(vars(grandchild))
                 material = grandchild.material
                 # Is there a better method for this? - maybe do like Lucy did with efitGroups
                 coordinates = grandchild.children[1]
@@ -97,7 +99,7 @@ def get_machine_data(
                 turns = coordinates.effectiveTurnCount
                 dict0 = dict(r=r, z=z, dr=dr, dz=dz, turns=turns)
             except AttributeError as err:
-                print(err)
+                logger.error("Error reading pfcoil geometry: %s", err)
             dict2[child.name] = dict0
     data["geometry_pfcoil"] = dict2
 
@@ -120,15 +122,13 @@ def get_machine_data(
             try:
                 efitGroup = coordinates.efitGroup
                 elementLabels = coordinates.elementLabels
-                # print(efitGroup)
-                # print(elementLabels)
                 dict1["efitGroup"] = efitGroup
                 dict1["elementLabels"] = elementLabels
             except AttributeError as err:
                 pass
         # not everything is in a group, for example the coil cases (not grouped) and tiles (not used)
         except AttributeError as err:
-            print(err)
+            logger.error("Error reading passive geometry: %s", err)
         if dict1 is not None:
             dict2[child.name] = dict1
     data["geometry_passive"] = dict2
@@ -747,7 +747,7 @@ def get_machine_data(
     )
 
     # DONE
-    print("MAST-U geometry data successfully extracted and pickle files built.")
+    logger.info("MAST-U geometry data successfully extracted and pickle files built.")
 
 
 def load_efit_times_and_status(client, shot=45425):
@@ -1688,7 +1688,7 @@ def load_currents_voltages_and_TS_signals(
                     "units": taa_v.units,
                 }
             except:
-                pass  # print('voltages not found for coil '+attk+', shot '+str(shotn))
+                pass
         return outdict
 
     def get_req_voltages(shotn):
@@ -1741,7 +1741,7 @@ def load_currents_voltages_and_TS_signals(
                     "times": np.array([0, 1]),
                     "units": "string",
                 }
-                print("Voltage not found for coil " + coil + ".")
+                logger.warning("Voltage not found for coil %s.", coil)
         return outdict
 
     def get_coilcurrs_AMC(shotn):
@@ -1788,7 +1788,7 @@ def load_currents_voltages_and_TS_signals(
                     }
 
                 except:
-                    pass  # print('current not found for coil '+attk+', shot '+str(shotn))
+                    pass
         return outdict
 
     def get_coilcurrs(shotn):
@@ -1843,7 +1843,7 @@ def load_currents_voltages_and_TS_signals(
                     "units": taa_c.units,
                 }
             except:
-                pass  # print('current not found for coil '+attk+', shot '+str(shotn))
+                pass
         return outdict
 
     def get_rogs(shotn):
@@ -1894,19 +1894,18 @@ def load_currents_voltages_and_TS_signals(
                         "times": td.time.data,
                     }
                 except:
-                    pass  # print('rogext data not found for coil '+attk+' '+rn+', shot '+str(shotn))
+                    pass
             if tinner["rogint"]:
                 outdict[attk]["rogint"] = {}
                 for rn in tinner["rogintn"]:
                     try:
                         td = client.get("/AMC/ROGINT/" + rn, shotn)
-                        # print('/AMC/ROGINT/'+rn)
                         outdict[attk]["rogint"][rn] = {
                             "data": td.data,
                             "times": td.time.data,
                         }
                     except:
-                        pass  # print('rogint data not found for coil '+attk+' '+rn+', shot '+str(shotn))
+                        pass
         return outdict
 
     # extract and store data
@@ -1924,7 +1923,7 @@ def load_currents_voltages_and_TS_signals(
     #
     if (len(coil_vs) > 10) * (len(coil_cs) == len_coils):
 
-        print("Finished reading, all data in place.")
+        logger.info("Finished reading, all data in place.")
 
         std_cv = np.zeros((len_coils, 2))
         time_int = [-50, 50]
@@ -1942,12 +1941,9 @@ def load_currents_voltages_and_TS_signals(
                 )
 
         control = time_int[0] < time_int[1]
-        # control *= np.any(std_cv>.5)
-        # print(time_int)
-        # print(std_cv)
         if control:
 
-            print("Interpolating and storing data...")
+            logger.info("Interpolating and storing data...")
 
             data_out = {}
             time_sample = np.arange(time_int[0], time_int[1], dt)
@@ -1955,8 +1951,6 @@ def load_currents_voltages_and_TS_signals(
 
             for coil in coil_list:
                 data_out[coil] = {}
-                # data_out[coil][2] = []
-                # print(ic)
 
                 # record voltages
                 mask = (coil_vs[coil]["times"] >= time_int[0] - dt) * (
@@ -1977,11 +1971,9 @@ def load_currents_voltages_and_TS_signals(
 
                 else:
                     data_out[coil_ordering[ic]][0] = np.mean(signal, keepdims=True)
-                # data_out[coil][2].append(coil_vs[coil]['units'])
 
                 # record currents
                 for coil_rog in coil_cs[coil]:
-                    # print(coil, coil_rog)
                     mask = (coil_cs[coil][coil_rog]["times"] >= time_int[0] - dt) * (
                         coil_cs[coil][coil_rog]["times"] <= time_int[1] + dt
                     )
@@ -2002,25 +1994,6 @@ def load_currents_voltages_and_TS_signals(
                         data_out[coil][coil_rog]["units_C"] = coil_cs[coil][coil_rog][
                             "units"
                         ]
-                    # data_out[coil_ordering[ic]][2].append(coil_cs[coil]['units'])
-
-            # record plasma current if one
-            # try:
-            #     aIp = client.get('AMC/PLASMA_CURRENT', shotn)
-            #     flag_plasma = np.any(abs(aIp.data)>1)
-            # except:
-            #     pass
-            # else:
-            #     print('Trying to store plasma.')
-            #     data_out[-3] = {}
-            #     time_sample_Ip = time_sample[(time_sample>=aIp.time[0])*(time_sample<=aIp.time[-1])]
-            #     data_out[-3][0] = np.array([time_sample_Ip[0], time_sample_Ip[-1]])
-            #     mask = (aIp.time>=data_out[-3][0][0]-dt)*(aIp.time<=data_out[-3][0][1]+dt)
-            #     times = aIp.time[mask]
-            #     signal = aIp.data[mask]
-            #     interp_f = interp1d(times, signal, kind=1)
-            #     data_out[-3][1] = interp_f(time_sample)
-            # # data_out[-2] = flag_plasma
 
             # record Thompson scattering info
             try:
@@ -2032,12 +2005,10 @@ def load_currents_voltages_and_TS_signals(
                 data_out["TS"]["full_N"] = ne.data
             except:
                 pass
-            print("Data stored.")
-            # with open('U2/'+str(shotn)+'_AMC_XDC_AYC.pickle', 'wb') as handle:
-            #     pickle.dump(data_out, handle)
+            logger.info("Data stored.")
 
     else:
-        print(f"Data not found for {shotn}.")
+        logger.warning("Data not found for %s.", shotn)
 
     return att_dict, data_out
 
@@ -2611,8 +2582,7 @@ def Separatrix(R, Z, psi, ntheta, psival=1.0, theta_grid=None, input_opoint=None
     # How close in theta to allow theta grid points to the X-point
     TOLERANCE = 2.0e-4
     if any(abs(theta_grid - xpoint_theta) < TOLERANCE):
-        # warn("Theta grid too close to X-point, shifting by half-step")
-        # print('Im shifting the grid!')
+        logger.debug("Theta grid too close to X-point, shifting by half-step")
         theta_grid += (
             dtheta / 2 * np.ones(ntheta) * (abs(theta_grid - xpoint_theta) < TOLERANCE)
         )

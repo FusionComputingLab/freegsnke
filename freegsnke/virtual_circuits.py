@@ -21,6 +21,7 @@ along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 
 from __future__ import annotations
 
+import logging
 import multiprocessing
 from concurrent.futures import ProcessPoolExecutor
 from datetime import datetime
@@ -28,6 +29,8 @@ from typing import Callable
 
 import numpy as np
 from threadpoolctl import threadpool_limits
+
+logger = logging.getLogger(__name__)
 
 _parallel_virtual_circuit_handler = None
 
@@ -334,8 +337,8 @@ class VirtualCircuitHandling:
         """
 
         # print some output
-        if verbose:
-            print(f"Coil {coils[j]}")
+        if verbose or logger.isEnabledFor(logging.DEBUG):
+            logger.debug("Coil %s", coils[j])
 
         # store dI
         final_dI = 1.0 * self.final_dI_record[j]
@@ -487,14 +490,14 @@ class VirtualCircuitHandling:
 
         # use regular moore-penrose pseudo inverse
         if tikhonov_lambda is None:
-            if verbose:
-                print("VC computing using Moore-Penrose pseudoinverse.")
+            if verbose or logger.isEnabledFor(logging.INFO):
+                logger.info("VC computing using Moore-Penrose pseudoinverse.")
             inverse = np.linalg.pinv(matrix)
 
         # use tikhonov regularisation in the inverse calculation
         else:
-            if verbose:
-                print("VC computed using Tikhonov regularised inverse. ")
+            if verbose or logger.isEnabledFor(logging.INFO):
+                logger.info("VC computed using Tikhonov regularised inverse.")
             tikhonov_lambda = np.asarray(
                 tikhonov_lambda
             )  # convert tensorflow to numpy.
@@ -642,10 +645,11 @@ class VirtualCircuitHandling:
                 starting_dI > min_starting_dI, starting_dI, min_starting_dI
             )
 
-        if verbose:
-            print("--- Stage one ---")
-            print(
-                f"Re-sizing each initial coil current shift so that it produces a {np.round(target_dIy*100,2)}% change in plasma current density from the input equilibrium."
+        if verbose or logger.isEnabledFor(logging.INFO):
+            logger.info("--- Stage one ---")
+            logger.info(
+                "Re-sizing each initial coil current shift so that it produces a %.2f%% change in plasma current density from the input equilibrium.",
+                np.round(target_dIy * 100, 2),
             )
 
         # storage matrices
@@ -662,14 +666,17 @@ class VirtualCircuitHandling:
             # with norm(delta(I_y)) = target_dIy
             for j in np.arange(len(coils)):
                 self.prepare_build_dIydI_j(j, coils, target_dIy, starting_dI[j])
-                if verbose:
-                    print(
-                        f"Coil {coils[j]} (original current shift = {np.round(starting_dI[j],2)} [A] --> scaled current shift {np.round(self.final_dI_record[j],2)} [A])."
+                if verbose or logger.isEnabledFor(logging.DEBUG):
+                    logger.debug(
+                        "Coil %s (original current shift = %.2f [A] --> scaled current shift %.2f [A]).",
+                        coils[j],
+                        np.round(starting_dI[j], 2),
+                        np.round(self.final_dI_record[j], 2),
                     )
 
-            if verbose:
-                print("--- Stage two ---")
-                print(
+            if verbose or logger.isEnabledFor(logging.INFO):
+                logger.info("--- Stage two ---")
+                logger.info(
                     "Building the shape matrix (Jacobian) of the shape parameter changes wrt scaled current shifts for each coil:"
                 )
 
@@ -679,9 +686,10 @@ class VirtualCircuitHandling:
                 # each shape matrix row is derivative of targets wrt the final coil current change
                 shape_matrix[:, j] = self.build_dIydI_j(j, coils, verbose)
         else:
-            if verbose:
-                print(
-                    f"Building shape matrix columns with {min(n_vc_workers, len(coils))} worker processes."
+            if verbose or logger.isEnabledFor(logging.INFO):
+                logger.info(
+                    "Building shape matrix columns with %d worker processes.",
+                    min(n_vc_workers, len(coils)),
                 )
 
             column_results = self._build_shape_matrix_columns(
@@ -693,19 +701,22 @@ class VirtualCircuitHandling:
             for j, final_dI, column in column_results:
                 self.final_dI_record[j] = final_dI
                 shape_matrix[:, j] = column
-                if verbose:
-                    print(
-                        f"Coil {coils[j]} (original current shift = {np.round(starting_dI[j],2)} [A] --> scaled current shift {np.round(final_dI,2)} [A])."
+                if verbose or logger.isEnabledFor(logging.DEBUG):
+                    logger.debug(
+                        "Coil %s (original current shift = %.2f [A] --> scaled current shift %.2f [A]).",
+                        coils[j],
+                        np.round(starting_dI[j], 2),
+                        np.round(final_dI, 2),
                     )
 
         # store the data in its own (new) class
         if name is None:
             name = self.default_VC_name
 
-        if verbose:
-            print("--- Stage three ---")
-            print("Inverting the shape matrix to get the virtual circuit matrix.")
-            print(f"VC object stored under name: '{name}'.")
+        if verbose or logger.isEnabledFor(logging.INFO):
+            logger.info("--- Stage three ---")
+            logger.info("Inverting the shape matrix to get the virtual circuit matrix.")
+            logger.info("VC object stored under name: '%s'.", name)
 
         # vc_matrix is the pseudo inverse of shape_matrix
         vc_matrix = self.calculate_matrix_inverse(
@@ -782,9 +793,9 @@ class VirtualCircuitHandling:
             VC_object.shape_matrix, np.array(requested_target_shifts), rcond=None
         )[0]
 
-        if verbose:
-            print(f"Currents shifts from VCs:")
-            print(f"{VC_object.coils} = {current_shifts}.")
+        if verbose or logger.isEnabledFor(logging.INFO):
+            logger.info("Currents shifts from VCs:")
+            logger.info("%s = %s.", VC_object.coils, current_shifts)
 
         # re-solve static GS problem (to make sure it's solved already)
         try:
@@ -827,10 +838,12 @@ class VirtualCircuitHandling:
         # calculate new target values and the difference vs. the old
         new_target_values = VC_object.target_calculator(eq_new)
 
-        if verbose:
-            print(f"Targets shifts from VCs:")
-            print(
-                f"{VC_object.target_names} = {new_target_values - old_target_values}."
+        if verbose or logger.isEnabledFor(logging.INFO):
+            logger.info("Targets shifts from VCs:")
+            logger.info(
+                "%s = %s.",
+                VC_object.target_names,
+                new_target_values - old_target_values,
             )
 
         return eq_new, profiles_new, new_target_values, old_target_values

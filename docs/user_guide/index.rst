@@ -1,8 +1,10 @@
 User guide
 =================
 
-The best starting point for understanding how FreeGSNKE works and how to use the code is to read the `FreeGS documentation
-<https://freegs.readthedocs.io/en/latest/>`_ in its entirety. FreeGSNKE makes use of FreeGS objects and functionality, so understanding the FreeGS library first is essential.
+The best starting point for understanding how FreeGSNKE works is this user guide
+and the example notebooks. The original `FreeGS documentation
+<https://freegs.readthedocs.io/en/latest/>`_ provides useful background, but
+does not define the FreeGSNKE or FreeGS4E APIs.
 
 To get started with using FreeGSNKE, first read the `home page <../index.html>`_ information from end to end. Then, read through and experiment with the example notebooks in the ``examples`` directory.
 

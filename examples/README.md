@@ -11,6 +11,7 @@ These example Jupyter notebooks are intended to be the **first port of call for 
 | Example 03a | Learn how to extract results from a calculated equilibrium. | Anyone |
 | Example 03b | Learn how to read/write equilibrium data to/from a geqdsk file, via FreeQDSK. | Anyone |
 | Example 03c | Learn how to read/write equilibrium data to/from an IMAS equilibrium IDS (netCDF), via IMAS-Python. | Anyone |
+| Example 03d | Learn how to read/write equilibrium data to/from a geqdsk file, via eqdsk (an alternative to FreeQDSK). | Anyone |
 | Example 04 | Learn how to use the magnetic probes object. | Anyone |
 | Example 05a | Learn how to use the nonlinear and linear (with GS) evolutive solver to simulate time-dependent equilibria. | Anyone |
 | Example 05b | Learn how to use the linear evolutive solver without solving GS at each timestep. | Anyone |

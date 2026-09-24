@@ -106,10 +106,18 @@ FreeGSNKE is constantly evolving and so we hope to provide users with more advan
 
 FreeGSNKE can be installed using pip or built from source.
 
-FreeGSNKE supports Python 3.10 through 3.14. Its runtime requirements are kept
+FreeGSNKE supports Python 3.10 through 3.12. Its runtime requirements are kept
 within the dependency envelope supported by FreeGS4E. Compatibility changes to
 Python or shared scientific dependencies are tested against both repositories
 as one coordinated stack.
+
+NumPy is temporarily constrained to the 1.26 series. On macOS its OpenBLAS
+backend allows FreeGSNKE's fork-based parallel linearization to run safely;
+NumPy 2 macOS wheels use Apple Accelerate, which can crash in forked workers.
+Support for NumPy 2 and newer Python versions will return when those workers no
+longer rely on inherited process state. Accelerate support in threadpoolctl is
+tracked upstream in
+[joblib/threadpoolctl#135](https://github.com/joblib/threadpoolctl/issues/135).
 
 ### Installing with pip
 
@@ -220,7 +228,7 @@ We welcome contributions including **issues**, **questions**, **bug fixes**, and
 - Open the PR with a clear title and description of what changed and why.
 - If the PR addresses an open issue, reference it in the description (e.g. `Closes #123`).
 - Make sure the [pre-commit](https://pre-commit.com/) hooks pass in the CI. These will run automatically when you commit if you have installed the pre-commit hooks (see above). 
-- Make sure the full test [pytest](https://docs.pytest.org/en) suite passes locally (`python -m pytest -v`); CI re-runs it against Python 3.10, 3.12, and 3.14. Specific tests can be run with, e.g. `python -m pytest -v freegsnke/tests/test_static_solver.py`. 
+- Make sure the full test [pytest](https://docs.pytest.org/en) suite passes locally (`python -m pytest -v`); CI re-runs it against Python 3.10 and 3.12. Specific tests can be run with, e.g. `python -m pytest -v freegsnke/tests/test_static_solver.py`.
 - Keep docstring coverage above the 95% threshold enforced in CI by [interrogate](https://interrogate.readthedocs.io/).
 - Clear the outputs of any Jupyter notebooks you've added or modified in `examples/` (e.g. with `nbstripout`, see above) — CI checks the notebooks on the PR branch and rejects it if any still have outputs, but nothing strips them for you locally.
 - Update the user documentation, API documentation, and notebook examples if the PR changes FreeGSNKE's behaviour or public API.

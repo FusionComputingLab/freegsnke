@@ -26,6 +26,21 @@ import numpy as np
 from scipy import interpolate
 
 
+def _solve_regularized_lstsq(A, b, regularization):
+    """Solve ``min ||A x - b||² + xᵀ diag(regularization) x`` in augmented form."""
+    regularization = np.asarray(regularization)
+    if regularization.shape != (A.shape[1],):
+        raise ValueError(
+            "Regularization must contain one value per least-squares variable."
+        )
+    if not np.all(np.isfinite(regularization)) or np.any(regularization < 0):
+        raise ValueError("Regularization values must be finite and non-negative.")
+
+    augmented_A = np.vstack((A, np.diag(np.sqrt(regularization))))
+    augmented_b = np.concatenate((b, np.zeros(A.shape[1])))
+    return np.linalg.lstsq(augmented_A, augmented_b, rcond=None)[0]
+
+
 class Inverse_optimizer:
     """This class implements a gradient based optimiser for the coil currents,
     used to perform (static) inverse Grad-Shafranov solves.
@@ -162,6 +177,8 @@ class Inverse_optimizer:
         -----
         Increasing the weights/penalty factors causes the least-squares optimisation
         to prioritise satisfying the higher-weighted/penalised constraints.
+        Constraint weights multiply residual rows before squaring, so their
+        contribution to the objective scales with the square of the supplied value.
         """
         # ------------------------------------------------------------
         # Isoflux constraint processing
@@ -183,7 +200,7 @@ class Inverse_optimizer:
                     self.isoflux_set.append(iso_set)
                     self.isoflux_weight.append(weights)
             # rebuild as list of numpy arrays for numerical stability
-            except TypeError:
+            except (TypeError, IndexError):
                 self.isoflux_set = np.array(self.isoflux_set)[np.newaxis]
                 self.isoflux_weight = np.ones(self.isoflux_set.shape[1])[np.newaxis]
             # number of isoflux points per constraint set
@@ -906,8 +923,14 @@ class Inverse_optimizer:
         # loop over each isoflux set
         for i, isoflux in enumerate(self.isoflux_set):
 
+            # Weight the complete linearised pair residual, including both its
+            # Green response and its present flux mismatch.
+            pair_weights = np.array(
+                list(itertools.combinations(self.isoflux_weight[i], 2))
+            ).min(axis=1)
+
             # pairwise Greens' flux differences (only in control coils)
-            A.append(self.dG_set[i][self.control_mask].T)
+            A.append(self.dG_set[i][self.control_mask].T * pair_weights[:, np.newaxis])
 
             # tokamak flux contribution
             b_val = np.sum(self.dG_set[i] * full_currents_vec[:, np.newaxis], axis=0)
@@ -916,11 +939,9 @@ class Inverse_optimizer:
             b_val += self.d_psi_plasma_vals_iso[i]
 
             # isoflux constraint violation are for pairs of constraints within the isoflux set
-            # e.g. 8 isoflux constraints means b has 28 elements (28 choose 2).
-            # We weight the element of b by the minimum weight of the two constraints that make the pair
-            b_val *= np.array(
-                list(itertools.combinations(self.isoflux_weight[i], 2))
-            ).min(axis=1)
+            # e.g. 8 isoflux constraints means b has 28 elements (8 choose 2).
+            # Use the smaller point weight for each pairwise residual row.
+            b_val *= pair_weights
             # total
             b.append(-b_val)
 
@@ -1032,6 +1053,7 @@ class Inverse_optimizer:
 
         Mean flux removal is applied to remove arbitrary vertical flux offsets,
         since the Grad–Shafranov equation is invariant under constant flux shifts.
+        The same mean removal is applied to each coil-response column in ``A``.
 
         Parameters
         ----------
@@ -1067,14 +1089,18 @@ class Inverse_optimizer:
             min_I || G I + ψ_plasma − ψ_target ||²
         """
 
-        # flux response wrt coil currents
+        # Flux response wrt coil currents, with the same offset removal as b.
         A = self.G[self.control_mask].T
+        A -= np.mean(A, axis=0)
 
         # tokamak coil flux
         b = np.sum(self.G * full_currents_vec[:, np.newaxis], axis=0)
         # add plasma flux
         b += self.psi_plasma_vals
 
+        # Remove the arbitrary flux offset consistently with the centred
+        # response columns above.
+        b -= np.mean(b)
         b -= self.psi_vals[2]
         b *= -1
 
@@ -1147,7 +1173,7 @@ class Inverse_optimizer:
         # isfolux constrains
         if self.isoflux_set is not None:
             A_i, b_i, l = self.build_isoflux_lsq(full_currents_vec)
-            A = np.concatenate(A_i, axis=0)
+            A = np.concatenate(A_i, axis=0) * self.weight_isoflux
             b = np.concatenate(b_i, axis=0) * self.weight_isoflux
             self.isoflux_dim = len(b)
             loss = loss + l
@@ -1155,16 +1181,16 @@ class Inverse_optimizer:
         # null point constraints
         if self.null_points is not None:
             A_np, b_np, l = self.build_null_points_lsq(full_currents_vec)
-            A = np.concatenate((A, A_np), axis=0)
-            b = np.concatenate((b, b_np), axis=0) * self.weight_nulls
+            A = np.concatenate((A, A_np * self.weight_nulls), axis=0)
+            b = np.concatenate((b, b_np * self.weight_nulls), axis=0)
             self.nullp_dim = len(b)
             loss = loss + l
 
         # direct flux value constraints
         if self.psi_vals is not None:
             A_pv, b_pv, l = self.build_psi_vals_lsq(full_currents_vec)
-            A = np.concatenate((A, A_pv), axis=0)
-            b = np.concatenate((b, b_pv), axis=0) * self.weight_psi
+            A = np.concatenate((A, A_pv * self.weight_psi), axis=0)
+            b = np.concatenate((b, b_pv * self.weight_psi), axis=0)
             self.psiv_dim = len(b)
             loss = loss + l
 
@@ -1191,13 +1217,13 @@ class Inverse_optimizer:
 
         This method computes optimal coil current corrections by solving:
 
-            min_I || A I − b ||² + λ || I ||²
+            min_I || A I − b ||² + Iᵀ R I
 
         where:
 
             A = combined constraint Jacobian matrix
             b = combined constraint residual vector
-            λ = Tikhonov (L2) regularisation parameter
+            R = diagonal Tikhonov regularisation matrix
 
         The optimisation accounts for:
 
@@ -1230,10 +1256,10 @@ class Inverse_optimizer:
             Tikhonov regularisation parameter.
 
             If float:
-                λ I² penalty is applied uniformly.
+                R is the scalar value times the identity matrix.
 
             If array:
-                Allows coil-wise regularisation weighting.
+                R contains the supplied coil-wise values on its diagonal.
 
         Returns
         -------
@@ -1266,7 +1292,7 @@ class Inverse_optimizer:
         #     Use quadratic programming solver.
         #
         # Otherwise:
-        #     Solve normal equations directly.
+        #     Solve the augmented regularised least-squares system directly.
         # ------------------------------------------------------------
         if self.coil_current_limits is not None or self.psi_norm_limits is not None:
             delta_current, loss = self.optimize_currents_quadratic(
@@ -1275,8 +1301,8 @@ class Inverse_optimizer:
         else:
             # TODO: should we just use the quadratic solver all the time, regardless
             # of whether coil limits are specified?
-            delta_current = np.linalg.solve(
-                self.A.T @ self.A + reg_matrix, self.A.T @ self.b
+            delta_current = _solve_regularized_lstsq(
+                self.A, self.b, np.diag(reg_matrix)
             )
             loss = np.linalg.norm(self.loss)
 
@@ -1948,12 +1974,8 @@ class Inverse_optimizer:
 
         Notes
         -----
-        The solution is computed via normal equations:
-
-            x = (AᵀA + R)⁻¹ Aᵀ b
-
-        Since the system dimension is small (2×2), direct inversion
-        is computationally inexpensive.
+        The regularisation is appended to the least-squares system before
+        solving, avoiding the condition-number squaring of normal equations.
         """
 
         # assemble least-squares system
@@ -1965,13 +1987,8 @@ class Inverse_optimizer:
         else:
             reg_matrix = np.diag(l2_reg)
 
-        # --------------------------------------------------------------
-        # Solve regularised normal equations:
-        #
-        #   (AᵀA + R) x = Aᵀ b
-        # --------------------------------------------------------------
-        lhs = self.A_plasma.T @ self.A_plasma + reg_matrix
-        rhs = self.A_plasma.T @ self.b_plasma
-        delta_current = np.linalg.solve(lhs, rhs)
+        delta_current = _solve_regularized_lstsq(
+            self.A_plasma, self.b_plasma, np.diag(reg_matrix)
+        )
 
         return delta_current, self.loss_plasma

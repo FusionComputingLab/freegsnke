@@ -101,6 +101,18 @@ def create_machine():
     return eq, profiles, constrain
 
 
+def test_set_plasma_psi_refreshes_interpolator(create_machine):
+    eq, _, _ = create_machine
+    plasma_psi = np.zeros_like(eq.plasma_psi)
+    i, j = eq.nxh + 2, eq.nyh
+    plasma_psi[i, j] = 42.0
+
+    eq.set_plasma_psi(plasma_psi)
+
+    assert "psi_func" not in eq.__dict__
+    assert np.isclose(eq.psi_func(eq.R[i, j], eq.Z[i, j], grid=False), 42.0)
+
+
 def create_test_files_static_solve(create_machine):
     """
     Saves the control currents and psi map needed for testing the static solver.

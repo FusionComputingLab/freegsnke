@@ -121,6 +121,7 @@ class Jtor_universal:
         copy_into(self, obj, "dZ")
         copy_into(self, obj, "dRdZ")
         copy_into(self, obj, "nx")
+        copy_into(self, obj, "ny")
 
         copy_into(self, obj, "dR_dZ")
         copy_into(self, obj, "eqRidx")

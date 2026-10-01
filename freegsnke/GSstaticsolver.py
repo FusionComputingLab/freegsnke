@@ -26,6 +26,7 @@ import numpy as np
 from freegs4e.gradshafranov import Greens
 
 from . import nk_solver_H as nk_solver
+from .anderson import AndersonOptions, safeguarded_solve
 from .inverse import _solve_regularized_lstsq
 
 
@@ -598,6 +599,110 @@ class NKGSsolver:
         del_res = np.amax(res) - np.amin(res)
         return del_res / del_psi, del_psi
 
+    def _backtrack_valid_update(
+        self,
+        eq,
+        profiles,
+        plasma_psi,
+        tokamak_psi,
+        update,
+        *,
+        vary_tokamak=False,
+        require_xpoint=False,
+        max_attempts=32,
+    ):
+        """Find a finite, geometrically valid update in a bounded number of trials.
+
+        This preserves the existing 0.75 reduction, without imposing a new
+        residual-decrease criterion. Only expected numerical/geometry failures
+        trigger retries. On failure, restore the accepted flux and derived
+        profile state before raising; never swallow interrupts or programming
+        errors. The returned scale also applies to an inverse current update.
+        """
+        base = tokamak_psi if vary_tokamak else plasma_psi
+        scale = 1.0
+        accepted = False
+        last_error = None
+        try:
+            for attempt in range(max_attempts):
+                point = base + scale * update
+                if np.array_equal(point, base) and np.any(update):
+                    break  # further reductions cannot change the field
+                try:
+                    if not np.all(np.isfinite(point)):
+                        raise ValueError("Non-finite trial flux")
+                    value = self.F_function(
+                        plasma_psi if vary_tokamak else point,
+                        point if vary_tokamak else tokamak_psi,
+                        profiles,
+                    )
+                    if not np.all(np.isfinite(value)):
+                        raise ValueError("Non-finite GS residual")
+                    if require_xpoint and not len(profiles.xpt):
+                        raise ValueError("No X-point retained by trial update")
+                    accepted = True
+                    return point, value, scale
+                except (ValueError, FloatingPointError, np.linalg.LinAlgError) as exc:
+                    last_error = exc
+                    scale *= 0.75
+            raise RuntimeError(
+                f"GS update failed after at most {max_attempts} trials: "
+                "no valid representable step; accepted equilibrium restored."
+            ) from last_error
+        finally:
+            if not accepted:
+                self.F_function(plasma_psi, tokamak_psi, profiles)
+                eq.plasma_psi = plasma_psi.reshape(self.nx, self.ny).copy()
+                self.port_critical(eq, profiles)
+
+    def _anderson_forward_iteration(
+        self, plasma_psi, profiles, force_up_down_symmetric, nk_options, **solve_options
+    ):
+        """Adapt the GS residual and existing NK step to SciPy orchestration."""
+
+        def project(vector):
+            """Apply only the explicitly requested symmetry restriction."""
+            if force_up_down_symmetric:
+                field = vector.reshape(self.nx, self.ny)
+                return (0.5 * (field + field[:, ::-1])).reshape(-1)
+            return vector
+
+        def residual(vector):
+            """Evaluate the unchanged full GS residual."""
+            return self.F_function(vector, self.tokamak_psi, profiles)
+
+        def newton_step(vector, value):
+            """Propose the existing matrix-free Newton–Krylov update."""
+            self.nksolver.Arnoldi_iteration(
+                x0=vector,
+                dx=value.copy(),
+                R0=value,
+                F_function=self.F_function,
+                args=[self.tokamak_psi, profiles],
+                **nk_options,
+            )
+            return self.nksolver.dx.copy()
+
+        return safeguarded_solve(
+            plasma_psi,
+            residual,
+            newton_step,
+            lambda value, vector: self.relative_del_residual(value, vector)[0],
+            project=project,
+            **solve_options,
+        )
+
+    def _finalize_forward(self, eq, profiles, plasma_psi):
+        """Synchronise the retained field, full residual and derived state."""
+        residual = self.F_function(plasma_psi, self.tokamak_psi, profiles)
+        self.relative_change = self.relative_del_residual(residual, plasma_psi)[0]
+        if self.relative_change < self.best_relative_change:
+            self.best_relative_change = self.relative_change
+            self.best_psi = plasma_psi.copy()
+        eq.plasma_psi = plasma_psi.reshape(self.nx, self.ny).copy()
+        self.port_critical(eq=eq, profiles=profiles)
+        return self.relative_change
+
     def forward_solve(
         self,
         eq,
@@ -614,6 +719,7 @@ class NKGSsolver:
         force_up_down_symmetric=False,
         verbose=False,
         suppress=False,
+        anderson_options=None,
     ):
         """
         Solve the forward static Grad–Shafranov (GS) equilibrium problem.
@@ -692,6 +798,12 @@ class NKGSsolver:
         suppress : bool
             Suppresses all print output.
 
+        anderson_options : AndersonOptions or None, optional
+            Opt-in limited-memory Picard acceleration and Newton recovery for
+            fixed-current forward solves. None preserves the existing solver.
+            History is reset on each call. Diagnostics are available in
+            ``self.anderson_diagnostics``. Inverse solves are not supported.
+
         Returns
         -------
         None
@@ -720,6 +832,12 @@ class NKGSsolver:
         if suppress:
             verbose = False
 
+        if anderson_options is not None and not isinstance(
+            anderson_options, AndersonOptions
+        ):
+            raise TypeError("anderson_options must be AndersonOptions or None")
+
+        self.anderson_diagnostics = None
         picard_flag = 0
 
         # ------------------------------------------------------------
@@ -782,7 +900,13 @@ class NKGSsolver:
         self.norm_rel_change = [norm_rel_change]
 
         self.best_relative_change = 1.0 * rel_change
-        self.best_psi = trial_plasma_psi
+        self.best_psi = trial_plasma_psi.copy()
+
+        # Preserve the legacy return policy separately from best-iterate
+        # diagnostics. Changing the returned iterate of a budget-limited
+        # forward solve changes the enclosing inverse-solve trajectory.
+        return_checkpoint_error = rel_change
+        return_checkpoint_psi = trial_plasma_psi.copy()
 
         args = [self.tokamak_psi, profiles]
 
@@ -802,6 +926,39 @@ class NKGSsolver:
         # Main nonlinear solve loop
         # Hybrid Picard / Newton–Krylov
         # ------------------------------------------------------------
+        if anderson_options is not None:
+            trial_plasma_psi, res0, diagnostics = self._anderson_forward_iteration(
+                trial_plasma_psi,
+                profiles,
+                force_up_down_symmetric,
+                nk_options=dict(
+                    step_size=step_size,
+                    scaling_with_n=scaling_with_n,
+                    target_relative_unexplained_residual=target_relative_unexplained_residual,
+                    max_n_directions=max_n_directions,
+                    clip=clip,
+                ),
+                options=anderson_options,
+                tolerance=target_relative_tolerance,
+                max_iterations=max_solving_iterations,
+                handover=Picard_handover,
+                max_rel_update_size=max_rel_update_size,
+            )
+            self.anderson_diagnostics = diagnostics
+            self.norm_rel_change = diagnostics["relative_norm_history"]
+            diagnostics["relative_error"] = self._finalize_forward(
+                eq, profiles, trial_plasma_psi
+            )
+            if verbose:
+                for event in diagnostics["events"]:
+                    print(event)
+            if not suppress:
+                print(
+                    f"Forward static solve {diagnostics['reason']}: "
+                    f"relative error {self.relative_change:.2e}"
+                )
+            return
+
         iterations = 0
         while (rel_change > target_relative_tolerance) * (
             iterations < max_solving_iterations
@@ -871,28 +1028,16 @@ class NKGSsolver:
             # Attempt update
             # If critical points disappear, shrink step
             # --------------------------------------------------------
-            new_residual_flag = True
-            while new_residual_flag:
-                try:
-                    # check update does not cause the disappearance of the Opoint
-                    n_trial_plasma_psi = trial_plasma_psi + update
-                    new_res0 = self.F_function(
-                        n_trial_plasma_psi, self.tokamak_psi, profiles
-                    )
-                    new_norm_rel_change = self.relative_norm_residual(
-                        new_res0, n_trial_plasma_psi
-                    )
-                    new_rel_change, new_del_psi = self.relative_del_residual(
-                        new_res0, n_trial_plasma_psi
-                    )
-
-                    new_residual_flag = False
-
-                except:
-                    log.append(
-                        "Update resizing triggered due to failure to find a critical points."
-                    )
-                    update *= 0.75
+            n_trial_plasma_psi, new_res0, scale = self._backtrack_valid_update(
+                eq, profiles, trial_plasma_psi, self.tokamak_psi, update
+            )
+            update = update * scale
+            new_norm_rel_change = self.relative_norm_residual(
+                new_res0, n_trial_plasma_psi
+            )
+            new_rel_change, new_del_psi = self.relative_del_residual(
+                new_res0, n_trial_plasma_psi
+            )
 
             # --------------------------------------------------------
             # Accept or reject update
@@ -941,28 +1086,28 @@ class NKGSsolver:
             else:
                 reduce_by = self.relative_change / new_rel_change
                 log.append("Increase in residual, update reduction triggered.")
-                # log.append(reduce_by)
-                new_residual_flag = True
-                while new_residual_flag:
-                    try:
-                        n_trial_plasma_psi = trial_plasma_psi + update * reduce_by
-                        res0 = self.F_function(
-                            n_trial_plasma_psi, self.tokamak_psi, profiles
-                        )
-                        new_residual_flag = False
-                    except:
-                        log.append("reduction!")
-                        reduce_by *= 0.75
+                n_trial_plasma_psi, res0, _ = self._backtrack_valid_update(
+                    eq,
+                    profiles,
+                    trial_plasma_psi,
+                    self.tokamak_psi,
+                    update * reduce_by,
+                )
 
                 starting_direction = np.copy(res0)
                 trial_plasma_psi = n_trial_plasma_psi.copy()
                 norm_rel_change = self.relative_norm_residual(res0, trial_plasma_psi)
                 rel_change, del_psi = self.relative_del_residual(res0, trial_plasma_psi)
 
-                # track best solution encountered
-                if rel_change < self.best_relative_change:
-                    self.best_relative_change = 1.0 * rel_change
-                    self.best_psi = np.copy(trial_plasma_psi)
+                # Legacy rollback checkpoint: updated after reduced steps.
+                if rel_change < return_checkpoint_error:
+                    return_checkpoint_error = rel_change
+                    return_checkpoint_psi = trial_plasma_psi.copy()
+
+            # Track improvements from every accepted step, including normal ones.
+            if rel_change < self.best_relative_change:
+                self.best_relative_change = 1.0 * rel_change
+                self.best_psi = np.copy(trial_plasma_psi)
 
             self.relative_change = 1.0 * rel_change
             self.norm_rel_change.append(norm_rel_change)
@@ -978,18 +1123,12 @@ class NKGSsolver:
             iterations += 1
 
         # ------------------------------------------------------------
-        # Finalise solution : update eq with new solution (compare to best on record)
+        # Preserve legacy return selection, then certify the returned field.
+        # best_psi independently records the lowest residual seen in this solve.
         # ------------------------------------------------------------
-        if self.best_relative_change < rel_change:
-            self.relative_change = 1.0 * self.best_relative_change
-            trial_plasma_psi = np.copy(self.best_psi)
-            profiles.Jtor(
-                self.R,
-                self.Z,
-                (self.tokamak_psi + trial_plasma_psi).reshape(self.nx, self.ny),
-            )
-        eq.plasma_psi = trial_plasma_psi.reshape(self.nx, self.ny).copy()
-        self.port_critical(eq=eq, profiles=profiles)
+        if return_checkpoint_error < rel_change:
+            trial_plasma_psi = return_checkpoint_psi.copy()
+        rel_change = self._finalize_forward(eq, profiles, trial_plasma_psi)
 
         # ------------------------------------------------------------
         # Print output to user
@@ -1846,27 +1985,18 @@ class NKGSsolver:
                     axis=0,
                 ).reshape(-1)
 
-                resize = True
-                while resize:
-                    try:
-                        GS_residual = self.F_function(
-                            tokamak_psi=self.tokamak_psi.reshape(-1)
-                            + delta_tokamak_psi,
-                            plasma_psi=eq.plasma_psi.reshape(-1),
-                            profiles=profiles,
-                        )
-                        if len(profiles.xpt):
-                            # The update is approved:
-                            resize = False
-                    except:
-                        pass
-
-                    if resize:
-                        if verbose:
-                            print("Resizing of the control current update triggered!")
-                        delta_current *= 0.75
-                        delta_tokamak_psi *= 0.75
-                        previous_rel_delta_psit *= 0.75
+                _, GS_residual, scale = self._backtrack_valid_update(
+                    eq,
+                    profiles,
+                    eq.plasma_psi.reshape(-1),
+                    self.tokamak_psi.reshape(-1),
+                    delta_tokamak_psi,
+                    vary_tokamak=True,
+                    require_xpoint=True,
+                )
+                delta_current *= scale
+                delta_tokamak_psi *= scale
+                previous_rel_delta_psit *= scale
 
             self.rel_psit_updates.append(previous_rel_delta_psit)
 
@@ -1972,6 +2102,7 @@ class NKGSsolver:
         force_up_down_symmetric=False,
         verbose=False,
         suppress=False,
+        anderson_options=None,
     ):
         """
         Unified entry point for solving Grad–Shafranov problems
@@ -2143,6 +2274,12 @@ class NKGSsolver:
             If True, suppresses all printed output.
 
 
+        anderson_options : AndersonOptions or None, optional
+            Opt-in limited-memory Picard acceleration and Newton recovery for
+            fixed-current forward solves. None preserves the existing solver.
+            History is reset on each call. Diagnostics are available in
+            ``self.anderson_diagnostics``. Inverse solves are not supported.
+
         Returns
         -------
         None
@@ -2158,6 +2295,11 @@ class NKGSsolver:
         • Inverse mode solves a nonlinear PDE-constrained least-squares problem.
         • Internally dispatches to `forward_solve` or `inverse_solve`.
         """
+
+        if anderson_options is not None and constrain is not None:
+            raise ValueError(
+                "Anderson recovery currently supports fixed-current forward solves only"
+            )
 
         # ensure vectorised currents are in place in tokamak object
         eq.tokamak.getCurrentsVec()
@@ -2182,6 +2324,7 @@ class NKGSsolver:
                 max_rel_update_size=max_rel_update_size,
                 force_up_down_symmetric=force_up_down_symmetric,
                 suppress=suppress,
+                anderson_options=anderson_options,
             )
         # ============================================================
         # Inverse GS solve

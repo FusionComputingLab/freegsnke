@@ -240,3 +240,74 @@ def test_limiter_reduced_boundary_green_is_exact(create_machine):
     actual = solver._boundary_flux_from_jtor(jtor)
 
     np.testing.assert_allclose(actual, expected, rtol=2e-14, atol=1e-14)
+
+
+@pytest.mark.parametrize("force_recovery", [False, True])
+def test_anderson_forward_solve(create_machine, monkeypatch, force_recovery):
+    """Opt-in solve/recovery reconverges a real MAST-U state and its profiles."""
+    from freegsnke import GSstaticsolver
+    from freegsnke.anderson import AndersonOptions
+
+    eq, profiles, _ = create_machine
+    eq.tokamak.set_coil_current("P6", 0)
+    eq.tokamak["P6"].control = False
+    eq.tokamak["Solenoid"].control = False
+    eq.tokamak.set_coil_current("Solenoid", 15000)
+    eq.tokamak.setControlCurrents(np.load(STATIC_CURRENT_BASELINE))
+    solver = GSstaticsolver.NKGSsolver(eq)
+    solver.forward_solve(eq, profiles, 1e-8, suppress=True)
+    reference = eq.plasma_psi.copy()
+    eq.plasma_psi = reference * 1.0005
+    if force_recovery:
+        original_newton = solver.nksolver.Arnoldi_iteration
+        failures = []
+
+        def fail_newton(**kwargs):
+            """Exercise the real residual's recovery path deterministically."""
+            if not failures:
+                failures.append(True)
+                raise ValueError("Injected Newton failure")
+            return original_newton(**kwargs)
+
+        monkeypatch.setattr(solver.nksolver, "Arnoldi_iteration", fail_newton)
+    currents = eq.tokamak.current_vec.copy()
+    solver.solve(
+        eq,
+        profiles,
+        target_relative_tolerance=1e-8,
+        Picard_handover=1.0,
+        max_solving_iterations=100,
+        suppress=True,
+        anderson_options=AndersonOptions(),
+    )
+    assert (
+        solver.anderson_diagnostics["reason"] == "converged"
+    ), solver.anderson_diagnostics
+    assert solver.relative_change < 1e-8
+    if force_recovery:
+        assert any(
+            e["event"] == "anderson_recovery"
+            for e in solver.anderson_diagnostics["events"]
+        )
+    np.testing.assert_allclose(eq.plasma_psi, reference, atol=np.ptp(reference) * 1e-5)
+    np.testing.assert_array_equal(eq.tokamak.current_vec, currents)
+    np.testing.assert_allclose(eq.psi_func(eq.R, eq.Z, grid=False), eq.plasma_psi)
+    current = profiles.jtor.copy()
+    res = solver.F_function(eq.plasma_psi.ravel(), solver.tokamak_psi, profiles)
+    assert solver.relative_del_residual(res, eq.plasma_psi.ravel())[0] < 1e-8
+    np.testing.assert_allclose(profiles.jtor, current)
+
+
+def test_anderson_inverse_rejected_before_state_change(create_machine):
+    """Unsupported inverse orchestration must not silently ignore recovery."""
+    from freegsnke import GSstaticsolver
+    from freegsnke.anderson import AndersonOptions
+
+    eq, profiles, constrain = create_machine
+    solver = GSstaticsolver.NKGSsolver(eq)
+    field = eq.plasma_psi.copy()
+    with pytest.raises(ValueError, match="forward solves only"):
+        solver.solve(
+            eq, profiles, constrain=constrain, anderson_options=AndersonOptions()
+        )
+    np.testing.assert_array_equal(eq.plasma_psi, field)

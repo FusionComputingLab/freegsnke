@@ -440,7 +440,7 @@ class Jtor_universal:
             opt, xpt, diverted_core_mask, psi_bndry = self.Jtor_part1(
                 R, Z, psi, psi_bndry, mask_outside_limiter
             )
-        except:
+        except Exception:
             opt, xpt, diverted_core_mask, psi_bndry = self.diverted_critical(
                 R,
                 Z,

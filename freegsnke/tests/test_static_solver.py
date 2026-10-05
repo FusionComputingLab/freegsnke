@@ -101,6 +101,25 @@ def create_machine():
     return eq, profiles, constrain
 
 
+def test_set_plasma_psi_refreshes_interpolator(create_machine):
+    eq, _, _ = create_machine
+    # Perturb off-centre only: psi_func's centre-point self-check then cannot
+    # detect a stale spline, so only set_plasma_psi can make this pass.
+    plasma_psi = np.copy(eq.plasma_psi)
+    i, j = eq.nxh + 2, eq.nyh + 3
+    plasma_psi[i, j] += 42.0
+    assert plasma_psi[eq.nxh, eq.nyh] == eq.plasma_psi[eq.nxh, eq.nyh]
+
+    eq.set_plasma_psi(plasma_psi)
+
+    assert "psi_func" not in eq.__dict__
+    assert np.isclose(eq.psi_func(eq.R[i, j], eq.Z[i, j], grid=False), plasma_psi[i, j])
+
+    # The installed array is a copy, decoupled from the caller's array.
+    plasma_psi[i, j] = 0.0
+    assert eq.plasma_psi[i, j] != 0.0
+
+
 def create_test_files_static_solve(create_machine):
     """
     Saves the control currents and psi map needed for testing the static solver.

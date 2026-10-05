@@ -1,0 +1,53 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: FreeGSNKE
+version: 3.1.0
+license: LGPL-3.0-or-later
+repository-code: "https://github.com/FusionComputingLab/freegsnke"
+url: "https://docs.freegsnke.com"
+authors:
+  - family-names: Amorisco
+    given-names: Nicola C.
+  - family-names: Pentland
+    given-names: Kamran
+  - family-names: Holt
+    given-names: George
+  - family-names: Ross
+    given-names: Alasdair
+  - family-names: Agnello
+    given-names: Adriano
+  - family-names: Cavestany
+    given-names: Pedro
+  - family-names: Nunn
+    given-names: Timothy
+  - family-names: Mars
+    given-names: Matthijs
+  - family-names: Marshall
+    given-names: Matthew
+  - family-names: Delaporte-Mathurin
+    given-names: Remi
+  - family-names: Brown
+    given-names: Theo
+preferred-citation:
+  type: article
+  title: "FreeGSNKE: A Python-based dynamic free-boundary toroidal plasma equilibrium solver"
+  authors:
+    - family-names: Amorisco
+      given-names: N. C.
+    - family-names: Agnello
+      given-names: A.
+    - family-names: Holt
+      given-names: G.
+    - family-names: Mars
+      given-names: M.
+    - family-names: Buchanan
+      given-names: J.
+    - family-names: Pamela
+      given-names: S.
+  journal: "Physics of Plasmas"
+  volume: 31
+  issue: 4
+  start: "042517"
+  year: 2024
+  doi: "10.1063/5.0188467"

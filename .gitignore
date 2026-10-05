@@ -10,6 +10,7 @@ __pycache__
 examples/test*
 examples/*.py
 examples/*.geqdsk
+examples/*.nc
 examples/*.mat
 examples/Geof*
 examples/*.pdf

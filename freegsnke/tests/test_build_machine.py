@@ -6,13 +6,12 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from scipy.stats.qmc import LatinHypercube
 
 os.environ.setdefault(
     "MPLCONFIGDIR", str(Path(tempfile.gettempdir()) / "freegsnke-matplotlib")
 )
 
-from freegsnke import build_machine, refine_passive
+from freegsnke import build_machine
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 MACHINE_CONFIG_DIR = REPO_ROOT / "machine_configs" / "example"
@@ -67,24 +66,7 @@ def example_data():
 @pytest.fixture()
 def example_tokamak(example_paths):
     """Build the example00 tokamak from pickle paths."""
-    _reset_refinement_engine()
     return build_machine.tokamak(**example_paths)
-
-
-def _reset_refinement_engine():
-    """Reset passive refinement sampling so regression builds are deterministic."""
-    refine_passive.engine = LatinHypercube(d=2, seed=42)
-
-
-@pytest.fixture(autouse=True)
-def isolated_refinement_engine():
-    """Keep deterministic refinement local to each machine-building test."""
-    original_engine = refine_passive.engine
-    _reset_refinement_engine()
-    try:
-        yield
-    finally:
-        refine_passive.engine = original_engine
 
 
 @pytest.fixture()
@@ -180,7 +162,6 @@ def tiny_machine_data():
 
 def _build_tiny_tokamak(tiny_machine_data, refine_mode="G"):
     """Build the in-memory test machine with independent input dictionaries."""
-    _reset_refinement_engine()
     return build_machine.tokamak(
         active_coils_data=deepcopy(tiny_machine_data["active_coils"]),
         passive_coils_data=deepcopy(tiny_machine_data["passive_coils"]),
@@ -285,9 +266,7 @@ def test_mixed_path_and_direct_data_build_matches_path_build(
     example_paths, example_data
 ):
     """Cover the alternate build style from example00."""
-    _reset_refinement_engine()
     path_tokamak = build_machine.tokamak(**example_paths)
-    _reset_refinement_engine()
     mixed_tokamak = build_machine.tokamak(
         active_coils_path=example_paths["active_coils_path"],
         passive_coils_data=deepcopy(example_data["passive_coils"]),
@@ -304,7 +283,6 @@ def test_mixed_path_and_direct_data_build_matches_path_build(
 
 def test_optional_machine_inputs_have_documented_defaults(example_data):
     """Check defaults for omitted passives, wall, and magnetic probes."""
-    _reset_refinement_engine()
     tokamak = build_machine.tokamak(
         active_coils_data=deepcopy(example_data["active_coils"]),
         limiter_data=deepcopy(example_data["limiter"]),

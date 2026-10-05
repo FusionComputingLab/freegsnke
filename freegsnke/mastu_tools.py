@@ -21,9 +21,11 @@ You should have received a copy of the GNU Lesser General Public License
 along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 """
 
+from __future__ import annotations
+
 import math
-import os
 import pickle
+from typing import Callable
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -32,37 +34,37 @@ import scipy as sp
 import shapely as sh
 from freegs4e import critical
 from numpy import abs, argmax, clip, linspace, pi
-from numpy.polynomial import Polynomial
-from scipy.interpolate import interp1d
 
 # --------------------------------
 # EXTRACTING EFIT++ DATA
 
 
 def get_machine_data(
-    save_path=None,
-    shot=45425,
-    split_passives=True,
-):
+    save_path: str | None = None,
+    shot: int = 45425,
+    split_passives: bool = True,
+) -> None:
     """
     This functions builds the active coil, passive structure, wall, and limiter machine description pickle
-    files for MAST-U (for a given shot number).
+    files for MAST-U (for a given shot number) required by FreeGSNKE.
 
     Parameters
     ----------
-    save_path : str
+    save_path : str, optional
         Path in which to save the machine pickle files.
-    shot : int
+    shot : int, optional
         MAST-U shot number.
-    split_passives : bool
-        If True, we model the passive structures as parallelograms (recommended), if False, we model as point current sources
+    split_passives : bool, optional
+        If True, we model the passive structures as parallelograms (recommended), if False, we
+        model as point current sources.
 
     Returns
     -------
     None
-        Builds pickle files for the machine description in the 'machine_configs/MAST-U' directory.
+        Builds pickle files for the machine description in the `save_path` directory.
     """
 
+    # path required
     if save_path is None:
         raise ValueError(
             "'save_path' cannot be None. Please provide a valid path to save the machine data."
@@ -86,9 +88,7 @@ def get_machine_data(
         for grandchild in child.children:
             dict0 = None
             try:
-                # print(vars(grandchild))
                 material = grandchild.material
-                # Is there a better method for this? - maybe do like Lucy did with efitGroups
                 coordinates = grandchild.children[1]
                 r = coordinates.centreR
                 z = coordinates.centreZ
@@ -103,7 +103,6 @@ def get_machine_data(
 
     # passive structure geometry data
     passive = client.geometry("/passive/efit", shot)
-
     dict2 = {}
     for child in passive.data.children:
         dict1 = None
@@ -120,8 +119,6 @@ def get_machine_data(
             try:
                 efitGroup = coordinates.efitGroup
                 elementLabels = coordinates.elementLabels
-                # print(efitGroup)
-                # print(elementLabels)
                 dict1["efitGroup"] = efitGroup
                 dict1["elementLabels"] = elementLabels
             except AttributeError as err:
@@ -139,7 +136,6 @@ def get_machine_data(
     flux_names = client.get("/epm/input/constraints/fluxloops/shortname", shot).data
     flux_r = client.get("/epm/input/constraints/fluxloops/rvalues", shot).data
     flux_z = client.get("/epm/input/constraints/fluxloops/zvalues", shot).data
-
     data["fluxloops"] = dict(names=flux_names, r=flux_r, z=flux_z)
 
     # efit pickup coil data
@@ -154,7 +150,6 @@ def get_machine_data(
     pickup_tor_angle = client.get(
         "/epm/input/constraints/magneticprobes/toroidalangle", shot
     ).data
-
     data["pickups"] = dict(
         names=pickup_names,
         r=pickup_r,
@@ -163,7 +158,7 @@ def get_machine_data(
         tor_ang=pickup_tor_angle,
     )
 
-    # BUILD THE PICKLE FILES FROM THE DATA IN THE ABOVE DICTIONARY
+    # NOW BUILD THE PICKLE FILES FROM THE DATA IN THE ABOVE DICTIONARY
 
     # default global machine quantities that may not be present in UDA data
     eta_copper = 1.55e-8  # resistivity in Ohm*m, for active coils
@@ -176,7 +171,7 @@ def get_machine_data(
     active_coils = {}
 
     # coil definitions (do not modify)
-    Solenoid = {
+    p1 = {
         "R": np.hstack(
             (active_coils_uda["p1_inner"]["r"], active_coils_uda["p1_outer"]["r"])
         ),
@@ -398,6 +393,16 @@ def get_machine_data(
         "multiplier": 1,
     }
 
+    pc = {
+        "R": active_coils_uda["pc"]["r"],
+        "Z": active_coils_uda["pc"]["z"],
+        "dR": np.mean(active_coils_uda["pc"]["dr"]),
+        "dZ": np.mean(active_coils_uda["pc"]["dz"]),
+        "resistivity": eta_copper,
+        "polarity": 1,
+        "multiplier": 0.5,
+    }
+
     p6_upper = {
         "R": active_coils_uda["p6_upper"]["r"],
         "Z": active_coils_uda["p6_upper"]["z"],
@@ -419,10 +424,18 @@ def get_machine_data(
         "multiplier": 1,
     }
 
-    # define symmetric active coils dictionary
+    # define symmetric (up/down coils linked in circuits) active coils dictionary
     active_coils = {}
 
-    active_coils["Solenoid"] = Solenoid
+    active_coils["p1"] = p1
+
+    active_coils["p4"] = {}
+    active_coils["p4"]["1"] = p4_upper
+    active_coils["p4"]["2"] = p4_lower
+
+    active_coils["p5"] = {}
+    active_coils["p5"]["1"] = p5_upper
+    active_coils["p5"]["2"] = p5_lower
 
     active_coils["px"] = {}
     active_coils["px"]["1"] = px_upper
@@ -440,10 +453,6 @@ def get_machine_data(
     active_coils["d3"]["1"] = d3_upper
     active_coils["d3"]["2"] = d3_lower
 
-    active_coils["dp"] = {}
-    active_coils["dp"]["1"] = dp_upper
-    active_coils["dp"]["2"] = dp_lower
-
     active_coils["d5"] = {}
     active_coils["d5"]["1"] = d5_upper
     active_coils["d5"]["2"] = d5_lower
@@ -456,13 +465,11 @@ def get_machine_data(
     active_coils["d7"]["1"] = d7_upper
     active_coils["d7"]["2"] = d7_lower
 
-    active_coils["p4"] = {}
-    active_coils["p4"]["1"] = p4_upper
-    active_coils["p4"]["2"] = p4_lower
+    active_coils["dp"] = {}
+    active_coils["dp"]["1"] = dp_upper
+    active_coils["dp"]["2"] = dp_lower
 
-    active_coils["p5"] = {}
-    active_coils["p5"]["1"] = p5_upper
-    active_coils["p5"]["2"] = p5_lower
+    active_coils["pc"] = pc
 
     active_coils["p6"] = {}
     active_coils["p6"]["1"] = p6_upper
@@ -472,10 +479,20 @@ def get_machine_data(
     # description is required.
     pickle.dump(active_coils, open(f"{save_path}/MAST-U_active_coils.pickle", "wb"))
 
-    # define non-symmetric active coils dictionary
+    # define non-symmetric (up/down coils not linked in circuits) active coils dictionary
     active_coils_nonsym = {}
 
-    active_coils_nonsym["Solenoid"] = Solenoid
+    active_coils_nonsym["p1"] = p1
+
+    active_coils_nonsym["p4_upper"] = {}
+    active_coils_nonsym["p4_upper"]["1"] = p4_upper
+    active_coils_nonsym["p4_lower"] = {}
+    active_coils_nonsym["p4_lower"]["1"] = p4_lower
+
+    active_coils_nonsym["p5_upper"] = {}
+    active_coils_nonsym["p5_upper"]["1"] = p5_upper
+    active_coils_nonsym["p5_lower"] = {}
+    active_coils_nonsym["p5_lower"]["1"] = p5_lower
 
     active_coils_nonsym["px_upper"] = {}
     active_coils_nonsym["px_upper"]["1"] = px_upper
@@ -497,11 +514,6 @@ def get_machine_data(
     active_coils_nonsym["d3_lower"] = {}
     active_coils_nonsym["d3_lower"]["1"] = d3_lower
 
-    active_coils_nonsym["dp_upper"] = {}
-    active_coils_nonsym["dp_upper"]["1"] = dp_upper
-    active_coils_nonsym["dp_lower"] = {}
-    active_coils_nonsym["dp_lower"]["1"] = dp_lower
-
     active_coils_nonsym["d5_upper"] = {}
     active_coils_nonsym["d5_upper"]["1"] = d5_upper
     active_coils_nonsym["d5_lower"] = {}
@@ -517,15 +529,12 @@ def get_machine_data(
     active_coils_nonsym["d7_lower"] = {}
     active_coils_nonsym["d7_lower"]["1"] = d7_lower
 
-    active_coils_nonsym["p4_upper"] = {}
-    active_coils_nonsym["p4_upper"]["1"] = p4_upper
-    active_coils_nonsym["p4_lower"] = {}
-    active_coils_nonsym["p4_lower"]["1"] = p4_lower
+    active_coils_nonsym["dp_upper"] = {}
+    active_coils_nonsym["dp_upper"]["1"] = dp_upper
+    active_coils_nonsym["dp_lower"] = {}
+    active_coils_nonsym["dp_lower"]["1"] = dp_lower
 
-    active_coils_nonsym["p5_upper"] = {}
-    active_coils_nonsym["p5_upper"]["1"] = p5_upper
-    active_coils_nonsym["p5_lower"] = {}
-    active_coils_nonsym["p5_lower"]["1"] = p5_lower
+    active_coils_nonsym["pc"] = pc
 
     active_coils_nonsym["p6_upper"] = {}
     active_coils_nonsym["p6_upper"]["1"] = p6_upper
@@ -559,7 +568,7 @@ def get_machine_data(
     # PASSIVE STRUCTURES
     passive_coils_uda = data["geometry_passive"]
 
-    # strucutres to be excluded from simulations (as they're not in EFIT)
+    # strucutres to be excluded from simulations (as they're not in EFIT++)
     excluded_structures = [
         "centrecolumn_tiles",
         "div_tiles_lower",
@@ -746,146 +755,168 @@ def get_machine_data(
         open(f"{save_path}/MAST-U_magnetic_probes.pickle", "wb"),
     )
 
-    # DONE
     print("MAST-U geometry data successfully extracted and pickle files built.")
 
 
-def load_efit_times_and_status(client, shot=45425):
-    """
-    Extract the (magnetics-only) EFIT++ reconstruction shot status, which tells us whether
-    each time slice converged or not.
-
-    Parameters
-    ----------
-    client :
-        The pyUDA client.
-    shot : int
-        MAST-U shot number.
-
-    Returns
-    -------
-    np.array
-        Shot times at which EFIT++ reconstructions take place.
-    np.array
-        Shot status at the times when EFIT++ reconstructions take place.
-    """
-
-    # load data
-    status = client.get("/epm/equilibriumstatusinteger", shot)
-
-    return status.time.data, status.data
-
-
-def load_efit_times_and_status_splines(client, shot=45425):
-    """
-    Extract the (magnetics + motional stark effect) EFIT++ reconstruction shot status, which
-    tells us whether each time slice converged or not.
-
-    Parameters
-    ----------
-    client :
-        The pyUDA client.
-    shot : int
-        MAST-U shot number.
-
-    Returns
-    -------
-    np.array
-        Shot times at which EFIT++ reconstructions take place.
-    np.array
-        Shot status at the times when EFIT++ reconstructions take place.
-    """
-
-    # load data
-    status = client.get("/epq/equilibriumstatusinteger", shot)
-
-    return status.time.data, status.data
-
-
 # ------------
 # ------------
-def load_static_solver_inputs(
-    client, active_coils_path, passive_coils_path, shot=45425, zero_passives=False
-):
+def get_efit_data(
+    client: pyuda.Client,
+    active_coils_path: str,
+    passive_coils_path: str,
+    shot: int = 45425,
+    zero_passives: bool = False,
+    data_type: str = "magnetics",
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict, dict, dict]:
     """
-    Extract the key (magnetics-only) EFIT++ reconstruction data at each time slice so that
-    we can use it in FreeGSNKE to carry out static forward GS solves.
+    Extract the key EFIT++ reconstruction data at each time slice so that we can use it in
+    FreeGSNKE to carry out static forward GS solves. Only time slices which EFIT++ managed to
+    converge on are returned.
 
     Parameters
     ----------
-    client :
+    client : pyuda.Client
         The pyUDA client.
     active_coils_path : str
         Path to active coils pickle.
     passive_coils_path : str
         Path to passive coils pickle.
-    shot : int
+    shot : int, optional
         MAST-U shot number.
-    zero_passives : bool
+    zero_passives : bool, optional
         If True, we set the currents in the MAST-U passive structures to zero, if False, we use
         the currents found by EFIT++.
+    data_type : str, optional
+        Which EFIT++ reconstruction to use: 'magnetics' for the magnetics-only reconstruction
+        (profile parameters are the Lao85 p'/FF' polynomial coefficients), or
+        'magnetics_and_mse' for the magnetics + motional Stark effect reconstruction (profile
+        parameters are the tension-spline p'/FF' knot locations/values/tensions).
 
     Returns
     -------
     np.array
-        Total plasma current [Amps] at each EFIT++ reconstruction time.
+        EFIT++ reconstruction times [s] (converged time slices only).
     np.array
-        Vaccum toroidal field parameter at each EFIT++ reconstruction time.
+        Index of each converged time slice within the full (unfiltered) EFIT++ reconstruction.
+        Useful for aligning with data fetched separately over the full, unfiltered time base
+        (e.g. via extract_EFIT_outputs / extract_EFIT_outputs_splines).
     np.array
-        Alpha coefficients (for p') from Lao toroidal current density profile
-        at each EFIT++ reconstruction time.
+        Total plasma current [Amps] at each (converged) EFIT++ reconstruction time.
     np.array
-        Beta coefficients (for FF') from Lao toroidal current density profile
-        at each EFIT++ reconstruction time.
-    np.array
-        Alpha logical parameter (sets p' edge boundary condition) for Lao toroidal current
-        density profile at each EFIT++ reconstruction time.
-    np.array
-        Beta logical parameter (sets FF' edge boundary condition) for Lao toroidal current
-        density profile at each EFIT++ reconstruction time.
+        Vaccum toroidal field parameter at each (converged) EFIT++ reconstruction time.
+    dict
+        Profile parameters at each (converged) EFIT++ reconstruction time.
+        For data_type='magnetics' this contains:
+            'alpha', 'beta' : p'/FF' Lao85 polynomial coefficients.
+            'alpha_logic', 'beta_logic' : p'/FF' edge boundary condition logicals.
+        For data_type='magnetics_and_mse' this contains:
+            'pp_knots', 'ffp_knots' : p'/FF' tension-spline knot locations.
+            'pp_values', 'ffp_values' : p'/FF' tension-spline values at the knot points.
+            'pp_values_2nd', 'ffp_values_2nd' : p'/FF' tension-spline second deriv. values at
+                the knot points.
+            'pp_tension', 'ffp_tension' : p'/FF' tension-spline tension values.
     dict
         Dictionary of active coil and passive structure currents: within each key is an
-        array of currents (one at each EFIT++ reconstruction time). These are currents for
-        the symmetric active coil set up.
+        array of currents (one at each converged EFIT++ reconstruction time). These are
+        currents for the symmetric active coil set up.
     dict
         Dictionary of active coil and passive structure currents: within each key is an
-        array of currents (one at each EFIT++ reconstruction time). These are currents for
-        the symmetric active coil set up.
-    dict
-        Dictionary of active coil and passive structure current discrepancies:  these are between
-        the symmetric and non-symmetric active coil set ups.
+        array of currents (one at each converged EFIT++ reconstruction time). These are
+        currents for the non-symmetric active coil set up.
     """
+
+    if data_type == "magnetics":
+        prefix = "epm"
+    elif data_type == "magnetics_and_mse":
+        prefix = "epq"
+    else:
+        raise ValueError(
+            "'data_type' must be either 'magnetics' or 'magnetics_and_mse'."
+        )
 
     # load data
     Ip = client.get(
-        "/epm/input/constraints/plasmacurrent/computed", shot
+        f"/{prefix}/input/constraints/plasmacurrent/computed", shot
     ).data  # plasma current
-    fvac = client.get("/epm/input/bvacradiusproduct", shot).data  # fvac
-    alpha = client.get(
-        "/epm/output/numericaldetails/degreesoffreedom/pprimecoeffs", shot
-    ).data  # pprime coefficients
-    beta = client.get(
-        "/epm/output/numericaldetails/degreesoffreedom/ffprimecoeffs", shot
-    ).data  # ffprime coefficients
-    alpha_logic = client.get(
-        "/epm/input/numericalcontrols/pp/edge", shot
-    ).data  # pprime logical
-    beta_logic = client.get(
-        "/epm/input/numericalcontrols/ffp/edge", shot
-    ).data  # ffprime logical
+    fvac = client.get(f"/{prefix}/input/bvacradiusproduct", shot).data  # fvac
+
+    if data_type == "magnetics":
+        alpha = client.get(
+            f"/{prefix}/output/numericaldetails/degreesoffreedom/pprimecoeffs", shot
+        ).data  # pprime coefficients
+        beta = client.get(
+            f"/{prefix}/output/numericaldetails/degreesoffreedom/ffprimecoeffs", shot
+        ).data  # ffprime coefficients
+        alpha_logic = client.get(
+            f"/{prefix}/input/numericalcontrols/pp/edge", shot
+        ).data  # pprime logical
+        beta_logic = client.get(
+            f"/{prefix}/input/numericalcontrols/ffp/edge", shot
+        ).data  # ffprime logical
+
+        profile_params = dict(
+            alpha=alpha,
+            beta=beta,
+            alpha_logic=alpha_logic,
+            beta_logic=beta_logic,
+        )
+    else:
+        pp_coeffs = client.get(
+            f"/{prefix}/output/numericaldetails/degreesoffreedom/pprimecoeffs", shot
+        ).data  # pprime coefficients (contains values at knots, second deriv. values at knots)
+        ffp_coeffs = client.get(
+            f"/{prefix}/output/numericaldetails/degreesoffreedom/ffprimecoeffs", shot
+        ).data  # ffprime coefficients (contains values at knots, second deriv. values at knots)
+        pp_values = pp_coeffs[
+            :, 0::2
+        ]  # every second element (starting from zero) is the value at a knot
+        pp_values_2nd = pp_coeffs[
+            :, 1::2
+        ]  # every second element (starting from one) is the value of the second deriv. at a knot
+        ffp_values = ffp_coeffs[
+            :, 0::2
+        ]  # every second element (starting from zero) is the value at a knot
+        ffp_values_2nd = ffp_coeffs[
+            :, 1::2
+        ]  # every second element (starting from one) is the value of the second deriv. at a knot
+
+        pp_tension = client.get(
+            f"/{prefix}/input/numericalcontrols/pp/tens", shot
+        ).data  # pprime tension value
+        ffp_tension = client.get(
+            f"/{prefix}/input/numericalcontrols/ffp/tens", shot
+        ).data  # ffprime tension value
+        pp_knots_raw = client.get(
+            f"/{prefix}/input/numericalcontrols/pp/knt", shot
+        ).data  # pprime knot locations
+        ffp_knots_raw = client.get(
+            f"/{prefix}/input/numericalcontrols/ffp/knt", shot
+        ).data  # ffprime knot locations
+        pp_knots = pp_knots_raw[:, pp_knots_raw[0, :] > -1]
+        ffp_knots = ffp_knots_raw[:, ffp_knots_raw[0, :] > -1]
+
+        profile_params = dict(
+            pp_knots=pp_knots,
+            ffp_knots=ffp_knots,
+            pp_values=pp_values,
+            ffp_values=ffp_values,
+            pp_values_2nd=pp_values_2nd,
+            ffp_values_2nd=ffp_values_2nd,
+            pp_tension=pp_tension,
+            ffp_tension=ffp_tension,
+        )
 
     # active coil\passive structure currents need to be done carefully
     current_labels = client.get(
-        "/epm/input/constraints/pfcircuits/shortname", shot
+        f"/{prefix}/input/constraints/pfcircuits/shortname", shot
     ).data  # active/passive coil current names
     currents_values = client.get(
-        "/epm/input/constraints/pfcircuits/computed", shot
+        f"/{prefix}/input/constraints/pfcircuits/computed", shot
     ).data  # active/passive coil current values
 
     # Active coils
     currents = {}
     currents_nonsym = {}
-    currents_discrepancy = {}
 
     with open(active_coils_path, "rb") as file:
         active_coils = pickle.load(file)
@@ -903,7 +934,6 @@ def load_static_solver_inputs(
             currents_nonsym["Solenoid"] = (
                 currents_values[:, indices[0]] if indices else None
             )
-            currents_discrepancy["Solenoid"] = 0.0
         else:
             # find indices for other coils in efit_names
             indices = [
@@ -917,9 +947,6 @@ def load_static_solver_inputs(
                     np.abs(currents_values[:, indices]), axis=1
                 ) / len(indices)
                 currents[active_coil_name] = polarity * average_current
-                currents_discrepancy[active_coil_name] = polarity * np.abs(
-                    np.abs(currents_values[:, indices[0]]) - average_current
-                )
                 for j in indices:
                     currents_nonsym[efit_names[j]] = currents_values[:, j]
 
@@ -930,275 +957,85 @@ def load_static_solver_inputs(
     with open(passive_coils_path, "rb") as file:
         passive_coils = pickle.load(file)
 
-    # Passive structures
     for i in range(0, len(passive_coils)):
         coil = passive_coils[i]
 
         if "efitGroup" in coil:
             group_name = coil["efitGroup"]
-            ind = current_labels.tolist().index(group_name)
-
-            if zero_passives:
-                currents[coil["name"]] = 0.0
-                currents_nonsym[coil["name"]] = 0.0
-            else:
-                currents[coil["name"]] = (
-                    currents_values[:, ind] * coil["current_multiplier"]
-                )
-                currents_nonsym[coil["name"]] = (
-                    currents_values[:, ind] * coil["current_multiplier"]
-                )
-                # currents[coil["name"]] = efit_currents['currents_input'][t,ind]
         else:
             group_name = coil["element"]
-            ind = current_labels.tolist().index(group_name)
-            if zero_passives:
-                currents[coil["name"]] = 0.0
-                currents_nonsym[coil["name"]] = 0.0
-            else:
-                currents[coil["name"]] = (
-                    currents_values[:, ind] * coil["current_multiplier"]
-                )
-                currents_nonsym[coil["name"]] = (
-                    currents_values[:, ind] * coil["current_multiplier"]
-                )
-                # currents[coil["name"]] = efit_currents['currents_input'][t,ind]
+        ind = current_labels.tolist().index(group_name)
 
-    return (
-        Ip,
-        fvac,
-        alpha,
-        beta,
-        alpha_logic,
-        beta_logic,
-        currents,
-        currents_nonsym,
-        currents_discrepancy,
-    )
-
-
-# ------------
-# ------------
-def load_static_solver_inputs_splines(
-    client, active_coils_path, passive_coils_path, shot=45425, zero_passives=False
-):
-    """
-    Extract the key (magnetics + motional stark effect) EFIT++ reconstruction data at each
-    time slice so that we can use it in FreeGSNKE to carry out static forward GS solves.
-
-    Parameters
-    ----------
-    client :
-        The pyUDA client.
-    active_coils_path : str
-        Path to active coils pickle.
-    passive_coils_path : str
-        Path to passive coils pickle.
-    shot : int
-        MAST-U shot number.
-    zero_passives : bool
-        If True, we set the currents in the MAST-U passive structures to zero, if False, we use
-        the currents found by EFIT++.
-
-    Returns
-    -------
-    np.array
-        Total plasma current [Amps] at each EFIT++ reconstruction time.
-    np.array
-        Vaccum toroidal field parameter at each EFIT++ reconstruction time.
-    np.array
-        Knot points for p' profile at each EFIT++ reconstruction time.
-    np.array
-        Knot points for FF' profile at each EFIT++ reconstruction time.
-    np.array
-        Values of p' profile at knot points at each EFIT++ reconstruction time.
-    np.array
-        Values of FF' profile at knot points at each EFIT++ reconstruction time.
-    np.array
-        Values of second derivative of p' profile at knot points at each EFIT++
-        reconstruction time.
-    np.array
-        Values of second derivative of FF' profile at knot points at each EFIT++
-        reconstruction time.
-    np.array
-        Values of tension spline parameter for p' profile at each EFIT++
-        reconstruction time.
-    np.array
-        Values of tension spline parameter for FF' profile at each EFIT++
-        reconstruction time.
-    dict
-        Dictionary of active coil and passive structure currents: within each key is an
-        array of currents (one at each EFIT++ reconstruction time). These are currents for
-        the symmetric active coil set up.
-    dict
-        Dictionary of active coil and passive structure currents: within each key is an
-        array of currents (one at each EFIT++ reconstruction time). These are currents for
-        the symmetric active coil set up.
-    dict
-        Dictionary of active coil and passive structure current discrepancies:  these are between
-        the symmetric and non-symmetric active coil set ups.
-    """
-
-    # load data
-    Ip = client.get(
-        "/epq/input/constraints/plasmacurrent/computed", shot
-    ).data  # plasma current
-    fvac = client.get("/epq/input/bvacradiusproduct", shot).data  # fvac
-    pp_coeffs = client.get(
-        "/epq/output/numericaldetails/degreesoffreedom/pprimecoeffs", shot
-    ).data  # pprime coefficients (contains values at knots, second deriv. values at knots)
-    ffp_coeffs = client.get(
-        "/epq/output/numericaldetails/degreesoffreedom/ffprimecoeffs", shot
-    ).data  # ffprime coefficients (contains values at knots, second deriv. values at knots)
-    pp_values = pp_coeffs[
-        :, 0::2
-    ]  # every second element (starting from zero) is the value at a knot
-    pp_values_2nd = pp_coeffs[
-        :, 1::2
-    ]  # every second element (starting from one) is the value of the second deriv. at a knot
-    ffp_values = ffp_coeffs[
-        :, 0::2
-    ]  # every second element (starting from zero) is the value at a knot
-    ffp_values_2nd = ffp_coeffs[
-        :, 1::2
-    ]  # every second element (starting from one) is the value of the second deriv. at a knot
-
-    pp_tension = client.get(
-        "/epq/input/numericalcontrols/pp/tens", shot
-    ).data  # pprime tension value
-    ffp_tension = client.get(
-        "/epq/input/numericalcontrols/ffp/tens", shot
-    ).data  # ffprime tension value
-    pp_knots_raw = client.get(
-        "/epq/input/numericalcontrols/pp/knt", shot
-    ).data  # pprime knot locations
-    ffp_knots_raw = client.get(
-        "/epq/input/numericalcontrols/ffp/knt", shot
-    ).data  # ffprime knot locations
-    pp_knots = pp_knots_raw[:, pp_knots_raw[0, :] > -1]
-    ffp_knots = ffp_knots_raw[:, ffp_knots_raw[0, :] > -1]
-
-    # active coil\passive structure currents need to be done carefully
-    current_labels = client.get(
-        "/epq/input/constraints/pfcircuits/shortname", shot
-    ).data  # active/passive coil current names
-    currents_values = client.get(
-        "/epq/input/constraints/pfcircuits/computed", shot
-    ).data  # active/passive coil current values
-
-    # Active coils
-    currents = {}
-    currents_nonsym = {}
-    currents_discrepancy = {}
-
-    with open(active_coils_path, "rb") as file:
-        active_coils = pickle.load(file)
-
-    efit_names = current_labels[0:24]  # active coil names in efit
-
-    # loop through active coil names in freegsnke to set them with UDA data
-    for active_coil_name in active_coils.keys():
-
-        # special cases for specific coil names
-        if active_coil_name == "Solenoid":
-            # find indices for Solenoid coils in efit_names
-            indices = [i for i, efit_name in enumerate(efit_names) if "p1" in efit_name]
-            currents["Solenoid"] = currents_values[:, indices[0]] if indices else None
-            currents_nonsym["Solenoid"] = (
-                currents_values[:, indices[0]] if indices else None
+        if zero_passives:
+            currents[coil["name"]] = 0.0
+            currents_nonsym[coil["name"]] = 0.0
+        else:
+            currents[coil["name"]] = (
+                currents_values[:, ind] * coil["current_multiplier"]
             )
-            currents_discrepancy["Solenoid"] = 0.0
-        else:
-            # find indices for other coils in efit_names
-            indices = [
-                i
-                for i, efit_name in enumerate(efit_names)
-                if active_coil_name in efit_name
-            ]
-            if indices:
-                polarity = np.sign(currents_values[:, indices[0]])
-                average_current = np.sum(
-                    np.abs(currents_values[:, indices]), axis=1
-                ) / len(indices)
-                currents[active_coil_name] = polarity * average_current
-                currents_discrepancy[active_coil_name] = polarity * np.abs(
-                    np.abs(currents_values[:, indices[0]]) - average_current
-                )
-                for j in indices:
-                    currents_nonsym[efit_names[j]] = currents_values[:, j]
+            currents_nonsym[coil["name"]] = (
+                currents_values[:, ind] * coil["current_multiplier"]
+            )
 
-            else:
-                currents[active_coil_name] = None
+    # keep only the time slices that EFIT++ successfully converged on
+    status = client.get(f"/{prefix}/equilibriumstatusinteger", shot)
+    time_indices = np.where(status.data == 1)[0]
+    times = status.time.data[time_indices]
 
-    # passive structures
-    with open(passive_coils_path, "rb") as file:
-        passive_coils = pickle.load(file)
+    Ip = Ip[time_indices]
+    fvac = fvac[time_indices]
+    for key in profile_params:
+        profile_params[key] = profile_params[key][time_indices]
+    for key in currents:
+        currents[key] = currents[key][time_indices]
+    for key in currents_nonsym:
+        currents_nonsym[key] = currents_nonsym[key][time_indices]
 
-    # Passive structures
-    for i in range(0, len(passive_coils)):
-        coil = passive_coils[i]
-
-        if "efitGroup" in coil:
-            group_name = coil["efitGroup"]
-            ind = current_labels.tolist().index(group_name)
-
-            if zero_passives:
-                currents[coil["name"]] = 0.0
-                currents_nonsym[coil["name"]] = 0.0
-            else:
-                currents[coil["name"]] = (
-                    currents_values[:, ind] * coil["current_multiplier"]
-                )
-                currents_nonsym[coil["name"]] = (
-                    currents_values[:, ind] * coil["current_multiplier"]
-                )
-                # currents[coil["name"]] = efit_currents['currents_input'][t,ind]
-        else:
-            group_name = coil["element"]
-            ind = current_labels.tolist().index(group_name)
-            if zero_passives:
-                currents[coil["name"]] = 0.0
-                currents_nonsym[coil["name"]] = 0.0
-            else:
-                currents[coil["name"]] = (
-                    currents_values[:, ind] * coil["current_multiplier"]
-                )
-                currents_nonsym[coil["name"]] = (
-                    currents_values[:, ind] * coil["current_multiplier"]
-                )
-                # currents[coil["name"]] = efit_currents['currents_input'][t,ind]
+    print(
+        f"{len(status.data) - len(time_indices)} of {len(status.data)} EFIT++ time slices "
+        "excluded (did not converge)."
+    )
 
     return (
+        times,
+        time_indices,
         Ip,
         fvac,
-        pp_knots,
-        ffp_knots,
-        pp_values,
-        ffp_values,
-        pp_values_2nd,
-        ffp_values_2nd,
-        pp_tension,
-        ffp_tension,
+        profile_params,
         currents,
         currents_nonsym,
-        currents_discrepancy,
     )
 
 
-def extract_EFIT_outputs(client, shot, time_indices):
+def extract_EFIT_outputs(
+    client: pyuda.Client, shot: int, time_indices: np.ndarray
+) -> tuple[
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    dict,
+    dict,
+]:
     """
     Extract the key (magnetics-only) EFIT++ reconstruction output data at each
     time slice so that we can compare to FreeGSNKE.
 
     Parameters
     ----------
-    client :
+    client : pyuda.Client
         The pyUDA client.
     shot : int
         MAST-U shot number.
-    time_indices : np.array
-        Array of logicals, same length as the number of EFIT++ reconstruction time slices, at
-        which to extract the EFIT++ output data.
+    time_indices : np.ndarray of int
+        Indices (into the full, unfiltered EFIT++ reconstruction time base) of the time slices
+        at which to extract the EFIT++ output data (e.g. as returned by `get_efit_data`).
 
     Returns
     -------
@@ -1349,20 +1186,35 @@ def extract_EFIT_outputs(client, shot, time_indices):
     )
 
 
-def extract_EFIT_outputs_splines(client, shot, time_indices):
+def extract_EFIT_outputs_splines(
+    client: pyuda.Client, shot: int, time_indices: np.ndarray
+) -> tuple[
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    dict,
+    dict,
+]:
     """
     Extract the key (magnetics + motional stark effect) EFIT++ reconstruction output data at each
     time slice so that we can compare to FreeGSNKE.
 
     Parameters
     ----------
-    client :
+    client : pyuda.Client
         The pyUDA client.
     shot : int
         MAST-U shot number.
-    time_indices : np.array
-        Array of logicals, same length as the number of EFIT++ reconstruction time slices, at
-        which to extract the EFIT++ output data.
+    time_indices : np.ndarray of int
+        Indices (into the full, unfiltered EFIT++ reconstruction time base) of the time slices
+        at which to extract the EFIT++ output data (e.g. as returned by `get_efit_data`).
 
     Returns
     -------
@@ -1513,886 +1365,20 @@ def extract_EFIT_outputs_splines(client, shot, time_indices):
     )
 
 
-def load_currents_voltages_and_TS_signals(
-    client,
-    shot=45425,
-):
-    """
-    Extract the (analysed) AMC currents, the (raw) XDC/XCM voltages, and
-    (if available) the (analysed) AYC Thomson scattering information.
-
-    Parameters
-    ----------
-    client :
-        The pyUDA client.
-    shot : int
-        MAST-U shot number.
-
-    Returns
-    -------
-    dict
-        Dictionary containing the attributes corresponding to the data.
-    dict
-        Dictionary containing all of the relevant data.
-    """
-
-    # default time steps and coil orderings
-    dt = 0.001
-    coil_ordering = [2, 3, 4, 6, 7, 8, 5, 9, 10, 11, 1, 0]
-
-    att_dict = {}
-    att_dict = {
-        "Solenoid": {
-            "name": "P1PS",
-            "PS": True,
-            "rogextn": ["P1"],
-            "rogint": False,
-            "XDC_volts": "P1",
-        },
-        "Px": {
-            "name": "Px",
-            "PS": False,
-            "rogextn": ["PXU", "PXL"],
-            "rogint": False,
-            "XDC_volts": "PX",
-        },
-        "D1": {
-            "name": "D1",
-            "PS": False,
-            "rogextn": ["D1U", "D1L"],
-            "rogint": True,
-            "rogintn": ["ROG_D1U_02", "ROG_D1L_02"],
-            "XDC_volts": "D1",
-        },
-        "D2": {
-            "name": "D2",
-            "PS": False,
-            "rogextn": ["D2U", "D2L"],
-            "rogint": True,
-            "rogintn": ["ROG_D2U_02", "ROG_D2L_02"],
-            "XDC_volts": "D2",
-        },
-        "D3": {
-            "name": "D3",
-            "PS": False,
-            "rogextn": ["D3U", "D3L"],
-            "rogint": True,
-            "rogintn": ["ROG_D3U_01", "ROG_D3L_02"],
-            "XDC_volts": "D3",
-        },
-        "Dp": {
-            "name": "Dp",
-            "PS": False,
-            "rogextn": ["DPU", "DPL"],
-            "rogint": True,
-            "rogintn": ["ROG_DPU_02", "ROG_DPL_02"],
-            "XDC_volts": "DP",
-        },
-        "D5": {
-            "name": "D5",
-            "PS": False,
-            "rogextn": ["D5U", "D5L"],
-            "rogint": True,
-            "rogintn": ["ROG_D5U_01", "ROG_D5L_02"],
-            "XDC_volts": "D5",
-        },
-        "D6": {
-            "name": "D6",
-            "PS": False,
-            "rogextn": ["D6U", "D6L"],
-            "rogint": True,
-            "rogintn": ["ROG_D6U_01", "ROG_D6L_02"],
-            "XDC_volts": "D6",
-        },
-        "D7": {
-            "name": "D7",
-            "PS": False,
-            "rogextn": ["D7U", "D7L"],
-            "rogint": True,
-            "rogintn": ["ROG_D7U_01", "ROG_D7L_02"],
-            "XDC_volts": "D7",
-        },
-        "P4": {
-            "name": "SFPS",
-            "PS": True,
-            "rogextn": ["P4U", "P4L"],
-            "rogint": True,
-            "rogintn": ["ROG_P4U_02", "ROG_P4L_02"],
-            "XDC_volts": "P4",
-        },
-        "P5": {
-            "name": "MFPS",
-            "PS": True,
-            "rogextn": ["P5U", "P5L"],
-            "rogint": True,
-            "rogintn": ["ROG_P5U_02", "ROG_P5L_02"],
-            "XDC_volts": "P5",
-        },
-        "P6": {
-            "name": "RFPS",
-            "PS": False,
-            "rogextn": ["P6U", "P6L"],
-            "rogint": True,
-            "rogintn": ["ROG_P6U_02", "ROG_P6L_04"],
-            "XDC_volts": "P6",
-        },
-    }
-    len_coils = len(att_dict)
-    coil_list = np.sort(list(att_dict.keys()))
-
-    def get_voltages(shotn):
-        """
-        Retrieve coil voltage signals for a given shot number.
-
-        This function queries an external data source for voltage signals
-        associated with a set of actuators defined in `att_dict`. Depending
-        on the actuator type, it fetches either PS coil voltages or generic
-        output voltages.
-
-        The returned data is organised into a dictionary keyed by actuator name.
-
-        Parameters
-        ----------
-        shotn : int
-            Shot number identifying the discharge for which voltage data is
-            requested.
-
-        Returns
-        -------
-        outdict : dict
-            Dictionary of voltage signals. Each key corresponds to an actuator
-            name and maps to a dictionary with:
-
-            - data : ndarray
-                Voltage time series
-            - times : ndarray
-                Time base associated with the signal
-            - units : str
-                Physical units of the voltage signal
-
-        Notes
-        -----
-        Missing signals are silently ignored.
-        """
-        outdict = {}
-        for attk in att_dict:
-            tinner = att_dict[attk]
-            try:
-                if tinner["PS"]:
-                    taa_v = client.get("XCM/" + tinner["name"] + "/VOLTS", shotn)
-                else:
-                    taa_v = client.get("XCM/" + tinner["name"] + "/VOUT", shotn)
-                outdict[attk] = {
-                    "data": taa_v.data,
-                    "times": taa_v.time.data,
-                    "units": taa_v.units,
-                }
-            except:
-                pass  # print('voltages not found for coil '+attk+', shot '+str(shotn))
-        return outdict
-
-    def get_req_voltages(shotn):
-        """
-        Retrieve requested (reference/commanded) coil voltages for a given shot.
-
-        This function queries an external data source for the prescribed voltage
-        waveforms associated with each actuator defined in `att_dict`.
-
-        If a signal cannot be retrieved, a default placeholder signal is returned
-        and a warning message is printed.
-
-        Parameters
-        ----------
-        shotn : int
-            Shot number identifying the discharge for which voltage data is
-            requested.
-
-        Returns
-        -------
-        outdict : dict
-            Dictionary of requested voltage signals. Each key corresponds to a
-            coil name and maps to a dictionary with:
-
-            - data : ndarray
-                Requested voltage time series (or placeholder if missing)
-            - times : ndarray
-                Time base associated with the signal (or placeholder if missing)
-            - units : str
-                Physical units of the signal
-
-        Notes
-        -----
-        Missing signals are replaced with a default placeholder array and a
-        warning is printed to standard output.
-        """
-        outdict = {}
-        for coil in att_dict:
-            tinner = att_dict[coil]
-            try:
-                taa_v = client.get("XDC/PF/F/" + tinner["XDC_volts"], shotn)
-                outdict[coil] = {
-                    "data": taa_v.data,
-                    "times": taa_v.time.data,
-                    "units": taa_v.units,
-                }
-            except:
-                outdict[coil] = {
-                    "data": np.array([0, 1]),
-                    "times": np.array([0, 1]),
-                    "units": "string",
-                }
-                print("Voltage not found for coil " + coil + ".")
-        return outdict
-
-    def get_coilcurrs_AMC(shotn):
-        """
-        Retrieve AMC Rogowski coil current measurements for a given shot.
-
-        This function queries an external data source for measured coil currents
-        from AMC Rogowski sensors. Data is organised hierarchically by actuator
-        group and individual coil channel.
-
-        Parameters
-        ----------
-        shotn : int
-            Shot number identifying the discharge for which current data is
-            requested.
-
-        Returns
-        -------
-        outdict : dict
-            Nested dictionary of coil current signals structured as:
-
-            outdict[actuator_group][coil_name] -> dict with:
-                - data : ndarray
-                    Measured current time series
-                - times : ndarray
-                    Time base associated with the signal
-                - units : str
-                    Physical units of the measurement
-
-        Notes
-        -----
-        Missing coil signals are silently ignored.
-        """
-        outdict = {}
-        for attk in att_dict:
-            outdict[attk] = {}
-            for coil in att_dict[attk]["rogextn"]:
-                try:
-                    taa_c = client.get("AMC/ROGEXT/" + coil, shotn)
-                    outdict[attk][coil] = {
-                        "data": taa_c.data,
-                        "times": taa_c.time.data,
-                        "units": taa_c.units,
-                    }
-
-                except:
-                    pass  # print('current not found for coil '+attk+', shot '+str(shotn))
-        return outdict
-
-    def get_coilcurrs(shotn):
-        """
-        Retrieve measured coil currents for a given shot.
-
-        This function queries an external data source for coil current measurements,
-        selecting the appropriate signal path depending on actuator type.
-
-        For PS coils, currents are retrieved from the standard CURRENT signal.
-        For non-PS coils, the signal path depends on the actuator configuration,
-        with a special case for coil 'P6'.
-
-        Parameters
-        ----------
-        shotn : int
-            Shot number identifying the discharge for which coil current data is
-            requested.
-
-        Returns
-        -------
-        outdict : dict
-            Dictionary of coil current signals. Each key corresponds to a coil
-            name and maps to a dictionary containing:
-
-            - data : ndarray
-                Current time series
-            - times : ndarray
-                Time base associated with the signal
-            - units : str
-                Physical units of the signal
-
-        Notes
-        -----
-        Missing signals are silently ignored.
-        """
-        outdict = {}
-        for attk in att_dict:
-            tinner = att_dict[attk]
-            try:
-                if tinner["PS"]:
-                    taa_c = client.get("XCM/" + tinner["name"] + "/CURRENT", shotn)
-                else:
-                    if attk == "P6":
-                        tname = "XCM/" + tinner["name"] + "/INV1/IOUT"
-                    else:
-                        tname = "XCM/" + tinner["name"] + "/IOUT"
-                    taa_c = client.get(tname, shotn)
-                outdict[attk] = {
-                    "data": taa_c.data,
-                    "times": taa_c.time.data,
-                    "units": taa_c.units,
-                }
-            except:
-                pass  # print('current not found for coil '+attk+', shot '+str(shotn))
-        return outdict
-
-    def get_rogs(shotn):
-        """
-        Retrieve Rogowski coil measurements (external and internal) for a given shot.
-
-        This function queries AMC Rogowski diagnostics and returns both external
-        (ROGEXT) and internal (ROGINT) signals where available. Data is organised
-        hierarchically by actuator group and Rogowski channel.
-
-        Parameters
-        ----------
-        shotn : int
-            Shot number identifying the discharge for which Rogowski data is
-            requested.
-
-        Returns
-        -------
-        outdict : dict
-            Nested dictionary containing Rogowski coil data:
-
-            outdict[actuator_group]["rogext"][channel] -> dict
-                External Rogowski signals:
-                    - data : ndarray
-                    - times : ndarray
-
-            outdict[actuator_group]["rogint"][channel] -> dict (if available)
-                Internal Rogowski signals:
-                    - data : ndarray
-                    - times : ndarray
-
-        Notes
-        -----
-        Missing channels are silently ignored. Internal Rogowski data is only
-        included if available for the given actuator.
-        """
-        outdict = {}
-        for attk in att_dict:
-            outdict[attk] = {}
-            tinner = att_dict[attk]
-            outdict[attk]["rogext"] = {}
-
-            for rn in tinner["rogextn"]:
-                try:
-                    td = client.get("/AMC/ROGEXT/" + rn, shotn)
-                    outdict[attk]["rogext"][rn] = {
-                        "data": td.data,
-                        "times": td.time.data,
-                    }
-                except:
-                    pass  # print('rogext data not found for coil '+attk+' '+rn+', shot '+str(shotn))
-            if tinner["rogint"]:
-                outdict[attk]["rogint"] = {}
-                for rn in tinner["rogintn"]:
-                    try:
-                        td = client.get("/AMC/ROGINT/" + rn, shotn)
-                        # print('/AMC/ROGINT/'+rn)
-                        outdict[attk]["rogint"][rn] = {
-                            "data": td.data,
-                            "times": td.time.data,
-                        }
-                    except:
-                        pass  # print('rogint data not found for coil '+attk+' '+rn+', shot '+str(shotn))
-        return outdict
-
-    # extract and store data
-    outdict = {}
-    shotn = int(shot)
-    flag_plasma = 0
-    # # this is a dictionary where each entry is of the kind 'coil':{'data':array , 'times':array}
-    coil_vs = get_req_voltages(shotn)
-    # # this is a dictionary where each entry is of the kind 'coil':{'data':array , 'times':array}
-    coil_cs = get_coilcurrs_AMC(shotn)
-    # rogs=get_rogs(shotn)
-    # # plasma current dict
-    # aIp=client.get('AMC/PLASMA_CURRENT',shotn)
-    # Ip={'data':aIp.data,'times':aIp.time.data}
-    #
-    if (len(coil_vs) > 10) * (len(coil_cs) == len_coils):
-
-        print("Finished reading, all data in place.")
-
-        std_cv = np.zeros((len_coils, 2))
-        time_int = [-50, 50]
-        for attk in att_dict:
-            for coil in coil_cs[attk]:
-                time_int[0] = max(
-                    time_int[0],
-                    coil_cs[attk][coil]["times"][0],
-                    coil_vs[attk]["times"][0],
-                )
-                time_int[1] = min(
-                    time_int[1],
-                    coil_cs[attk][coil]["times"][-1],
-                    coil_vs[attk]["times"][-1],
-                )
-
-        control = time_int[0] < time_int[1]
-        # control *= np.any(std_cv>.5)
-        # print(time_int)
-        # print(std_cv)
-        if control:
-
-            print("Interpolating and storing data...")
-
-            data_out = {}
-            time_sample = np.arange(time_int[0], time_int[1], dt)
-            data_out["time"] = np.array([time_sample[0], time_sample[-1], dt])
-
-            for coil in coil_list:
-                data_out[coil] = {}
-                # data_out[coil][2] = []
-                # print(ic)
-
-                # record voltages
-                mask = (coil_vs[coil]["times"] >= time_int[0] - dt) * (
-                    coil_vs[coil]["times"] <= time_int[1] + dt
-                )
-                times = coil_vs[coil]["times"][mask]
-                signal = coil_vs[coil]["data"][mask]
-                if True:  # std_cv[ic, 0] > .1:
-                    interp_f = interp1d(times, signal, kind=1)
-                    data_out[coil]["V"] = interp_f(time_sample)
-                    data_out[coil]["full_time"] = [
-                        coil_vs[coil]["times"][0],
-                        coil_vs[coil]["times"][-1],
-                        len(coil_vs[coil]["times"]),
-                    ]
-                    data_out[coil]["fullV"] = coil_vs[coil]["data"]
-                    data_out[coil]["units"] = coil_vs[coil]["units"]
-
-                else:
-                    data_out[coil_ordering[ic]][0] = np.mean(signal, keepdims=True)
-                # data_out[coil][2].append(coil_vs[coil]['units'])
-
-                # record currents
-                for coil_rog in coil_cs[coil]:
-                    # print(coil, coil_rog)
-                    mask = (coil_cs[coil][coil_rog]["times"] >= time_int[0] - dt) * (
-                        coil_cs[coil][coil_rog]["times"] <= time_int[1] + dt
-                    )
-                    times = coil_cs[coil][coil_rog]["times"][mask]
-                    signal = coil_cs[coil][coil_rog]["data"][mask]
-                    data_out[coil][coil_rog] = {}
-                    if True:  # std_cv[ic, 0] > .1:
-                        interp_f = interp1d(times, signal, kind=1)
-                        data_out[coil][coil_rog]["C"] = interp_f(time_sample)
-                        data_out[coil][coil_rog]["full_time_C"] = [
-                            coil_cs[coil][coil_rog]["times"][0],
-                            coil_cs[coil][coil_rog]["times"][-1],
-                            len(coil_cs[coil][coil_rog]["times"]),
-                        ]
-                        data_out[coil][coil_rog]["fullC"] = coil_cs[coil][coil_rog][
-                            "data"
-                        ]
-                        data_out[coil][coil_rog]["units_C"] = coil_cs[coil][coil_rog][
-                            "units"
-                        ]
-                    # data_out[coil_ordering[ic]][2].append(coil_cs[coil]['units'])
-
-            # record plasma current if one
-            # try:
-            #     aIp = client.get('AMC/PLASMA_CURRENT', shotn)
-            #     flag_plasma = np.any(abs(aIp.data)>1)
-            # except:
-            #     pass
-            # else:
-            #     print('Trying to store plasma.')
-            #     data_out[-3] = {}
-            #     time_sample_Ip = time_sample[(time_sample>=aIp.time[0])*(time_sample<=aIp.time[-1])]
-            #     data_out[-3][0] = np.array([time_sample_Ip[0], time_sample_Ip[-1]])
-            #     mask = (aIp.time>=data_out[-3][0][0]-dt)*(aIp.time<=data_out[-3][0][1]+dt)
-            #     times = aIp.time[mask]
-            #     signal = aIp.data[mask]
-            #     interp_f = interp1d(times, signal, kind=1)
-            #     data_out[-3][1] = interp_f(time_sample)
-            # # data_out[-2] = flag_plasma
-
-            # record Thompson scattering info
-            try:
-                ne = client.get("/AYC/T_E_core", shotn)
-                data_out["TS"] = {"core_T": ne.data, "times": ne.time.data}
-                ne = client.get("/AYC/T_E", shotn)
-                data_out["TS"]["full_T"] = ne.data
-                ne = client.get("/AYC/N_E", shotn)
-                data_out["TS"]["full_N"] = ne.data
-            except:
-                pass
-            print("Data stored.")
-            # with open('U2/'+str(shotn)+'_AMC_XDC_AYC.pickle', 'wb') as handle:
-            #     pickle.dump(data_out, handle)
-
-    else:
-        print(f"Data not found for {shotn}.")
-
-    return att_dict, data_out
-
-
-def get_AMC_currents(
-    t,
-    att_dict,
-    data,
-    dt=0.002,
-):
-    """
-    Extract required AMC currents in the active coils in MAST-U at time 't' from 'data'
-    dictionary by taking the average current between [t - dt, t + dt].
-
-    Parameters
-    ----------
-    t : float
-        Time from which to average current values over [s].
-    att_dict : dict
-        Dictionary containing the attributes corresponding to the data.
-    data : dict
-        Dictionary containing all of the relevant AMC current data.
-    dt : float
-        Time step over which to average the currents: interval will be [t-dt, t+dt].
-
-    Returns
-    -------
-    np.array
-        Returns array of currents in the active coils [Amps].
-    """
-
-    # storage
-    current_vec = np.zeros(12)
-
-    # extract AMC currents
-    coil_names = list(att_dict.keys())
-    for i, coil in enumerate(coil_names):
-        curr = 0
-
-        # need to cycle through the upper and lower coils
-        for rog in att_dict[coil]["rogextn"]:
-
-            # assign the average voltage over this range (to filter out noisy spikes)
-            curr += smooth_data(
-                t_start=t - dt,
-                t_end=t + dt,
-                data=data[coil][rog]["fullC"],
-                t_data_start=data[coil][rog]["full_time_C"][0],
-                t_data_end=data[coil][rog]["full_time_C"][1],
-                n_data_points=data[coil][rog]["full_time_C"][2],
-            )
-
-        # store current (divides current by number of coils in the circuit)
-        current_vec[i] = curr / len(att_dict[coil]["rogextn"])
-
-    return current_vec * 1e3  # to return the value in Amps
-
-
-def get_XDC_voltages(
-    t,
-    dt,
-    att_dict,
-    data,
-    nsteps=1,
-):
-    """
-    Extract required XDC voltages in the active coils in MAST-U at time 't' from 'data'
-    dictionary by taking the average voltage between [t-dt, t+dt].
-
-    Returns voltages for 'nsteps' (in array).
-
-    Parameters
-    ----------
-    t : float
-        Time from which to average voltages values over [s].
-    dt : float
-        Time step over which to average the voltages: interval will be [t, t+dt].
-    att_dict : dict
-        Dictionary containing the attributes corresponding to the data.
-    data : dict
-        Dictionary containing all of the relevant XDC voltage data.
-    nsteps : int
-        Number of time steps to return voltages at.
-
-    Returns
-    -------
-    np.array
-        Returns array (nsteps x 12) of voltages in the active coils [Volts].
-    """
-
-    # storage
-    voltages = np.zeros((nsteps, 12))
-
-    # extract XDC voltages
-    coil_names = list(att_dict.keys())
-
-    # iterate over time steps
-    for i in range(nsteps):
-        for j, coil in enumerate(coil_names):
-
-            # ignore P6 as there are no voltages
-            if coil != "P6":
-
-                # assign the average voltage over this range (to filter out noisy spikes)
-                voltages[i, j] = smooth_data(
-                    t_start=t - dt,
-                    t_end=t + dt,
-                    data=data[coil]["fullV"],
-                    t_data_start=data[coil]["full_time"][0],
-                    t_data_end=data[coil]["full_time"][1],
-                    n_data_points=data[coil]["full_time"][2],
-                )
-
-        # move to the next time step
-        t += dt
-
-    # some coils have voltages with signs the incorrect way
-    voltage_signs = np.array([1, 1, 1, 1, 1, 1, 1, 1, 1, -1, -1, 1])
-
-    return (voltages * voltage_signs[np.newaxis]).squeeze()
-
-
-def smooth_data(
-    t_start,
-    t_end,
-    data,
-    t_data_start,
-    t_data_end,
-    n_data_points=None,
-):
-    """
-    Finds the median of the `data' vector values between [t_start, t_end]. Requires knowledge
-    of the time interval the data is recorded over [t_data_start, t_data_end].
-
-    Parameters
-    ----------
-    t_start : float
-        Start time from which to average data values over.
-    t_end : float
-        End time from which to average data values over.
-    data : np.array
-        1D array of data values.
-    t_data_start : float
-        Start time at which data is recorded, i.e. data[0] corresponds to 't_data_start'.
-    t_end_start : float
-        End time at which data is recorded, i.e. data[-1] corresponds to 't_data_end'.
-    nsteps : int
-        Number of time steps data recorded over, i.e. len(data).
-
-    Returns
-    -------
-    float
-        Returns median of `data' vector values between [t_start, t_end].
-    """
-
-    # extract number of data points
-    if n_data_points is None:
-        n_data_points = len(data)
-
-    # compute time step of data
-    dt_data = (t_data_end - t_data_start) / (n_data_points - 1)
-
-    # compute index range in data corresponding to [t_start, t_end]
-    idx_min = max(0, int(np.floor((t_start - t_data_start) / dt_data) + 1))
-    idx_max = min(n_data_points, int(np.ceil((t_end - t_data_start) / dt_data) - 1))
-
-    # return average of data in this interval
-    return np.median(data[idx_min : idx_max + 1])
-
-
-def vertical_controller(
-    dt,
-    target,
-    history,
-    k_prop,
-    k_int,
-    k_deriv,
-    prop_exponent,
-    prop_error,
-    deriv_threshold,
-    int_factor,
-    Ip,
-    Ip_ref=None,
-    derivative_lag=1,
-):
-    """
-    PID controller required for plasma vertical position. Computes the required voltage
-    in the vertical stability coil to stabilise the plasma.
-
-    Parameters
-    ----------
-    dt : float
-        Time step over which controller should act [s].
-    target : float
-        Target vertical position [m].
-    history : list
-        List of previous vertical positions of the effective toroidal current center [m].
-    k_prop : float
-        Proportional gain controls how strongly the voltage reacts to deviations from the target.
-    k_int : float
-        Integral gain controls how the controller accumulates error over time (to correct drifts).
-    k_deriv : float
-        Derivative gain controls how the controller reacts to rapid changes in target.
-    prop_exponent : float
-        Exoponent in proportional term.
-    prop_error : float
-        Reference error for the proportional term.
-    deriv_threshold : float
-        Threshold for derivative action - limits effect of sudden jumps in target.
-    int_factor : float
-        Exponential decay factor that limits effect of older values on integral term.
-    Ip : float
-        Total plasma current at current time [Amps].
-    Ip_ref : float
-        Reference total plasma current [Amps], used to normalise output.
-    derivative_lag : int
-        Number of historical values over which the derivative term acts.
-
-    Returns
-    -------
-    float
-        Voltage required for the vertical stability coil to stabilise the plasma [Volts].
-    """
-
-    # if not history, no control action
-    if not history:
-        return 0
-
-    # proportional term
-    error = history[-1] - target
-    output = (
-        k_prop
-        * prop_error
-        * np.sign(error)
-        * np.abs(error / prop_error) ** prop_exponent
-    )
-
-    # integral and derivative terms only if there's enough history
-    if len(history) > derivative_lag:
-
-        # integral term
-        memory = (int_factor ** np.arange(len(history)))[::-1]
-        integral_term = k_int * np.sum(np.array(history) * memory) * dt
-
-        # derivative term (capped)
-        derivative_term = k_deriv * ((history[-1] - history[-1 - derivative_lag]) / dt)
-        derivative_term = np.sign(derivative_term) * min(
-            abs(derivative_term), deriv_threshold
-        )
-
-        output += integral_term + derivative_term
-
-    # scale by plasma current reference
-    if Ip_ref is not None:
-        output *= Ip / Ip_ref
-
-    return output
-
-
-def plasma_resistivity_controller(
-    t,
-    dt,
-    target,
-    history,
-    k_prop,
-    k_int,
-    k_deriv,
-    prop_exponent,
-    prop_error,
-    deriv_threshold,
-    int_factor,
-    derivative_lag=1,
-    shift_pred=True,
-    Ip_func=None,
-):
-    """
-    PID controller required to calculate required change in plasma resistivity.
-
-    Parameters
-    ----------
-    t : float
-        Current time [s].
-    dt : float
-        Time step over which controller should act [s].
-    target : float
-        Target total plasma current to maintain [Amps].
-    history : list
-        List of previous total plasma currents [Amps].
-    k_prop : float
-        Proportional gain controls how strongly the resistivity reacts to deviations from the target.
-    k_int : float
-        Integral gain controls how the controller accumulates error over time (to correct drifts).
-    k_deriv : float
-        Derivative gain controls how the controller reacts to rapid changes in target.
-    prop_exponent : float
-        Exoponent in proportional term.
-    prop_error : float
-        Reference error for the proportional term.
-    deriv_threshold : float
-        Threshold for derivative action - limits effect of sudden jumps in target.
-    int_factor : float
-        Exponential decay factor that limits effect of older values on integral term.
-    derivative_lag : int
-        Number of historical values over which the derivative term acts.
-    shift_pred : bool
-        Shift the predictions using future values of the total plasma current.
-    Ip_func : function
-        Function that returns the total plasma current at time 't'.
-
-    Returns
-    -------
-    float
-        Plasma resistivity required to maintain the target plasma current.
-    """
-
-    # proportional term
-    error = history[-1] - target
-    output = (
-        k_prop
-        * prop_error
-        * np.sign(error)
-        * np.abs(error / prop_error) ** prop_exponent
-    )
-
-    # integral and derivative terms only if there's enough history
-    if len(history) > derivative_lag:
-
-        # integral term
-        memory = (int_factor ** np.arange(len(history)))[::-1]
-        integral_term = k_int * np.sum(np.array(history) * memory) * dt
-
-        # derivative term (capped)
-        derivative_term = k_deriv * ((history[-1] - history[-1 - derivative_lag]) / dt)
-        derivative_term = np.sign(derivative_term) * min(
-            abs(derivative_term), deriv_threshold
-        )
-
-        if shift_pred:
-            derivative = (history[-1] - history[-1 - derivative_lag]) / (
-                derivative_lag * dt
-            )
-            output = k_prop * ((history[-1] + derivative * 0.03) - Ip_func(t + 0.03))
-
-        output += integral_term + derivative_term
-
-    return output
-
-
 # --------------------------------
 # ADDITIONAL FUNCTIONS
 
 
 def get_element_vertices(
-    centreR, centreZ, dR, dZ, a1, a2, version=0.1, close_shape=False
-):
+    centreR: float,
+    centreZ: float,
+    dR: float,
+    dZ: float,
+    a1: float,
+    a2: float,
+    version: float = 0.1,
+    close_shape: bool = False,
+) -> list:
     """
     Convert EFIT++ description of parallelograms to four vertices (used in FreeGSNKE
     passive structures).
@@ -2413,9 +1399,9 @@ def get_element_vertices(
         Angle between the horizontal and the base of the parallelogram (zero for rectangles).
     a2 : float
         Angle between the horizontal and the right side of the parallelogram (zero for rectangles).
-    version : float
+    version : float, optional
         Geometry version (backwards compatibilty for bug in < V0.1). Use default.
-    close_shape : bool
+    close_shape : bool, optional
         Repeat first vertex to close the shape if set to True.
 
     Returns
@@ -2493,7 +1479,9 @@ def get_element_vertices(
     return [rr, zz, dR, dZ]
 
 
-def find_strikepoints(R, Z, psi, psi_boundary, wall):
+def find_strikepoints(
+    R: np.ndarray, Z: np.ndarray, psi: np.ndarray, psi_boundary: float, wall: np.ndarray
+) -> np.ndarray | None:
     """
     Find the strikepoints of an equilibrium with the wall.
 
@@ -2552,7 +1540,15 @@ def find_strikepoints(R, Z, psi, psi_boundary, wall):
     return out
 
 
-def Separatrix(R, Z, psi, ntheta, psival=1.0, theta_grid=None, input_opoint=None):
+def Separatrix(
+    R: np.ndarray,
+    Z: np.ndarray,
+    psi: np.ndarray,
+    ntheta: int,
+    psival: float = 1.0,
+    theta_grid: np.ndarray | None = None,
+    input_opoint: tuple | None = None,
+) -> tuple[np.ndarray, np.ndarray]:
     """
     Compute separatrix coordinates for a given equilibrium flux map.
 
@@ -2644,7 +1640,17 @@ def Separatrix(R, Z, psi, ntheta, psival=1.0, theta_grid=None, input_opoint=None
     return points, theta_grid
 
 
-def find_psisurface(psifunc, R, Z, r0, z0, r1, z1, psival=1.0, n=100):
+def find_psisurface(
+    psifunc: Callable,
+    R: np.ndarray,
+    Z: np.ndarray,
+    r0: float,
+    z0: float,
+    r1: float,
+    z1: float,
+    psival: float = 1.0,
+    n: int = 100,
+) -> tuple[float, float]:
     """
     Find an intersection point of a ψ = const surface along a straight line.
 
@@ -2715,7 +1721,7 @@ def find_psisurface(psifunc, R, Z, r0, z0, r1, z1, psival=1.0, n=100):
     return r, z
 
 
-def max_euclidean_distance(points1, points2):
+def max_euclidean_distance(points1: np.ndarray, points2: np.ndarray) -> float:
     """
     Compute the maximum Euclidean distance between corresponding points in two sets.
 
@@ -2744,36 +1750,9 @@ def max_euclidean_distance(points1, points2):
     return np.max(np.sqrt(np.sum((points1_valid - points2_valid) ** 2, axis=1)))
 
 
-def median_euclidean_distance(points1, points2):
-    """
-    Compute the median Euclidean distance between corresponding points in two sets.
-
-    Points containing NaN values are excluded before computing distances.
-
-    Parameters
-    ----------
-    points1 : ndarray
-        First set of (x, y) points.
-    points2 : ndarray
-        Second set of (x, y) points with the same shape as points1.
-
-    Returns
-    -------
-    float
-        Median Euclidean distance between valid corresponding points.
-        Returns NaN if no valid points remain.
-    """
-    valid_indices = np.logical_not(
-        np.any(np.isnan(points1), axis=1) | np.any(np.isnan(points2), axis=1)
-    )
-    points1_valid = points1[valid_indices]
-    points2_valid = points2[valid_indices]
-    if len(points1_valid) == 0 or len(points2_valid) == 0:
-        return np.nan
-    return np.median(np.sqrt(np.sum((points1_valid - points2_valid) ** 2, axis=1)))
-
-
-def separatrix_areas(separatrix_1, separatrix_2):
+def separatrix_areas(
+    separatrix_1: np.ndarray, separatrix_2: np.ndarray
+) -> tuple[float, sh.Polygon, sh.Polygon]:
     """
     Compute a geometric similarity metric between two separatrix shapes.
 
@@ -2814,54 +1793,3 @@ def separatrix_areas(separatrix_1, separatrix_2):
     eta = non_overlapping_area / (polygon1.area + polygon2.area)
 
     return eta, polygon1, polygon2
-
-
-def interpolate_data(
-    times,
-    data,
-    t_start=None,
-    t_final=None,
-    order=5,
-):
-    """
-    Fit a polynomial to time-series data and return an evaluatable interpolant.
-
-    This function selects a time window (if provided), fits a polynomial of
-    specified order to the data within that window, and returns the resulting
-    polynomial object. The output can be evaluated on scalar or array inputs.
-
-    Parameters
-    ----------
-    times : ndarray
-        Array of time values corresponding to the data samples.
-    data : ndarray
-        Data values sampled at the given times.
-    t_start : float, optional
-        Start of the time window. If None, the full range is used from the beginning.
-    t_final : float, optional
-        End of the time window. If None, the full range is used up to the end.
-    order : int, optional
-        Degree of the polynomial used for fitting.
-
-    Returns
-    -------
-    numpy.polynomial.Polynomial
-        Polynomial object representing the fitted interpolation, callable on
-        scalar or array inputs.
-    """
-
-    # find closest time indices
-    if t_start is None:
-        start_idx = 0
-    else:
-        start_idx = np.argmin(np.abs(times - t_start))
-
-    if t_final is None:
-        final_idx = 0
-    else:
-        final_idx = np.argmin(np.abs(times - t_final))
-
-    # interpolate
-    poly = Polynomial.fit(times[start_idx:final_idx], data[start_idx:final_idx], order)
-
-    return poly

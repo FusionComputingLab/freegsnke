@@ -113,9 +113,7 @@ def test_set_plasma_psi_refreshes_interpolator(create_machine):
     eq.set_plasma_psi(plasma_psi)
 
     assert "psi_func" not in eq.__dict__
-    assert np.isclose(
-        eq.psi_func(eq.R[i, j], eq.Z[i, j], grid=False), plasma_psi[i, j]
-    )
+    assert np.isclose(eq.psi_func(eq.R[i, j], eq.Z[i, j], grid=False), plasma_psi[i, j])
 
     # The installed array is a copy, decoupled from the caller's array.
     plasma_psi[i, j] = 0.0

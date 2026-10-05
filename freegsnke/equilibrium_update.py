@@ -34,10 +34,38 @@ from .copying import copy_into
 
 
 class Equilibrium(freegs4e.equilibrium.Equilibrium):
-    """FreeGS4E equilibrium class with optional initialization."""
+    """FreeGSNKE equilibrium object, extending the FreeGS4E equilibrium.
+
+    Adds limiter handling, a self-checking plasma-flux interpolator, in-place
+    machine-description updates, lightweight auxiliary copies, and optional
+    initialisation of the plasma flux from a file given by the
+    ``EQUILIBRIUM_PATH`` environment variable.
+
+    Notes
+    -----
+    Code that replaces ``plasma_psi`` should use :meth:`set_plasma_psi` so the
+    interpolator used by :meth:`psi_func` (and hence ``psiRZ``, ``Br``, ``Bz``
+    and related diagnostics) stays consistent with the flux array.
+    """
 
     def __init__(self, *args, **kwargs):
-        """Instantiates the object."""
+        """Initialise the equilibrium.
+
+        Parameters
+        ----------
+        *args, **kwargs
+            Passed to ``freegs4e.equilibrium.Equilibrium.__init__``, e.g.
+            ``tokamak``, ``Rmin``, ``Rmax``, ``Zmin``, ``Zmax``, ``nx``,
+            ``ny``, ``boundary``, ``psi``, ``current``.
+
+        Notes
+        -----
+        If the ``EQUILIBRIUM_PATH`` environment variable is set, the initial
+        plasma flux is loaded from that file via
+        :meth:`initialize_from_equilibrium`. The equilibrium is marked as not
+        solved (``self.solved = False``) and the limiter handler and
+        inside/outside-limiter masks are built from ``tokamak.limiter``.
+        """
         super().__init__(*args, **kwargs)
 
         self.equilibrium_path = os.environ.get("EQUILIBRIUM_PATH", None)
@@ -64,12 +92,42 @@ class Equilibrium(freegs4e.equilibrium.Equilibrium):
         )
 
     def _updatePlasmaPsi(self, plasma_psi):
-        """Update plasma flux while retaining the checked FreeGSNKE interpolator."""
+        """Update plasma flux while retaining the checked FreeGSNKE interpolator.
+
+        FreeGS4E's implementation stores the spline as an instance attribute
+        ``psi_func``, which would hide this class's :meth:`psi_func` method.
+        The spline is moved to ``psi_func_interp`` instead.
+
+        Parameters
+        ----------
+        plasma_psi : np.ndarray
+            Plasma poloidal flux on the (R, Z) grid, shape ``(nx, ny)``
+            [Webers/2pi].
+
+        Returns
+        -------
+        None
+            Modifies ``plasma_psi``, ``psi_func_interp``, ``psi_axis``,
+            ``psi_bndry``, ``mask`` and ``mask_func`` in place.
+
+        Notes
+        -----
+        The critical points and boundary flux are recomputed by FreeGS4E
+        without FreeGSNKE's limiter handling. Use :meth:`set_plasma_psi` to
+        replace the flux without touching the topology.
+        """
         super()._updatePlasmaPsi(plasma_psi)
         self.psi_func_interp = self.__dict__.pop("psi_func")
 
     def _refresh_plasma_psi_interpolator(self):
-        """Rebuild the plasma-flux spline without recalculating plasma topology."""
+        """Rebuild the plasma-flux spline without recalculating plasma topology.
+
+        Returns
+        -------
+        None
+            Sets ``self.psi_func_interp`` to a ``RectBivariateSpline`` of the
+            current ``self.plasma_psi``.
+        """
         self.psi_func_interp = interpolate.RectBivariateSpline(
             self.R[:, 0], self.Z[0, :], self.plasma_psi
         )
@@ -81,6 +139,18 @@ class Equilibrium(freegs4e.equilibrium.Equilibrium):
         recalculate critical points, masks, or boundary flux. Solvers should use
         it when committing a flux map before updating topology through their
         existing profile-aware path.
+
+        Parameters
+        ----------
+        plasma_psi : array_like
+            Plasma poloidal flux on the (R, Z) grid, shape ``(nx, ny)``
+            [Webers/2pi]. A copy is stored, so later changes to the caller's
+            array do not affect the equilibrium.
+
+        Returns
+        -------
+        None
+            Modifies ``plasma_psi`` and ``psi_func_interp`` in place.
         """
         self.plasma_psi = np.array(plasma_psi, copy=True)
         self._refresh_plasma_psi_interpolator()
@@ -476,6 +546,15 @@ class Equilibrium(freegs4e.equilibrium.Equilibrium):
         setup and so won't contain all attributes on self (especially custom
         attributes). It is NOT _guaranteed_ to be the same as a deepcopy, or even
         a shallow copy.
+
+        Returns
+        -------
+        Equilibrium
+            New equilibrium object, created without calling ``__init__``.
+            Grids, fluxes, masks, Greens functions and critical-point data
+            are copied; the tokamak is copied with ``copy_tokamak``; the
+            limiter handler and the plasma-flux interpolator are shared with
+            ``self``.
         """
         # __new__ stops __init__ being called.
         # This is necessary because the __init__ method does expensive
@@ -559,6 +638,36 @@ class Equilibrium(freegs4e.equilibrium.Equilibrium):
         without a relevant X-point in the solution domain can still be plotted.
         In that case the LCFS is drawn from ``psi_bndry`` and no primary
         X-point separatrix is requested.
+
+        Parameters
+        ----------
+        axis : matplotlib.axes.Axes, optional
+            Axes to draw on. If None, a new figure and axes are created.
+        xpoints : bool, optional
+            If True, plot the X-points (only when a relevant X-point exists).
+            Defaults to True.
+        opoints : bool, optional
+            If True, plot the O-points. Defaults to True.
+        wall : bool, optional
+            If True, plot the wall (when the tokamak has one). Defaults to True.
+        limiter : bool, optional
+            If True, plot the limiter (when the tokamak has one). Defaults to
+            True.
+        legend : bool, optional
+            If True, add a legend. Defaults to False.
+        show : bool, optional
+            If True, call ``plt.show()`` after plotting. Defaults to True.
+
+        Returns
+        -------
+        matplotlib.axes.Axes
+            The axes the equilibrium was drawn on.
+
+        Raises
+        ------
+        RuntimeError
+            If the equilibrium has not been solved (no ``_profiles`` with
+            critical-point data).
         """
         try:
             psi = self.psi()
@@ -666,6 +775,26 @@ class Equilibrium(freegs4e.equilibrium.Equilibrium):
         and at least an X-point within the domain.
 
         Only use after appropriate coil currents have been set as desired!
+
+        The guess is first scaled up (by factors of 1.5) until an O-point is
+        found inside the limiter, then made more compact by exponentiation
+        until an X-point appears, and finally scaled up (by factors of 1.15)
+        to enlarge the diverted core.
+
+        Returns
+        -------
+        None
+            Modifies ``tokamak_psi``, ``plasma_psi``, ``psi_func_interp``,
+            ``gmod`` and ``gexp`` in place.
+
+        Notes
+        -----
+        Failures are reported by printing, not by raising. If no O-point can
+        be generated, or exponentiation removes the O-point, the method
+        returns early and leaves ``plasma_psi`` at its last scaled value
+        without refreshing the interpolator. If exponentiation completes
+        without producing an X-point, the last exponentiated trial is still
+        installed.
         """
         self.tokamak_psi = self.tokamak.calcPsiFromGreens(pgreen=self._pgreen)
 
@@ -786,11 +915,20 @@ class Equilibrium(freegs4e.equilibrium.Equilibrium):
             R coordinates where the interpolation is needed
         Z : ndarray
             Z coordinates where the interpolation is needed
+        *args, **kwargs
+            Passed to ``scipy.interpolate.RectBivariateSpline.__call__``
+            (e.g. ``dx``, ``dy``, ``grid``).
 
         Returns
         -------
         ndarray
             Interpolated values of plasma_psi
+
+        Notes
+        -----
+        The staleness check compares the spline and ``plasma_psi`` only at the
+        grid centre, so it can miss changes made elsewhere. Use
+        :meth:`set_plasma_psi` to replace the flux.
         """
         check = (
             np.abs(
@@ -815,12 +953,20 @@ class Equilibrium(freegs4e.equilibrium.Equilibrium):
         Interpolation is carried out and mapped to the computational grid specified in the
         eq class.
 
-        Parameters
-        ----------
+        The file is read from ``self.equilibrium_path`` (set from the
+        ``EQUILIBRIUM_PATH`` environment variable) and must contain a dict
+        with keys ``"Rmin"``, ``"Rmax"``, ``"Zmin"``, ``"Zmax"`` and
+        ``"psi_plasma"`` (a 2D array on a uniform grid spanning those limits).
 
         Returns
         -------
+        None
+            Sets ``plasma_psi`` and ``psi_func_interp`` in place.
 
+        Raises
+        ------
+        ValueError
+            If the pickle data is missing any of the required keys.
         """
 
         # load the data from the pickle file

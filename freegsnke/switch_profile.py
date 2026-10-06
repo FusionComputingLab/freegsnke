@@ -20,7 +20,11 @@ You should have received a copy of the GNU Lesser General Public License
 along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.   
 """
 
+import logging
+
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 
 def Lao_parameters_finder(
@@ -987,5 +991,5 @@ def Topeol_opt(tp, tf, x, max_it, tol):
         control = np.any(np.abs(pars - new_pars) > tol)
         it += 1
     if it == max_it:
-        print("Optimization failed to converge in", max_it, "iterations.")
+        logger.warning("Optimization failed to converge in %d iterations.", max_it)
     return new_pars

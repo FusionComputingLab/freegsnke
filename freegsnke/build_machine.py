@@ -19,9 +19,12 @@ You should have received a copy of the GNU Lesser General Public License
 along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 """
 
+import logging
 import os
 import pickle
 from copy import deepcopy
+
+logger = logging.getLogger(__name__)
 
 import numpy as np
 from freegs4e.coil import Coil
@@ -116,7 +119,7 @@ def tokamak(
     )
     apply_tokamak_components(tokamak, components, rebuild_R_and_M=False)
 
-    print("Tokamak built.")
+    logger.info("Tokamak built.")
 
     return tokamak
 
@@ -1251,7 +1254,7 @@ def update_tokamak(
         preserve_currents=preserve_currents,
         rebuild_R_and_M=True,
     )
-    print("Tokamak updated.")
+    logger.info("Tokamak updated.")
     return tokamak
 
 
@@ -1313,9 +1316,9 @@ def load_data_dicts(
     elif active_coils_path is not None:
         with open(active_coils_path, "rb") as f:
             active_coils_data = pickle.load(f)
-            print("Active coils --> built from pickle file.")
+            logger.info("Active coils --> built from pickle file.")
     else:
-        print("Active coils --> built from user-provided data.")
+        logger.info("Active coils --> built from user-provided data.")
 
     # passives not strictly required
     if passive_coils_data is not None and passive_coils_path is not None:
@@ -1324,13 +1327,13 @@ def load_data_dicts(
         )
     elif passive_coils_data is None and passive_coils_path is None:
         passive_coils_data = []  # default to empty list
-        print("Passive structures --> none provided.")
+        logger.info("Passive structures --> none provided.")
     elif passive_coils_path is not None:
         with open(passive_coils_path, "rb") as f:
             passive_coils_data = pickle.load(f)
-            print("Passive structures --> built from pickle file.")
+            logger.info("Passive structures --> built from pickle file.")
     else:
-        print("Passive structures --> built from user-provided data.")
+        logger.info("Passive structures --> built from user-provided data.")
 
     # limiter required
     if limiter_data is not None and limiter_path is not None:
@@ -1344,9 +1347,9 @@ def load_data_dicts(
     elif limiter_path is not None:
         with open(limiter_path, "rb") as f:
             limiter_data = pickle.load(f)
-            print("Limiter --> built from pickle file.")
+            logger.info("Limiter --> built from pickle file.")
     else:
-        print("Limiter --> built from user-provided data.")
+        logger.info("Limiter --> built from user-provided data.")
 
     # wall not strictly required
     if wall_data is not None and wall_path is not None:
@@ -1355,13 +1358,13 @@ def load_data_dicts(
         )
     elif wall_data is None and wall_path is None:
         wall_data = limiter_data  # default to the limiter
-        print("Wall --> none provided, setting equal to limiter.")
+        logger.info("Wall --> none provided, setting equal to limiter.")
     elif wall_path is not None:
         with open(wall_path, "rb") as f:
             wall_data = pickle.load(f)
-            print("Wall --> built from pickle file.")
+            logger.info("Wall --> built from pickle file.")
     else:
-        print("Wall --> built from user-provided data.")
+        logger.info("Wall --> built from user-provided data.")
 
     return active_coils_data, passive_coils_data, limiter_data, wall_data
 
@@ -1415,9 +1418,11 @@ def build_actives(
                         ),
                     ),
                 )
-            except:
-                print(
-                    f"Could not build the coil {active_coils[name]}, check its format."
+            except Exception:
+                logger.error(
+                    "Could not build the coil %s, check its format.",
+                    active_coils[name],
+                    exc_info=True,
                 )
 
         # multiple coils linked in a circuit (e.g. an up-down pair of shaping coils)
@@ -1456,9 +1461,11 @@ def build_actives(
                     )
                 )
 
-            except:
-                print(
-                    f"Could not build the coil {active_coils[name]}, check its format."
+            except Exception:
+                logger.error(
+                    "Could not build the coil %s, check its format.",
+                    active_coils[name],
+                    exc_info=True,
                 )
 
     return coils
@@ -1633,9 +1640,11 @@ def build_active_coil_dict(active_coils):
                     [active_coils[name]["multiplier"]] * len(active_coils[name]["R"])
                 )
 
-            except:
-                print(
-                    f"Could not build the coil {active_coils[name]}, check its format."
+            except Exception:
+                logger.error(
+                    "Could not build the coil %s, check its format.",
+                    active_coils[name],
+                    exc_info=True,
                 )
 
         # multiple coils linked in a circuit (e.g. an up-down pair of shaping coils)
@@ -1680,9 +1689,11 @@ def build_active_coil_dict(active_coils):
                     list(active_coils[name].keys())[0]
                 ]["resistivity"] / (coils_dict[name]["dR"] * coils_dict[name]["dZ"])
 
-            except:
-                print(
-                    f"Could not build the coil {active_coils[name]}, check its format."
+            except Exception:
+                logger.error(
+                    "Could not build the coil %s, check its format.",
+                    active_coils[name],
+                    exc_info=True,
                 )
 
     return coils_dict
@@ -1765,8 +1776,3 @@ def copy_tokamak(tokamak: Machine):
     new_tokamak.probes = tokamak.probes
 
     return new_tokamak
-
-
-if __name__ == "__main__":
-    for coil_name in active_coils:
-        print([pol for pol in active_coils[coil_name]])

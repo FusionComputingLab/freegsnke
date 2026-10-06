@@ -19,6 +19,7 @@ You should have received a copy of the GNU Lesser General Public License
 along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 """
 
+import logging
 from copy import deepcopy
 
 import freegs4e
@@ -27,6 +28,8 @@ from freegs4e.gradshafranov import Greens
 
 from . import nk_solver_H as nk_solver
 from .inverse import _solve_regularized_lstsq
+
+logger = logging.getLogger(__name__)
 
 
 class NKGSsolver:
@@ -791,9 +794,9 @@ class NKGSsolver:
         starting_direction = np.copy(res0)
 
         log.append(f"Initial relative error = {rel_change:.2e}")
-        if verbose:
+        if verbose or logger.isEnabledFor(logging.DEBUG):
             for x in log:
-                print(x)
+                logger.debug("%s", x)
 
         self.initial_rel_residual = 1.0 * rel_change
 
@@ -970,9 +973,9 @@ class NKGSsolver:
             log.append(f"...relative error =  {rel_change:.2e}")
             log.append("-----")
 
-            if verbose:
+            if verbose or logger.isEnabledFor(logging.DEBUG):
                 for x in log:
-                    print(x)
+                    logger.debug("%s", x)
 
             log = []
 
@@ -995,14 +998,22 @@ class NKGSsolver:
         # ------------------------------------------------------------
         # Print output to user
         # ------------------------------------------------------------
-        if not suppress:
+        if not suppress or logger.isEnabledFor(logging.INFO):
             if rel_change > target_relative_tolerance:
-                print(
-                    f"Forward static solve DID NOT CONVERGE. Tolerance {rel_change:.2e} (vs. requested {target_relative_tolerance:.2e}) reached in {int(iterations)}/{int(max_solving_iterations)} iterations."
+                logger.warning(
+                    "Forward static solve DID NOT CONVERGE. Tolerance %.2e (vs. requested %.2e) reached in %d/%d iterations.",
+                    rel_change,
+                    target_relative_tolerance,
+                    int(iterations),
+                    int(max_solving_iterations),
                 )
             else:
-                print(
-                    f"Forward static solve SUCCESS. Tolerance {rel_change:.2e} (vs. requested {target_relative_tolerance:.2e}) reached in {int(iterations)}/{int(max_solving_iterations)} iterations."
+                logger.info(
+                    "Forward static solve SUCCESS. Tolerance %.2e (vs. requested %.2e) reached in %d/%d iterations.",
+                    rel_change,
+                    target_relative_tolerance,
+                    int(iterations),
+                    int(max_solving_iterations),
                 )
 
     def get_rel_delta_psit(self, delta_current, profiles, vgreen):
@@ -1413,9 +1424,11 @@ class NKGSsolver:
         # Build Jacobian via finite differences
         # ============================================================
         for i in range(constrain.n_control_coils):
-            if verbose:
-                print(
-                    f" - calculating derivatives for coil {i + 1}/{constrain.n_control_coils}"
+            if verbose or logger.isEnabledFor(logging.INFO):
+                logger.info(
+                    " - calculating derivatives for coil %d/%d",
+                    i + 1,
+                    constrain.n_control_coils,
                 )
 
             # construct perturbation affecting only coil i
@@ -1675,9 +1688,8 @@ class NKGSsolver:
         if force_up_down_symmetric:
             eq.plasma_psi = 0.5 * (eq.plasma_psi + eq.plasma_psi[:, ::-1])
 
-        if verbose:
-            print("-----")
-            print("Inverse static solve starting...")
+        if verbose or logger.isEnabledFor(logging.INFO):
+            logger.info("Inverse static solve starting...")
 
         # iteration counters and damping initialisation
         iterations = 0
@@ -1713,8 +1725,8 @@ class NKGSsolver:
                 plasma_psi=eq.plasma_psi.reshape(-1),
                 profiles=profiles,
             )
-            if verbose:
-                print(
+            if verbose or logger.isEnabledFor(logging.DEBUG):
+                logger.debug(
                     "Successfully computed GS residual using initial plasma_psi and tokamak_psi guesses."
                 )
             rel_change_full, del_psi = self.relative_del_residual(
@@ -1729,9 +1741,8 @@ class NKGSsolver:
                 "FAILED to compute GS residual. Try modifying initial guess for plasma_psi or change some coil currents."
             ) from e
 
-        if verbose:
-            print(f"Initial relative error = {rel_change_full:.2e}")
-            print("-----")
+        if verbose or logger.isEnabledFor(logging.INFO):
+            logger.info("Initial relative error = %.2e", rel_change_full)
 
         # ============================================================
         # Main inverse iteration loop
@@ -1740,8 +1751,8 @@ class NKGSsolver:
             (rel_change_full > target_relative_tolerance)
             + (previous_rel_delta_psit > target_relative_psit_update)
         ) * (iterations < max_solving_iterations):
-            if verbose:
-                print("Iteration: " + str(iterations))
+            if verbose or logger.isEnabledFor(logging.INFO):
+                logger.info("Iteration: %s", iterations)
 
             # --------------------------------------------------------
             # Parameter selection depending on proximity to solution
@@ -1787,9 +1798,9 @@ class NKGSsolver:
                 * (rel_change_full < full_jacobian_handover[0])
                 * (previous_rel_delta_psit < full_jacobian_handover[1])
             ):
-                if verbose:
-                    print(
-                        "Using full Jacobian (of constraints wrt coil currents) to optimsise currents."
+                if verbose or logger.isEnabledFor(logging.INFO):
+                    logger.info(
+                        "Using full Jacobian (of constraints wrt coil currents) to optimise currents."
                     )
 
                 # use complete Jacobian: psi_plasma changes with the coil currents
@@ -1805,8 +1816,8 @@ class NKGSsolver:
                 )
             # use Green's functions (plasma frozen approximation)
             else:
-                if verbose:
-                    print(
+                if verbose or logger.isEnabledFor(logging.INFO):
+                    logger.info(
                         "Using simplified Green's Jacobian (of constraints wrt coil currents) to optimise the currents."
                     )
                 # use Greens as Jacobian: i.e. psi_plasma is assumed fixed
@@ -1863,8 +1874,10 @@ class NKGSsolver:
                         pass
 
                     if resize:
-                        if verbose:
-                            print("Resizing of the control current update triggered!")
+                        if verbose or logger.isEnabledFor(logging.INFO):
+                            logger.info(
+                                "Resizing of the control current update triggered!"
+                            )
                         delta_current *= 0.75
                         delta_tokamak_psi *= 0.75
                         previous_rel_delta_psit *= 0.75
@@ -1876,13 +1889,15 @@ class NKGSsolver:
             # --------------------------------------------------------
             full_currents_vec += constrain.rebuild_full_current_vec(delta_current)
             eq.tokamak.set_all_coil_currents(full_currents_vec)
-            if verbose:
-                print(
-                    f"Change in coil currents (being controlled): {[f'{val:.2e}' for val in delta_current]}"
+            if verbose or logger.isEnabledFor(logging.DEBUG):
+                logger.debug(
+                    "Change in coil currents (being controlled): %s",
+                    [f"{val:.2e}" for val in delta_current],
                 )
-                print(f"Constraint losses = {loss:.2e}")
-                print(
-                    f"Relative update of tokamak psi (in plasma core): {previous_rel_delta_psit:.2e}"
+                logger.debug("Constraint losses = %.2e", loss)
+                logger.debug(
+                    "Relative update of tokamak psi (in plasma core): %.2e",
+                    previous_rel_delta_psit,
                 )
 
             # --------------------------------------------------------
@@ -1900,8 +1915,8 @@ class NKGSsolver:
             # --------------------------------------------------------
             # Forward GS solve with updated currents
             # --------------------------------------------------------
-            if verbose:
-                print(f"Handing off to forward solve (with updated currents).")
+            if verbose or logger.isEnabledFor(logging.DEBUG):
+                logger.debug("Handing off to forward solve (with updated currents).")
 
             self.forward_solve(
                 eq,
@@ -1924,9 +1939,8 @@ class NKGSsolver:
             rel_change_full = 1.0 * self.relative_change
             iterations += 1
 
-            if verbose:
-                print(f"Relative error =  {rel_change_full:.2e}")
-                print("-----")
+            if verbose or logger.isEnabledFor(logging.INFO):
+                logger.info("Relative error =  %.2e", rel_change_full)
 
             # update equilibrium proximity flag
             if rel_change_full < threshold_val:
@@ -1937,14 +1951,22 @@ class NKGSsolver:
         # ============================================================
         # Final reporting
         # ============================================================
-        if not suppress:
+        if not suppress or logger.isEnabledFor(logging.INFO):
             if rel_change_full > target_relative_tolerance:
-                print(
-                    f"Inverse static solve DID NOT CONVERGE. Tolerance {rel_change_full:.2e} (vs. requested {target_relative_tolerance}) reached in {int(iterations)}/{int(max_solving_iterations)} iterations."
+                logger.warning(
+                    "Inverse static solve DID NOT CONVERGE. Tolerance %.2e (vs. requested %s) reached in %d/%d iterations.",
+                    rel_change_full,
+                    target_relative_tolerance,
+                    int(iterations),
+                    int(max_solving_iterations),
                 )
             else:
-                print(
-                    f"Inverse static solve SUCCESS. Tolerance {rel_change_full:.2e} (vs. requested {target_relative_tolerance}) reached in {int(iterations)}/{int(max_solving_iterations)} iterations."
+                logger.info(
+                    "Inverse static solve SUCCESS. Tolerance %.2e (vs. requested %s) reached in %d/%d iterations.",
+                    rel_change_full,
+                    target_relative_tolerance,
+                    int(iterations),
+                    int(max_solving_iterations),
                 )
 
     def solve(

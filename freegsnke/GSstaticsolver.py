@@ -771,7 +771,8 @@ class NKGSsolver:
             control_trial_psi = True
 
         # store initial toroidal current profile
-        self.jtor_at_start = profiles.jtor.copy()
+        jtor = getattr(profiles, "jtor", None)
+        self.jtor_at_start = None if jtor is None else np.copy(jtor)
 
         # ------------------------------------------------------------
         # Initial convergence diagnostics

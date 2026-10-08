@@ -232,7 +232,7 @@ class PassiveStructure(freegs4e.coil.Coil):
         RZ_key = self.create_RZ_key(R, Z)
         try:
             self.greens[RZ_key]["psi"] = greens_psi
-        except Exception:
+        except KeyError:
             self.greens[RZ_key] = {"psi": greens_psi}
 
     def build_control_br(self, R, Z):

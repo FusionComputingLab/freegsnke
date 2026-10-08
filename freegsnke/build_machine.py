@@ -1509,7 +1509,7 @@ def build_passives(
         # include name if provided, else use default
         try:
             name = coil["name"]
-        except Exception:
+        except KeyError:
             name = f"passive_{i}"
 
         # add entry to list
@@ -1521,11 +1521,11 @@ def build_passives(
             # how much do we refine the polygons?
             try:
                 min_refine_per_area = 1.0 * coil["min_refine_per_area"]
-            except Exception:
+            except KeyError:
                 min_refine_per_area = 1.0 * default_min_refine_per_area
             try:
                 min_refine_per_length = 1.0 * coil["min_refine_per_length"]
-            except Exception:
+            except KeyError:
                 min_refine_per_length = 1.0 * default_min_refine_per_length
 
             # build the passive structure Polygon

@@ -755,8 +755,6 @@ class Equilibrium(freegs4e.equilibrium.Equilibrium):
                     )
                     diverted_size = np.sum(diverted_core_mask)
                     print("diverted_size", diverted_size)
-                # except Exception:
-                #     diverted_flag = True
 
         self.plasma_psi = n_plasma_psi.copy()
 
@@ -822,7 +820,7 @@ class Equilibrium(freegs4e.equilibrium.Equilibrium):
             Zmin = data["Zmin"]
             Zmax = data["Zmax"]
             psi_plasma = data["psi_plasma"]
-        except Exception:
+        except KeyError:
             raise ValueError(
                 "Data in EQUILIBRIUM_PATH pickle not in correct format or missing."
             )

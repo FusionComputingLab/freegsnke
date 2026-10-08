@@ -273,7 +273,7 @@ class PassiveStructure(freegs4e.coil.Coil):
         RZ_key = self.create_RZ_key(R, Z)
         try:
             self.greens[RZ_key]["Br"] = greens_br
-        except Exception:
+        except KeyError:
             self.greens[RZ_key] = {"Br": greens_br}
 
     def build_control_bz(self, R, Z):
@@ -315,7 +315,7 @@ class PassiveStructure(freegs4e.coil.Coil):
         RZ_key = self.create_RZ_key(R, Z)
         try:
             self.greens[RZ_key]["Bz"] = greens_bz
-        except Exception:
+        except KeyError:
             self.greens[RZ_key] = {"Bz": greens_bz}
 
     def controlPsi(self, R, Z):
@@ -342,7 +342,7 @@ class PassiveStructure(freegs4e.coil.Coil):
         RZ_key = self.create_RZ_key(R, Z)
         try:
             greens_ = self.greens[RZ_key]["psi"]
-        except Exception:
+        except KeyError:
             self.build_control_psi(R, Z)
             greens_ = self.greens[RZ_key]["psi"]
         return greens_
@@ -380,7 +380,7 @@ class PassiveStructure(freegs4e.coil.Coil):
         RZ_key = self.create_RZ_key(R, Z)
         try:
             greens_ = self.greens[RZ_key]["Br"]
-        except Exception:
+        except KeyError:
             self.build_control_br(R, Z)
             greens_ = self.greens[RZ_key]["Br"]
         return greens_
@@ -417,7 +417,7 @@ class PassiveStructure(freegs4e.coil.Coil):
         RZ_key = self.create_RZ_key(R, Z)
         try:
             greens_ = self.greens[RZ_key]["Bz"]
-        except Exception:
+        except KeyError:
             self.build_control_bz(R, Z)
             greens_ = self.greens[RZ_key]["Bz"]
         return greens_

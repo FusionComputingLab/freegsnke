@@ -1,0 +1,96 @@
+FREEGSNKE ODD GS RESPONSE — REVIEW GUIDE
+
+Branch: odd-gs-response
+Base: upstream main, 6d43a09f48d00170ab8474a32c9deb49e34f065d
+Scope: one additive capability, with tests and a general numerical example.
+No existing solver defaults, profile models or circuit dynamics are changed.
+No duplicate spatial inverse is introduced.
+
+WHAT IS ADDED
+
+1. freegsnke/gs_response.py
+   solve_odd_response(inverse, coefficient, vacuum_response, reflection,
+                      rtol=1e-9, maxiter=20)
+
+   Calculates the implicit odd plasma-flux/current response about a frozen
+   symmetric equilibrium. The inverse argument is a callable from current
+   density to plasma flux, so the algorithm does not own a grid or factorization.
+   Returns plasma_response, current_response and relative_residual.
+
+2. freegsnke/tests/test_gs_response.py
+   Checks against an independently assembled dense linear solve, rejects even
+   forcing, and verifies failure of a singular tangent equation.
+
+3. examples/odd_gs_response/nonlinear_response.py and README.md
+   Creates a smooth manufactured equilibrium on a small rectangular grid,
+   applies opposite external ring currents, and independently solves the full
+   nonlinear equation at positive and negative amplitudes. FreeGS4E supplies
+   its existing DST spatial inverse. A small direct Green contraction supplies
+   the outer boundary flux; it is explanatory example code, not another library
+   backend. No external machine files are needed.
+
+EQUATION AND IMPLEMENTATION
+
+Let G map current density to plasma flux, C=dj/dpsi at the base equilibrium,
+and g be applied vacuum flux per forcing ampere. Let P be the reflected vertex
+permutation, with P*P=I, and Po=(I-P)/2.
+
+Differentiate psi=G[j(psi+I*g)] within the odd sector:
+  (I - Po G C Po) v = Po G (C g)
+  dj/dI = Po C (v+g).
+
+The operator is a SciPy LinearOperator; GMRES calls the supplied inverse instead
+of constructing a dense susceptibility. Odd projection is applied during the
+matrix-vector products and again to the returned flux. The residual is evaluated
+explicitly after GMRES, in addition to checking its convergence status.
+
+The current derivative depends on total flux v+g, not on plasma flux v alone.
+Flux is Wb/rad, current density is A/m^2, g is Wb/rad/A, and responses are per
+forcing ampere. Circuit linkage would use 2*pi times the area-weighted contraction
+of g with dj/dI. The response function itself does not impose a circuit model.
+
+ASSUMPTIONS TO REVIEW
+
+The base must be even, C even, g odd, and the inverse reflection-equivariant.
+All arrays must refer to the same frozen equilibrium and spatial ordering.
+The function validates array shapes, finite values, involutive reflection and
+input parity. It cannot establish equilibrium quality or equivariance of an
+arbitrary callback; callers must check these separately.
+
+This reduced equation applies to a smooth odd source derivative. Scalar profile
+normalization and critical-flux terms cancel only under the relevant symmetry
+assumptions. It is not a general Jacobian for asymmetric equilibria, a sharp
+finite-current interface or switching critical-point branches.
+
+No existing nonlinear/evolutive solver is automatically switched to this API.
+A caller explicitly imports solve_odd_response and supplies its spatial inverse,
+frozen derivative and forcing.
+
+HOW TO REVIEW
+
+  git diff 6d43a09..odd-gs-response --stat
+  git diff 6d43a09..odd-gs-response -- freegsnke/gs_response.py
+  git diff 6d43a09..odd-gs-response -- freegsnke/tests/test_gs_response.py
+
+Read the module equation and comments first, then its dense reference test,
+then the example README and independent nonlinear calculation.
+
+From this repository root, using Python with the project dependencies and
+FreeGS4E >=0.15,<0.16 installed:
+
+  PYTHONPATH=. python -m pytest freegsnke/tests/test_gs_response.py -q
+  PYTHONPATH=. python examples/odd_gs_response/nonlinear_response.py --output-dir /tmp/odd-response-check
+
+If needed for a restricted environment, set NUMBA_CACHE_DIR and MPLCONFIGDIR to
+writable temporary directories. The example writes one response.json record.
+
+VALIDATION RECORDED FOR THIS ADDITION
+
+Three unit tests passed. The example completed six independent nonlinear solves.
+Tangent relative residual: 9.98e-11.
+Relative current errors at amplitudes 4000, 2000, 1000 A:
+  1.75327e-7, 4.38318e-8, 1.09580e-8.
+The factor-of-four reduction on halving amplitude is the expected central-
+difference convergence. These checks validate differentiation on the chosen
+fixed discretization; they do not establish spatial convergence or a physical
+vertical-instability prediction. The full pre-existing solver suite was not run.

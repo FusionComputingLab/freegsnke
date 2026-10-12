@@ -31,17 +31,36 @@ from numpy import abs, max, reshape, zeros
 from scipy.sparse import eye
 from scipy.sparse.linalg import factorized
 
+from .gradshafranov import GSsparse, GSsparse4thOrder
+from .gs_solver import GSSolver
+
 
 class MGDirect:
+    # This LU solver is kept because it is more convenient in multigrid solvers, it should not be used
+    # as a standalone LU solver
     def __init__(self, A):
-        self.solve = factorized(A.tocsc())  # LU decompose
+        """
+        Initialise solver
 
-    def __call__(self, x, b):
+        A   - The matrix to solve
+        """
+
+        self.solver = factorized(A.tocsc())  # LU decompose
+
+    def solve(self, x, b):
+        """
+        Solve Ax = b by direct LU solve. The initial guess x is unused.
+        Returns the solution with the shape of b.
+        """
         b1d = reshape(b, -1)  # 1D view
 
-        x = self.solve(b1d)
+        x = self.solver(b1d)
 
         return reshape(x, b.shape)
+
+    def __call__(self, x, b):
+        """Equivalent to `solve(x, b)`."""
+        return self.solve(x, b)
 
 
 class MGJacobi:
@@ -64,7 +83,7 @@ class MGJacobi:
         self.sub_b = None
         self.xupdate = None
 
-    def __call__(self, xi, bi, ncycle=None, niter=None):
+    def solve(self, xi, bi, ncycle=None, niter=None):
         """
         Solve Ax = b, given initial guess for x
 
@@ -108,6 +127,72 @@ class MGJacobi:
 
         return x.reshape(xi.shape)
 
+    def __call__(self, xi, bi, ncycle=None, niter=None):
+        """Equivalent to `solve(xi, bi, ncycle, niter)`."""
+        return self.solve(xi, bi, ncycle, niter)
+
+
+def createMultigridSolver(
+    R, Z, order, nlevels=4, ncycle=1, niter=10, direct=True
+):
+    """
+    Creates a multigrid solver from a sparse solver of the given order and (highest)
+    resolution.
+
+    Parameters
+    ----------
+    R: ndarray (nr,nz)
+        ndarray of the shape of the domain (nr,nz) with the radius of each point in the grid
+    Z: ndarray (nr,nz)
+        ndarray of the shape of the domain (nr,nz) with the height of each point in the grid
+    order - The order of the internal sparse solver
+    nlevels - Number of multigrid levels
+    direct - Lowest level uses direct solver
+    ncycle - Number of V cycles. This is only passed to the top level MGJacobi object
+    niter - Number of Jacobi iterations per level
+
+    Returns
+    -------
+    MGsolver
+        Returns a multigrid solver
+
+    """
+
+    generator = None
+
+    if R.shape != Z.shape:
+        raise ValueError(
+            f"shape mismatch: Shapes of radial grid ({R.shape}) and longitudinal grid ({Z.shape}) do not match"
+        )
+
+    Rmin = float(R[0, 0])
+    Rmax = float(R[-1, 0])
+    Zmin = float(Z[0, 0])
+    Zmax = float(Z[0, -1])
+
+    nx, ny = R.shape
+
+    if order == 2:
+        generator = GSsparse(Rmin, Rmax, Zmin, Zmax)
+    elif order == 4:
+        generator = GSsparse4thOrder(Rmin, Rmax, Zmin, Zmax)
+    else:
+        raise ValueError(
+            f"Invalid choice of order ({order}). Valid values are 2 or 4."
+        )
+
+    mg_solver = createVcycle(
+        nx=nx,
+        ny=ny,
+        generator=generator,
+        nlevels=nlevels,
+        ncycle=ncycle,
+        niter=niter,
+        direct=direct,
+    )
+
+    return mg_solver
+
 
 def createVcycle(
     nx, ny, generator, nlevels=4, ncycle=1, niter=10, direct=True
@@ -115,12 +200,19 @@ def createVcycle(
     """
     Create a hierarchy of solvers in a multigrid V-cycle
 
+    Parameters
+    ----------
     nx, ny - The highest resolution
     generator(nx,ny) - Returns a sparse matrix, given resolution
     nlevels - Number of multigrid levels
     direct - Lowest level uses direct solver
     ncycle - Number of V cycles. This is only passed to the top level MGJacobi object
     niter - Number of Jacobi iterations per level
+
+    Returns
+    -------
+    MGsolver
+        Returns a multigrid solver
 
     """
 

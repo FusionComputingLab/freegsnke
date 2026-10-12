@@ -1,8 +1,8 @@
 """
-Contains various classes and functions related to the elliptic operator 
-of the Grad-Shafranov equation. 
+Contains various classes and functions related to the elliptic operator
+of the Grad-Shafranov equation.
 
-Copyright 2016 Ben Dudson, University of York. Email: benjamin.dudson@york.ac.uk
+Copyright 2026 Ben Dudson, Tomas Rubio Cruz
 
 This file is part of FreeGS4E.
 
@@ -21,11 +21,15 @@ along with FreeGS4E.  If not, see <http://www.gnu.org/licenses/>.
 
 """
 
-from numpy import clip, pi, sqrt, zeros
-from scipy.sparse import eye, lil_matrix
+from abc import ABC, abstractmethod
+from warnings import warn
 
-# elliptic integrals of first and second kind (K and E)
-from scipy.special import ellipe, ellipk
+import numexpr as ne
+import numpy as np
+from numpy import pi
+from scipy.sparse import csc_array, csr_array, eye
+
+from .parallel import threaded_clip, threaded_elliptics_ek
 
 # magnetic permeability of free space
 mu0 = 4e-7 * pi
@@ -44,7 +48,7 @@ class GSElliptic:
 
     """
 
-    def __init__(self, Rmin):
+    def __init__(self, Rmin, *, dtype=np.float64):
         """
         Initializes the class.
 
@@ -52,10 +56,13 @@ class GSElliptic:
         ----------
         Rmin : float
             Minimum major radius [m].
+        dtype : numpy dtype, optional
+            Data type of the output array (default: np.float64).
 
         """
 
         self.Rmin = Rmin
+        self.dtype = dtype
 
     def __call__(self, psi, dR, dZ):
         """
@@ -85,7 +92,7 @@ class GSElliptic:
         ny = psi.shape[1]
 
         # to store output
-        b = zeros([nx, ny])
+        b = np.zeros([nx, ny], dtype=self.dtype)
 
         # pre-compute constants
         invdR2 = 1.0 / dR**2
@@ -128,7 +135,7 @@ class GSElliptic:
 
 class GSsparse:
     """
-    Class representing the elliptc operator within the Grad-Shafranov
+    Class representing the elliptic operator within the Grad-Shafranov
     equation:
 
         Δ^* = d^2/dR^2 + d^2/dZ^2 - (1/R)*d/dR
@@ -141,7 +148,9 @@ class GSsparse:
 
     """
 
-    def __init__(self, Rmin, Rmax, Zmin, Zmax):
+    order = 2
+
+    def __init__(self, Rmin, Rmax, Zmin, Zmax, dtype=np.float64):
         """
         Initializes the class.
 
@@ -155,6 +164,8 @@ class GSsparse:
             Minimum height [m].
         Zmax : float
             Maximum height [m].
+        dtype : numpy dtype, optional
+            Data type of the matrix entries (default: np.float64).
 
         """
 
@@ -164,7 +175,15 @@ class GSsparse:
         self.Zmin = Zmin
         self.Zmax = Zmax
 
+        self.dtype = dtype
+
     def __call__(self, nx, ny):
+        """
+        Equivalent to `discretize(nx, ny)` with the default (CSR) format.
+        """
+        return self.discretize(nx, ny)
+
+    def discretize(self, nx, ny, format="csr"):
         """
         Generates the sparse elliptic operator Δ^* for a given number of
         grid points. Computes to second-order accuracy.
@@ -172,15 +191,21 @@ class GSsparse:
         Parameters
         ----------
         nx : int
-            Number of radial grid points (must be of form 2^n + 1, n=0,1,2,3,4,5,...).
+            Number of radial grid points (including boundaries).
         ny : int
-            Number of vertical grid points (must be of form 2^n + 1, n=0,1,2,3,4,5,...).
+            Number of vertical grid points (including boundaries).
+        format : str, optional
+            Sparse format of the returned matrix, either "csr" (default) or "csc".
+            Any other value falls back to "csr" with a warning.
 
         Returns
         -------
-        np.array
-            The operator matrix.
+        scipy.sparse matrix/array
+            The operator matrix, in the requested sparse format.
         """
+
+        # This method could be optimized by vectorizing with a COO approach
+        # It may not be worth it though, considering the DST solver will always be faster
 
         # calculate grid spacing
         dR = (self.Rmax - self.Rmin) / (nx - 1)
@@ -190,7 +215,7 @@ class GSsparse:
         N = nx * ny
 
         # create a linked list sparse matrix
-        A = eye(N, format="lil")
+        A = eye(N, format="lil", dtype=self.dtype)
 
         # pre-compute constants
         invdR2 = 1.0 / dR**2
@@ -219,12 +244,21 @@ class GSsparse:
                 A[row, row + 1] = invdZ2
 
         # convert to Compressed Sparse Row (CSR) format
-        return A.tocsr()
+
+        if format == "csc":
+            A = A.tocsc()
+        elif format == "csr":
+            A = A.tocsr()
+        else:
+            warn("Unrecognized format for sparse matrix, defaulting to csr")
+            A = A.tocsr()
+
+        return A
 
 
-class GSsparse4thOrder:
+class GSsparse4thOrder(GSsparse):
     """
-    Class representing the elliptc operator within the Grad-Shafranov
+    Class representing the elliptic operator within the Grad-Shafranov
     equation:
 
         Δ^* = d^2/dR^2 + d^2/dZ^2 - (1/R)*d/dR
@@ -236,6 +270,8 @@ class GSsparse4thOrder:
     This class calculates the sparse version to fourth-order accuracy.
 
     """
+
+    order = 4
 
     # Coefficients for first derivatives
     # (index offset, weight)
@@ -274,30 +310,13 @@ class GSsparse4thOrder:
         (4, 1.0 / 12),
     ]
 
-    def __init__(self, Rmin, Rmax, Zmin, Zmax):
-        """
-        Initializes the class.
-
-        Parameters
-        ----------
-        Rmin : float
-            Minimum major radius [m].
-        Rmax : float
-            Maximum major radius [m].
-        Zmin : float
-            Minimum height [m].
-        Zmax : float
-            Maximum height [m].
-
-        """
-
-        # set parameters
-        self.Rmin = Rmin
-        self.Rmax = Rmax
-        self.Zmin = Zmin
-        self.Zmax = Zmax
-
     def __call__(self, nx, ny):
+        """
+        Equivalent to `discretize(nx, ny)` with the default (CSR) format.
+        """
+        return self.discretize(nx, ny)
+
+    def discretize(self, nx, ny, format="csr"):
         """
         Generates the sparse elliptic operator Δ^* for a given number of
         grid points. Computes to fourth-order accuracy.
@@ -305,14 +324,17 @@ class GSsparse4thOrder:
         Parameters
         ----------
         nx : int
-            Number of radial grid points (must be of form 2^n + 1, n=0,1,2,3,4,5,...).
+            Number of radial grid points (including boundaries).
         ny : int
-            Number of vertical grid points (must be of form 2^n + 1, n=0,1,2,3,4,5,...).
+            Number of vertical grid points (including boundaries).
+        format : str, optional
+            Sparse format of the returned matrix, either "csr" (default) or "csc".
+            Any other value falls back to "csr" with a warning.
 
         Returns
         -------
-        np.array
-            The operator matrix.
+        scipy.sparse matrix/array
+            The operator matrix, in the requested sparse format.
         """
 
         # calculate grid spacing
@@ -322,71 +344,221 @@ class GSsparse4thOrder:
         # total number of points, including boundaries
         N = nx * ny
 
-        # create a linked list sparse matrix
-        A = lil_matrix((N, N))
-
         # calculate constants
         invdR2 = 1.0 / dR**2
         invdZ2 = 1.0 / dZ**2
 
-        # calculate entries (can be vectorised)
-        for x in range(1, nx - 1):
-            R = self.Rmin + dR * x  # Major radius of this point
-            for y in range(1, ny - 1):
-                row = x * ny + y
+        # The GS operator is constructed in COO format using lists of ndarrays. Each ndarray contains
+        # the row/col/value of the entries for a given stencil.
+        rows = []
+        cols = []
+        entries = []
 
+        # set boundary entries
+
+        for x in (0, nx - 1):
+            y = np.arange(ny)
+
+            row = x * ny + y
+            entry = np.ones_like(row, dtype=self.dtype)
+
+            rows.append(row)
+            cols.append(row)  # no offset for dirichlet bc
+            entries.append(entry)
+
+        for y in (0, ny - 1):
+            x = np.arange(1, nx - 1)  # x=0, x=(nx-1) were already set above
+
+            row = x * ny + y
+            entry = np.ones_like(row, dtype=self.dtype)
+
+            rows.append(row)
+            cols.append(row)  # no offset for dirichlet bc
+            entries.append(entry)
+
+        # set near-boundary entries (need offset stencils)
+
+        # d^2 / dR^2 - (1/R) d/dR
+        for x, offsign in zip(
+            (1, nx - 2), (1, -1)
+        ):  # offset on right (nx-2) has negative sign
+
+            y = np.arange(1, ny - 1)
+            R = self.Rmin + dR * x  # major radius of each point
+
+            row = x * ny + y
+
+            for offset, weight in self.offset_2nd:
+
+                col = row + offsign * offset * ny
+                entry = weight * invdR2
+                entry = np.full_like(row, entry, dtype=self.dtype)
+
+                rows.append(row)
+                cols.append(col)
+                entries.append(entry)
+
+            for offset, weight in self.offset_1st:
+
+                col = row + offsign * offset * ny
+                entry = (
+                    -offsign * weight / (R * dR)
+                )  # sign of entry depends on direction (offsign)
+                entry = np.full_like(row, entry, dtype=self.dtype)
+
+                rows.append(row)
+                cols.append(col)
+                entries.append(entry)
+
+        # d^2 / dZ^2
+        for y, offsign in zip(
+            (1, ny - 2), (1, -1)
+        ):  # offset on top (ny-2) has negative sign
+
+            x = np.arange(1, nx - 1)
+            row = x * ny + y
+
+            for offset, weight in self.offset_2nd:
+
+                col = row + offsign * offset
+                entry = weight * invdZ2
+                entry = np.full_like(row, entry, dtype=self.dtype)
+
+                rows.append(row)
+                cols.append(col)
+                entries.append(entry)
+
+        # set internal entries (use centred stencil)
+
+        # build the largest rectangle in domain with only centred-scheme entries
+        y_vals = np.arange(2, ny - 2)
+        x_vals = np.arange(2, nx - 2)
+        R = self.Rmin + dR * x_vals  # major radius of each point
+
+        # 2d grid with row no. of each (x,y)
+        row_2d = x_vals[:, np.newaxis] * ny + y_vals[np.newaxis, :]
+
+        # iterate over differential operators:
+        # longitudinal --> d^2/dZ^2; radial_1 --> d^2/dR^2; radial_2 --> -(1/R) d/dR
+
+        operators = ["longitudinal", "radial_1", "radial_2"]
+        stencils = {
+            "longitudinal": self.centred_2nd,
+            "radial_1": self.centred_2nd,
+            "radial_2": self.centred_1st,
+        }
+        offscales = {"longitudinal": 1, "radial_1": ny, "radial_2": ny}
+
+        for op in operators:
+
+            stencil = stencils[op]
+            offscale = offscales[op]
+
+            size_stencil = len(stencil)
+            stencil_offsets = offscale * np.array(
+                [entry[0] for entry in stencil]
+            )
+            stencil_weights = np.array([entry[1] for entry in stencil])
+
+            # 3d grids with the row/col/weight corresponding to each x,y,offset combo
+            row = np.broadcast_to(
+                row_2d[:, :, np.newaxis], (*row_2d.shape, size_stencil)
+            )
+            col = row + stencil_offsets[np.newaxis, np.newaxis, :]
+            weights = np.broadcast_to(
+                stencil_weights[np.newaxis, np.newaxis, :], row.shape
+            )
+
+            entry = None
+
+            if op == "longitudinal":
                 # d^2 / dZ^2
-                if y == 1:
-                    # One-sided derivatives in Z
-                    for offset, weight in self.offset_2nd:
-                        A[row, row + offset] += weight * invdZ2
-                elif y == ny - 2:
-                    # One-sided, reversed direction.
-                    # Note that for second derivatives the sign of the weights doesn't change
-                    for offset, weight in self.offset_2nd:
-                        A[row, row - offset] += weight * invdZ2
-                else:
-                    # Central differencing
-                    for offset, weight in self.centred_2nd:
-                        A[row, row + offset] += weight * invdZ2
+                entry = weights * invdZ2
+            elif op == "radial_1":
+                # d^2 / dR^2
+                entry = weights * invdR2
+            elif op == "radial_2":
+                # -(1/R) d/dR
+                entry = -weights / (R[:, np.newaxis, np.newaxis] * dR)
+            else:
+                raise KeyError(op)
 
-                # d^2 / dR^2 - (1/R) d/dR
+            rows.append(row.flatten())
+            cols.append(col.flatten())
+            entries.append(entry.flatten())
 
-                if x == 1:
-                    for offset, weight in self.offset_2nd:
-                        A[row, row + offset * ny] += weight * invdR2
+            if op == "longitudinal":
+                # set stencil for points where a centred scheme is used longitudinally
+                # but not radially
+                for x in (1, nx - 2):
+                    y = np.arange(2, ny - 2)
 
-                    for offset, weight in self.offset_1st:
-                        A[row, row + offset * ny] -= weight / (R * dR)
+                    row = x * ny + y
+                    row = np.broadcast_to(
+                        row[:, np.newaxis], (*row.shape, size_stencil)
+                    )
+                    col = row + stencil_offsets[np.newaxis, :]
+                    weights = np.broadcast_to(
+                        stencil_weights[np.newaxis, :], row.shape
+                    )
 
-                elif x == nx - 2:
-                    for offset, weight in self.offset_2nd:
-                        A[row, row - offset * ny] += weight * invdR2
+                    entry = weights * invdZ2
 
-                    for offset, weight in self.offset_1st:
-                        A[row, row - offset * ny] += weight / (R * dR)
-                else:
-                    for offset, weight in self.centred_2nd:
-                        A[row, row + offset * ny] += weight * invdR2
+                    rows.append(row.flatten())
+                    cols.append(col.flatten())
+                    entries.append(entry.flatten())
 
-                    for offset, weight in self.centred_1st:
-                        A[row, row + offset * ny] -= weight / (R * dR)
+            else:
+                # set stencil for points where a centred scheme is used radially
+                # but not longitudinally
+                for y in (1, ny - 2):
+                    x = np.arange(2, nx - 2)
 
-        # set boundary rows
-        for x in range(nx):
-            for y in [0, ny - 1]:
-                row = x * ny + y
-                A[row, row] = 1.0
-        for x in [0, nx - 1]:
-            for y in range(ny):
-                row = x * ny + y
-                A[row, row] = 1.0
+                    row = x * ny + y
+                    row = np.broadcast_to(
+                        row[:, np.newaxis], (*row.shape, size_stencil)
+                    )
+                    col = row + stencil_offsets[np.newaxis, :]
+                    weights = np.broadcast_to(
+                        stencil_weights[np.newaxis, :], row.shape
+                    )
 
-        # convert to Compressed Sparse Row (CSR) format
-        return A.tocsr()
+                    entry = None
+                    if op == "radial_1":
+                        entry = weights * invdR2
+                    elif op == "radial_2":
+                        entry = -weights / (R[:, np.newaxis] * dR)
+                    else:
+                        raise KeyError(op)
+
+                    rows.append(row.flatten())
+                    cols.append(col.flatten())
+                    entries.append(entry.flatten())
+
+        all_rows = np.concatenate(rows)
+        all_cols = np.concatenate(cols)
+        all_entries = np.concatenate(entries)
+
+        A = None
+
+        if format == "csc":
+            A = csc_array(
+                (all_entries, (all_rows, all_cols)), dtype=self.dtype
+            )
+        elif format == "csr":
+            A = csr_array(
+                (all_entries, (all_rows, all_cols)), dtype=self.dtype
+            )
+        else:
+            warn("Unrecognized format for sparse matrix, defaulting to csr")
+            A = csr_array(
+                (all_entries, (all_rows, all_cols)), dtype=self.dtype
+            )
+
+        return A
 
 
-def Greens(Rc, Zc, R, Z):
+def Greens(Rc, Zc, R, Z, limit_threading=False, scale_factor=1, out=None):
     """
     Calculate poloidal flux at (R,Z) due to a single unit of current at
     (Rc,Zc) using Greens function for the elliptic operator above. Greens
@@ -401,6 +573,9 @@ def Greens(Rc, Zc, R, Z):
     and K(k^2) and E(k^2) are the complete elliptic integrals of the first
     and second kind.
 
+    This function is multithreaded using numexpr and freegsnke's custom parallel library. For
+    details consult the relevant section in the README.
+
     Parameters
     ----------
     Rc : float
@@ -411,27 +586,43 @@ def Greens(Rc, Zc, R, Z):
         Radial position where poloidal flux is to be calcualted [m].
     Z : float
         Vertical position where poloidal flux is to be calcualted [m].
+    limit_threading : bool, optional
+        If True, forces SOME internal functions, with high threading overhead, to run single
+        threaded. Multiple threads will still be used for low overhead functionalities.
+        Recommended when the input arrays are small (default: False).
+    scale_factor : float, optional
+        Scalar factor to apply on the final result (default: 1).
+    out : ndarray, optional
+        Pre-allocated buffer for the final result.
 
     Returns
     -------
-    float
+    ndarray
         Value of the poloidal flux at (R,Z).
     """
 
+    # TODO: the next version of numexpr should allow for cache_disabling, this could
+    # help address memory issues.
+
     # calculate k^2
-    k2 = 4.0 * R * Rc / ((R + Rc) ** 2 + (Z - Zc) ** 2)
+    k2 = ne.evaluate("4.0 * R * Rc / ((R + Rc) ** 2 + (Z - Zc) ** 2)")
 
     # clip to between 0 and 1 to avoid nans e.g. when coil is on grid point
-    k2 = clip(k2, 1e-10, 1.0 - 1e-10)
-    k = sqrt(k2)
+    k2 = threaded_clip(
+        k2, 1e-10, 1.0 - 1e-10, out=k2, single_thread=limit_threading
+    )
 
     # note definition of ellipk, ellipe in scipy is K(k^2), E(k^2)
-    return (
-        (mu0 / (2.0 * pi))
-        * sqrt(R * Rc)
-        * ((2.0 - k2) * ellipk(k2) - 2.0 * ellipe(k2))
-        / k
+    eie, eik = threaded_elliptics_ek(k2, single_thread=limit_threading)
+
+    ct = (mu0 / (2.0 * pi)) * scale_factor
+
+    res = ne.evaluate(
+        "ct * sqrt(R * Rc) * ((2.0 - k2) * eik - 2.0 * eie) / sqrt(k2)",
+        out=out,
     )
+
+    return res
 
 
 def GreensBz(Rc, Zc, R, Z, eps=1e-4):

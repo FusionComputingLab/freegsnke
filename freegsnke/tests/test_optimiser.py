@@ -1,3 +1,7 @@
+import random
+
+import pytest
+
 from freegsnke import optimiser
 
 # Tests and example of solving optimisation problem
@@ -7,6 +11,13 @@ from freegsnke import optimiser
 #
 # Run this script to show animation of the solution, or run
 # tests using pytest.
+
+
+@pytest.fixture(autouse=True)
+def seed_random():
+    # The optimiser uses the standard library's random numbers: seed them so that
+    # the tests are deterministic
+    random.seed(12345)
 
 
 class ControlIndex:
@@ -34,8 +45,8 @@ def calculate_score(coefs):
 
 def test_quadratic():
     # Check that a quadratic can be solved
-    # Note that the optimiser uses random numbers so
-    # there is a small chance of this test failing even if correct
+    # Note that the optimiser uses random numbers, which are seeded
+    # (see the seed_random fixture) to keep the test deterministic
     start_values = [0.1, 0.1]  # Starting guess
 
     # The optimiser can control two coefficients,

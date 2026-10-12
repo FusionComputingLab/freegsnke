@@ -404,7 +404,7 @@ def read(
 
     # Perform a linear solve to calculate psi
     # using known Jtor
-    eq.solve(profiles, Jtor=Jtor)
+    eq.solve(profiles, Jtor=Jtor)  # TODO: removal of solver from eq?
 
     print(
         "Plasma current: {0} Amps, input: {1} Amps".format(

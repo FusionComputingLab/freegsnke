@@ -32,13 +32,11 @@ from scipy.integrate import cumulative_trapezoid, trapezoid
 from scipy.optimize import least_squares
 from scipy.spatial.distance import pdist, squareform
 
-from . import critical, machine, multigrid, polygons  # multigrid solver
+from . import multigrid  # prevents bugs with imports elsewhere
+from . import critical, machine, polygons
 from .boundary import fixedBoundary, freeBoundary  # finds free-boundary
-from .gradshafranov import (  # operators which define the G-S equation
-    GSsparse,
-    GSsparse4thOrder,
-    mu0,
-)
+from .gradshafranov import mu0
+from .gs_solver import GSLUSolver
 from .plotting import plotEquilibrium
 
 
@@ -50,7 +48,7 @@ class Equilibrium:
 
     def __init__(
         self,
-        tokamak=machine.EmptyTokamak(),
+        tokamak=None,
         Rmin=0.1,
         Rmax=2.0,
         Zmin=-1.0,
@@ -60,15 +58,16 @@ class Equilibrium:
         boundary=freeBoundary,
         psi=None,
         current=0.0,
-        order=4,
+        order=None,
     ):
         """
         Initializes a plasma equilibrium.
 
         Parameters
         ----------
-        tokamak : machine.Machine
+        tokamak : machine.Machine | None
             The set of active coils, passive structures, limiter, and magnetic probes in the tokamak.
+            If `None` (default), an empty tokamak (`machine.EmptyTokamak`) is used.
         Rmin : float
             Minimum major radius [m].
         Rmax : float
@@ -90,13 +89,18 @@ class Equilibrium:
             The array (returned by the callable) must have the shape (nx, ny).
         current : float
             Plasma current [A].
-        order : int
-            Order of differential operators used in calculations.
-            Must be either 2 or 4.
+        order : int | None
+            Deprecated, passing a value raises a DeprecationWarning. No solver is created at
+            initialization; the value (default 4) is only used as the order of the sparse-LU
+            solver that is lazily created by `callSolver`.
+
         """
 
         # assign tokamak object
-        self.tokamak = tokamak
+        if tokamak:
+            self.tokamak = tokamak
+        else:
+            self.tokamak = machine.EmptyTokamak()
 
         # assign bounds of computational domain
         if Rmin > Rmax:
@@ -128,29 +132,24 @@ class Equilibrium:
 
         # generate Greens function mappings (used
         # in self.psi() to speed up calculations)
-        self._pgreen = tokamak.createPsiGreens(self.R, self.Z)
-        self._vgreen = tokamak.createPsiGreensVec(self.R, self.Z)
+        self._pgreen = self.tokamak.createPsiGreens(self.R, self.Z)
+        self._vgreen = self.tokamak.createPsiGreensVec(self.R, self.Z)
         # self._updatePlasmaPsi(psi)  # Needs to be after _pgreen
 
         # assign plasma current
         self._current = current
 
-        # deinfe the GS solver
-        if order == 2:
-            generator = GSsparse(Rmin, Rmax, Zmin, Zmax)
-        elif order == 4:
-            generator = GSsparse4thOrder(Rmin, Rmax, Zmin, Zmax)
-        else:
-            raise ValueError(
-                "Invalid choice of order ({}). Valid values are 2 or 4.".format(
-                    order
-                )
+        # order attribute is kept for backwards compatibility only
+        if order is not None:
+            warnings.warn(
+                "Order attribute of Equilibrium objects is deprecated. No solver is created inside Equilibrium.",
+                DeprecationWarning,
             )
-        self.order = order
+        else:
+            order = 4
 
-        self._solver = multigrid.createVcycle(
-            nx, ny, generator, nlevels=1, ncycle=1, niter=2, direct=True
-        )
+        self._order = order
+        self.__solver = None
 
         # assign initial guess for plasma flux (if None)
         if psi is None:
@@ -167,6 +166,38 @@ class Equilibrium:
             )
         self._updatePlasmaPsi(psi)
 
+    @property
+    def order(self):
+        warnings.warn(
+            "Order attribute of Equilibrium objects is deprecated, as no solver is created",
+            DeprecationWarning,
+        )
+        return self._order
+
+    @order.setter
+    def order(self, value):
+        warnings.warn(
+            "Order attribute of Equilibrium objects is deprecated, as no solver is created",
+            DeprecationWarning,
+        )
+        self._order = value
+
+    @property
+    def _solver(self):
+        warnings.warn(
+            "Solver attribute of Equilibrium objects is deprecated. Equilibrium contains no linear solver.",
+            DeprecationWarning,
+        )
+        return self.__solver
+
+    @_solver.setter
+    def _solver(self, value):
+        warnings.warn(
+            "Solver attribute of Equilibrium objects is deprecated. Equilibrium contains no linear solver.",
+            DeprecationWarning,
+        )
+        self.__solver = value
+
     def create_psi_plasma_default(
         self, adaptive_centre=False, gpars=(0.5, 0.5, 0, 2)
     ):
@@ -175,83 +206,48 @@ class Equilibrium:
         """
         return PsiGuessGaussian(adaptive_centre, gpars)(self)
 
-    def setSolverVcycle(self, nlevels=1, ncycle=1, niter=1, direct=True):
+    def setSolverVcycle(
+        self, nlevels=1, ncycle=1, niter=1, direct=True, order=4
+    ):
         """
-        Sets a new linear solver based on the multigrid scheme.
-
-        This method configures a multigrid V-cycle solver and assigns it to
-        `self._solver`.
-
-        Parameters
-        ----------
-        nlevels : int
-            Number of resolution levels, including the original.
-        ncycle : int
-            Number of V-cycles to use.
-        niter : int
-            Number of linear solver (Jacobi) iterations per level.
-        direct : bool
-            If True, uses a direct solver at the coarsest level.
-
-        Returns
-        -------
-        None
-            This function modifies `self._solver` but does not return a value.
+        Deprecated. Equilibrium objects do not contain a multigrid solver. All arguments
+        are ignored and any previously set solver is discarded, so that the default
+        sparse-LU solver is (lazily) used again.
         """
-
-        # set the solver
-        self._solver = multigrid.createVcycle(
-            nx=self.nx,
-            ny=self.ny,
-            generator=GSsparse(self.Rmin, self.Rmax, self.Zmin, self.Zmax),
-            nlevels=nlevels,
-            ncycle=ncycle,
-            niter=niter,
-            direct=direct,
-        )
+        self.setSolver(None)
 
     def setSolver(self, solver):
         """
-        Sets the linear solver to use. The given object/function must have a __call__ method
-        which takes two inputs:
-
-        solver(x, b)
-
-        where x is the initial guess and b is the right hand side (this should solve Ax = b,
-        returning the result).
-
-
-        Parameters
-        ----------
-        solver : object
-            The solver object.
-
-        Returns
-        -------
-        None
-            This function modifies `self._solver` but does not return a value.
+        Deprecated. Sets the solver used by `callSolver`. The object must be callable as
+        `solver(x, b)`, where x is the initial guess and b the right hand side. Passing
+        None restores the default sparse-LU solver (created lazily on next use).
         """
-
         self._solver = solver
 
     def callSolver(self, psi, rhs):
         """
-        Calls the solver.
+        Solves the GS elliptic equation for the given right hand side. The solver
+        (a sparse-LU `GSLUSolver` of the order given at initialization) is created
+        lazily on first use, so that constructing an Equilibrium carries no
+        factorization cost.
 
         Parameters
         ----------
         psi : np.array
-            The initial guess [Webers/2pi].
+            The initial guess [Webers/2pi] (unused by the LU solver).
         rhs : np.array
             The right hand side of the GS equation.
 
         Returns
         -------
-        object
-            Returns modified `self._solver` object.
+        np.array
+            The solution of the GS equation, with the shape of `rhs`.
         """
 
-        return self._solver(psi, rhs)
+        if self.__solver is None:
+            self.__solver = GSLUSolver(self.R, self.Z, order=self._order)
+
+        return self.__solver(psi, rhs)
 
     def getMachine(self):
         """
@@ -2670,7 +2666,7 @@ class Equilibrium:
         rhs[:, -1] = self.plasma_psi[:, -1]
 
         # call elliptic solver
-        plasma_psi = self._solver(self.plasma_psi, rhs)
+        plasma_psi = self.callSolver(self.plasma_psi, rhs)
 
         self._updatePlasmaPsi(plasma_psi)
 

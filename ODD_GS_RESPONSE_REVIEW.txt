@@ -57,9 +57,15 @@ The function validates array shapes, finite values, involutive reflection and
 input parity. It cannot establish equilibrium quality or equivariance of an
 arbitrary callback; callers must check these separately.
 
-This reduced equation applies to a smooth odd source derivative. Scalar profile
-normalization and critical-flux terms cancel only under the relevant symmetry
-assumptions. It is not a general Jacobian for asymmetric equilibria, a sharp
+This is a static odd-sector response, not the general equilibrium Jacobian.
+The FULL first source variation in this sector must reduce to the local relation
+  delta_j = C * delta_psi_total.
+The caller must establish this for the chosen profile model. Scalar profile
+normalization and critical-flux variations vanish only when those quantities
+are reflection-invariant and differentiable at the symmetric base. Other
+nonlocal or interface terms cannot simply be omitted. A unique finite response
+also requires an invertible tangent. The manufactured example satisfies the
+local-source assumption by construction; it does not validate arbitrary models. It is not a general Jacobian for asymmetric equilibria, a sharp
 finite-current interface or switching critical-point branches.
 
 No existing nonlinear/evolutive solver is automatically switched to this API.

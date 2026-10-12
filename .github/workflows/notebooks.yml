@@ -4,14 +4,16 @@ on:
   pull_request:
     branches:
       - main
-    types: [labeled]
+    types: [opened, synchronize, reopened, labeled]
 
 jobs:
   notebooks:
     strategy:
       fail-fast: false
     timeout-minutes: 60
-    if: ${{ github.event.label.name == 'ready-for-final-tests' }}
+    if: >-
+      contains(github.event.pull_request.labels.*.name, 'ready-for-final-tests') &&
+      (github.event.action != 'labeled' || github.event.label.name == 'ready-for-final-tests')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -48,3 +50,67 @@ jobs:
         run: jupyter nbconvert --execute --to notebook --inplace "examples/example10 - growth_rates.ipynb"
       - name: Check pulse design tool notebook
         run: jupyter nbconvert --execute --to notebook --inplace "examples/example11 - pulse_design_tool.ipynb"
+
+  numerical-parity:
+    timeout-minutes: 60
+    runs-on: ubuntu-latest
+    if: >-
+      contains(github.event.pull_request.labels.*.name, 'ready-for-final-tests') &&
+      (github.event.action != 'labeled' || github.event.label.name == 'ready-for-final-tests')
+    env:
+      OMP_NUM_THREADS: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      NUMEXPR_NUM_THREADS: '1'
+      NUMEXPR_MAX_THREADS: '32'
+      PYTHONHASHSEED: '0'
+    steps:
+      - name: Checkout absorbed candidate
+        uses: actions/checkout@v4
+        with:
+          path: candidate
+      - name: Checkout external-backend reference
+        uses: actions/checkout@v4
+        with:
+          ref: 6d43a09f48d00170ab8474a32c9deb49e34f065d
+          path: reference
+      - name: Checkout pinned FreeGS4E source
+        uses: actions/checkout@v4
+        with:
+          repository: FusionComputingLab/freegs4e
+          ref: c8128a3e57fd14a4ff28ae744325dd87d8d35fdb
+          path: backend
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install isolated candidate and reference environments
+        run: |
+          python -m venv "$RUNNER_TEMP/candidate-env"
+          "$RUNNER_TEMP/candidate-env/bin/python" -m pip install -e './candidate[dev]'
+          "$RUNNER_TEMP/candidate-env/bin/python" -m pip freeze --exclude freegsnke > "$RUNNER_TEMP/numerical-requirements.txt"
+          python -m venv "$RUNNER_TEMP/reference-env"
+          "$RUNNER_TEMP/reference-env/bin/python" -m pip install -r "$RUNNER_TEMP/numerical-requirements.txt" -e ./backend -e './reference[dev]'
+          "$RUNNER_TEMP/candidate-env/bin/python" -c 'import importlib.util; assert importlib.util.find_spec("freegs4e") is None'
+      - name: Execute all five reference notebooks with numerical checkpoints
+        run: |
+          "$RUNNER_TEMP/reference-env/bin/python" candidate/tools/migration_notebooks.py run \
+            --repo reference --python "$RUNNER_TEMP/reference-env/bin/python" \
+            --output "$RUNNER_TEMP/migration-validation/reference"
+      - name: Execute all five absorbed candidate notebooks
+        run: |
+          "$RUNNER_TEMP/candidate-env/bin/python" candidate/tools/migration_notebooks.py run \
+            --repo candidate --python "$RUNNER_TEMP/candidate-env/bin/python" \
+            --output "$RUNNER_TEMP/migration-validation/candidate"
+      - name: Require numerical precision agreement
+        run: |
+          "$RUNNER_TEMP/candidate-env/bin/python" candidate/tools/migration_notebooks.py compare \
+            --reference "$RUNNER_TEMP/migration-validation/reference" \
+            --candidate "$RUNNER_TEMP/migration-validation/candidate" \
+            --report "$RUNNER_TEMP/migration-validation/comparison.json"
+      - name: Retain executed notebooks, numerical arrays and comparison reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: migration-numerical-validation
+          path: ${{ runner.temp }}/migration-validation
+          retention-days: 30

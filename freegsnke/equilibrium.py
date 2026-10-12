@@ -198,6 +198,16 @@ class Equilibrium:
         )
         self.__solver = value
 
+    def _copy_solver_state_to(self, other):
+        """Share compatibility solver state without triggering lazy creation.
+
+        Auxiliary equilibria use the same grid and historically shared the
+        factorization. Preserve that behavior for initialized or custom solvers,
+        and leave an uninitialized copy free to create its own solver on use.
+        """
+        other._order = self._order
+        other.__solver = self.__solver
+
     def create_psi_plasma_default(
         self, adaptive_centre=False, gpars=(0.5, 0.5, 0, 2)
     ):

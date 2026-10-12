@@ -571,8 +571,7 @@ class Equilibrium(equilibrium.Equilibrium):
         equilibrium.dZ = self.dZ
         equilibrium._applyBoundary = self._applyBoundary
         equilibrium._current = self._current
-        equilibrium.order = self.order
-        equilibrium._solver = self._solver
+        self._copy_solver_state_to(equilibrium)
 
         # attributes the FreeGSNKE sets
         equilibrium.solved = self.solved

@@ -1,5 +1,7 @@
 import unittest
+
 import numpy as np
+
 from freegsnke.gs_response import solve_odd_response
 
 

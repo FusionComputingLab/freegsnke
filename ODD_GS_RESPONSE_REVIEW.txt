@@ -88,7 +88,8 @@ FreeGS4E >=0.15,<0.16 installed:
   Open examples/example12 - odd_GS_response.ipynb in Jupyter and run all cells.
 
 If needed for a restricted environment, set NUMBA_CACHE_DIR and MPLCONFIGDIR to
-writable temporary directories. The notebook retains plots and numerical checks inline.
+writable temporary directories. The notebook generates plots and numerical checks inline when run. Saved outputs
+are cleared before committing, as required by the repository CI policy.
 
 VALIDATION RECORDED FOR THIS ADDITION
 

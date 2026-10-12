@@ -173,7 +173,7 @@ def build_tokamak_components(
     Returns
     -------
     dict
-        Dictionary containing FreeGS4E coil circuits, wall and limiter objects,
+        Dictionary containing FreeGSNKE coil circuits, wall and limiter objects,
         FreeGSNKE coil metadata, coil counts, and the probe object needed to
         initialise or update a :class:`freegsnke.machine_update.Machine`.
     """
@@ -1193,7 +1193,7 @@ def update_tokamak(
     This is the functional equivalent of
     :meth:`freegsnke.machine_update.Machine.set_machine_description`. It accepts
     the same machine-description inputs as :func:`tokamak`, rebuilds the
-    FreeGS4E coil/circuit objects and FreeGSNKE coil metadata, and recalculates
+    coil/circuit objects and coil metadata, and recalculates
     the resistance and inductance matrices on the existing machine object.
 
     Parameters
@@ -1370,8 +1370,7 @@ def build_actives(
     active_coils,
 ):
     """
-    Build the coils (and any circuits) in FreeGSNKE using the MultiCoil and Circuit
-    functionality from FreeGS4E.
+    Build active coils and circuits using the native MultiCoil and Circuit classes.
 
     Parameters
     ----------
@@ -1381,7 +1380,7 @@ def build_actives(
     Returns
     -------
     coils : list
-        List of coils and circuits to be ingested by FreeGSNKE/FreeGS4E.
+        List of coils and circuits to be ingested by FreeGSNKE.
     """
 
     # store list of all coils built

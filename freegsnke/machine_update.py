@@ -1,5 +1,5 @@
 """
-Defines the FreeGSNKE machine object, which inherits from the FreeGS4E machine object. 
+Defines a machine with limiter support, extending freegsnke.machine.Machine.
 
 Copyright 2025 UKAEA, UKRI-STFC, and The Authors, as per the COPYRIGHT and README files.
 

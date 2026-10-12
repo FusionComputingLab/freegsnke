@@ -6,18 +6,18 @@ Modified substantially from the original FreeGS code.
 
 Copyright 2024 Nicola C. Amorisco, Adriano Agnello, George K. Holt, Ben Dudson.
 
-FreeGS4E is free software: you can redistribute it and/or modify
+FreeGSNKE is free software: you can redistribute it and/or modify
 it under the terms of the GNU Lesser General Public License as published by
 the Free Software Foundation, either version 3 of the License, or
 (at your option) any later version.
 
-FreeGS4E is distributed in the hope that it will be useful,
+FreeGSNKE is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU Lesser General Public License for more details.
 
 You should have received a copy of the GNU Lesser General Public License
-along with FreeGS4E.  If not, see <http://www.gnu.org/licenses/>.
+along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 import numpy as np
@@ -309,7 +309,7 @@ class ConstrainBetapIp(Profile):
             raise ValueError("Raxis must be positive.")
         self.Raxis = Raxis
 
-        # parameter to indicate that this is coming from FreeGS4E
+        # Compatibility flag for native current-density profiles.
         self.fast = True
 
     def Jtor_part2(self, R, Z, psi, psi_axis, psi_bndry, mask):
@@ -522,7 +522,7 @@ class ConstrainPaxisIp(Profile):
             raise ValueError("Raxis must be positive.")
         self.Raxis = Raxis
 
-        # parameter to indicate that this is coming from FreeGS4E
+        # Compatibility flag for native current-density profiles.
         self.fast = True
 
     def Jtor_part2(self, R, Z, psi, psi_axis, psi_bndry, mask):
@@ -713,7 +713,7 @@ class Fiesta_Topeol(Profile):
             raise ValueError("Raxis must be positive.")
         self.Raxis = Raxis
 
-        # parameter to indicate that this is coming from FreeGS4E
+        # Compatibility flag for native current-density profiles.
         self.fast = True
 
     def Jtor_part2(self, R, Z, psi, psi_axis, psi_bndry, mask):
@@ -899,7 +899,7 @@ class Lao85(Profile):
         # initialise profile ready for calculation
         self.initialize_profile()
 
-        # parameter to indicate that this is coming from FreeGS4E
+        # Compatibility flag for native current-density profiles.
         self.fast = True
 
     def initialize_profile(self):
@@ -1273,7 +1273,7 @@ class TensionSpline(Profile):
         self.Raxis = Raxis
         self.Ip_logic = Ip_logic
 
-        # parameter to indicate that this is coming from FreeGS4E
+        # Compatibility flag for native current-density profiles.
         self.fast = True
 
     def Jtor_part2(self, R, Z, psi, psi_axis, psi_bndry, mask):
@@ -1568,7 +1568,7 @@ class GeneralPprimeFFprime(Profile):
         # initialise profile ready for calculation
         self.initialize_profile()
 
-        # parameter to indicate that this is coming from FreeGS4E
+        # Compatibility flag for native current-density profiles.
         self.fast = True
 
     def initialize_profile(self):

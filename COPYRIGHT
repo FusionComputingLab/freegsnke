@@ -9,7 +9,7 @@ Copyright 2025 UKAEA, The Authors: Nicola C. Amorisco, Kamran Pentland
 Other contributing Authors include the following:
 Authors: Matthijs Mars (UCL MSSL).
 
-This software incorporates FreeGS4E and code derived from FreeGS:
+The integrated equilibrium and numerical modules include the following contributions and code derived from FreeGS:
 Copyright 2024-2025 Nicola C. Amorisco, George K. Holt, Adriano Agnello, and other contributors.
 Copyright 2026 Tomas Rubio Cruz and Ubaid Qadri (solver and parallel-execution contributions).
 Copyright 2016-2021 Ben Dudson, University of York, and other contributors (benjamin.dudson@york.ac.uk).

@@ -9,7 +9,7 @@ License & Attribution
 FreeGSNKE is distributed under the GNU Lesser General Public License version 3.
 Copyright 2025 UKRI-STFC and UKAEA contributors.
 
-FreeGSNKE incorporates components originally developed as part of FreeGS4E
+The integrated equilibrium and numerical modules include contributions
 (Copyright 2024-2025 Nicola C. Amorisco, George K. Holt, Adriano Agnello, and other contributors)
 with solver and parallel-execution contributions by Tomas Rubio Cruz and Ubaid Qadri (2026),
 and FreeGS (Copyright 2016-2021 Ben Dudson, University of York, and other contributors).

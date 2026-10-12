@@ -1,5 +1,5 @@
 """
-Defines the FreeGSNKE profile object, which inherits from the FreeGS4E profile object.
+Defines refined current-density profiles built on the native freegsnke.jtor classes.
 
 Copyright 2025 UKAEA, UKRI-STFC, and The Authors, as per the COPYRIGHT and README files.
 
@@ -213,7 +213,7 @@ class Jtor_universal:
 
         Parameters
         ----------
-        eq : FreeGS4E Equilibrium object
+        eq : FreeGSNKE Equilibrium object
             Equilibrium object defining the computational domain and geometry.
         refine_jtor : bool
             If True, enable subgrid refinement of the toroidal current density.
@@ -562,7 +562,7 @@ class Jtor_universal:
         """
         Compute the toroidal current density without subgrid refinement.
 
-        This method provides a direct replacement for the FreeGS4E current
+        This method provides a direct replacement for the base profile current
         computation interface, using the internal Jtor pipeline but disabling
         any refined current reconstruction.
 

@@ -5,18 +5,18 @@ Modified substantially from the original FreeGS code.
 
 Copyright 2024 Nicola C. Amorisco, Adriano Agnello, George K. Holt, Ben Dudson.
 
-FreeGS4E is free software: you can redistribute it and/or modify
+FreeGSNKE is free software: you can redistribute it and/or modify
 it under the terms of the GNU Lesser General Public License as published by
 the Free Software Foundation, either version 3 of the License, or
 (at your option) any later version.
 
-FreeGS4E is distributed in the hope that it will be useful,
+FreeGSNKE is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU Lesser General Public License for more details.
 
 You should have received a copy of the GNU Lesser General Public License
-along with FreeGS4E.  If not, see <http://www.gnu.org/licenses/>.
+along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 
 """
 

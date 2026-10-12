@@ -1,5 +1,5 @@
 """
-Legacy HDF5 persistence for FreeGS4E `Equilibrium` objects.
+Legacy HDF5 persistence for FreeGSNKE `Equilibrium` objects.
 
 This inherited format is not used by FreeGSNKE and is not part of its supported
 backend API. The isolated HDF5 round trip remains tested while the legacy I/O
@@ -10,20 +10,20 @@ License
 
 Copyright 2018 Ben Dudson, University of York. Email: benjamin.dudson@york.ac.uk
 
-This file is part of FreeGS4E.
+This file is part of FreeGSNKE.
 
-FreeGS4E is free software: you can redistribute it and/or modify
+FreeGSNKE is free software: you can redistribute it and/or modify
 it under the terms of the GNU Lesser General Public License as published by
 the Free Software Foundation, either version 3 of the License, or
 (at your option) any later version.
 
-FreeGS4E is distributed in the hope that it will be useful,
+FreeGSNKE is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU Lesser General Public License for more details.
 
 You should have received a copy of the GNU Lesser General Public License
-along with FreeGS4E.  If not, see <http://www.gnu.org/licenses/>.
+along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 # Py2/3 compatibility: h5py needs unicode for group/dataset names

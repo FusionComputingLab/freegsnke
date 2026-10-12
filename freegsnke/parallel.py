@@ -1,24 +1,24 @@
 """
-Custom parallel library for use in FreeGS4E, based on Python threading for GIL
+Custom parallel library for use in FreeGSNKE, based on Python threading for GIL
 releasing operations. Wraps expensive numpy and scipy functions with parallel
 implementations. Relies on numexpr for threadpool size control.
 
 Copyright 2026 Tomas Rubio Cruz, STFC - Hartree Centre
 
-This file is part of FreeGS4E.
+This file is part of FreeGSNKE.
 
-FreeGS4E is free software: you can redistribute it and/or modify
+FreeGSNKE is free software: you can redistribute it and/or modify
 it under the terms of the GNU Lesser General Public License as published by
 the Free Software Foundation, either version 3 of the License, or
 (at your option) any later version.
 
-FreeGS4E is distributed in the hope that it will be useful,
+FreeGSNKE is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU Lesser General Public License for more details.
 
 You should have received a copy of the GNU Lesser General Public License
-along with FreeGS4E.  If not, see <http://www.gnu.org/licenses/>.
+along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 
 """
 

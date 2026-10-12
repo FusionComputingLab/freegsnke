@@ -1,3 +1,5 @@
+"""Expose DivGeo equilibrium export through the historical import path."""
+
 from . import _divgeo, geqdsk
 
 

@@ -204,6 +204,7 @@ class MultiCoil(Coil):
         return result
 
     def __repr__(self):
+        """Describe the filaments, current, turns and mirrored-coil configuration."""
         return "MultiCoil(R={0}, Z={1}, current={2:.1f}, turns={3}, control={4}, mirror={5}, polarity={6})".format(
             self.Rfil,
             self.Zfil,
@@ -215,6 +216,7 @@ class MultiCoil(Coil):
         )
 
     def __eq__(self, other):
+        """Compare coil centres, currents, turns and control flags."""
         return (
             self.R == other.R
             and self.Z == other.Z
@@ -224,6 +226,7 @@ class MultiCoil(Coil):
         )
 
     def __ne__(self, other):
+        """Return whether the coil groups differ under the equality comparison."""
         return not self == other
 
     def to_numpy_array(self):
@@ -254,6 +257,7 @@ class MultiCoil(Coil):
 
     @classmethod
     def from_numpy_array(cls, value):
+        """Restore a filament group from a structured serialization record."""
         if value.dtype != cls.dtype:
             raise ValueError(
                 "Can't create {this} from dtype: {got} (expected: {dtype})".format(
@@ -344,6 +348,7 @@ class MultiCoil(Coil):
     @R.setter
     def R(self, Rnew):
         # Need to shift all points
+        """Translate every radial filament coordinate to the new coil centre."""
         Rshift = Rnew - self._R_centre
         for i in range(len(self.Rfil)):
             self.Rfil[i] += Rshift
@@ -359,6 +364,7 @@ class MultiCoil(Coil):
     @Z.setter
     def Z(self, Znew):
         # Need to shift all points
+        """Translate every vertical filament coordinate to the new coil centre."""
         Zshift = Znew - self._Z_centre
         for i in range(len(self.Zfil)):
             self.Zfil[i] += Zshift

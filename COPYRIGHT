@@ -11,6 +11,7 @@ Authors: Matthijs Mars (UCL MSSL).
 
 This software incorporates FreeGS4E and code derived from FreeGS:
 Copyright 2024-2025 Nicola C. Amorisco, George K. Holt, Adriano Agnello, and other contributors.
+Copyright 2026 Tomas Rubio Cruz and Ubaid Qadri (solver and parallel-execution contributions).
 Copyright 2016-2021 Ben Dudson, University of York, and other contributors (benjamin.dudson@york.ac.uk).
 
 FreeGSNKE is distributed in the hope that it will be useful,
@@ -22,6 +23,6 @@ FreeGSNKE is free software: you can redistribute it and/or modify
 it under the terms of the GNU Lesser General Public License as published by
 the Free Software Foundation, either version 3 of the License, or
 (at your option) any later version.
-  
+
 You should have received a copy of the GNU Lesser General Public License
-along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.   
+along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.

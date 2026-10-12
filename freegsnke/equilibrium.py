@@ -168,6 +168,7 @@ class Equilibrium:
 
     @property
     def order(self):
+        """Return the deprecated order used by the lazy compatibility solver."""
         warnings.warn(
             "Order attribute of Equilibrium objects is deprecated, as no solver is created",
             DeprecationWarning,
@@ -176,6 +177,7 @@ class Equilibrium:
 
     @order.setter
     def order(self, value):
+        """Set the order for a compatibility solver created on its next use."""
         warnings.warn(
             "Order attribute of Equilibrium objects is deprecated, as no solver is created",
             DeprecationWarning,
@@ -184,6 +186,7 @@ class Equilibrium:
 
     @property
     def _solver(self):
+        """Return the deprecated solver reference without creating a solver."""
         warnings.warn(
             "Solver attribute of Equilibrium objects is deprecated. Equilibrium contains no linear solver.",
             DeprecationWarning,
@@ -192,6 +195,7 @@ class Equilibrium:
 
     @_solver.setter
     def _solver(self, value):
+        """Replace or clear the deprecated compatibility solver reference."""
         warnings.warn(
             "Solver attribute of Equilibrium objects is deprecated. Equilibrium contains no linear solver.",
             DeprecationWarning,
@@ -2879,6 +2883,7 @@ def ellipse_points(R0, Z0, A, B, N=360):
 
 
 class PsiGuessGaussian:
+    """Generate a Gaussian initial plasma flux with an optional adaptive centre."""
     def __init__(
         self,
         adaptive_centre: bool = False,
@@ -2964,6 +2969,7 @@ class PsiGuessGaussian:
 
 
 class PsiGuessParabolicJtor:
+    """Generate an initial flux estimate from a parabolic current distribution."""
     def __init__(self, h, k, a, b, Ip, *, psi_scale=1.0):
         """A class to generate the initial psi guess from an elliptic description
         of the plasma boundary and the plasma current.

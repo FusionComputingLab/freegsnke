@@ -517,12 +517,15 @@ class CustomThreadController(LibController):
     filename_prefixes = ("interpreter",)
 
     def get_num_threads(self):
+        """Report this backend's current thread count to threadpoolctl."""
         return get_num_threads()
 
     def set_num_threads(self, num_threads):
+        """Apply a threadpoolctl limit to this backend and numexpr."""
         set_num_threads(num_threads)
 
     def get_version(self):
+        """Report the installed FreeGSNKE distribution version."""
         try:
             _version = version("freegsnke")
         except PackageNotFoundError:

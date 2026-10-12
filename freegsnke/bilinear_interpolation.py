@@ -1,3 +1,5 @@
+"""Bilinear interpolation on uniformly spaced two-dimensional grids."""
+
 import numpy as np
 
 try:

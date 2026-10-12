@@ -38,6 +38,7 @@ from .gs_solver import GSSolver
 class MGDirect:
     # This LU solver is kept because it is more convenient in multigrid solvers, it should not be used
     # as a standalone LU solver
+    """Direct sparse-LU solve used at the coarsest multigrid level."""
     def __init__(self, A):
         """
         Initialise solver
@@ -64,6 +65,7 @@ class MGDirect:
 
 
 class MGJacobi:
+    """Jacobi smoother with optional coarse-grid correction and repeated V-cycles."""
     def __init__(self, A, ncycle=4, niter=10, subsolver=None):
         """
         Initialise solver
@@ -388,6 +390,7 @@ def smoothVcycle(A, x, b, dx, dy, niter=10, sublevels=0, direct=True):
 
 
 def smoothMG(A, x, b, dx, dy, niter=10, sublevels=1, ncycle=2):
+    """Apply repeated smoothing V-cycles and print the maximum residual per cycle."""
     error = b - A(x, dx, dy)
     print("Starting max residual: %e" % (max(abs(error)),))
 
@@ -412,6 +415,7 @@ class LaplacianOp:
     """
 
     def __call__(self, f, dx, dy):
+        """Apply second-order centred Laplacian differences at interior grid points."""
         nx = f.shape[0]
         ny = f.shape[1]
 
@@ -428,15 +432,19 @@ class LaplacianOp:
         return b
 
     def diag(self, dx, dy):
+        """Return the diagonal coefficient of the second-order Laplacian stencil."""
         return -2.0 / dx**2 - 2.0 / dy**2
 
 
 class LaplaceSparse:
+    """Build a sparse two-dimensional Laplacian with identity boundary rows."""
     def __init__(self, Lx, Ly):
+        """Store the physical lengths of the two rectangular-domain axes."""
         self.Lx = Lx
         self.Ly = Ly
 
     def __call__(self, nx, ny):
+        """Discretize the Laplacian at the requested grid resolution."""
         dx = self.Lx / (nx - 1)
         dy = self.Ly / (ny - 1)
 

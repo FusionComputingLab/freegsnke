@@ -353,11 +353,13 @@ class Coil:
         )  # Jphi x Br = - Fz
 
     def __repr__(self):
+        """Describe the coil position, current, turns and control flag."""
         return "Coil(R={0}, Z={1}, current={2:.1f}, turns={3}, control={4})".format(
             self.R, self.Z, self.current, self.turns, self.control
         )
 
     def __eq__(self, other):
+        """Compare coil position, current, turns and control flag."""
         return (
             self.R == other.R
             and self.Z == other.Z
@@ -367,6 +369,7 @@ class Coil:
         )
 
     def __ne__(self, other):
+        """Return whether the coils differ under the equality comparison."""
         return not self == other
 
     def to_numpy_array(self):
@@ -380,6 +383,7 @@ class Coil:
 
     @classmethod
     def from_numpy_array(cls, value):
+        """Restore a coil from a structured record with the coil serialization dtype."""
         if value.dtype != cls.dtype:
             raise ValueError(
                 "Can't create {this} from dtype: {got} (expected: {dtype})".format(
@@ -403,6 +407,7 @@ class Coil:
 
     @area.setter
     def area(self, area):
+        """Set the cross-sectional area or a callable that computes it in square metres."""
         self._area = area
 
     def plot(self, axis=None, show=False):

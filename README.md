@@ -138,7 +138,7 @@ The recommended way to install FreeGSNKE is inside a virtual environment, for ex
    pip install freegsnke
    ```
 
-[FreeGS4E](https://github.com/FusionComputingLab/freegs4e) is a required dependency and is installed automatically.
+The Grad-Shafranov backend is included in FreeGSNKE; no separate FreeGS4E installation is required.
 
 If you are planning to develop FreeGSNKE, see the [installing from source](#installing-from-source) section below instead.
 
@@ -175,13 +175,32 @@ pip install -e ".[dev]"
 
 This will install FreeGSNKE in editable mode, including the optional development dependencies.
 
-If you are also planning to co-develop [FreeGS4E](https://github.com/FusionComputingLab/freegs4e), clone the FreeGS4E repo and install in editable mode the same way by running the following in the FreeGS4E root directory (within your environment):
-```shell
-pip install -e ".[dev]"
-```
-If the editable FreeGS4E installation reports a version satisfying FreeGSNKE's
-required version range, pip will retain it. Otherwise,
-pip may install a compatible FreeGS4E release from PyPI instead.
+Backend development takes place directly in the native `freegsnke` modules.
+The integrated backend includes the FreeGS4E changes through commit `c8128a3`.
+
+### Numerical solvers and threads
+
+`freegsnke.gs_solver` provides the common `GSSolver` interface, the second- and
+fourth-order `GSLUSolver`, and the second-order `GSDSTSolver`. The nonlinear
+FreeGSNKE solver retains its fourth-order direct multigrid solve by default,
+including the optimized sparse operator construction. The DST solver is an
+explicit alternative and does not change the default discretization order.
+
+Equilibrium construction no longer creates a linear solver. The inherited
+`callSolver` interface creates a sparse-LU solver on first use; `order`,
+`_solver`, `setSolver`, and `setSolverVcycle` are retained compatibility APIs.
+Auxiliary equilibria share an existing compatibility solver without forcing
+factorization during copying.
+
+Green-function evaluation uses numexpr and the native parallel library. The
+default is one thread, which avoids overhead on small grids. Set
+`OMP_NUM_THREADS` before importing FreeGSNKE to request a different count.
+`NUMEXPR_NUM_THREADS` takes precedence for these functions, and
+`NUMEXPR_MAX_THREADS` sets numexpr's allowed maximum (32 by default).
+`freegsnke.parallel.set_num_threads()` also changes the native thread count.
+Temporary limits can be applied with
+`threadpoolctl.threadpool_limits(limits=1, user_api="fg_threads")`; the previous
+count is restored when the context exits.
 
 If you are planning to make code contributions, see the [pull requests](#pull-requests) section below.
 

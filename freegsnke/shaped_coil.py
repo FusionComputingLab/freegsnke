@@ -89,6 +89,7 @@ class ShapedCoil(Coil):
         self._points = quadrature.polygon_quad(shape, n=npoints)
 
     def copy(self):
+        """Copy the polygon and quadrature points while preserving coil settings."""
         R_centre = np.copy(self._R_centre)
         Z_centre = np.copy(self._Z_centre)
         points = np.copy(self._points)
@@ -135,6 +136,7 @@ class ShapedCoil(Coil):
         return result
 
     def __repr__(self):
+        """Describe the polygon, current, turns and control flag."""
         return (
             "ShapedCoil({0}, current={1:.1f}, turns={2}, control={3})".format(
                 self.shape, self.current, self.turns, self.control
@@ -151,6 +153,7 @@ class ShapedCoil(Coil):
     @R.setter
     def R(self, Rnew):
         # Need to shift all points
+        """Translate radial quadrature coordinates to the requested centre."""
         Rshift = Rnew - self._R_centre
         self._points = [(r + Rshift, z, w) for r, z, w in self._points]
         self._R_centre = Rnew
@@ -165,16 +168,19 @@ class ShapedCoil(Coil):
     @Z.setter
     def Z(self, Znew):
         # Need to shift all points
+        """Translate vertical quadrature coordinates to the requested centre."""
         Zshift = Znew - self._Z_centre
         self._points = [(r, z + Zshift, w) for r, z, w in self._points]
         self._Z_centre = Znew
 
     @property
     def area(self):
+        """Return the fixed polygon cross-sectional area in square metres."""
         return self._area
 
     @area.setter
     def area(self, area):
+        """Reject area changes because the cross-section is fixed by the polygon."""
         raise ValueError("Area of a ShapedCoil is fixed")
 
     def plot(self, axis=None, show=False):
@@ -223,6 +229,7 @@ class ShapedCoil(Coil):
 
     @classmethod
     def from_numpy_array(cls, value):
+        """Restore the coil polygon and settings from a structured record."""
         if value.dtype != cls.dtype:
             raise ValueError(
                 "Can't create {this} from dtype: {got} (expected: {dtype})".format(
@@ -246,6 +253,7 @@ class ShapedCoil(Coil):
         )
 
     def __eq__(self, other):
+        """Compare polygon coordinates, current, turns and quadrature settings."""
         return (
             np.allclose(self.shape, other.shape)
             and self.current == other.current
@@ -255,4 +263,5 @@ class ShapedCoil(Coil):
         )
 
     def __ne__(self, other):
+        """Return whether the shaped coils differ under the equality comparison."""
         return not self == other

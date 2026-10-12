@@ -1,5 +1,5 @@
 """
-Defines the FreeGSNKE equilibrium Object, which inherits from the FreeGS4E equilibrium object.
+Defines the FreeGSNKE equilibrium object, extending the native base equilibrium.
 
 Copyright 2025 UKAEA, UKRI-STFC, and The Authors, as per the COPYRIGHT and README files.
 

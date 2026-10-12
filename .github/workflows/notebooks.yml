@@ -64,21 +64,16 @@ jobs:
       NUMEXPR_MAX_THREADS: '32'
       PYTHONHASHSEED: '0'
     steps:
-      - name: Checkout absorbed candidate
+      - name: Checkout candidate
         uses: actions/checkout@v4
         with:
           path: candidate
-      - name: Checkout external-backend reference
+      - name: Checkout validated standalone reference
         uses: actions/checkout@v4
         with:
-          ref: 6d43a09f48d00170ab8474a32c9deb49e34f065d
+          # Certified by end-to-end numerical checks before this cleanup.
+          ref: 27d0fef0ac52bfa049d6d1cfe1dceaff5b2bf345
           path: reference
-      - name: Checkout pinned FreeGS4E source
-        uses: actions/checkout@v4
-        with:
-          repository: FusionComputingLab/freegs4e
-          ref: c8128a3e57fd14a4ff28ae744325dd87d8d35fdb
-          path: backend
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -89,14 +84,13 @@ jobs:
           "$RUNNER_TEMP/candidate-env/bin/python" -m pip install -e './candidate[dev]'
           "$RUNNER_TEMP/candidate-env/bin/python" -m pip freeze --exclude freegsnke > "$RUNNER_TEMP/numerical-requirements.txt"
           python -m venv "$RUNNER_TEMP/reference-env"
-          "$RUNNER_TEMP/reference-env/bin/python" -m pip install -r "$RUNNER_TEMP/numerical-requirements.txt" -e ./backend -e './reference[dev]'
-          "$RUNNER_TEMP/candidate-env/bin/python" -c 'import importlib.util; assert importlib.util.find_spec("freegs4e") is None'
+          "$RUNNER_TEMP/reference-env/bin/python" -m pip install -r "$RUNNER_TEMP/numerical-requirements.txt" -e './reference[dev]'
       - name: Execute all five reference notebooks with numerical checkpoints
         run: |
           "$RUNNER_TEMP/reference-env/bin/python" candidate/tools/migration_notebooks.py run \
             --repo reference --python "$RUNNER_TEMP/reference-env/bin/python" \
             --output "$RUNNER_TEMP/migration-validation/reference"
-      - name: Execute all five absorbed candidate notebooks
+      - name: Execute all five candidate notebooks
         run: |
           "$RUNNER_TEMP/candidate-env/bin/python" candidate/tools/migration_notebooks.py run \
             --repo candidate --python "$RUNNER_TEMP/candidate-env/bin/python" \

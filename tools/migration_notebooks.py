@@ -167,10 +167,8 @@ def snapshot(namespace, directory, cell_index):
 
 
 def source_digest(notebook):
-    """Normalize only the backend namespace for notebook provenance matching."""
-    source = [
-        (c.cell_type, c.source.replace("freegs4e", "freegsnke")) for c in notebook.cells
-    ]
+    """Fingerprint exact code cells while allowing explanatory prose to evolve."""
+    source = [c.source for c in notebook.cells if c.cell_type == "code"]
     return hashlib.sha256(json.dumps(source).encode()).hexdigest()
 
 
@@ -330,7 +328,7 @@ def compare_notebooks(args):
             or got_meta["status"] != "passed"
             or ref_meta["source_digest"] != got_meta["source_digest"]
         ):
-            result["failures"].append("Execution status or normalized source mismatch")
+            result["failures"].append("Execution status or code source mismatch")
         if (
             ref_meta["tool_digest"] != got_meta["tool_digest"]
             or ref_meta["environment"] != got_meta["environment"]
@@ -340,8 +338,6 @@ def compare_notebooks(args):
             )
         ref_packages = json.loads((ref_dir / "packages.json").read_text())
         got_packages = json.loads((got_dir / "packages.json").read_text())
-        ref_packages.pop("freegs4e", None)
-        got_packages.pop("freegs4e", None)
         if ref_packages != got_packages:
             result["failures"].append("Pinned dependency versions do not match")
         manifests = sorted(ref_dir.glob("cell-*.json"))

@@ -176,6 +176,12 @@ This will install FreeGSNKE in editable mode, including the optional development
 
 Backend development takes place directly in the native `freegsnke` modules.
 
+The notebook numerical-parity CI job runs examples 00, 01a, 01b, 02, and 05a
+against a pinned, previously validated standalone FreeGSNKE revision using
+identical dependency versions. It retains executed notebooks and full-precision
+numerical checkpoints. Code cells must match exactly; explanatory Markdown can
+evolve without changing the numerical workload.
+
 ### Numerical solvers and threads
 
 `freegsnke.gs_solver` provides the common `GSSolver` interface, the second- and

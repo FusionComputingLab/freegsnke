@@ -4,9 +4,10 @@ import json
 from argparse import Namespace
 from types import SimpleNamespace
 
+import nbformat
 import numpy as np
 import pytest
-from migration_notebooks import compare_notebooks, snapshot
+from migration_notebooks import compare_notebooks, snapshot, source_digest
 
 
 def test_snapshots_preserve_histories_before_later_scenarios_overwrite_them(tmp_path):
@@ -72,3 +73,29 @@ def test_comparison_rejects_changed_workloads_even_when_numbers_agree(tmp_path):
     with pytest.raises(SystemExit, match="1"):
         compare_notebooks(args)
     assert not json.loads(args.report.read_text())["passed"]
+
+
+def test_source_digest_allows_prose_updates_but_requires_exact_code_cells():
+    notebook = nbformat.v4.new_notebook(
+        cells=[
+            nbformat.v4.new_markdown_cell("Original explanation"),
+            nbformat.v4.new_code_cell("import freegsnke\nsteps = 50"),
+        ]
+    )
+    original = source_digest(notebook)
+    notebook.cells[0].source = "Updated standalone package explanation"
+    assert source_digest(notebook) == original
+    notebook.cells[1].source = "import freegsnke\nsteps = 5"
+    assert source_digest(notebook) != original
+    notebook.cells[1].source = "import another_package\nsteps = 50"
+    assert source_digest(notebook) != original
+
+
+def test_comparison_rejects_any_dependency_mismatch(tmp_path):
+    args = prepare_comparison(tmp_path, [1.0, 2.0])
+    packages = args.candidate / "example00" / "packages.json"
+    packages.write_text(json.dumps({"numpy": "same", "unexpected-package": "1.0"}))
+    with pytest.raises(SystemExit, match="1"):
+        compare_notebooks(args)
+    failures = json.loads(args.report.read_text())["notebooks"]["example00"]["failures"]
+    assert "Pinned dependency versions do not match" in failures

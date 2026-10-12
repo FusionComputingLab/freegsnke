@@ -18,9 +18,7 @@ class SyntheticGeqdskEquilibrium:
         self.R, self.Z = numpy.meshgrid(self.R_1D, self.Z_1D, indexing="ij")
         self.R0 = 1.0 + 0.02 * rng.standard_normal()
         self.lam = 1.45 + 0.05 * rng.random()
-        self._psi = -(
-            (self.R - self.R0) ** 2 + self.Z**2 - self.lam * self.Z**3
-        )
+        self._psi = -((self.R - self.R0) ** 2 + self.Z**2 - self.lam * self.Z**3)
         self._fvac = 1.8 + 0.1 * rng.random()
         self._ip = 1.0e5 + 1.0e4 * rng.random()
 
@@ -147,18 +145,10 @@ def test_cocos_flux_derivative_scaling():
 
     converted = _geqdsk.read(output, cocos=11)
 
-    numpy.testing.assert_allclose(
-        converted["psi"], data["psi"] / (2 * numpy.pi)
-    )
-    numpy.testing.assert_allclose(
-        converted["simagx"], data["simagx"] / (2 * numpy.pi)
-    )
-    numpy.testing.assert_allclose(
-        converted["sibdry"], data["sibdry"] / (2 * numpy.pi)
-    )
-    numpy.testing.assert_allclose(
-        converted["pprime"], data["pprime"] * (2 * numpy.pi)
-    )
+    numpy.testing.assert_allclose(converted["psi"], data["psi"] / (2 * numpy.pi))
+    numpy.testing.assert_allclose(converted["simagx"], data["simagx"] / (2 * numpy.pi))
+    numpy.testing.assert_allclose(converted["sibdry"], data["sibdry"] / (2 * numpy.pi))
+    numpy.testing.assert_allclose(converted["pprime"], data["pprime"] * (2 * numpy.pi))
     numpy.testing.assert_allclose(
         converted["ffprime"], data["ffprime"] * (2 * numpy.pi)
     )

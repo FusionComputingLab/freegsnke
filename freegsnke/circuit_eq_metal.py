@@ -21,8 +21,8 @@ along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 import numpy as np
-from .gradshafranov import Greens, GreensBr, GreensBz
 
+from .gradshafranov import Greens, GreensBr, GreensBz
 from .implicit_euler import implicit_euler_solver
 from .normal_modes import mode_decomposition
 

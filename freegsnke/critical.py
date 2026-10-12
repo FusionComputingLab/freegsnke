@@ -86,9 +86,7 @@ def find_critical_old(R, Z, psi, discard_xpoints=True):
     f = interpolate.RectBivariateSpline(R[:, 0], Z[0, :], psi)
 
     # Find candidate locations, based on minimising Bp^2
-    Bp2 = (
-        f(R, Z, dx=1, grid=False) ** 2 + f(R, Z, dy=1, grid=False) ** 2
-    ) / R**2
+    Bp2 = (f(R, Z, dx=1, grid=False) ** 2 + f(R, Z, dy=1, grid=False) ** 2) / R**2
 
     # Get grid resolution, which determines a reasonable tolerance
     # for the Newton iteration search area
@@ -139,17 +137,15 @@ def find_critical_old(R, Z, psi, discard_xpoints=True):
 
                         dR = R[1, 0] - R[0, 0]
                         dZ = Z[0, 1] - Z[0, 0]
-                        d2dr2 = (
-                            psi[i + 2, j] - 2.0 * psi[i, j] + psi[i - 2, j]
-                        ) / (2.0 * dR) ** 2
-                        d2dz2 = (
-                            psi[i, j + 2] - 2.0 * psi[i, j] + psi[i, j - 2]
-                        ) / (2.0 * dZ) ** 2
+                        d2dr2 = (psi[i + 2, j] - 2.0 * psi[i, j] + psi[i - 2, j]) / (
+                            2.0 * dR
+                        ) ** 2
+                        d2dz2 = (psi[i, j + 2] - 2.0 * psi[i, j] + psi[i, j - 2]) / (
+                            2.0 * dZ
+                        ) ** 2
                         d2drdz = (
-                            (psi[i + 2, j + 2] - psi[i + 2, j - 2])
-                            / (4.0 * dZ)
-                            - (psi[i - 2, j + 2] - psi[i - 2, j - 2])
-                            / (4.0 * dZ)
+                            (psi[i + 2, j + 2] - psi[i + 2, j - 2]) / (4.0 * dZ)
+                            - (psi[i - 2, j + 2] - psi[i - 2, j - 2]) / (4.0 * dZ)
                         ) / (4.0 * dR)
                         D = d2dr2 * d2dz2 - d2drdz**2
 
@@ -178,9 +174,7 @@ def find_critical_old(R, Z, psi, discard_xpoints=True):
                     count += 1
                     # If (R1,Z1) is too far from (R0,Z0) then discard
                     # or if we've taken too many iterations
-                    if ((R1 - R0) ** 2 + (Z1 - Z0) ** 2 > radius_sq) or (
-                        count > 100
-                    ):
+                    if ((R1 - R0) ** 2 + (Z1 - Z0) ** 2 > radius_sq) or (count > 100):
                         # Discard this point
                         break
 
@@ -270,9 +264,7 @@ def remove_dup(points):
     return result
 
 
-def find_critical(
-    R, Z, psi, mask_inside_limiter=None, signIp=1, discard_xpoints=True
-):
+def find_critical(R, Z, psi, mask_inside_limiter=None, signIp=1, discard_xpoints=True):
     """
     Finds the critical points in the total poloidal flux map ψ.
 
@@ -670,11 +662,7 @@ def core_mask(R, Z, psi, opoint, xpoint=[], psi_bndry=None):
         while True:
             mask[i, j] = 1  # Mark as in the core
 
-            if (
-                (i < nx - 1)
-                and (psin[i + 1, j] < 1.0)
-                and (mask[i + 1, j] < 0.5)
-            ):
+            if (i < nx - 1) and (psin[i + 1, j] < 1.0) and (mask[i + 1, j] < 0.5):
                 stack.append((i + 1, j))
             if (i > 0) and (psin[i - 1, j] < 1.0) and (mask[i - 1, j] < 0.5):
                 stack.append((i - 1, j))
@@ -848,19 +836,14 @@ def inside_mask(
         the core and 0 denostes a point outside.
     """
 
-    mask = inside_mask_(
-        R, Z, psi, opoint, xpoint, mask_outside_limiter, psi_bndry
-    )
+    mask = inside_mask_(R, Z, psi, opoint, xpoint, mask_outside_limiter, psi_bndry)
     if use_geom and len(xpoint) > 0:
         # cure flooding
         mask = mask * geom_inside_mask(R, Z, opoint, xpoint)
         # apply geometric masking criterion to second Xpoint if close to double null
         if len(xpoint) > 1:
             if (
-                np.abs(
-                    (xpoint[0, 2] - xpoint[1, 2])
-                    / (opoint[0, 2] - xpoint[0, 2])
-                )
+                np.abs((xpoint[0, 2] - xpoint[1, 2]) / (opoint[0, 2] - xpoint[0, 2]))
                 < 0.1
             ):
                 mask = mask * geom_inside_mask(R, Z, opoint, xpoint[1:])
@@ -892,9 +875,7 @@ def geom_inside_mask(R, Z, opoint, xpoint):
 
     delta_R = opoint[0, 0] - xpoint[0, 0]
     delta_Z = opoint[0, 1] - xpoint[0, 1]
-    geom_mask = (
-        delta_R * (R - xpoint[0, 0]) + delta_Z * (Z - xpoint[0, 1])
-    ) > 0
+    geom_mask = (delta_R * (R - xpoint[0, 0]) + delta_Z * (Z - xpoint[0, 1])) > 0
 
     return geom_mask
 
@@ -1025,9 +1006,7 @@ def find_separatrix(eq, ntheta=20, axis=None, psival=1.0):
 
     # Avoid putting theta grid points exactly on the X-points
     xpoint_theta = arctan2(xpoint[0][0] - r0, xpoint[0][1] - z0)
-    xpoint_theta = xpoint_theta * (xpoint_theta >= 0) + (
-        xpoint_theta + 2 * pi
-    ) * (
+    xpoint_theta = xpoint_theta * (xpoint_theta >= 0) + (xpoint_theta + 2 * pi) * (
         xpoint_theta < 0
     )  # let's make it between 0 and 2*pi
     # How close in theta to allow theta grid points to the X-point
@@ -1109,9 +1088,7 @@ def find_safety(
 
     psinormal = (psi - opoint[0][2]) / (psi_boundary - opoint[0][2])
 
-    psifunc = interpolate.RectBivariateSpline(
-        eq.R[:, 0], eq.Z[0, :], psinormal
-    )
+    psifunc = interpolate.RectBivariateSpline(eq.R[:, 0], eq.Z[0, :], psinormal)
 
     r0, z0 = opoint[0][0:2]
 
@@ -1120,9 +1097,7 @@ def find_safety(
 
     # Avoid putting theta grid points exactly on the X-points
     xpoint_theta = arctan2(xpoint[0][0] - r0, xpoint[0][1] - z0)
-    xpoint_theta = xpoint_theta * (xpoint_theta >= 0) + (
-        xpoint_theta + 2 * pi
-    ) * (
+    xpoint_theta = xpoint_theta * (xpoint_theta >= 0) + (xpoint_theta + 2 * pi) * (
         xpoint_theta < 0
     )  # let's make it between 0 and 2*pi
     # How close in theta to allow theta grid points to the X-point

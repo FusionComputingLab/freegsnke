@@ -26,6 +26,7 @@ import pickle
 
 import numpy as np
 from deepdiff import DeepDiff
+
 from .gradshafranov import Greens, GreensBr, GreensBz
 
 

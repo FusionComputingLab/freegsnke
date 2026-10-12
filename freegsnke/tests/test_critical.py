@@ -68,9 +68,9 @@ def test_doublet():
 
     # This has two O-points, and one x-point at (r0, z0)
     def psi_func(R, Z):
-        return np.exp(
-            -((R - r0) ** 2 + (Z - z0 - 0.3) ** 2) / 0.3**2
-        ) + np.exp(-((R - r0) ** 2 + (Z - z0 + 0.3) ** 2) / 0.3**2)
+        return np.exp(-((R - r0) ** 2 + (Z - z0 - 0.3) ** 2) / 0.3**2) + np.exp(
+            -((R - r0) ** 2 + (Z - z0 + 0.3) ** 2) / 0.3**2
+        )
 
     opoints, xpoints = critical.find_critical(r2d, z2d, psi_func(r2d, z2d))
 
@@ -106,9 +106,7 @@ def test_mask_zero_psi_bndry():
     assert np.isclose(opoints[0][1], z0, atol=1.0 / ny)
 
     mask = critical.core_mask(r2d, z2d, psi, opoints, xpoints, psi_bndry=0.0)
-    inside_mask = critical.inside_mask(
-        r2d, z2d, psi, opoints, xpoints, psi_bndry=0.0
-    )
+    inside_mask = critical.inside_mask(r2d, z2d, psi, opoints, xpoints, psi_bndry=0.0)
     inside_mask_without_guard = critical.inside_mask(
         r2d, z2d, psi, opoints, xpoints, psi_bndry=0.0, use_geom=False
     )

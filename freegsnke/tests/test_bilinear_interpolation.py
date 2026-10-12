@@ -15,7 +15,5 @@ def test_biliint_uniform_grid():
         ]
     )
 
-    expected = (
-        2.0 + 3.0 * points[0] - 4.0 * points[1] + 5.0 * points[0] * points[1]
-    )
+    expected = 2.0 + 3.0 * points[0] - 4.0 * points[1] + 5.0 * points[0] * points[1]
     assert np.allclose(biliint(R, Z, psi, points), expected)

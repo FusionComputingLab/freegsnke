@@ -21,6 +21,7 @@ along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 import numpy as np
+
 from .gradshafranov import Greens
 
 

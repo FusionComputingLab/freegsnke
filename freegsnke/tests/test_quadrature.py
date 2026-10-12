@@ -27,9 +27,7 @@ def test_integral():
     )
 
     # A 1st order method can't integrate this polynomial exactly
-    quad1 = quadrature.polygon_quad(
-        [(x0, y0), (x0, y1), (x1, y1), (x1, y0)], n=1
-    )
+    quad1 = quadrature.polygon_quad([(x0, y0), (x0, y1), (x1, y1), (x1, y0)], n=1)
     assert not np.isclose(
         quadrature.average(func, quad1),
         exact_integral / ((x1 - x0) * (y1 - y0)),
@@ -37,9 +35,7 @@ def test_integral():
 
     for n in [3, 6]:
         # Higher order methods can
-        quad1 = quadrature.polygon_quad(
-            [(x0, y0), (x0, y1), (x1, y1), (x1, y0)], n=n
-        )
+        quad1 = quadrature.polygon_quad([(x0, y0), (x0, y1), (x1, y1), (x1, y0)], n=n)
         assert len(quad1) == 2 * n
         assert np.isclose(
             quadrature.average(func, quad1),

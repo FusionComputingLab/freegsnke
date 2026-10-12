@@ -455,9 +455,7 @@ class GSsparse4thOrder(GSsparse):
             offscale = offscales[op]
 
             size_stencil = len(stencil)
-            stencil_offsets = offscale * np.array(
-                [entry[0] for entry in stencil]
-            )
+            stencil_offsets = offscale * np.array([entry[0] for entry in stencil])
             stencil_weights = np.array([entry[1] for entry in stencil])
 
             # 3d grids with the row/col/weight corresponding to each x,y,offset combo
@@ -498,9 +496,7 @@ class GSsparse4thOrder(GSsparse):
                         row[:, np.newaxis], (*row.shape, size_stencil)
                     )
                     col = row + stencil_offsets[np.newaxis, :]
-                    weights = np.broadcast_to(
-                        stencil_weights[np.newaxis, :], row.shape
-                    )
+                    weights = np.broadcast_to(stencil_weights[np.newaxis, :], row.shape)
 
                     entry = weights * invdZ2
 
@@ -519,9 +515,7 @@ class GSsparse4thOrder(GSsparse):
                         row[:, np.newaxis], (*row.shape, size_stencil)
                     )
                     col = row + stencil_offsets[np.newaxis, :]
-                    weights = np.broadcast_to(
-                        stencil_weights[np.newaxis, :], row.shape
-                    )
+                    weights = np.broadcast_to(stencil_weights[np.newaxis, :], row.shape)
 
                     entry = None
                     if op == "radial_1":
@@ -542,18 +536,12 @@ class GSsparse4thOrder(GSsparse):
         A = None
 
         if format == "csc":
-            A = csc_array(
-                (all_entries, (all_rows, all_cols)), dtype=self.dtype
-            )
+            A = csc_array((all_entries, (all_rows, all_cols)), dtype=self.dtype)
         elif format == "csr":
-            A = csr_array(
-                (all_entries, (all_rows, all_cols)), dtype=self.dtype
-            )
+            A = csr_array((all_entries, (all_rows, all_cols)), dtype=self.dtype)
         else:
             warn("Unrecognized format for sparse matrix, defaulting to csr")
-            A = csr_array(
-                (all_entries, (all_rows, all_cols)), dtype=self.dtype
-            )
+            A = csr_array((all_entries, (all_rows, all_cols)), dtype=self.dtype)
 
         return A
 
@@ -608,9 +596,7 @@ def Greens(Rc, Zc, R, Z, limit_threading=False, scale_factor=1, out=None):
     k2 = ne.evaluate("4.0 * R * Rc / ((R + Rc) ** 2 + (Z - Zc) ** 2)")
 
     # clip to between 0 and 1 to avoid nans e.g. when coil is on grid point
-    k2 = threaded_clip(
-        k2, 1e-10, 1.0 - 1e-10, out=k2, single_thread=limit_threading
-    )
+    k2 = threaded_clip(k2, 1e-10, 1.0 - 1e-10, out=k2, single_thread=limit_threading)
 
     # note definition of ellipk, ellipe in scipy is K(k^2), E(k^2)
     eie, eik = threaded_elliptics_ek(k2, single_thread=limit_threading)
@@ -653,9 +639,7 @@ def GreensBz(Rc, Zc, R, Z, eps=1e-4):
         Value of the vertical magnetic field at (R,Z) [T].
     """
 
-    return (Greens(Rc, Zc, R + eps, Z) - Greens(Rc, Zc, R - eps, Z)) / (
-        2.0 * eps * R
-    )
+    return (Greens(Rc, Zc, R + eps, Z) - Greens(Rc, Zc, R - eps, Z)) / (2.0 * eps * R)
 
 
 def GreensBr(Rc, Zc, R, Z, eps=1e-4):
@@ -686,9 +670,7 @@ def GreensBr(Rc, Zc, R, Z, eps=1e-4):
         Value of the radial magnetic field at (R,Z) [T].
     """
 
-    return (Greens(Rc, Zc, R, Z - eps) - Greens(Rc, Zc, R, Z + eps)) / (
-        2.0 * eps * R
-    )
+    return (Greens(Rc, Zc, R, Z - eps) - Greens(Rc, Zc, R, Z + eps)) / (2.0 * eps * R)
 
 
 def GreensdBzdr(Rc, Zc, R, Z, eps=2e-3):
@@ -718,9 +700,7 @@ def GreensdBzdr(Rc, Zc, R, Z, eps=2e-3):
         Value of the derivative at (R,Z) [T/m].
     """
 
-    return (GreensBz(Rc, Zc, R + eps, Z) - GreensBz(Rc, Zc, R - eps, Z)) / (
-        2.0 * eps
-    )
+    return (GreensBz(Rc, Zc, R + eps, Z) - GreensBz(Rc, Zc, R - eps, Z)) / (2.0 * eps)
 
 
 def GreensdBrdz(Rc, Zc, R, Z, eps=2e-3):
@@ -750,9 +730,7 @@ def GreensdBrdz(Rc, Zc, R, Z, eps=2e-3):
         Value of the derivative at (R,Z) [T/m].
     """
 
-    return (GreensBr(Rc, Zc, R, Z + eps) - GreensBr(Rc, Zc, R, Z - eps)) / (
-        2.0 * eps
-    )
+    return (GreensBr(Rc, Zc, R, Z + eps) - GreensBr(Rc, Zc, R, Z - eps)) / (2.0 * eps)
     # return GreensdBzdr(Rc, Zc, R, Z, eps)
 
 
@@ -783,9 +761,7 @@ def GreensdBzdz(Rc, Zc, R, Z, eps=2e-3):
         Value of the derivative at (R,Z) [T/m].
     """
 
-    return (GreensBz(Rc, Zc, R, Z + eps) - GreensBz(Rc, Zc, R, Z - eps)) / (
-        2.0 * eps
-    )
+    return (GreensBz(Rc, Zc, R, Z + eps) - GreensBz(Rc, Zc, R, Z - eps)) / (2.0 * eps)
 
 
 def GreensdBrdr(Rc, Zc, R, Z, eps=2e-3):
@@ -815,9 +791,7 @@ def GreensdBrdr(Rc, Zc, R, Z, eps=2e-3):
         Value of the derivative at (R,Z) [T/m].
     """
 
-    return (GreensBr(Rc, Zc, R + eps, Z) - GreensBr(Rc, Zc, R - eps, Z)) / (
-        2.0 * eps
-    )
+    return (GreensBr(Rc, Zc, R + eps, Z) - GreensBr(Rc, Zc, R - eps, Z)) / (2.0 * eps)
 
 
 def GreensdBrdz(Rc, Zc, R, Z, eps=2e-3):
@@ -847,9 +821,7 @@ def GreensdBrdz(Rc, Zc, R, Z, eps=2e-3):
         Value of the derivative at (R,Z) [T/m].
     """
 
-    return (GreensBr(Rc, Zc, R, Z + eps) - GreensBr(Rc, Zc, R, Z - eps)) / (
-        2.0 * eps
-    )
+    return (GreensBr(Rc, Zc, R, Z + eps) - GreensBr(Rc, Zc, R, Z - eps)) / (2.0 * eps)
 
 
 def GreensdBzdr(Rc, Zc, R, Z, eps=2e-3):
@@ -879,6 +851,4 @@ def GreensdBzdr(Rc, Zc, R, Z, eps=2e-3):
         Value of the derivative at (R,Z) [T/m].
     """
 
-    return (GreensBz(Rc, Zc, R + eps, Z) - GreensBz(Rc, Zc, R - eps, Z)) / (
-        2.0 * eps
-    )
+    return (GreensBz(Rc, Zc, R + eps, Z) - GreensBz(Rc, Zc, R - eps, Z)) / (2.0 * eps)

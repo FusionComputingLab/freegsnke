@@ -36,9 +36,7 @@ def test_profile_jtor_stores_plotting_metadata():
     """Test that the generic Jtor wrapper records downstream metadata."""
 
     profiles = jtor.ConstrainBetapIp(1.0, 2e5, 2.0)
-    R, Z = np.meshgrid(
-        np.linspace(0.5, 1.5, 33), np.linspace(-1, 1, 33), indexing="ij"
-    )
+    R, Z = np.meshgrid(np.linspace(0.5, 1.5, 33), np.linspace(-1, 1, 33), indexing="ij")
     psi = np.exp((-((R - 1.0) ** 2) - Z**2) * 3) + np.exp(
         (-((R - 1.0) ** 2) - (Z + 1) ** 2) * 3
     )
@@ -76,9 +74,7 @@ def test_constrain_betap_ip_matches_requested_beta_for_nonunit_alpha_m():
     current_density = profiles.Jtor(R, Z, psi)
     dR = R[1, 0] - R[0, 0]
     dZ = Z[0, 1] - Z[0, 0]
-    psi_norm = (psi - profiles.psi_axis) / (
-        profiles.psi_bndry - profiles.psi_axis
-    )
+    psi_norm = (psi - profiles.psi_axis) / (profiles.psi_bndry - profiles.psi_axis)
     pressure = profiles.pressure(psi_norm) * profiles.limiter_core_mask
     calculated_betap = (
         (8.0 * np.pi / mu0)
@@ -113,9 +109,7 @@ def test_fiesta_topeol_is_consistent_for_nonunit_alpha_m():
     current_density = profiles.Jtor(R, Z, psi)
     dR = R[1, 0] - R[0, 0]
     dZ = Z[0, 1] - Z[0, 0]
-    psi_norm = (psi - profiles.psi_axis) / (
-        profiles.psi_bndry - profiles.psi_axis
-    )
+    psi_norm = (psi - profiles.psi_axis) / (profiles.psi_bndry - profiles.psi_axis)
     reconstructed = (
         R * profiles.pprime(psi_norm) + profiles.ffprime(psi_norm) / (mu0 * R)
     ) * profiles.limiter_core_mask
@@ -147,15 +141,11 @@ def test_alternative_xpoint_sets_matching_boundary(monkeypatch):
     alternative_mask = np.zeros(shape, dtype=bool)
     alternative_mask[1:4, 1:4] = True
 
-    monkeypatch.setattr(
-        jtor.critical, "find_critical", lambda *args: (opt, xpt)
-    )
+    monkeypatch.setattr(jtor.critical, "find_critical", lambda *args: (opt, xpt))
     monkeypatch.setattr(
         jtor.critical,
         "inside_mask",
-        lambda *args: (
-            primary_mask if np.isclose(args[-1], 0.9) else alternative_mask
-        ),
+        lambda *args: (primary_mask if np.isclose(args[-1], 0.9) else alternative_mask),
     )
 
     profiles = _continuity_test_profile(shape)
@@ -189,9 +179,7 @@ def test_alternative_xpoint_search_advances_after_edge_mask(monkeypatch):
             return edge_mask
         return final_mask
 
-    monkeypatch.setattr(
-        jtor.critical, "find_critical", lambda *args: (opt, xpt)
-    )
+    monkeypatch.setattr(jtor.critical, "find_critical", lambda *args: (opt, xpt))
     monkeypatch.setattr(jtor.critical, "inside_mask", inside_mask)
 
     profiles = _continuity_test_profile(shape)

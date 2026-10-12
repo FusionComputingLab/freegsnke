@@ -28,12 +28,8 @@ def test_coil_axis():
     for _ in range(2):
         # Note: Can't evaluate at R=0,
         assert math.isclose(coil.Br(0.0001, 2.0), 0.0, abs_tol=1e-8)
-        assert math.isclose(
-            coil.Bz(0.001, 2.0), analytic_Bz(1.0), abs_tol=1e-8
-        )
-        assert math.isclose(
-            coil.Bz(0.001, -1.0), analytic_Bz(-2.0), abs_tol=1e-8
-        )
+        assert math.isclose(coil.Bz(0.001, 2.0), analytic_Bz(1.0), abs_tol=1e-8)
+        assert math.isclose(coil.Bz(0.001, -1.0), analytic_Bz(-2.0), abs_tol=1e-8)
 
         coil = coil.copy()
 
@@ -99,9 +95,7 @@ def test_get_psi_tokamak_matches_weighted_green_sum():
     tokamak.set_all_coil_currents(np.array([125.0, -40.0, 310.0]))
 
     vgreen = np.random.default_rng(42).normal(size=(3, 17, 25))
-    expected = np.sum(
-        vgreen * tokamak.current_vec[:, np.newaxis, np.newaxis], axis=0
-    )
+    expected = np.sum(vgreen * tokamak.current_vec[:, np.newaxis, np.newaxis], axis=0)
 
     np.testing.assert_allclose(tokamak.getPsitokamak(vgreen), expected)
 

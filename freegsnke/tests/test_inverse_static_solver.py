@@ -3,9 +3,9 @@ from types import SimpleNamespace
 
 import numpy as np
 import pytest
-from freegsnke.critical import find_critical
 
 from freegsnke import GSstaticsolver, build_machine, equilibrium_update
+from freegsnke.critical import find_critical
 from freegsnke.inverse import Inverse_optimizer
 from freegsnke.jtor_update import ConstrainPaxisIp
 

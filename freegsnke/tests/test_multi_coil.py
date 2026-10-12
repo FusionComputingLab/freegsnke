@@ -16,9 +16,7 @@ def test_single():
     # run the test twice: once on the original coil and once on a copy
     # to check both produce the same results
     for _ in range(2):
-        assert np.isclose(
-            coil.controlPsi(0.3, 0.1), mcoil.controlPsi(0.3, 0.1)
-        )
+        assert np.isclose(coil.controlPsi(0.3, 0.1), mcoil.controlPsi(0.3, 0.1))
 
         assert np.isclose(coil.controlBr(0.3, 0.1), mcoil.controlBr(0.3, 0.1))
 
@@ -63,17 +61,11 @@ def test_mirrored():
     # run the test twice: once on the original coil and once on a copy
     # to check both produce the same results
     for _ in range(2):
-        assert np.isclose(
-            circuit.controlPsi(0.3, 0.1), mcoil.controlPsi(0.3, 0.1)
-        )
+        assert np.isclose(circuit.controlPsi(0.3, 0.1), mcoil.controlPsi(0.3, 0.1))
 
-        assert np.isclose(
-            circuit.controlBr(0.3, 0.1), mcoil.controlBr(0.3, 0.1)
-        )
+        assert np.isclose(circuit.controlBr(0.3, 0.1), mcoil.controlBr(0.3, 0.1))
 
-        assert np.isclose(
-            circuit.controlBz(0.3, 0.1), mcoil.controlBz(0.3, 0.1)
-        )
+        assert np.isclose(circuit.controlBz(0.3, 0.1), mcoil.controlBz(0.3, 0.1))
 
         mcoil = mcoil.copy()
         circuit = circuit.copy()
@@ -86,9 +78,7 @@ def test_move_R():
 
     dR = 0.6
     coil1 = MultiCoil([1.1, 0.2], [1.2, -0.3], current=100.0, mirror=False)
-    coil2 = MultiCoil(
-        [1.1 + dR, 0.2 + dR], [1.2, -0.3], current=100.0, mirror=False
-    )
+    coil2 = MultiCoil([1.1 + dR, 0.2 + dR], [1.2, -0.3], current=100.0, mirror=False)
 
     # Shift coil1 to same location as coil2
     coil1.R += dR
@@ -107,9 +97,7 @@ def test_move_Z():
 
     dZ = 0.4
     coil1 = MultiCoil([1.1, 0.2], [1.2, -0.3], current=100.0, mirror=False)
-    coil2 = MultiCoil(
-        [1.1, 0.2], [1.2 + dZ, -0.3 + dZ], current=100.0, mirror=False
-    )
+    coil2 = MultiCoil([1.1, 0.2], [1.2 + dZ, -0.3 + dZ], current=100.0, mirror=False)
 
     # Shift coil1 to same location as coil2
     coil1.Z += dZ

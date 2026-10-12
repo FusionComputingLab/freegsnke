@@ -49,12 +49,8 @@ class FieldTracer(object):
 
         evolving[
             np.logical_or(
-                np.logical_or(
-                    (R < self._eq.Rmin + eps), (R > self._eq.Rmax - eps)
-                ),
-                np.logical_or(
-                    (Z < self._eq.Zmin + eps), (Z > self._eq.Zmax - eps)
-                ),
+                np.logical_or((R < self._eq.Rmin + eps), (R > self._eq.Rmax - eps)),
+                np.logical_or((Z < self._eq.Zmin + eps), (Z > self._eq.Zmax - eps)),
             )
         ] = 0.0
         return evolving
@@ -156,9 +152,7 @@ class FieldTracer(object):
         evolving = np.ones(array_shape)
 
         # (R,Z,length) with length=0 initially
-        position = np.column_stack(
-            (Rstart, Zstart, np.zeros(array_shape))
-        ).flatten()
+        position = np.column_stack((Rstart, Zstart, np.zeros(array_shape))).flatten()
 
         result = odeint(
             self.fieldDirection,
@@ -186,9 +180,7 @@ class LineCoordinates:
         self.length = length
 
 
-def traceFieldLines(
-    eq, solwidth=0.03, nlines=10, nturns=50, npoints=200, axis=None
-):
+def traceFieldLines(eq, solwidth=0.03, nlines=10, nturns=50, npoints=200, axis=None):
     """Trace field lines from the outboard midplane
 
     Inputs

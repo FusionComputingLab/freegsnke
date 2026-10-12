@@ -24,9 +24,8 @@ from copy import deepcopy
 import numpy as np
 
 from . import gradshafranov, multigrid
-from .gradshafranov import Greens
-
 from . import nk_solver_H as nk_solver
+from .gradshafranov import Greens
 from .inverse import _solve_regularized_lstsq
 
 

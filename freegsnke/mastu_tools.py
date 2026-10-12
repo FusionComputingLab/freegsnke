@@ -30,10 +30,11 @@ import numpy as np
 import pyuda
 import scipy as sp
 import shapely as sh
-from . import critical
 from numpy import abs, argmax, clip, linspace, pi
 from numpy.polynomial import Polynomial
 from scipy.interpolate import interp1d
+
+from . import critical
 
 # --------------------------------
 # EXTRACTING EFIT++ DATA

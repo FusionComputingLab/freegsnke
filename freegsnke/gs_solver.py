@@ -230,9 +230,7 @@ class GSDSTSolver(GSSolver):
                 f"shape mismatch: Shapes of radial grid ({R.shape}) and longitudinal grid ({Z.shape}) do not match"
             )
         if order != 2:
-            warnings.warn(
-                "DST solver only supports order 2. Provided value ignored."
-            )
+            warnings.warn("DST solver only supports order 2. Provided value ignored.")
 
         self.Rmin = float(R[0, 0])
         self.Rmax = float(R[-1, 0])
@@ -341,9 +339,7 @@ class GSDSTSolver(GSSolver):
 
         iR = 1.0 / (2.0 * self.R * self.dR)
         iRgR = np.zeros_like(g)
-        iRgR[1:-1, :] = iR[1:-1, :] * (
-            g[2:, :] - g[:-2, :]
-        )  # iRgR = (1/R)*∂g/∂R
+        iRgR[1:-1, :] = iR[1:-1, :] * (g[2:, :] - g[:-2, :])  # iRgR = (1/R)*∂g/∂R
 
         Delta_g = g_RR + g_ZZ - iRgR
 
@@ -360,9 +356,7 @@ class GSDSTSolver(GSSolver):
 
         # Instead of a single RHS for the full 2D domain, we end up with a set of 1D RHS's, one for
         # each interior Z-point (each Z-mode). Insert transformed R dimension bc into the RHS
-        rhs_batch = (
-            F_hat.T.copy()
-        )  # transpose so that rows correspond to each Z-mode
+        rhs_batch = F_hat.T.copy()  # transpose so that rows correspond to each Z-mode
         rhs_batch[:, 0] = w_b0_hat
         rhs_batch[:, -1] = w_bL_hat
 

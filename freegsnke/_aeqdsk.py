@@ -338,9 +338,7 @@ def read(fh):
             value = next(values)
             if isinstance(default, int) and not isinstance(value, int):
                 # Expecting an integer, but didn't get one
-                warnings.warn(
-                    "Expecting an integer for '" + key + "' in aeqdsk file"
-                )
+                warnings.warn("Expecting an integer for '" + key + "' in aeqdsk file")
                 break
             data[key] = value
 

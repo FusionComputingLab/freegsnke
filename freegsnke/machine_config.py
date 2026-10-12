@@ -26,8 +26,8 @@ from copy import deepcopy
 
 import numpy as np
 from deepdiff import DeepDiff
-from .gradshafranov import Greens, mu0
 
+from .gradshafranov import Greens, mu0
 from .refine_passive import generate_refinement
 
 

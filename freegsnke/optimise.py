@@ -41,9 +41,7 @@ def max_abs_coil_current(eq):
 
 def max_coil_force(eq):
     forces = eq.tokamak.getForces()  # dictionary
-    return max(
-        sqrt(force[0] ** 2 + force[1] ** 2) for force in forces.values()
-    )
+    return max(sqrt(force[0] ** 2 + force[1] ** 2) for force in forces.values())
 
 
 def no_wall_intersection(eq):
@@ -151,16 +149,12 @@ class PlotMonitor:
         # Update the canvas and pause
         # Note, a short pause is needed to force drawing update
         self.fig.canvas.draw()
-        self.axis.set_title(
-            "Generation: {} Score: {}".format(generation, best[0])
-        )
+        self.axis.set_title("Generation: {} Score: {}".format(generation, best[0]))
         self.fig.savefig("generation_{}.pdf".format(generation))
         plt.pause(0.5)
 
 
-def optimise(
-    eq, controls, measure, maxgen=10, N=10, CR=0.3, F=1.0, monitor=None
-):
+def optimise(eq, controls, measure, maxgen=10, N=10, CR=0.3, F=1.0, monitor=None):
     """Use Differential Evolution to optimise an Equilibrium
     https://en.wikipedia.org/wiki/Differential_evolution
 

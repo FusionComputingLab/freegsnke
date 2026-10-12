@@ -39,6 +39,7 @@ class MGDirect:
     # This LU solver is kept because it is more convenient in multigrid solvers, it should not be used
     # as a standalone LU solver
     """Direct sparse-LU solve used at the coarsest multigrid level."""
+
     def __init__(self, A):
         """
         Initialise solver
@@ -66,6 +67,7 @@ class MGDirect:
 
 class MGJacobi:
     """Jacobi smoother with optional coarse-grid correction and repeated V-cycles."""
+
     def __init__(self, A, ncycle=4, niter=10, subsolver=None):
         """
         Initialise solver
@@ -134,9 +136,7 @@ class MGJacobi:
         return self.solve(xi, bi, ncycle, niter)
 
 
-def createMultigridSolver(
-    R, Z, order, nlevels=4, ncycle=1, niter=10, direct=True
-):
+def createMultigridSolver(R, Z, order, nlevels=4, ncycle=1, niter=10, direct=True):
     """
     Creates a multigrid solver from a sparse solver of the given order and (highest)
     resolution.
@@ -179,9 +179,7 @@ def createMultigridSolver(
     elif order == 4:
         generator = GSsparse4thOrder(Rmin, Rmax, Zmin, Zmax)
     else:
-        raise ValueError(
-            f"Invalid choice of order ({order}). Valid values are 2 or 4."
-        )
+        raise ValueError(f"Invalid choice of order ({order}). Valid values are 2 or 4.")
 
     mg_solver = createVcycle(
         nx=nx,
@@ -196,9 +194,7 @@ def createMultigridSolver(
     return mg_solver
 
 
-def createVcycle(
-    nx, ny, generator, nlevels=4, ncycle=1, niter=10, direct=True
-):
+def createVcycle(nx, ny, generator, nlevels=4, ncycle=1, niter=10, direct=True):
     """
     Create a hierarchy of solvers in a multigrid V-cycle
 
@@ -373,9 +369,7 @@ def smoothVcycle(A, x, b, dx, dy, niter=10, sublevels=0, direct=True):
 
         # smooth this error
         Cx = zeros(Cerror.shape)
-        Cx = smoothVcycle(
-            A, Cx, Cerror, dx * 2.0, dy * 2.0, niter, sublevels - 1
-        )
+        Cx = smoothVcycle(A, Cx, Cerror, dx * 2.0, dy * 2.0, niter, sublevels - 1)
 
         # Prolong the solution
         xupdate = interpolate(Cx)
@@ -438,6 +432,7 @@ class LaplacianOp:
 
 class LaplaceSparse:
     """Build a sparse two-dimensional Laplacian with identity boundary rows."""
+
     def __init__(self, Lx, Ly):
         """Store the physical lengths of the two rectangular-domain axes."""
         self.Lx = Lx

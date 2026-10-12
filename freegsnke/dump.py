@@ -128,9 +128,7 @@ class OutputFile(object):
             Solenoid.dtype: self.handle["solenoid_dtype"],
         }
 
-        equilibrium_group = self.handle.require_group(
-            self.EQUILIBRIUM_GROUP_NAME
-        )
+        equilibrium_group = self.handle.require_group(self.EQUILIBRIUM_GROUP_NAME)
 
         equilibrium_group.create_dataset("Rmin", data=equilibrium.Rmin)
         equilibrium_group.create_dataset("Rmax", data=equilibrium.Rmax)
@@ -142,14 +140,10 @@ class OutputFile(object):
         equilibrium_group.create_dataset("Z_1D", data=equilibrium.Z_1D)
         equilibrium_group.create_dataset("Z", data=equilibrium.Z)
 
-        equilibrium_group.create_dataset(
-            "current", data=equilibrium.plasmaCurrent()
-        )
+        equilibrium_group.create_dataset("current", data=equilibrium.plasmaCurrent())
         equilibrium_group["current"].attrs["title"] = "Plasma current [Amps]"
 
-        psi_id = equilibrium_group.create_dataset(
-            "psi", data=equilibrium.psi()
-        )
+        psi_id = equilibrium_group.create_dataset("psi", data=equilibrium.psi())
         psi_id.dims[0].label = "R"
         psi_id.dims[1].label = "Z"
         psi_id.dims.create_scale(equilibrium_group["R_1D"], "R")
@@ -172,12 +166,8 @@ class OutputFile(object):
         tokamak_group = equilibrium_group.create_group(self.MACHINE_GROUP_NAME)
 
         if equilibrium.tokamak.wall is not None:
-            tokamak_group.create_dataset(
-                "wall_R", data=equilibrium.tokamak.wall.R
-            )
-            tokamak_group.create_dataset(
-                "wall_Z", data=equilibrium.tokamak.wall.Z
-            )
+            tokamak_group.create_dataset("wall_R", data=equilibrium.tokamak.wall.R)
+            tokamak_group.create_dataset("wall_Z", data=equilibrium.tokamak.wall.Z)
 
         coils_group = tokamak_group.create_group(self.COILS_GROUP_NAME)
         for label, coil in equilibrium.tokamak.coils:
@@ -209,9 +199,7 @@ class OutputFile(object):
         # HDF5 reads strings as bytes by default, so convert to string
         def toString(s):
             try:
-                return str(
-                    s, "utf-8"
-                )  # Convert bytes to string, using encoding
+                return str(s, "utf-8")  # Convert bytes to string, using encoding
             except TypeError:
                 return s  # Probably already a string
 
@@ -219,15 +207,12 @@ class OutputFile(object):
         # freegs.machine and then call the `from_numpy_array` class
         # method
         def make_coil_set(thing):
-            return machine.__dict__[
-                thing.attrs["freegs type"]
-            ].from_numpy_array(thing)
+            return machine.__dict__[thing.attrs["freegs type"]].from_numpy_array(thing)
 
         # Unfortunately this creates the coils in lexographical order
         # by label, losing the origin
         coils = [
-            (toString(label), make_coil_set(coil))
-            for label, coil in coil_group.items()
+            (toString(label), make_coil_set(coil)) for label, coil in coil_group.items()
         ]
 
         if "wall_R" in tokamak_group:

@@ -212,17 +212,13 @@ class Equilibrium:
         other._order = self._order
         other.__solver = self.__solver
 
-    def create_psi_plasma_default(
-        self, adaptive_centre=False, gpars=(0.5, 0.5, 0, 2)
-    ):
+    def create_psi_plasma_default(self, adaptive_centre=False, gpars=(0.5, 0.5, 0, 2)):
         """This method is kept for backwards compatibility and will generate a Gaussian-shaped
         initial guess for the plasma flux. It is NOT called by this class anymore.
         """
         return PsiGuessGaussian(adaptive_centre, gpars)(self)
 
-    def setSolverVcycle(
-        self, nlevels=1, ncycle=1, niter=1, direct=True, order=4
-    ):
+    def setSolverVcycle(self, nlevels=1, ncycle=1, niter=1, direct=True, order=4):
         """
         Deprecated. Equilibrium objects do not contain a multigrid solver. All arguments
         are ignored and any previously set solver is discarded, so that the default
@@ -461,9 +457,7 @@ class Equilibrium:
             raise e
 
         # interpolate over the field
-        func = interpolate.RectBivariateSpline(
-            self.R_1D, self.Z_1D, fpol / self.R
-        )
+        func = interpolate.RectBivariateSpline(self.R_1D, self.Z_1D, fpol / self.R)
 
         # if inputs are scalars, return scalar
         if np.isscalar(R) and np.isscalar(Z):
@@ -570,9 +564,7 @@ class Equilibrium:
             The total normalised poloidal flux due to the plasma and the coils at chosen (R,Z) locations.
         """
 
-        return (self.psiRZ(R, Z) - self.psi_axis) / (
-            self.psi_bndry - self.psi_axis
-        )
+        return (self.psiRZ(R, Z) - self.psi_axis) / (self.psi_bndry - self.psi_axis)
 
     def psi_1D(self, N):
         """
@@ -818,16 +810,12 @@ class Equilibrium:
         """
 
         # initial points on core boundary
-        points = np.array(critical.find_separatrix(self, ntheta=ntheta))[
-            :, 0:2
-        ]
+        points = np.array(critical.find_separatrix(self, ntheta=ntheta))[:, 0:2]
 
         # compute pairwise distances using pdist
         dist_matrix = squareform(pdist(points))  # convert to square form
         # find minimum distances
-        min_dists = np.min(
-            dist_matrix + 1e10 * np.eye(len(dist_matrix)), axis=0
-        )
+        min_dists = np.min(dist_matrix + 1e10 * np.eye(len(dist_matrix)), axis=0)
 
         # calculate inter-quartile ranges and bounds
         Q1 = np.percentile(min_dists, 25)
@@ -980,10 +968,8 @@ class Equilibrium:
             # Separatrix should now be between Rindex_inner and Rindex_inner+1
             # Linear interpolation
             R_in = (
-                self.R[Rindex_inner, Zindex]
-                * (1.0 - psinorm[Rindex_inner + 1])
-                + self.R[Rindex_inner + 1, Zindex]
-                * (psinorm[Rindex_inner] - 1.0)
+                self.R[Rindex_inner, Zindex] * (1.0 - psinorm[Rindex_inner + 1])
+                + self.R[Rindex_inner + 1, Zindex] * (psinorm[Rindex_inner] - 1.0)
             ) / (psinorm[Rindex_inner] - psinorm[Rindex_inner + 1])
 
         # Outer separatrix
@@ -997,10 +983,8 @@ class Equilibrium:
 
             # Separatrix should now be between Rindex_outer-1 and Rindex_outer
             R_out = (
-                self.R[Rindex_outer, Zindex]
-                * (1.0 - psinorm[Rindex_outer - 1])
-                + self.R[Rindex_outer - 1, Zindex]
-                * (psinorm[Rindex_outer] - 1.0)
+                self.R[Rindex_outer, Zindex] * (1.0 - psinorm[Rindex_outer - 1])
+                + self.R[Rindex_outer - 1, Zindex] * (psinorm[Rindex_outer] - 1.0)
             ) / (psinorm[Rindex_outer] - psinorm[Rindex_outer - 1])
 
         return R_in, R_out
@@ -1045,9 +1029,7 @@ class Equilibrium:
                 pt.coords[0] for pt in intersection.geoms
             ]  # Multiple points
         else:
-            raise ValueError(
-                f"Unexpected intersection type: {intersection.geom_type}"
-            )
+            raise ValueError(f"Unexpected intersection type: {intersection.geom_type}")
 
         return intersection_coords
 
@@ -1069,9 +1051,7 @@ class Equilibrium:
         separatrix = self.separatrix()
         wall = self.tokamak.wall
 
-        return polygons.intersect(
-            separatrix[:, 0], separatrix[:, 1], wall.R, wall.Z
-        )
+        return polygons.intersect(separatrix[:, 0], separatrix[:, 1], wall.R, wall.Z)
 
     def magneticAxis(self):
         """
@@ -1113,14 +1093,10 @@ class Equilibrium:
         """
 
         if hasattr(self, "_profiles"):
-            meanR = np.sum(self.R * self._profiles.jtor) / np.sum(
-                self._profiles.jtor
-            )
+            meanR = np.sum(self.R * self._profiles.jtor) / np.sum(self._profiles.jtor)
             return meanR
         else:
-            print(
-                "The equilibrium is not a GS solution. Please solve the eq. first."
-            )
+            print("The equilibrium is not a GS solution. Please solve the eq. first.")
 
     def Zcurrent(self):
         """
@@ -1136,14 +1112,10 @@ class Equilibrium:
         """
 
         if hasattr(self, "_profiles"):
-            meanZ = np.sum(self.Z * self._profiles.jtor) / np.sum(
-                self._profiles.jtor
-            )
+            meanZ = np.sum(self.Z * self._profiles.jtor) / np.sum(self._profiles.jtor)
             return meanZ
         else:
-            print(
-                "The equilibrium is not a GS solution. Please solve the eq. first."
-            )
+            print("The equilibrium is not a GS solution. Please solve the eq. first.")
 
     def Rmagnetic(self):
         """
@@ -1264,9 +1236,7 @@ class Equilibrium:
         # calculate separatrix metrics
         self._separatrix_metrics()
 
-        return (self._sep_Rmax + self._sep_Rmin) / (
-            self._sep_Rmax - self._sep_Rmin
-        )
+        return (self._sep_Rmax + self._sep_Rmin) / (self._sep_Rmax - self._sep_Rmin)
 
     def geometricElongation(self):
         """
@@ -1284,9 +1254,7 @@ class Equilibrium:
         # calculate separatrix metrics
         self._separatrix_metrics()
 
-        return (self._sep_Zmax - self._sep_Zmin) / (
-            self._sep_Rmax - self._sep_Rmin
-        )
+        return (self._sep_Zmax - self._sep_Zmin) / (self._sep_Rmax - self._sep_Rmin)
 
     def geometricElongation_upper(self):
         """
@@ -1305,9 +1273,7 @@ class Equilibrium:
         self._separatrix_metrics()
 
         return (
-            2
-            * (self._sep_Zmax - self._sep_ZRmax)
-            / (self._sep_Rmax - self._sep_Rmin)
+            2 * (self._sep_Zmax - self._sep_ZRmax) / (self._sep_Rmax - self._sep_Rmin)
         )
 
     def geometricElongation_lower(self):
@@ -1327,9 +1293,7 @@ class Equilibrium:
         self._separatrix_metrics()
 
         return (
-            2
-            * (self._sep_ZRmax - self._sep_Zmin)
-            / (self._sep_Rmax - self._sep_Rmin)
+            2 * (self._sep_ZRmax - self._sep_Zmin) / (self._sep_Rmax - self._sep_Rmin)
         )
 
     def effectiveElongation(self):
@@ -1370,9 +1334,7 @@ class Equilibrium:
         mag_axis = self.magneticAxis()
         geom_axis = self.geometricAxis()
 
-        return np.array(
-            [mag_axis[0] - geom_axis[0], mag_axis[1] - geom_axis[1]]
-        )
+        return np.array([mag_axis[0] - geom_axis[0], mag_axis[1] - geom_axis[1]])
 
     def triangularity_upper(self):
         """
@@ -1538,18 +1500,10 @@ class Equilibrium:
         li_diag_ellipse = li_diag.intersection(li_ellipse).length
 
         # calculate squarenesses
-        s_uo = (uo_diag_core - uo_diag_ellipse) / (
-            uo_diag.length - uo_diag_ellipse
-        )
-        s_ui = (ui_diag_core - ui_diag_ellipse) / (
-            ui_diag.length - ui_diag_ellipse
-        )
-        s_lo = (lo_diag_core - lo_diag_ellipse) / (
-            lo_diag.length - lo_diag_ellipse
-        )
-        s_li = (li_diag_core - li_diag_ellipse) / (
-            li_diag.length - li_diag_ellipse
-        )
+        s_uo = (uo_diag_core - uo_diag_ellipse) / (uo_diag.length - uo_diag_ellipse)
+        s_ui = (ui_diag_core - ui_diag_ellipse) / (ui_diag.length - ui_diag_ellipse)
+        s_lo = (lo_diag_core - lo_diag_ellipse) / (lo_diag.length - lo_diag_ellipse)
+        s_li = (li_diag_core - li_diag_ellipse) / (li_diag.length - li_diag_ellipse)
 
         return s_uo, s_ui, s_lo, s_li
 
@@ -1569,9 +1523,7 @@ class Equilibrium:
 
         # create shapely linestring objects
         plasma_boundary = sh.LineString(self.separatrix())
-        wall = sh.LineString(
-            np.array([self.tokamak.wall.R, self.tokamak.wall.Z]).T
-        )
+        wall = sh.LineString(np.array([self.tokamak.wall.R, self.tokamak.wall.Z]).T)
 
         # initialize variables
         closest_point = None
@@ -1591,9 +1543,7 @@ class Equilibrium:
                 )
 
                 # recalculate the distance between the wall point and the closest point (due to interpolation)
-                corrected_distance = wall_point.distance(
-                    candidate_closest_point
-                )
+                corrected_distance = wall_point.distance(candidate_closest_point)
 
                 if corrected_distance < min_distance:
                     min_distance = corrected_distance
@@ -1705,8 +1655,7 @@ class Equilibrium:
         integral_Bpol_lcfs = trapezoid(Bp, l)
 
         return integral_Bpol_2 / (
-            (integral_Bpol_lcfs / self.separatrix_length()) ** 2
-            * self.plasmaVolume()
+            (integral_Bpol_lcfs / self.separatrix_length()) ** 2 * self.plasmaVolume()
         )
 
     def internalInductance3(self):
@@ -1749,11 +1698,7 @@ class Equilibrium:
         # integrate B_pol squared over the volume
         integral = np.sum((self.Bpol(self.R, self.Z) ** 2) * dV)
 
-        return (
-            2
-            * integral
-            / ((mu0 * self.plasmaCurrent()) ** 2 * self.Rgeometric())
-        )
+        return 2 * integral / ((mu0 * self.plasmaCurrent()) ** 2 * self.Rgeometric())
 
     def internalInductance4(self):
         """
@@ -1794,11 +1739,7 @@ class Equilibrium:
         # integrate B_pol squared over the volume
         integral = np.sum((self.Bpol(self.R, self.Z) ** 2) * dV)
 
-        return (
-            2
-            * integral
-            / ((mu0 * self.plasmaCurrent()) ** 2 * self.Rmagnetic())
-        )
+        return 2 * integral / ((mu0 * self.plasmaCurrent()) ** 2 * self.Rmagnetic())
 
     def internalInductance5(self):
         """
@@ -1841,12 +1782,8 @@ class Equilibrium:
         integral = np.sum((self.Bpol(self.R, self.Z) ** 2) * dV)
 
         return (
-            (2 * integral)
-            / ((mu0 * self.plasmaCurrent()) ** 2 * self.Rgeometric())
-        ) * (
-            (1 + self.geometricElongation() ** 2)
-            / (2.0 * self.effectiveElongation())
-        )
+            (2 * integral) / ((mu0 * self.plasmaCurrent()) ** 2 * self.Rgeometric())
+        ) * ((1 + self.geometricElongation() ** 2) / (2.0 * self.effectiveElongation()))
 
     def poloidalBeta1(self):
         """
@@ -1883,15 +1820,9 @@ class Equilibrium:
             )
             raise e
 
-        pressure_integral = np.sum(
-            self.pressure(self.psiNRZ(self.R, self.Z)) * dV
-        )
+        pressure_integral = np.sum(self.pressure(self.psiNRZ(self.R, self.Z)) * dV)
 
-        return (
-            ((8.0 * pi) / mu0)
-            * pressure_integral
-            / (self.plasmaCurrent() ** 2)
-        )
+        return ((8.0 * pi) / mu0) * pressure_integral / (self.plasmaCurrent() ** 2)
 
     def poloidalBeta(self):
         """Backward-compatible alias for :meth:`poloidalBeta1`."""
@@ -1934,9 +1865,7 @@ class Equilibrium:
             )
             raise e
 
-        pressure_integral = np.sum(
-            self.pressure(self.psiNRZ(self.R, self.Z)) * dV
-        )
+        pressure_integral = np.sum(self.pressure(self.psiNRZ(self.R, self.Z)) * dV)
         field_integral_pol = np.sum((self.Bpol(self.R, self.Z) ** 2) * dV)
 
         return 2 * mu0 * pressure_integral / field_integral_pol
@@ -1981,9 +1910,7 @@ class Equilibrium:
             raise e
 
         # pressure integral
-        pressure_integral = np.sum(
-            self.pressure(self.psiNRZ(self.R, self.Z)) * dV
-        )
+        pressure_integral = np.sum(self.pressure(self.psiNRZ(self.R, self.Z)) * dV)
 
         # integrate B_pol over the LCFS
         # find arc length
@@ -2044,14 +1971,10 @@ class Equilibrium:
             )
             raise e
 
-        pressure_integral = np.sum(
-            self.pressure(self.psiNRZ(self.R, self.Z)) * dV
-        )
+        pressure_integral = np.sum(self.pressure(self.psiNRZ(self.R, self.Z)) * dV)
         R_avg = np.sum(self.R * dV) / self.plasmaVolume()
 
-        return (4 * pressure_integral) / (
-            mu0 * self.plasmaCurrent() ** 2 * R_avg
-        )
+        return (4 * pressure_integral) / (mu0 * self.plasmaCurrent() ** 2 * R_avg)
 
     def toroidalBeta1(self):
         """
@@ -2131,9 +2054,7 @@ class Equilibrium:
             )
             raise e
 
-        pressure_integral = np.sum(
-            self.pressure(self.psiNRZ(self.R, self.Z)) * dV
-        )
+        pressure_integral = np.sum(self.pressure(self.psiNRZ(self.R, self.Z)) * dV)
         Btor2_int = np.sum((self.Btor(self.R, self.Z) ** 2) * dV)
 
         return 2 * mu0 * pressure_integral / Btor2_int
@@ -2175,12 +2096,9 @@ class Equilibrium:
             )
             raise e
 
-        pressure_integral = np.sum(
-            self.pressure(self.psiNRZ(self.R, self.Z)) * dV
-        )
+        pressure_integral = np.sum(self.pressure(self.psiNRZ(self.R, self.Z)) * dV)
         B_int = np.sum(
-            (self.Btor(self.R, self.Z) ** 2 + self.Bpol(self.R, self.Z) ** 2)
-            * dV
+            (self.Btor(self.R, self.Z) ** 2 + self.Bpol(self.R, self.Z) ** 2) * dV
         )
 
         return 2 * mu0 * pressure_integral / B_int
@@ -2223,14 +2141,10 @@ class Equilibrium:
             )
             raise e
 
-        pressure_integral = np.sum(
-            self.pressure(self.psiNRZ(self.R, self.Z)) * dV
-        )
+        pressure_integral = np.sum(self.pressure(self.psiNRZ(self.R, self.Z)) * dV)
         Btor_vac = self.fvac() / self.Rgeometric()
 
-        return (
-            2 * mu0 * pressure_integral / (Btor_vac**2 * self.plasmaVolume())
-        )
+        return 2 * mu0 * pressure_integral / (Btor_vac**2 * self.plasmaVolume())
 
     def normalised_total_Beta(self):
         """
@@ -2248,9 +2162,7 @@ class Equilibrium:
 
         """
 
-        return 1.0 / (
-            (1.0 / self.poloidalBeta1()) + (1.0 / self.toroidalBeta1())
-        )
+        return 1.0 / ((1.0 / self.poloidalBeta1()) + (1.0 / self.toroidalBeta1()))
 
     def strikepoints(
         self,
@@ -2308,9 +2220,7 @@ class Equilibrium:
                 strikes.append(np.squeeze(np.array(intersection.xy).T))
             elif intersection.geom_type == "MultiPoint":
                 strikes.append(
-                    np.squeeze(
-                        np.array([geom.xy for geom in intersection.geoms])
-                    )
+                    np.squeeze(np.array([geom.xy for geom in intersection.geoms]))
                 )
 
         # check how many strikepoints
@@ -2330,23 +2240,19 @@ class Equilibrium:
             else:
                 if quadrant == "lower left":
                     ind = np.where(
-                        (all_strikes[:, 0] < loc[0])
-                        & (all_strikes[:, 1] < loc[1])
+                        (all_strikes[:, 0] < loc[0]) & (all_strikes[:, 1] < loc[1])
                     )[0]
                 elif quadrant == "lower right":
                     ind = np.where(
-                        (all_strikes[:, 0] > loc[0])
-                        & (all_strikes[:, 1] < loc[1])
+                        (all_strikes[:, 0] > loc[0]) & (all_strikes[:, 1] < loc[1])
                     )[0]
                 elif quadrant == "upper left":
                     ind = np.where(
-                        (all_strikes[:, 0] < loc[0])
-                        & (all_strikes[:, 1] > loc[1])
+                        (all_strikes[:, 0] < loc[0]) & (all_strikes[:, 1] > loc[1])
                     )[0]
                 elif quadrant == "upper right":
                     ind = np.where(
-                        (all_strikes[:, 0] > loc[0])
-                        & (all_strikes[:, 1] > loc[1])
+                        (all_strikes[:, 0] > loc[0]) & (all_strikes[:, 1] > loc[1])
                     )[0]
                 else:
                     raise ValueError(
@@ -2405,14 +2311,10 @@ class Equilibrium:
         xpts = self.xpt
 
         # build polygon of the tokamak wall
-        polygon = sh.Polygon(
-            np.array([self.tokamak.wall.R, self.tokamak.wall.Z]).T
-        )
+        polygon = sh.Polygon(np.array([self.tokamak.wall.R, self.tokamak.wall.Z]).T)
 
         # find x-points inside the wall
-        mask = np.array(
-            [polygon.contains(sh.Point(x, y)) for x, y in xpts[:, 0:2]]
-        )
+        mask = np.array([polygon.contains(sh.Point(x, y)) for x, y in xpts[:, 0:2]])
 
         # select these x-points
         xpts_inside_wall = xpts[mask, :]
@@ -2425,9 +2327,7 @@ class Equilibrium:
 
         # get the two closest to magnetic axis
         mag_axis = self.magneticAxis()
-        distances = np.linalg.norm(
-            xpts_inside_wall[:, 0:2] - mag_axis[0:2], axis=1
-        )
+        distances = np.linalg.norm(xpts_inside_wall[:, 0:2] - mag_axis[0:2], axis=1)
         closest_two = xpts_inside_wall[np.argsort(distances)[:2]]
 
         # sort those two by Z (puts lowest X-point first)
@@ -2468,9 +2368,7 @@ class Equilibrium:
                 R_in_out0.append(np.squeeze(np.array(intersection.xy).T))
             elif intersection.geom_type == "MultiPoint":
                 R_in_out0.append(
-                    np.squeeze(
-                        np.array([geom.xy for geom in intersection.geoms])
-                    )
+                    np.squeeze(np.array([geom.xy for geom in intersection.geoms]))
                 )
 
         # set of intersection points for the second flux surface
@@ -2486,9 +2384,7 @@ class Equilibrium:
                 R_in_out1.append(np.squeeze(np.array(intersection.xy).T))
             elif intersection.geom_type == "MultiPoint":
                 R_in_out1.append(
-                    np.squeeze(
-                        np.array([geom.xy for geom in intersection.geoms])
-                    )
+                    np.squeeze(np.array([geom.xy for geom in intersection.geoms]))
                 )
 
         # extract points into numpy array
@@ -2610,8 +2506,7 @@ class Equilibrium:
 
             # do the line integral around the flux surface
             dl = np.sqrt(
-                np.diff(flux_surface[:, 0]) ** 2
-                + np.diff(flux_surface[:, 1]) ** 2
+                np.diff(flux_surface[:, 0]) ** 2 + np.diff(flux_surface[:, 1]) ** 2
             )  # element-wise arc length
             l = np.concatenate(([0], np.cumsum(dl)))  # cumulative arc length
 
@@ -2884,6 +2779,7 @@ def ellipse_points(R0, Z0, A, B, N=360):
 
 class PsiGuessGaussian:
     """Generate a Gaussian initial plasma flux with an optional adaptive centre."""
+
     def __init__(
         self,
         adaptive_centre: bool = False,
@@ -2925,25 +2821,17 @@ class PsiGuessGaussian:
         """
 
         # define unit meshgrid
-        xx, yy = meshgrid(
-            linspace(0, 1, eq.nx), linspace(0, 1, eq.ny), indexing="ij"
-        )
+        xx, yy = meshgrid(linspace(0, 1, eq.nx), linspace(0, 1, eq.ny), indexing="ij")
 
         # finds approximate (weighted) centre of the core plasma
         if self._adaptive_centre:
             ntot = np.sum(eq.mask_inside_limiter)
             xc = (
-                np.sum(
-                    eq.mask_inside_limiter
-                    * linspace(0, 1, eq.nx)[:, np.newaxis]
-                )
+                np.sum(eq.mask_inside_limiter * linspace(0, 1, eq.nx)[:, np.newaxis])
                 / ntot
             )
             yc = (
-                np.sum(
-                    eq.mask_inside_limiter
-                    * linspace(0, 1, eq.ny)[np.newaxis, :]
-                )
+                np.sum(eq.mask_inside_limiter * linspace(0, 1, eq.ny)[np.newaxis, :])
                 / ntot
             )
         # else sets centre according to gpars
@@ -2953,10 +2841,7 @@ class PsiGuessGaussian:
         # generate the plasma flux
         psi = exp(
             self.gpars[2]
-            - (
-                (np.abs(xx - xc)) ** self.gpars[3]
-                + (np.abs(yy - yc)) ** self.gpars[3]
-            )
+            - ((np.abs(xx - xc)) ** self.gpars[3] + (np.abs(yy - yc)) ** self.gpars[3])
         )
 
         # set zero flux on boundary
@@ -2970,6 +2855,7 @@ class PsiGuessGaussian:
 
 class PsiGuessParabolicJtor:
     """Generate an initial flux estimate from a parabolic current distribution."""
+
     def __init__(self, h, k, a, b, Ip, *, psi_scale=1.0):
         """A class to generate the initial psi guess from an elliptic description
         of the plasma boundary and the plasma current.
@@ -3011,9 +2897,7 @@ class PsiGuessParabolicJtor:
         self._psi_scale = psi_scale
 
     @classmethod
-    def from_xpoint_and_midplane(
-        cls, Rx, Zx, Ri, Ro, Zm, Ip, *, psi_scale=1.0
-    ):
+    def from_xpoint_and_midplane(cls, Rx, Zx, Ri, Ro, Zm, Ip, *, psi_scale=1.0):
         """Finds the elliptic distribution function that produces a boundary
         according to the desired X-point location (Rx, Zx), inner midplane (Ri, Zm),
         and outer midplane (Ro, Zm).
@@ -3090,9 +2974,7 @@ class PsiGuessParabolicJtor:
         Z : float | ndarray
             The vertical position(s) to evaluate the distribution function at.
         """
-        return self._elliptic_function(
-            R, Z, self._h, self._k, self._a, self._b
-        )
+        return self._elliptic_function(R, Z, self._h, self._k, self._a, self._b)
 
     def parabolic_jtor(self, eq, Ip, *, i=1.87, j=1.5):
         """Calculate the Jtor assuming a parabolic current distribution for the given equilibrium.
@@ -3119,9 +3001,7 @@ class PsiGuessParabolicJtor:
         x[outside_core_mask] = 1.0
 
         Jtor_normalised = (1 - x**i) ** j
-        Jtor_integrated = (
-            np.sum(Jtor_normalised[~outside_core_mask]) * eq.dR * eq.dZ
-        )
+        Jtor_integrated = np.sum(Jtor_normalised[~outside_core_mask]) * eq.dR * eq.dZ
 
         Jhat = Ip / Jtor_integrated
 

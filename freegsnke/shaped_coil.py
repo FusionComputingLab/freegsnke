@@ -137,10 +137,8 @@ class ShapedCoil(Coil):
 
     def __repr__(self):
         """Describe the polygon, current, turns and control flag."""
-        return (
-            "ShapedCoil({0}, current={1:.1f}, turns={2}, control={3})".format(
-                self.shape, self.current, self.turns, self.control
-            )
+        return "ShapedCoil({0}, current={1:.1f}, turns={2}, control={3})".format(
+            self.shape, self.current, self.turns, self.control
         )
 
     @property

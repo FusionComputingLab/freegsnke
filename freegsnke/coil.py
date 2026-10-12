@@ -131,9 +131,7 @@ class Coil:
         lists/other object attributes are copied where appropriate (not passed
         by reference).
         """
-        new_obj = type(self)(
-            self.R, self.Z, self.current, self.turns, self.area
-        )
+        new_obj = type(self)(self.R, self.Z, self.current, self.turns, self.area)
         new_obj._area = self.area
         return new_obj
 

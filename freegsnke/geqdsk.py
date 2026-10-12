@@ -70,10 +70,8 @@ def write(eq, fh, label=None, oxpoints=None, fileformat=_geqdsk.write):
     data = {
         "nx": nx,
         "ny": ny,
-        "rdim": rmax
-        - rmin,  # Horizontal dimension in meter of computational box
-        "zdim": zmax
-        - zmin,  # Vertical dimension in meter of computational box
+        "rdim": rmax - rmin,  # Horizontal dimension in meter of computational box
+        "zdim": zmax - zmin,  # Vertical dimension in meter of computational box
         "rcentr": R0,  # R in meter of vacuum toroidal magnetic field BCENTR
         "bcentr": fvac / R0,  # Vacuum magnetic field at rcentr
         "rleft": rmin,  # Minimum R in meter of rectangular computational box
@@ -214,9 +212,7 @@ def read(
         import matplotlib.pyplot as plt
 
     if fit_sol and domain:
-        raise ValueError(
-            "Sorry, fit_sol cannot be used with the domain keyword"
-        )
+        raise ValueError("Sorry, fit_sol cannot be used with the domain keyword")
 
     if axis is not None:
         show = True
@@ -237,8 +233,7 @@ def read(
 
     if not (isPow2(nx - 1) and isPow2(ny - 1)):
         print(
-            "Warning: Input grid size %d x %d has sizes which are not 2^n+1"
-            % (nx, ny)
+            "Warning: Input grid size %d x %d has sizes which are not 2^n+1" % (nx, ny)
         )
 
         rin = linspace(0, 1, nx)
@@ -267,14 +262,10 @@ def read(
     # G-EQDSK stores pprime = dp/dpsi and ffprime = F dF/dpsi directly,
     # so use those arrays rather than reconstructing them from p and F.
     p_spl = interpolate.InterpolatedUnivariateSpline(psinorm, data["pres"])
-    pprime_spl = interpolate.InterpolatedUnivariateSpline(
-        psinorm, data["pprime"]
-    )
+    pprime_spl = interpolate.InterpolatedUnivariateSpline(psinorm, data["pprime"])
 
     f_spl = interpolate.InterpolatedUnivariateSpline(psinorm, data["fpol"])
-    ffprime_spl = interpolate.InterpolatedUnivariateSpline(
-        psinorm, data["ffprime"]
-    )
+    ffprime_spl = interpolate.InterpolatedUnivariateSpline(psinorm, data["ffprime"])
 
     q_spl = interpolate.InterpolatedUnivariateSpline(psinorm, data["qpsi"])
 
@@ -366,9 +357,7 @@ def read(
             print("Changing resolution: {} x {}".format(newnx, newny))
 
         # Create an interpolation function for Jtor and the input psi
-        Jtor_func = interpolate.RectBivariateSpline(
-            eq.R[:, 0], eq.Z[0, :], Jtor
-        )
+        Jtor_func = interpolate.RectBivariateSpline(eq.R[:, 0], eq.Z[0, :], Jtor)
         psi_func = interpolate.RectBivariateSpline(eq.R[:, 0], eq.Z[0, :], psi)
 
         # Create a new Equilibrium object
@@ -492,8 +481,6 @@ def read(
         isoflux = critical.find_separatrix(eq, ntheta=ntheta, axis=axis)
 
         # Save the control system to eq
-        eq.control = control.constrain(
-            xpoints=xpoint, isoflux=isoflux, gamma=1e-14
-        )
+        eq.control = control.constrain(xpoints=xpoint, isoflux=isoflux, gamma=1e-14)
 
     return eq

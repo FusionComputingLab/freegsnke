@@ -76,9 +76,7 @@ class Profile(object):
         )
         if core_mask is None:
             core_mask = np.ones_like(psi, dtype=bool)
-        uses_xpoint_boundary = len(xpt) > 0 and np.isclose(
-            psi_bndry, xpt[0][2]
-        )
+        uses_xpoint_boundary = len(xpt) > 0 and np.isclose(psi_bndry, xpt[0][2])
         self.opt = opt
         self.xpt = xpt
         self.psi_axis = opt[0][2]
@@ -205,9 +203,7 @@ class Profile(object):
         """
 
         # find O- and X-points of equilibrium
-        opt, xpt = critical.find_critical(
-            R, Z, psi, self.mask_inside_limiter, self.Ip
-        )
+        opt, xpt = critical.find_critical(R, Z, psi, self.mask_inside_limiter, self.Ip)
 
         # find core plasma mask (using user-defined psi_bndry)
         if psi_bndry is not None:
@@ -231,9 +227,7 @@ class Profile(object):
                 if self.diverted_core_mask is not None:
                     previous_core_size = np.sum(self.diverted_core_mask)
                     # check size change
-                    check = (
-                        np.sum(diverted_core_mask) / previous_core_size < 0.5
-                    )
+                    check = np.sum(diverted_core_mask) / previous_core_size < 0.5
                     candidate_index = 1
                     while check and candidate_index < len(xpt):
                         # try using the next xpt as primary xpt
@@ -248,9 +242,7 @@ class Profile(object):
                             candidate_xpt[0, 2],
                         )
                         # check the alternative Xpoint gives rise to a valid core
-                        edge_pixels = np.sum(
-                            self.edge_mask * alt_diverted_core_mask
-                        )
+                        edge_pixels = np.sum(self.edge_mask * alt_diverted_core_mask)
                         if edge_pixels == 0:
                             # the candidate is valid
                             xpt = candidate_xpt
@@ -259,8 +251,7 @@ class Profile(object):
 
                             # check if there could be better candidates
                             check = (
-                                np.sum(diverted_core_mask) / previous_core_size
-                                < 0.5
+                                np.sum(diverted_core_mask) / previous_core_size < 0.5
                             )
                             candidate_index = 1
                         else:
@@ -364,18 +355,14 @@ class ConstrainBetapIp(Profile):
         psi_norm = (psi - psi_axis) / (psi_bndry - psi_axis)
 
         # shape function
-        jtorshape = (
-            1.0 - np.clip(psi_norm, 0.0, 1.0) ** self.alpha_m
-        ) ** self.alpha_n
+        jtorshape = (1.0 - np.clip(psi_norm, 0.0, 1.0) ** self.alpha_m) ** self.alpha_n
 
         # if there is a masking function, use it
         if mask is not None:
             jtorshape *= mask
 
         # now apply constraints to define constants
-        shapeintegral0 = (
-            spbeta(1.0 / self.alpha_m, 1.0 + self.alpha_n) / self.alpha_m
-        )
+        shapeintegral0 = spbeta(1.0 / self.alpha_m, 1.0 + self.alpha_n) / self.alpha_m
 
         # pressure function
         pfunc = (
@@ -399,9 +386,7 @@ class ConstrainBetapIp(Profile):
         intp = np.sum(pfunc) * dR * dZ  # romb(romb(pfunc)) * dR * dZ
 
         # find Lbeta0 scaling
-        LBeta0 = (
-            -self.betap * (mu0 / (8.0 * pi)) * self.Raxis * self.Ip**2 / intp
-        )
+        LBeta0 = -self.betap * (mu0 / (8.0 * pi)) * self.Raxis * self.Ip**2 / intp
 
         # integrate current density components
         IR = (
@@ -418,11 +403,7 @@ class ConstrainBetapIp(Profile):
         Beta0 = LBeta0 / L
 
         # calculate final toroidal current density
-        Jtor = (
-            L
-            * (Beta0 * R / self.Raxis + (1 - Beta0) * self.Raxis / R)
-            * jtorshape
-        )
+        Jtor = L * (Beta0 * R / self.Raxis + (1 - Beta0) * self.Raxis / R) * jtorshape
 
         # store parameters
         self.jtor = Jtor
@@ -587,18 +568,14 @@ class ConstrainPaxisIp(Profile):
         psi_norm = (psi - psi_axis) / (psi_bndry - psi_axis)
 
         # shape function
-        jtorshape = (
-            1.0 - np.clip(psi_norm, 0.0, 1.0) ** self.alpha_m
-        ) ** self.alpha_n
+        jtorshape = (1.0 - np.clip(psi_norm, 0.0, 1.0) ** self.alpha_m) ** self.alpha_n
 
         # if there is a masking function, use it
         if mask is not None:
             jtorshape *= mask
 
         # now apply constraints to define constants
-        shapeintegral = (
-            spbeta(1.0 / self.alpha_m, 1.0 + self.alpha_n) / self.alpha_m
-        )
+        shapeintegral = spbeta(1.0 / self.alpha_m, 1.0 + self.alpha_n) / self.alpha_m
         shapeintegral *= psi_bndry - psi_axis
 
         # integrate current density components
@@ -615,11 +592,7 @@ class ConstrainPaxisIp(Profile):
         Beta0 = LBeta0 / L
 
         # calculate final toroidal current density
-        Jtor = (
-            L
-            * (Beta0 * R / self.Raxis + (1 - Beta0) * self.Raxis / R)
-            * jtorshape
-        )
+        Jtor = L * (Beta0 * R / self.Raxis + (1 - Beta0) * self.Raxis / R) * jtorshape
 
         # store parameters
         self.jtor = Jtor
@@ -786,9 +759,7 @@ class Fiesta_Topeol(Profile):
         psi_norm = (psi - psi_axis) / (psi_bndry - psi_axis)
 
         # shape function
-        jtorshape = (
-            1.0 - np.clip(psi_norm, 0.0, 1.0) ** self.alpha_m
-        ) ** self.alpha_n
+        jtorshape = (1.0 - np.clip(psi_norm, 0.0, 1.0) ** self.alpha_m) ** self.alpha_n
 
         # if there is a masking function, use it
         if mask is not None:
@@ -1034,16 +1005,14 @@ class Lao85(Profile):
 
         # calculate the p' and FF' profiles
         pprime_term = (
-            psi_norm[np.newaxis, :, :]
-            ** self.alpha_exp[:, np.newaxis, np.newaxis]
+            psi_norm[np.newaxis, :, :] ** self.alpha_exp[:, np.newaxis, np.newaxis]
         )
         pprime_term *= self.alpha[:, np.newaxis, np.newaxis]
         pprime_term = np.sum(pprime_term, axis=0)
         pprime_term *= R / self.Raxis
 
         ffprime_term = (
-            psi_norm[np.newaxis, :, :]
-            ** self.beta_exp[:, np.newaxis, np.newaxis]
+            psi_norm[np.newaxis, :, :] ** self.beta_exp[:, np.newaxis, np.newaxis]
         )
         ffprime_term *= self.beta[:, np.newaxis, np.newaxis]
         ffprime_term = np.sum(ffprime_term, axis=0)
@@ -1055,8 +1024,7 @@ class Lao85(Profile):
 
         # calculate dJ/dpsi_n
         pprime_term = (
-            psi_norm[np.newaxis, :, :]
-            ** self.alpha_exp[:-1, np.newaxis, np.newaxis]
+            psi_norm[np.newaxis, :, :] ** self.alpha_exp[:-1, np.newaxis, np.newaxis]
         )
         pprime_term *= (
             self.alpha[1:, np.newaxis, np.newaxis]
@@ -1066,8 +1034,7 @@ class Lao85(Profile):
         pprime_term *= R / self.Raxis
 
         ffprime_term = (
-            psi_norm[np.newaxis, :, :]
-            ** self.beta_exp[:-1, np.newaxis, np.newaxis]
+            psi_norm[np.newaxis, :, :] ** self.beta_exp[:-1, np.newaxis, np.newaxis]
         )
         ffprime_term *= (
             self.beta[1:, np.newaxis, np.newaxis]
@@ -1101,9 +1068,7 @@ class Lao85(Profile):
             jtorIp = np.sum(Jtor)
             if jtorIp == 0:
                 self.problem_psi = psi
-                raise ValueError(
-                    "Total plasma current is zero! Cannot renormalise."
-                )
+                raise ValueError("Total plasma current is zero! Cannot renormalise.")
             L = self.Ip / (jtorIp * dR * dZ)
             Jtor = L * Jtor
             self.dJtordpsi *= L
@@ -1139,9 +1104,7 @@ class Lao85(Profile):
         shape = pn_[np.newaxis] ** self.alpha_exp.reshape(
             list(np.shape(self.alpha_exp)) + [1] * len(shape_pn)
         )
-        shape *= self.alpha.reshape(
-            list(np.shape(self.alpha)) + [1] * len(shape_pn)
-        )
+        shape *= self.alpha.reshape(list(np.shape(self.alpha)) + [1] * len(shape_pn))
         shape = np.sum(shape, axis=0)
         if self.Ip_logic is True:
             if hasattr(self, "L") is False:
@@ -1173,9 +1136,7 @@ class Lao85(Profile):
         shape = pn_[np.newaxis] ** self.beta_exp.reshape(
             list(np.shape(self.beta_exp)) + [1] * len(shape_pn)
         )
-        shape *= self.beta.reshape(
-            list(np.shape(self.beta)) + [1] * len(shape_pn)
-        )
+        shape *= self.beta.reshape(list(np.shape(self.beta)) + [1] * len(shape_pn))
         shape = np.sum(shape, axis=0)
         if self.Ip_logic is True:
             if hasattr(self, "L") is False:
@@ -1401,9 +1362,7 @@ class TensionSpline(Profile):
             jtorIp = np.sum(Jtor)
             if jtorIp == 0:
                 self.problem_psi = psi
-                raise ValueError(
-                    "Total plasma current is zero! Cannot renormalise."
-                )
+                raise ValueError("Total plasma current is zero! Cannot renormalise.")
             L = self.Ip / (jtorIp * dR * dZ)
             Jtor = L * Jtor
         else:
@@ -1643,21 +1602,15 @@ class GeneralPprimeFFprime(Profile):
 
         if self.p_data is not None:
             if self.interpolator == "cubic_spline":
-                self.p_func = CubicSpline(
-                    self.psi_n, self.p_data, bc_type="natural"
-                )
+                self.p_func = CubicSpline(self.psi_n, self.p_data, bc_type="natural")
             else:
-                self.p_func = UnivariateSpline(
-                    self.psi_n, self.p_data, s=0, k=1
-                )
+                self.p_func = UnivariateSpline(self.psi_n, self.p_data, s=0, k=1)
 
         # if pprime_func still not provided, use p_func derivative, else throw error
         if self.pprime_func is None and self.p_func is not None:
             self.pprime_func = self.p_func.derivative(n=1)
         elif self.pprime_func is None and self.p_func is None:
-            raise ValueError(
-                "Need to provide either 'pprime_data' or 'p_data'"
-            )
+            raise ValueError("Need to provide either 'pprime_data' or 'p_data'")
 
         # interpolate the f data
         self.ffprime_func = None
@@ -1675,22 +1628,16 @@ class GeneralPprimeFFprime(Profile):
 
         if self.f_data is not None:
             if self.interpolator == "cubic_spline":
-                self.f_func = CubicSpline(
-                    self.psi_n, self.f_data, bc_type="natural"
-                )
+                self.f_func = CubicSpline(self.psi_n, self.f_data, bc_type="natural")
             else:
-                self.f_func = UnivariateSpline(
-                    self.psi_n, self.f_data, s=0, k=1
-                )
+                self.f_func = UnivariateSpline(self.psi_n, self.f_data, s=0, k=1)
 
         # if ffprime_func still not provided, use f_func derivative, else throw error
         if self.ffprime_func is None and self.f_func is not None:
             fprime_func = self.f_func.derivative(n=1)
             self.ffprime_func = lambda x: self.f_func(x) * fprime_func(x)
         elif self.ffprime_func is None and self.f_func is None:
-            raise ValueError(
-                "Need to provide either 'ffprime_data' or 'f_data'"
-            )
+            raise ValueError("Need to provide either 'ffprime_data' or 'f_data'")
 
     def Jtor_part2(
         self,
@@ -1779,9 +1726,7 @@ class GeneralPprimeFFprime(Profile):
             jtorIp = np.sum(Jtor)
             if jtorIp == 0:
                 self.problem_psi = psi
-                raise ValueError(
-                    "Total plasma current is zero! Cannot renormalise."
-                )
+                raise ValueError("Total plasma current is zero! Cannot renormalise.")
             L = self.Ip / (jtorIp * dR * dZ)
             Jtor = L * Jtor
         else:

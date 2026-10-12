@@ -8,9 +8,7 @@ from freegsnke.gradshafranov import mu0
 
 def test_inoutseparatrix():
 
-    eq = equilibrium.Equilibrium(
-        Rmin=0.1, Rmax=2.0, Zmin=-1.0, Zmax=1.0, nx=65, ny=65
-    )
+    eq = equilibrium.Equilibrium(Rmin=0.1, Rmax=2.0, Zmin=-1.0, Zmax=1.0, nx=65, ny=65)
 
     # Two O-points, one X-point half way between them
     psi = np.exp((-((eq.R - 1.0) ** 2) - eq.Z**2) * 3) + np.exp(

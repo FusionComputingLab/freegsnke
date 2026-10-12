@@ -4,12 +4,12 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 import pytest
-from freegsnke.critical import find_critical
-from freegsnke.plotting import plotConstraints
 from IPython.display import clear_output, display
 from matplotlib.widgets import Slider
 
 from freegsnke import build_machine
+from freegsnke.critical import find_critical
+from freegsnke.plotting import plotConstraints
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 TEST_DATA_DIR = Path(__file__).resolve().parent / "baselines"
@@ -238,6 +238,7 @@ def test_limiter_reduced_boundary_green_is_exact(create_machine):
     solver = GSstaticsolver.NKGSsolver(eq)
     boundary_indices = solver.bndry_indices
     from freegsnke.gradshafranov import Greens
+
     full_green = Greens(
         eq.R[np.newaxis, :, :],
         eq.Z[np.newaxis, :, :],

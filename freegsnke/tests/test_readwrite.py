@@ -55,6 +55,4 @@ def test_original_readwrite_solve_setup_is_unsupported():
     )
 
     with pytest.raises(ValueError, match="No opoints found"):
-        freegsnke.solve(
-            eq, profiles, constrain, maxits=25, atol=1e-3, rtol=1e-1
-        )
+        freegsnke.solve(eq, profiles, constrain, maxits=25, atol=1e-3, rtol=1e-1)

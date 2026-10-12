@@ -26,13 +26,13 @@ from copy import deepcopy
 
 import matplotlib.pyplot as plt
 import numpy as np
-from . import bilinear_interpolation
-from .gradshafranov import GreensBr, GreensdBrdz
 from scipy.signal import convolve2d
 from threadpoolctl import threadpool_limits
 
+from . import bilinear_interpolation
 from . import nk_solver_H as nk_solver
 from .circuit_eq_metal import metal_currents
+from .gradshafranov import GreensBr, GreensdBrdz
 from .GSstaticsolver import NKGSsolver
 from .linear_solve import linear_solver
 from .Myy_builder import Myy_handler

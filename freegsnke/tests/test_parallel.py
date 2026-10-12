@@ -193,9 +193,7 @@ def test_elliptics(make_test_array):
     refe = ellipe(small_array)
     refk = ellipk(small_array)
     rese, resk = parallel.threaded_elliptics_ek(small_array)
-    assert np.all(
-        (refe == rese) & (refk == resk)
-    ), "Failed n_threads>idcs.shape[0]"
+    assert np.all((refe == rese) & (refk == resk)), "Failed n_threads>idcs.shape[0]"
 
     with pytest.raises(TypeError, match="Only numpy ndarray"):
         parallel.threaded_elliptics_ek(None)

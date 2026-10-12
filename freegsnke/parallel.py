@@ -49,12 +49,8 @@ MAX_THREADS_FLAG = "NUMEXPR_MAX_THREADS"
 OMP_SET_FLAG = "OMP_NUM_THREADS"
 NUMEXPR_SET_FLAG = "NUMEXPR_NUM_THREADS"
 
-DEFAULT_THREADCOUNT = (
-    1  # set default to minimal value, for small-grid performance
-)
-IDEAL_MAX_THREADCOUNT = (
-    ne.get_num_threads()
-)  # is changed at the end of the script
+DEFAULT_THREADCOUNT = 1  # set default to minimal value, for small-grid performance
+IDEAL_MAX_THREADCOUNT = ne.get_num_threads()  # is changed at the end of the script
 
 thread_controller = ThreadpoolController()
 
@@ -351,12 +347,8 @@ def threaded_elliptics_ek(k2, out=None, single_thread=False):
             )  # first few slices get one more element to deal with remainder
 
             k2_slice = k2[start:end]
-            futures.append(
-                executor.submit(ellipe, k2_slice, out=eie[start:end])
-            )
-            futures.append(
-                executor.submit(ellipk, k2_slice, out=eik[start:end])
-            )
+            futures.append(executor.submit(ellipe, k2_slice, out=eie[start:end]))
+            futures.append(executor.submit(ellipk, k2_slice, out=eik[start:end]))
 
         # Threads don't raise exceptions unless joined explicitly. This is a low-overhead way of doing that
         tuple(
@@ -373,9 +365,7 @@ def threaded_elliptics_ek(k2, out=None, single_thread=False):
 
 
 @thread_controller.wrap(limits={"blas": 1, "openmp": 1})
-def threaded_clip(
-    k2, /, amin, amax, *, out=None, single_thread=False, **kwargs
-):
+def threaded_clip(k2, /, amin, amax, *, out=None, single_thread=False, **kwargs):
     """
     Parallel wrapper for numpy clip. Detailed behavior of the function can be consulted on
     numpy docs. This function only adds the argument `single_thread` (read below).
@@ -584,8 +574,7 @@ if threadcount > get_max_threads():
 
 other_libs_info = thread_controller.info()
 other_threadcounts = {
-    lib_info["user_api"]: lib_info["num_threads"]
-    for lib_info in other_libs_info
+    lib_info["user_api"]: lib_info["num_threads"] for lib_info in other_libs_info
 }
 
 lib_threadcount = None

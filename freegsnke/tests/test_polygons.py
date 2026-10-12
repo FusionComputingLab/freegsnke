@@ -41,12 +41,8 @@ def test_clockwise():
 
 def test_triangulate_three():
     # Always returns a triangle in clockwise order
-    assert polygons.triangulate([(0, 0), (0, 1), (1, 0)]) == [
-        [(0, 0), (0, 1), (1, 0)]
-    ]
-    assert polygons.clockwise(
-        polygons.triangulate([(0, 0), (1, 0), (0, 1)])[0]
-    )
+    assert polygons.triangulate([(0, 0), (0, 1), (1, 0)]) == [[(0, 0), (0, 1), (1, 0)]]
+    assert polygons.clockwise(polygons.triangulate([(0, 0), (1, 0), (0, 1)])[0])
 
 
 def test_triangulate_four():

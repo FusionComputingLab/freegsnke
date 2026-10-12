@@ -24,11 +24,10 @@ import pickle
 from copy import deepcopy
 
 import numpy as np
-from .coil import Coil
-from .machine import Circuit, Wall
-from .multi_coil import MultiCoil
 
+from .coil import Coil
 from .copying import copy_into
+from .machine import Circuit, Wall
 from .machine_config import (
     append_tokamak_R_and_M_entries,
     build_tokamak_R_and_M,
@@ -37,6 +36,7 @@ from .machine_config import (
 )
 from .machine_update import Machine
 from .magnetic_probes import Probes
+from .multi_coil import MultiCoil
 from .passive_structure import PassiveStructure
 from .refine_passive import generate_refinement
 

@@ -64,8 +64,7 @@ def test_freegsnke_backend_contract():
         "getCurrents",
     )
     assert all(
-        callable(getattr(Machine, name, None))
-        for name in required_machine_methods
+        callable(getattr(Machine, name, None)) for name in required_machine_methods
     )
 
     required_equilibrium_methods = (

@@ -61,9 +61,7 @@ def write(data, fh, label=None, shot=None, time=None):
         label = "FREEGS"
     if len(label) > 11:
         label = label[0:12]
-        print(
-            "WARNING: label too long, it will be shortened to {}".format(label)
-        )
+        print("WARNING: label too long, it will be shortened to {}".format(label))
 
     creation_date = date.today().strftime("%d/%m/%Y")
 
@@ -120,12 +118,7 @@ def write(data, fh, label=None, shot=None, time=None):
 
     # 5th line
     fh.write(
-        f2s(data["zmagx"])
-        + f2s(0.0)
-        + f2s(data["sibdry"])
-        + f2s(0.0)
-        + f2s(0.0)
-        + "\n"
+        f2s(data["zmagx"]) + f2s(0.0) + f2s(data["sibdry"]) + f2s(0.0) + f2s(0.0) + "\n"
     )
 
     # SCENE has actual ff' and p' data so can use that

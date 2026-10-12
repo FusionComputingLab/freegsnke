@@ -329,12 +329,8 @@ def plotEquilibrium(
     # plot separatrix (from primary X-point)
     colour = "r"
     style = "solid"
-    axis.contour(
-        eq.R, eq.Z, psi, levels=[xpt[0][2]], colors=colour, linestyles=style
-    )
-    axis.plot(
-        [], [], colour, label="Separatrix (primary X-point)", linestyle=style
-    )
+    axis.contour(eq.R, eq.Z, psi, levels=[xpt[0][2]], colors=colour, linestyles=style)
+    axis.plot([], [], colour, label="Separatrix (primary X-point)", linestyle=style)
 
     # plot extra separatrix (LCFS) if plasma limited
     if eq._profiles.flag_limiter:
@@ -360,9 +356,7 @@ def plotEquilibrium(
     if xpoints:
         for r, z, _ in xpt:
             axis.plot(r, z, "rx", markersize=9)
-        axis.plot(
-            xpt[0][0], xpt[0][1], "rx", markersize=9, markeredgewidth=2.5
-        )
+        axis.plot(xpt[0][0], xpt[0][1], "rx", markersize=9, markeredgewidth=2.5)
         axis.plot([], [], "rx", markersize=9, label="X-points")
         axis.plot(
             [],
@@ -448,16 +442,12 @@ def make_broad_mask(mask, layer_size=1):
     """
 
     nx, ny = np.shape(mask)
-    layer_mask = np.zeros(
-        np.array([nx, ny]) + 2 * np.array([layer_size, layer_size])
-    )
+    layer_mask = np.zeros(np.array([nx, ny]) + 2 * np.array([layer_size, layer_size]))
 
     for i in np.arange(-layer_size, layer_size + 1) + layer_size:
         for j in np.arange(-layer_size, layer_size + 1) + layer_size:
             layer_mask[i : i + nx, j : j + ny] += mask
-    layer_mask = layer_mask[
-        layer_size : layer_size + nx, layer_size : layer_size + ny
-    ]
+    layer_mask = layer_mask[layer_size : layer_size + nx, layer_size : layer_size + ny]
     layer_mask = (layer_mask > 0).astype(bool)
     return layer_mask
 
@@ -533,13 +523,11 @@ def plotProbes(
         axis.plot(
             [
                 probes.pickup_pos[:, 0],
-                probes.pickup_pos[:, 0]
-                + pickups_scale * probes.pickup_or[:, 0],
+                probes.pickup_pos[:, 0] + pickups_scale * probes.pickup_or[:, 0],
             ],
             [
                 probes.pickup_pos[:, 2],
-                probes.pickup_pos[:, 2]
-                + pickups_scale * probes.pickup_or[:, 2],
+                probes.pickup_pos[:, 2] + pickups_scale * probes.pickup_or[:, 2],
             ],
             color="brown",
             markersize=1,

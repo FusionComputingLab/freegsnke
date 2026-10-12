@@ -123,9 +123,7 @@ def polygon_quad(polygon, n=6):
 
     quadrature = []  # List of all points
     for triangle, area in zip(triangles, areas):
-        points = triangle_quad(
-            triangle, n=n
-        )  # Quadrature points for this triangle
+        points = triangle_quad(triangle, n=n)  # Quadrature points for this triangle
         quadrature += [
             (r, z, w * area / total_area) for r, z, w in points
         ]  # Modify the weights

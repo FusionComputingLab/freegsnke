@@ -21,7 +21,7 @@ WHAT IS ADDED
    Checks against an independently assembled dense linear solve, rejects even
    forcing, and verifies failure of a singular tangent equation.
 
-3. examples/odd_gs_response/nonlinear_response.py and README.md
+3. examples/example12 - odd_GS_response.ipynb
    Creates a smooth manufactured equilibrium on a small rectangular grid,
    applies opposite external ring currents, and independently solves the full
    nonlinear equation at positive and negative amplitudes. FreeGS4E supplies
@@ -73,20 +73,20 @@ HOW TO REVIEW
   git diff 6d43a09..odd-gs-response -- freegsnke/tests/test_gs_response.py
 
 Read the module equation and comments first, then its dense reference test,
-then the example README and independent nonlinear calculation.
+then the notebook equations, plots and independent nonlinear calculation.
 
 From this repository root, using Python with the project dependencies and
 FreeGS4E >=0.15,<0.16 installed:
 
   PYTHONPATH=. python -m pytest freegsnke/tests/test_gs_response.py -q
-  PYTHONPATH=. python examples/odd_gs_response/nonlinear_response.py --output-dir /tmp/odd-response-check
+  Open examples/example12 - odd_GS_response.ipynb in Jupyter and run all cells.
 
 If needed for a restricted environment, set NUMBA_CACHE_DIR and MPLCONFIGDIR to
-writable temporary directories. The example writes one response.json record.
+writable temporary directories. The notebook retains plots and numerical checks inline.
 
 VALIDATION RECORDED FOR THIS ADDITION
 
-Three unit tests passed. The example completed six independent nonlinear solves.
+Three unit tests passed. The notebook completed six independent nonlinear solves.
 Tangent relative residual: 9.98e-11.
 Relative current errors at amplitudes 4000, 2000, 1000 A:
   1.75327e-7, 4.38318e-8, 1.09580e-8.

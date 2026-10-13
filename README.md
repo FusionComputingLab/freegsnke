@@ -18,8 +18,6 @@
 
 FreeGSNKE (pronounced "free-gee-snake") is a **Python**-based code for **simulating the evolution of free-boundary tokamak plasma equilibria**.
 
-FreeGSNKE is a standalone package with an integrated Grad-Shafranov equilibrium solver and numerical machinery derived from [FreeGS](https://github.com/bendudson/freegs).
-
 **NOTE:**  We recommended reading this page in its entirety before attempting to install or run FreeGSNKE!
 
 ## Table of contents
@@ -91,7 +89,7 @@ FreeGSNKE is constantly evolving and so we hope to provide users with more advan
 
 ## Getting started
 
-**Get familiar with FreeGSNKE**: start with the FreeGSNKE user guide and examples below. The original [FreeGS documentation](https://freegs.readthedocs.io/en/latest/) provides useful background, but does not define the FreeGSNKE APIs.
+**Get familiar with FreeGSNKE**: start with the FreeGSNKE user guide and examples below. The original [FreeGS documentation](https://freegs.readthedocs.io/en/latest/) provides useful background, but does not define the FreeGSNKE APIs, algorithms or complete physics.
 
 **After installation (see below), check out the FreeGSNKE user guide**: the FreeGSNKE docs are hosted at [docs.freegsnke.com](https://docs.freegsnke.com/), and the [user guide](https://docs.freegsnke.com/user_guide/) contains several examples to get started. You can also build the documentation yourself by following the instructions in the `docs/README.md` file. The user guide is built from Jupyter notebooks in the `examples/` directory, where you can also find more demos beyond those included in the user guide.
 
@@ -269,3 +267,9 @@ This work was funded under the Fusion Computing Lab collaboration between the ST
 FreeGSNKE is distributed under the GNU Lesser General Public License v3.0. See the [LICENSE](LICENSE) and [COPYRIGHT](COPYRIGHT) files or the [GNU website](https://www.gnu.org/licenses/lgpl-3.0.en.html) for more details.
 
 The authors are also willing to discuss alternative licensing arrangements if required.
+
+## History
+
+FreeGSNKE spun out of the original [FreeGS](https://github.com/freegs-plasma/freegs) project. Originally, [FreeGS4E](https://github.com/FusionComputingLab/freegs4e) was set up as a form of FreeGS to provide the reusable magnetostatic machinery backend for FreeGSNKE, while FreeGSNKE owned the higher-level algorithms and physics to solve forward static and evolutive free-boundary Grad-Shafranov problems. The FreeGS4E repository is now archived, and the FreeGSNKE repository has been updated to own what was previously FreeGS4E.
+
+The FreeGSNKE team would like to acknowledge [Ben Dudson](https://github.com/bendudson) and other FreeGS authors for their contributions to the original FreeGS codebase, especially for making the tool free and open-source. We would also like to thank Ben for his support during development of the FreeGSNKE codebase.

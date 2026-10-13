@@ -594,6 +594,7 @@ class nl_solver:
         # self.dIydI is the Jacobian of the plasma current distribution
         # with respect to the independent currents (as in self.currents_vec)
         self.dIydI_ICs = dIydI
+        self.dRZdI_ICs = None
         self.dIydI = dIydI
 
         # self.dIydtheta is the Jacobian of the plasma current distribution
@@ -650,6 +651,7 @@ class nl_solver:
             self.dIydI = self.dIydI[:, self.retained_modes_mask]
             self.dIydI_ICs = np.copy(self.dIydI)
             self.dRZdI = self.dRZdI[:, self.retained_modes_mask]
+            self.dRZdI_ICs = np.copy(self.dRZdI)
             self.final_dI_record = self.final_dI_record[self.retained_modes_mask]
             self.dvdId = self.dvdId[:, self.retained_modes_mask]
             self.initial_currents_plasma_descriptor = (
@@ -2089,11 +2091,15 @@ class nl_solver:
                     )
 
                 self.dIydI_ICs = np.copy(self.dIydI)
+                self.dRZdI_ICs = np.copy(self.dRZdI)
             else:
                 self.dIydI = np.copy(self.dIydI_ICs)
+                if self.dRZdI_ICs is not None:
+                    self.dRZdI = np.copy(self.dRZdI_ICs)
         else:
             self.dIydI = dIydI
             self.dIydI_ICs = np.copy(self.dIydI)
+            self.dRZdI_ICs = None
 
         # compose the vector of initial delta_theta (profile parameters) to be used for the finite difference calculation
         # - this uses the variation to Jtor caused by the parameter's contribution to the change in poloidal flux, ignoring the response of the plasma
@@ -2668,6 +2674,7 @@ class nl_solver:
 
         # reset previous linearisations
         self.dIydI_ICs = None
+        self.dRZdI_ICs = None
         self.dIydtheta_ICs = None
 
         # recompute the linearisations

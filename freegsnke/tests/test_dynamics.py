@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 from IPython.display import clear_output, display
 
-from freegsnke import build_machine
+from freegsnke import build_machine, nonlinear_solve
 
 
 @pytest.fixture()
@@ -295,3 +295,53 @@ def test_non_linear_stepper(create_machine):
     assert np.all(
         np.abs((stepping.eq1.xpt[0, :2] - true_x_point)) < leeway
     ), "X-point location deviates more than 1/2 of pixel size."
+
+
+def test_reinitialisation_preserves_dRZdI(create_machine):
+    # Regression test for #116: no modes removed
+    tokamak, eq, profiles, stepping = create_machine
+    saved_drzdi = np.copy(stepping.dRZdI)
+
+    assert (
+        np.count_nonzero(saved_drzdi) > 0
+    ), "Precondition failed: baseline dRZdI is all zero."
+
+    stepping.initialize_from_ICs(eq, profiles)
+
+    np.testing.assert_array_equal(stepping.dRZdI, saved_drzdi)
+
+
+def test_reinitialisation_preserves_dRZdI_after_mode_removal(create_machine):
+    # Regression test for #116: mode removal
+    tokamak, eq, profiles, stepping = create_machine
+    solver = nonlinear_solve.nl_solver(
+        profiles=profiles,
+        eq=eq,
+        GSStaticSolver=stepping.NK,
+        max_mode_frequency=10**2.5,
+        full_timestep=3e-3,
+        plasma_resistivity=5e-7,
+        automatic_timestep=False,
+    )
+
+    assert hasattr(
+        solver, "retained_modes_mask"
+    ), "Solver missing 'retained_modes_mask' attribute."
+    removed_count = (~solver.retained_modes_mask).sum()
+    assert (
+        removed_count >= 1
+    ), f"Precondition: need >= 1 removed mode, got {removed_count}."
+
+    saved_drzdi = np.copy(solver.dRZdI)
+    assert (
+        np.count_nonzero(saved_drzdi) > 0
+    ), "Precondition failed: baseline dRZdI is all zero."
+
+    solver.initialize_from_ICs(eq, profiles)
+
+    assert solver.dRZdI.shape[1] == solver.dIydI.shape[1], (
+        f"dRZdI width ({solver.dRZdI.shape[1]}) "
+        f"must equal dIydI width ({solver.dIydI.shape[1]}) after masking."
+    )
+
+    np.testing.assert_array_equal(solver.dRZdI, saved_drzdi)

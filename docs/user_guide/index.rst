@@ -13,6 +13,7 @@ The notebooks are displayed statically on the following pages, but running them 
 .. toctree::
     :maxdepth: 1
     
+    strike_points
     ../notebooks/example00 - build_tokamak_machine
     ../notebooks/example01a - static_inverse_solve_MASTU
     ../notebooks/example01b - advanced_static_inverse_solve

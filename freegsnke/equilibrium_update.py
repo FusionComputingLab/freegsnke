@@ -91,6 +91,25 @@ class Equilibrium(freegs4e.equilibrium.Equilibrium):
             float
         )
 
+    def strikepoint(self, **kwargs):
+        """Return native Ss, Rs and Zs for one separatrix-leg wall contact.
+
+        See :func:`freegsnke.shape_descriptors.measure_strikepoint` for wall
+        ordering, X-point selection and leg options. The default wall is
+        ``self.tokamak.wall``; Ss is measured from its first vertex.
+        """
+        from .shape_descriptors import measure_strikepoint
+
+        return measure_strikepoint(self, **kwargs)
+
+    def Ss(self, **kwargs):
+        """Return strike-point distance along the ordered wall, in metres."""
+        return self.strikepoint(**kwargs).Ss
+
+    def Rs(self, **kwargs):
+        """Return strike major radius derived from the native Ss measurement."""
+        return self.strikepoint(**kwargs).Rs
+
     def _updatePlasmaPsi(self, plasma_psi):
         """Update plasma flux while retaining the checked FreeGSNKE interpolator.
 

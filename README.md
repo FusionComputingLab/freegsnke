@@ -177,34 +177,7 @@ This will install FreeGSNKE in editable mode, including the optional development
 Backend development takes place directly in the native `freegsnke` modules.
 
 The notebook numerical-parity CI job runs examples 00, 01a, 01b, 02, and 05a
-against a pinned, previously validated standalone FreeGSNKE revision using
-identical dependency versions. It retains executed notebooks and full-precision
-numerical checkpoints. Code cells must match exactly; explanatory Markdown can
-evolve without changing the numerical workload.
-
-### Numerical solvers and threads
-
-`freegsnke.gs_solver` provides the common `GSSolver` interface, the second- and
-fourth-order `GSLUSolver`, and the second-order `GSDSTSolver`. The nonlinear
-FreeGSNKE solver retains its fourth-order direct multigrid solve by default,
-including the optimized sparse operator construction. The DST solver is an
-explicit alternative and does not change the default discretization order.
-
-Equilibrium construction no longer creates a linear solver. The inherited
-`callSolver` interface creates a sparse-LU solver on first use; `order`,
-`_solver`, `setSolver`, and `setSolverVcycle` are retained compatibility APIs.
-Auxiliary equilibria share an existing compatibility solver without forcing
-factorization during copying.
-
-Green-function evaluation uses numexpr and the native parallel library. The
-default is one thread, which avoids overhead on small grids. Set
-`OMP_NUM_THREADS` before importing FreeGSNKE to request a different count.
-`NUMEXPR_NUM_THREADS` takes precedence for these functions, and
-`NUMEXPR_MAX_THREADS` sets numexpr's allowed maximum (32 by default).
-`freegsnke.parallel.set_num_threads()` also changes the native thread count.
-Temporary limits can be applied with
-`threadpoolctl.threadpool_limits(limits=1, user_api="fg_threads")`; the previous
-count is restored when the context exits.
+against a pinned, previously validated standalone FreeGSNKE revision.
 
 If you are planning to make code contributions, see the [pull requests](#pull-requests) section below.
 
@@ -294,10 +267,5 @@ This work was funded under the Fusion Computing Lab collaboration between the ST
 ## License
 
 FreeGSNKE is distributed under the GNU Lesser General Public License v3.0. See the [LICENSE](LICENSE) and [COPYRIGHT](COPYRIGHT) files or the [GNU website](https://www.gnu.org/licenses/lgpl-3.0.en.html) for more details.
-
-Contributors to the integrated equilibrium and numerical modules include:
-- Copyright 2024–2025 Nicola C. Amorisco, George K. Holt, Adriano Agnello, and other contributors (LGPLv3).
-- Copyright 2026 Tomas Rubio Cruz and Ubaid Qadri (solver and parallel-execution contributions, LGPLv3).
-- FreeGS: Copyright 2016–2021 Ben Dudson, University of York, and other contributors (LGPLv3).
 
 The authors are also willing to discuss alternative licensing arrangements if required.

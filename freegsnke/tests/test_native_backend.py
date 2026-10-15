@@ -1,4 +1,26 @@
-"""Numerical and lifecycle checks for the absorbed solver and thread backend."""
+"""Numerical and lifecycle checks for the absorbed solver and thread backend.
+
+Copyright 2026 George K. Holt
+
+Native FreeGSNKE backend regression tests.
+
+SPDX-License-Identifier: LGPL-3.0-or-later
+
+This file is part of FreeGSNKE.
+
+FreeGSNKE is free software: you can redistribute it and/or modify
+it under the terms of the GNU Lesser General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+FreeGSNKE is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU Lesser General Public License for more details.
+
+You should have received a copy of the GNU Lesser General Public License
+along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
+"""
 
 import importlib.metadata
 import warnings

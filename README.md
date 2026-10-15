@@ -174,9 +174,6 @@ This will install FreeGSNKE in editable mode, including the optional development
 
 Backend development takes place directly in the native `freegsnke` modules.
 
-The notebook numerical-parity CI job runs examples 00, 01a, 01b, 02, and 05a
-against a pinned, previously validated standalone FreeGSNKE revision.
-
 If you are planning to make code contributions, see the [pull requests](#pull-requests) section below.
 
 ### Extras (for contributing)

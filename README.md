@@ -37,6 +37,7 @@ FreeGSNKE (pronounced "free-gee-snake") is a **Python**-based code for **simulat
 - [References](#references)
 - [Funding](#funding)
 - [License](#license)
+- [History](#history)
 
 ## Capabilities
 FreeGSNKE is capable of solving both **static** (time-<u>in</u>dependent) and **evolutive** (time-dependent) **free-boundary equilibrium problems**. For **fixed-boundary** problems we recommend using FreeGS.

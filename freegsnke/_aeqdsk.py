@@ -1,12 +1,11 @@
 """
+Low level routines for reading and writing A-EQDSK files.
 
-fields - Lists the variables stored in the file, a default value, and a description
+``fields`` lists the variables stored in the file, with default values and descriptions.
 
 Copyright 2020-2021 Ben Dudson, University of York. Email: benjamin.dudson@york.ac.uk
 
 Derived from FreeGS through FreeGS4E.
-
-SPDX-License-Identifier: LGPL-3.0-or-later
 
 This file is part of FreeGSNKE.
 
@@ -17,11 +16,11 @@ the Free Software Foundation, either version 3 of the License, or
 
 FreeGSNKE is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 GNU Lesser General Public License for more details.
 
 You should have received a copy of the GNU Lesser General Public License
-along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
+along with FreeGSNKE. If not, see <http://www.gnu.org/licenses/>.
 """
 
 from __future__ import annotations

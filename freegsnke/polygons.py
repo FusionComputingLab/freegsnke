@@ -2,9 +2,6 @@
 Routines for calculating intersection or other geometric calculations
 with polygons (e.g. walls, flux surface approximations)
 
-License
--------
-
 Copyright 2019 Ben Dudson, University of York. Email: benjamin.dudson@york.ac.uk
 
 This file is part of FreeGSNKE.
@@ -16,11 +13,11 @@ the Free Software Foundation, either version 3 of the License, or
 
 FreeGSNKE is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 GNU Lesser General Public License for more details.
 
 You should have received a copy of the GNU Lesser General Public License
-along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
+along with FreeGSNKE. If not, see <http://www.gnu.org/licenses/>.
 """
 
 from __future__ import annotations

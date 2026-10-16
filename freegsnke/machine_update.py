@@ -19,24 +19,35 @@ You should have received a copy of the GNU Lesser General Public License
 along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.   
 """
 
+from __future__ import annotations
+
 from . import machine
 
 
 class Machine(machine.Machine):
-    """Same as freegsnke.machine.Machine.
-    It can have an additional freegsnke.machine.Wall object which specifies the limiter's properties.
+    """
+    Machine with a limiter and in-place machine-description updates.
+
+    Same as freegsnke.machine.Machine, but it can have an additional
+    freegsnke.machine.Wall object which specifies the limiter's properties.
     """
 
-    def __init__(self, coils, wall=None, limiter=None):
-        """Instantiates the Machine, same as freegsnke.machine.Machine.
+    def __init__(
+        self,
+        coils: list[tuple[str, object]],
+        wall: machine.Wall | None = None,
+        limiter: machine.Wall | None = None,
+    ) -> None:
+        """
+        Instantiate the Machine, same as freegsnke.machine.Machine.
 
         Parameters
         ----------
-        coils : coils[(label, Coil|Circuit|Solenoid]
-            List of coils
-        wall : freegsnke machine.Wall object
+        coils : list of (str, object)
+            List of ``(label, coil)`` pairs, where each coil is a Coil or Circuit.
+        wall : freegsnke.machine.Wall, optional
             It is only used to display the wall in plots.
-        limiter : freegsnke machine.Wall object
+        limiter : freegsnke.machine.Wall, optional
             This is the limiter. Used to define limiter plasma configurations.
         """
         super().__init__(coils, wall)
@@ -44,19 +55,19 @@ class Machine(machine.Machine):
 
     def set_machine_description(
         self,
-        active_coils_data=None,
-        passive_coils_data=None,
-        limiter_data=None,
-        wall_data=None,
-        magnetic_probe_data=None,
-        active_coils_path=None,
-        passive_coils_path=None,
-        limiter_path=None,
-        wall_path=None,
-        magnetic_probe_path=None,
-        refine_mode="G",
-        preserve_currents=True,
-    ):
+        active_coils_data: dict | None = None,
+        passive_coils_data: list | None = None,
+        limiter_data: list | None = None,
+        wall_data: list | None = None,
+        magnetic_probe_data: dict | None = None,
+        active_coils_path: str | None = None,
+        passive_coils_path: str | None = None,
+        limiter_path: str | None = None,
+        wall_path: str | None = None,
+        magnetic_probe_path: str | None = None,
+        refine_mode: str = "G",
+        preserve_currents: bool = True,
+    ) -> Machine:
         """
         Update this machine in place from direct data dictionaries or pickle paths.
 
@@ -128,7 +139,9 @@ class Machine(machine.Machine):
             preserve_currents=preserve_currents,
         )
 
-    def update_active_coil(self, coil_name, active_coil_data, preserve_current=True):
+    def update_active_coil(
+        self, coil_name: str, active_coil_data: dict, preserve_current: bool = True
+    ) -> Machine:
         """
         Update one active coil/circuit in place from direct machine-description data.
 
@@ -169,7 +182,7 @@ class Machine(machine.Machine):
             preserve_current=preserve_current,
         )
 
-    def add_active_coil(self, coil_name, active_coil_data):
+    def add_active_coil(self, coil_name: str, active_coil_data: dict) -> Machine:
         """
         Add one new active coil/circuit in place from direct machine-description data.
 
@@ -206,7 +219,7 @@ class Machine(machine.Machine):
             active_coil_data=active_coil_data,
         )
 
-    def remove_active_coil(self, coil_name):
+    def remove_active_coil(self, coil_name: str) -> Machine:
         """
         Remove one active coil/circuit in place.
 
@@ -236,8 +249,12 @@ class Machine(machine.Machine):
         return remove_active_coil(self, coil_name=coil_name)
 
     def update_passive_structure(
-        self, name, passive_data, preserve_current=True, refine_mode="G"
-    ):
+        self,
+        name: str,
+        passive_data: dict,
+        preserve_current: bool = True,
+        refine_mode: str = "G",
+    ) -> Machine:
         """
         Update one passive structure in place from direct machine-description data.
 
@@ -283,7 +300,9 @@ class Machine(machine.Machine):
             refine_mode=refine_mode,
         )
 
-    def add_passive_structure(self, passive_data, name=None, refine_mode="G"):
+    def add_passive_structure(
+        self, passive_data: dict, name: str | None = None, refine_mode: str = "G"
+    ) -> Machine:
         """
         Add one new passive structure in place from direct machine-description data.
 
@@ -325,7 +344,7 @@ class Machine(machine.Machine):
             refine_mode=refine_mode,
         )
 
-    def remove_passive_structure(self, name):
+    def remove_passive_structure(self, name: str) -> Machine:
         """
         Remove one passive structure in place.
 

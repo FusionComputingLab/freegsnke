@@ -1,5 +1,5 @@
 """
-Classes and routines to represent coils and circuits
+Classes and routines to represent coils and circuits.
 
 License
 -------
@@ -22,6 +22,8 @@ You should have received a copy of the GNU Lesser General Public License
 along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 """
 
+from __future__ import annotations
+
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.patches import Rectangle
@@ -32,6 +34,8 @@ from .gradshafranov import Greens, GreensBr, GreensBz
 
 class MultiCoil(Coil):
     """
+    A coil represented by one or more filaments, optionally mirrored in Z=0.
+
     This class is multifunctional and can model several coil arrangements:
     1. A single PF coil
     2. A block of several PF coil filaments, modelled as
@@ -44,19 +48,8 @@ class MultiCoil(Coil):
     the upper and lower coil blocks, enabling the wiring of these blocks
     in opposite directions.
 
-    public members
-    --------------
-
-    R, Z - Location of the point coil/Locations of coil filaments
-    current - current in the coil(s) in Amps
-    turns   - Number of turns if using point coils
-    control - enable or disable control system
-    mirror - enable or disable mirroring of coil block in Z=0
-    polarity - wiring of coil blocks in circuit
-    area    - Cross-section area in m^2
-
     For multiple point coils, the total toroidal current carried by the
-    point coil block is current * turns
+    point coil block is ``current * turns``.
     """
 
     # A dtype for converting to Numpy array and storing in HDF5 files
@@ -75,38 +68,44 @@ class MultiCoil(Coil):
 
     def __init__(
         self,
-        R,
-        Z,
-        current=0.0,
-        turns=1,
-        control=True,
-        mirror=False,
-        polarity=None,
-        area=AreaCurrentLimit(),
-    ):
+        R: float | list[float] | np.ndarray,
+        Z: float | list[float] | np.ndarray,
+        current: float = 0.0,
+        turns: int = 1,
+        control: bool = True,
+        mirror: bool = False,
+        polarity: list[float] | np.ndarray | None = None,
+        area: float | AreaCurrentLimit = AreaCurrentLimit(),
+    ) -> None:
         """
-        R, Z       - Location of the coil centre. If modified moves all filaments
-        Rfil, Zfil - Locations of coil filaments (lists)
+        Set the filament locations, current, turns, mirroring and polarity.
 
-        current - current in each turn of the coil in Amps
-        turns   - Number of turns in point coil(s) block. Total block current is current * turns
-                  This is only used if R,Z are a single point
-        control - enable or disable control system
-        mirror - mirror the point/detailed coil block in Z=0, creating a circuit
-        polarity - Wiring of the circuit: same or opposite direction, [Block 1, Block 2]
-        area    - Cross-section area of block in m^2
-
-        Area can be a fixed value (e.g. 0.025 for 5x5cm coil), or can be specified
-        using a function which takes a coil as an input argument.
-        To specify a current density limit, use:
-
-        area = AreaCurrentLimit(current_density)
-
-        where current_density is in A/m^2. The area of the coil will be recalculated
-        as the coil current is changed.
-
-        The most important effect of the area is on the coil self-force:
-        The smaller the area the larger the hoop force for a given current.
+        Parameters
+        ----------
+        R : float or array-like
+            Radial location(s) in m. A single value is the coil centre (moving
+            it moves all filaments); a sequence gives the filament locations.
+        Z : float or array-like
+            Vertical location(s) in m, with the same length as ``R``.
+        current : float, optional
+            Current in each turn of the coil in A.
+        turns : int, optional
+            Number of turns in the point coil block; total block current is
+            ``current * turns``. Only used if ``R`` and ``Z`` are single
+            points, otherwise it is set to the number of filaments.
+        control : bool, optional
+            Enable or disable control system.
+        mirror : bool, optional
+            Mirror the point/detailed coil block in Z=0, creating a circuit.
+        polarity : array-like of float, optional
+            Wiring of the circuit, same or opposite direction, as
+            ``[block 1, block 2]``. Defaults to ``[1.0, 1.0]``.
+        area : float or callable, optional
+            Cross-section area of the block in m^2. Either a fixed value
+            (e.g. 0.025 for a 5x5 cm coil) or a callable taking the coil as
+            its argument, e.g. ``AreaCurrentLimit(current_density)`` with
+            the density in A/m^2, in which case the area is recalculated as
+            the coil current is changed.
         """
         # Store locations as an internal list
         if hasattr(R, "__len__"):
@@ -130,14 +129,17 @@ class MultiCoil(Coil):
         self._R_centre = np.mean(self.Rfil)
         self._Z_centre = np.mean(self.Zfil)
 
-    def copy(self):
+    def copy(self) -> MultiCoil:
         """
         Create a copy of this object.
 
+        The extra attributes ``rectangle``, ``resistivity``, ``dR`` and ``dZ``
+        are copied (by reference) if present.
+
         Returns
         -------
-        new_obj : type(self)
-            A new instance of the same class with copied and optionally modified attributes.
+        MultiCoil
+            A new instance of the same class with copied attributes.
         """
 
         new_obj = type(self)(
@@ -163,9 +165,26 @@ class MultiCoil(Coil):
 
         return new_obj
 
-    def controlPsi(self, R, Z):
+    def controlPsi(
+        self, R: float | np.ndarray, Z: float | np.ndarray
+    ) -> float | np.ndarray:
         """
-        Calculate poloidal flux at (R,Z) due to a unit current
+        Calculate poloidal flux at (R, Z) due to a unit current.
+
+        Sums the contributions of all filaments (and their Z=0 mirror images
+        if ``mirror`` is set), weighted by ``polarity``.
+
+        Parameters
+        ----------
+        R : float or np.ndarray
+            Radial coordinate(s) in m.
+        Z : float or np.ndarray
+            Vertical coordinate(s) in m.
+
+        Returns
+        -------
+        float or np.ndarray
+            The quantity at (R, Z) per unit coil current.
         """
 
         result = 0.0
@@ -177,9 +196,26 @@ class MultiCoil(Coil):
                 result += Greens(R_fil, -Z_fil, R, Z) * self.polarity[1]
         return result
 
-    def controlBr(self, R, Z):
+    def controlBr(
+        self, R: float | np.ndarray, Z: float | np.ndarray
+    ) -> float | np.ndarray:
         """
-        Calculate radial magnetic field Br at (R,Z) due to a unit current
+        Calculate radial magnetic field Br at (R, Z) due to a unit current.
+
+        Sums the contributions of all filaments (and their Z=0 mirror images
+        if ``mirror`` is set), weighted by ``polarity``.
+
+        Parameters
+        ----------
+        R : float or np.ndarray
+            Radial coordinate(s) in m.
+        Z : float or np.ndarray
+            Vertical coordinate(s) in m.
+
+        Returns
+        -------
+        float or np.ndarray
+            The quantity at (R, Z) per unit coil current.
         """
         result = 0.0
         for R_fil, Z_fil in zip(self.Rfil, self.Zfil):
@@ -190,9 +226,26 @@ class MultiCoil(Coil):
                 result += GreensBr(R_fil, -Z_fil, R, Z) * self.polarity[1]
         return result
 
-    def controlBz(self, R, Z):
+    def controlBz(
+        self, R: float | np.ndarray, Z: float | np.ndarray
+    ) -> float | np.ndarray:
         """
-        Calculate vertical magnetic field Bz at (R,Z) due to a unit current
+        Calculate vertical magnetic field Bz at (R, Z) due to a unit current.
+
+        Sums the contributions of all filaments (and their Z=0 mirror images
+        if ``mirror`` is set), weighted by ``polarity``.
+
+        Parameters
+        ----------
+        R : float or np.ndarray
+            Radial coordinate(s) in m.
+        Z : float or np.ndarray
+            Vertical coordinate(s) in m.
+
+        Returns
+        -------
+        float or np.ndarray
+            The quantity at (R, Z) per unit coil current.
         """
         result = 0.0
         for R_fil, Z_fil in zip(self.Rfil, self.Zfil):
@@ -203,8 +256,15 @@ class MultiCoil(Coil):
                 result += GreensBz(R_fil, -Z_fil, R, Z) * self.polarity[1]
         return result
 
-    def __repr__(self):
-        """Describe the filaments, current, turns and mirrored-coil configuration."""
+    def __repr__(self) -> str:
+        """
+        Describe the filaments, current, turns and mirrored-coil configuration.
+
+        Returns
+        -------
+        str
+            String representation of the coil.
+        """
         return "MultiCoil(R={0}, Z={1}, current={2:.1f}, turns={3}, control={4}, mirror={5}, polarity={6})".format(
             self.Rfil,
             self.Zfil,
@@ -215,8 +275,20 @@ class MultiCoil(Coil):
             self.polarity,
         )
 
-    def __eq__(self, other):
-        """Compare coil centres, currents, turns and control flags."""
+    def __eq__(self, other: MultiCoil) -> bool:
+        """
+        Compare coil centres, currents, turns and control flags.
+
+        Parameters
+        ----------
+        other : MultiCoil
+            Coil to compare against.
+
+        Returns
+        -------
+        bool
+            True if all of the compared attributes are equal.
+        """
         return (
             self.R == other.R
             and self.Z == other.Z
@@ -225,13 +297,32 @@ class MultiCoil(Coil):
             and self.control == other.control
         )
 
-    def __ne__(self, other):
-        """Return whether the coil groups differ under the equality comparison."""
+    def __ne__(self, other: MultiCoil) -> bool:
+        """
+        Return whether the coil groups differ under the equality comparison.
+
+        Parameters
+        ----------
+        other : MultiCoil
+            Coil to compare against.
+
+        Returns
+        -------
+        bool
+            True if the coils are not equal.
+        """
         return not self == other
 
-    def to_numpy_array(self):
+    def to_numpy_array(self) -> np.ndarray:
         """
-        Helper method for writing output
+        Convert the coil to a structured array, for writing output.
+
+        Filament coordinates are zero-padded to 500 entries.
+
+        Returns
+        -------
+        np.ndarray
+            Structured 0-d array with the coil serialization ``dtype``.
         """
 
         RZlen = len(self.Rfil)
@@ -256,8 +347,25 @@ class MultiCoil(Coil):
         )
 
     @classmethod
-    def from_numpy_array(cls, value):
-        """Restore a filament group from a structured serialization record."""
+    def from_numpy_array(cls, value: np.ndarray) -> MultiCoil:
+        """
+        Restore a filament group from a structured serialization record.
+
+        Parameters
+        ----------
+        value : np.ndarray
+            Structured array with dtype ``MultiCoil.dtype``.
+
+        Returns
+        -------
+        MultiCoil
+            The restored coil.
+
+        Raises
+        ------
+        ValueError
+            If ``value.dtype`` does not match ``MultiCoil.dtype``.
+        """
         if value.dtype != cls.dtype:
             raise ValueError(
                 "Can't create {this} from dtype: {got} (expected: {dtype})".format(
@@ -283,7 +391,7 @@ class MultiCoil(Coil):
             polarity=polarity,
         )
 
-    def plot(self, axis=None, show=False):
+    def plot(self, axis: object = None, show: bool = False) -> object:
         """
         Plot the coil geometry including the turn (filament) locations.
 
@@ -296,13 +404,12 @@ class MultiCoil(Coil):
         axis : matplotlib.axes.Axes, optional
             The Matplotlib axis to plot on. If None, a new figure and axis are created.
         show : bool, optional
-            Whether to call `plt.show()` after plotting. Default is False.
+            Passed to ``plot_nke``; ``plt.show()`` is not called.
 
         Returns
         -------
-        axis : matplotlib.axes.Axes
+        matplotlib.axes.Axes
             The axis object containing the plot.
-
         """
 
         try:
@@ -316,10 +423,23 @@ class MultiCoil(Coil):
 
         return axis
 
-    def plot_nke(self, axis=None, show=False):
+    def plot_nke(self, axis: object = None, show: bool = False) -> object:
         """
-        Plot the location of each filament, using axis if given
+        Plot each filament as a rectangle of size ``dR`` by ``dZ``.
 
+        Requires the coil to have ``dR`` and ``dZ`` attributes.
+
+        Parameters
+        ----------
+        axis : matplotlib.axes.Axes, optional
+            Axis to plot on. A new figure is created if None.
+        show : bool, optional
+            Unused.
+
+        Returns
+        -------
+        matplotlib.axes.Axes
+            The axis plotted on.
         """
 
         if axis is None:
@@ -339,32 +459,56 @@ class MultiCoil(Coil):
         return axis
 
     @property
-    def R(self):
+    def R(self) -> float:
         """
-        Major radius of the coil in m
+        Major radius of the coil centre in m.
+
+        Returns
+        -------
+        float
+            Mean radial position of the filaments.
         """
         return self._R_centre
 
     @R.setter
-    def R(self, Rnew):
+    def R(self, Rnew: float) -> None:
+        """
+        Translate every radial filament coordinate to the new coil centre.
+
+        Parameters
+        ----------
+        Rnew : float
+            New radial position of the coil centre in m.
+        """
         # Need to shift all points
-        """Translate every radial filament coordinate to the new coil centre."""
         Rshift = Rnew - self._R_centre
         for i in range(len(self.Rfil)):
             self.Rfil[i] += Rshift
         self._R_centre = Rnew
 
     @property
-    def Z(self):
+    def Z(self) -> float:
         """
-        Height of the coil in m
+        Height of the coil centre in m.
+
+        Returns
+        -------
+        float
+            Mean vertical position of the filaments.
         """
         return self._Z_centre
 
     @Z.setter
-    def Z(self, Znew):
+    def Z(self, Znew: float) -> None:
+        """
+        Translate every vertical filament coordinate to the new coil centre.
+
+        Parameters
+        ----------
+        Znew : float
+            New vertical position of the coil centre in m.
+        """
         # Need to shift all points
-        """Translate every vertical filament coordinate to the new coil centre."""
         Zshift = Znew - self._Z_centre
         for i in range(len(self.Zfil)):
             self.Zfil[i] += Zshift

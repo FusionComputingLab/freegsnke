@@ -1,5 +1,5 @@
 """
-Poloidal field coil
+Poloidal field coil.
 
 Used in machine to define coils. Can also be a base class for other coil types.
 
@@ -24,6 +24,8 @@ You should have received a copy of the GNU Lesser General Public License
 along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 """
 
+from __future__ import annotations
+
 import numbers
 
 import matplotlib.pyplot as plt
@@ -44,41 +46,46 @@ from .gradshafranov import (
 
 class AreaCurrentLimit:
     """
-    Calculate the coil area based on a fixed current density limit
+    Calculate the coil area based on a fixed current density limit.
     """
 
-    def __init__(self, current_density=3.5e9):
+    def __init__(self, current_density: float = 3.5e9) -> None:
         """
-        current_density   - Maximum current density in A/m^2
+        Set the maximum current density.
 
-        Limits in general depend on the magnetic field
+        Limits in general depend on the magnetic field.
         Typical values Nb3Sn ~ 3.5e9 A/m^2
         https://doi.org/10.1016/0167-899X(86)90010-8
 
+        Parameters
+        ----------
+        current_density : float, optional
+            Maximum current density in A/m^2.
         """
         self._current_density = current_density
 
-    def __call__(self, coil):
+    def __call__(self, coil: Coil) -> float:
         """
-        Return the area in m^2, given a Coil object
+        Return the coil area required to carry its current at the density limit.
+
+        Parameters
+        ----------
+        coil : Coil
+            Coil object with ``current`` (A) and ``turns`` attributes.
+
+        Returns
+        -------
+        float
+            Area in m^2.
         """
         return abs(coil.current * coil.turns) / self._current_density
 
 
 class Coil:
     """
-    Represents a poloidal field coil
+    Represents a poloidal field coil.
 
-    public members
-    --------------
-
-    R, Z - Location of the coil
-    current - current in the coil in Amps
-    turns   - Number of turns
-    control - enable or disable control system
-    area    - Cross-section area in m^2
-
-    The total toroidal current carried by the coil is current * turns
+    The total toroidal current carried by the coil is ``current * turns``.
     """
 
     # A dtype for converting to Numpy array and storing in HDF5 files
@@ -93,27 +100,38 @@ class Coil:
     )
 
     def __init__(
-        self, R, Z, current=0.0, turns=1, control=True, area=AreaCurrentLimit()
-    ):
+        self,
+        R: float,
+        Z: float,
+        current: float = 0.0,
+        turns: int = 1,
+        control: bool = True,
+        area: float | AreaCurrentLimit = AreaCurrentLimit(),
+    ) -> None:
         """
-        R, Z - Location of the coil
-
-        current - current in each turn of the coil in Amps
-        turns   - Number of turns. Total coil current is current * turns
-        control - enable or disable control system
-        area    - Cross-section area in m^2
-
-        Area can be a fixed value (e.g. 0.025 for 5x5cm coil), or can be specified
-        using a function which takes a coil as an input argument.
-        To specify a current density limit, use:
-
-        area = AreaCurrentLimit(current_density)
-
-        where current_density is in A/m^2. The area of the coil will be recalculated
-        as the coil current is changed.
+        Set the coil location, current, turns, control flag and area.
 
         The most important effect of the area is on the coil self-force:
-        The smaller the area the larger the hoop force for a given current.
+        the smaller the area the larger the hoop force for a given current.
+
+        Parameters
+        ----------
+        R : float
+            Radial location of the coil in m.
+        Z : float
+            Vertical location of the coil in m.
+        current : float, optional
+            Current in each turn of the coil in A.
+        turns : int, optional
+            Number of turns. Total coil current is ``current * turns``.
+        control : bool, optional
+            Enable or disable control system.
+        area : float or callable, optional
+            Cross-section area in m^2. Either a fixed value (e.g. 0.025 for
+            a 5x5 cm coil) or a callable taking the coil as its argument,
+            e.g. ``AreaCurrentLimit(current_density)`` with the density in
+            A/m^2, in which case the area is recalculated as the coil
+            current is changed.
         """
         self.R = R
         self.Z = Z
@@ -123,21 +141,40 @@ class Coil:
         self.control = control
         self.area = area
 
-    def copy(self):
-        """Creates a new object that has identical attributes to self (a copy).
+    def copy(self) -> Coil:
+        """
+        Create a new object that has identical attributes to self (a copy).
 
         The copy method will need to be implemented for any subclasses of Coil
         to ensure the correct __init__ signature is called and to ensure
         lists/other object attributes are copied where appropriate (not passed
         by reference).
+
+        Returns
+        -------
+        Coil
+            The copied coil.
         """
         new_obj = type(self)(self.R, self.Z, self.current, self.turns, self.area)
         new_obj._area = self.area
         return new_obj
 
-    def psi(self, R, Z):
+    def psi(self, R: float | np.ndarray, Z: float | np.ndarray) -> float | np.ndarray:
         """
-        Calculate poloidal flux at (R,Z)
+        Calculate poloidal flux at (R, Z) due to the coil current.
+
+        Parameters
+        ----------
+        R : float or np.ndarray
+            Radial coordinate(s) in m.
+        Z : float or np.ndarray
+            Vertical coordinate(s) in m.
+
+        Returns
+        -------
+        float or np.ndarray
+            Poloidal flux at (R, Z); 0 if the coil current is negligible
+            (|current| <= 1e-5 A).
         """
         if np.abs(self.current) > 1e-5:
             psi_ = self.controlPsi(R, Z) * self.current
@@ -145,177 +182,481 @@ class Coil:
             psi_ = 0
         return psi_
 
-    def createPsiGreens(self, R, Z):
+    def createPsiGreens(
+        self, R: float | np.ndarray, Z: float | np.ndarray
+    ) -> np.ndarray:
         """
-        Calculate the Greens function at every point, and return
-        array. This will be passed back to evaluate Psi in
-        calcPsiFromGreens()
+        Calculate the poloidal flux Green's function at every point.
+
+        Parameters
+        ----------
+        R : float or np.ndarray
+            Radial coordinate(s) in m.
+        Z : float or np.ndarray
+            Vertical coordinate(s) in m.
+
+        Returns
+        -------
+        np.ndarray
+            Green's function values (per unit current) at the given points.
         """
         return self.controlPsi(R, Z)
 
-    def createPsiGreensVec(self, R, Z):
+    def createPsiGreensVec(
+        self, R: float | np.ndarray, Z: float | np.ndarray
+    ) -> np.ndarray:
         """
-        Calculate the Greens function at every point, and return
-        array. This will be passed back to evaluate Psi in
-        calcPsiFromGreens()
+        Calculate the poloidal flux Green's function at every point.
+
+        Parameters
+        ----------
+        R : float or np.ndarray
+            Radial coordinate(s) in m.
+        Z : float or np.ndarray
+            Vertical coordinate(s) in m.
+
+        Returns
+        -------
+        np.ndarray
+            Green's function values (per unit current) at the given points.
         """
         return self.controlPsi(R, Z)
 
-    def createBrGreensVec(self, R, Z):
+    def createBrGreensVec(
+        self, R: float | np.ndarray, Z: float | np.ndarray
+    ) -> np.ndarray:
         """
-        Calculate Br Greens functions
+        Calculate the Br Green's function at every point.
+
+        Parameters
+        ----------
+        R : float or np.ndarray
+            Radial coordinate(s) in m.
+        Z : float or np.ndarray
+            Vertical coordinate(s) in m.
+
+        Returns
+        -------
+        np.ndarray
+            Green's function values (per unit current) at the given points.
         """
         return self.controlBr(R, Z)
 
-    def createBzGreensVec(self, R, Z):
+    def createBzGreensVec(
+        self, R: float | np.ndarray, Z: float | np.ndarray
+    ) -> np.ndarray:
         """
-        Calculate Bz Greens functions
+        Calculate the Bz Green's function at every point.
+
+        Parameters
+        ----------
+        R : float or np.ndarray
+            Radial coordinate(s) in m.
+        Z : float or np.ndarray
+            Vertical coordinate(s) in m.
+
+        Returns
+        -------
+        np.ndarray
+            Green's function values (per unit current) at the given points.
         """
         return self.controlBz(R, Z)
 
-    def createdBrdrGreensVec(self, R, Z):
+    def createdBrdrGreensVec(
+        self, R: float | np.ndarray, Z: float | np.ndarray
+    ) -> np.ndarray:
         """
-        Calculate dBrdr Greens functions
+        Calculate the dBrdr Green's function at every point.
+
+        Parameters
+        ----------
+        R : float or np.ndarray
+            Radial coordinate(s) in m.
+        Z : float or np.ndarray
+            Vertical coordinate(s) in m.
+
+        Returns
+        -------
+        np.ndarray
+            Green's function values (per unit current) at the given points.
         """
         return self.controldBrdr(R, Z)
 
-    def createdBzdzGreensVec(self, R, Z):
+    def createdBzdzGreensVec(
+        self, R: float | np.ndarray, Z: float | np.ndarray
+    ) -> np.ndarray:
         """
-        Calculate dBzdz Greens functions
+        Calculate the dBzdz Green's function at every point.
+
+        Parameters
+        ----------
+        R : float or np.ndarray
+            Radial coordinate(s) in m.
+        Z : float or np.ndarray
+            Vertical coordinate(s) in m.
+
+        Returns
+        -------
+        np.ndarray
+            Green's function values (per unit current) at the given points.
         """
         return self.controldBzdz(R, Z)
 
-    def createdBrdzGreensVec(self, R, Z):
+    def createdBrdzGreensVec(
+        self, R: float | np.ndarray, Z: float | np.ndarray
+    ) -> np.ndarray:
         """
-        Calculate dBrdz Greens functions
+        Calculate the dBrdz Green's function at every point.
+
+        Parameters
+        ----------
+        R : float or np.ndarray
+            Radial coordinate(s) in m.
+        Z : float or np.ndarray
+            Vertical coordinate(s) in m.
+
+        Returns
+        -------
+        np.ndarray
+            Green's function values (per unit current) at the given points.
         """
         return self.controldBrdz(R, Z)
 
-    def createdBzdrGreensVec(self, R, Z):
+    def createdBzdrGreensVec(
+        self, R: float | np.ndarray, Z: float | np.ndarray
+    ) -> np.ndarray:
         """
-        Calculate dBzdr Greens functions
+        Calculate the dBzdr Green's function at every point.
+
+        Parameters
+        ----------
+        R : float or np.ndarray
+            Radial coordinate(s) in m.
+        Z : float or np.ndarray
+            Vertical coordinate(s) in m.
+
+        Returns
+        -------
+        np.ndarray
+            Green's function values (per unit current) at the given points.
         """
         return self.controldBzdr(R, Z)
 
-    def calcPsiFromGreens(self, pgreen):
+    def calcPsiFromGreens(self, pgreen: np.ndarray) -> np.ndarray:
         """
-        Calculate plasma psi from Greens functions and current
+        Calculate plasma psi from Greens functions and current.
+
+        Parameters
+        ----------
+        pgreen : np.ndarray
+            Poloidal flux Green's function values (per unit current).
+
+        Returns
+        -------
+        np.ndarray
+            Poloidal flux due to the coil, ``current * pgreen``.
         """
         return self.current * pgreen
 
-    def Br(self, R, Z):
+    def Br(self, R: float | np.ndarray, Z: float | np.ndarray) -> float | np.ndarray:
         """
-        Calculate radial magnetic field Br at (R,Z)
+        Calculate radial magnetic field Br at (R, Z) due to the coil current.
+
+        Parameters
+        ----------
+        R : float or np.ndarray
+            Radial coordinate(s) in m.
+        Z : float or np.ndarray
+            Vertical coordinate(s) in m.
+
+        Returns
+        -------
+        float or np.ndarray
+            The quantity at (R, Z); 0 if the coil current is negligible
+            (|current| <= 1e-5 A).
         """
         if np.abs(self.current) > 1e-5:
-            br = self.controlBr(R, Z) * self.current
+            val = self.controlBr(R, Z) * self.current
         else:
-            br = 0
-        return br
+            val = 0
+        return val
 
-    def Bz(self, R, Z):
+    def Bz(self, R: float | np.ndarray, Z: float | np.ndarray) -> float | np.ndarray:
         """
-        Calculate vertical magnetic field Bz at (R,Z)
+        Calculate vertical magnetic field Bz at (R, Z) due to the coil current.
+
+        Parameters
+        ----------
+        R : float or np.ndarray
+            Radial coordinate(s) in m.
+        Z : float or np.ndarray
+            Vertical coordinate(s) in m.
+
+        Returns
+        -------
+        float or np.ndarray
+            The quantity at (R, Z); 0 if the coil current is negligible
+            (|current| <= 1e-5 A).
         """
         if np.abs(self.current) > 1e-5:
-            bz = self.controlBz(R, Z) * self.current
+            val = self.controlBz(R, Z) * self.current
         else:
-            bz = 0
-        return bz
+            val = 0
+        return val
 
-    def dBrdr(self, R, Z):
+    def dBrdr(self, R: float | np.ndarray, Z: float | np.ndarray) -> float | np.ndarray:
         """
-        Calculate magnetic field dBrdr at (R,Z)
+        Calculate magnetic field gradient dBr/dr at (R, Z) due to the coil current.
+
+        Parameters
+        ----------
+        R : float or np.ndarray
+            Radial coordinate(s) in m.
+        Z : float or np.ndarray
+            Vertical coordinate(s) in m.
+
+        Returns
+        -------
+        float or np.ndarray
+            The quantity at (R, Z); 0 if the coil current is negligible
+            (|current| <= 1e-5 A).
         """
         if np.abs(self.current) > 1e-5:
-            br = self.controldBrdr(R, Z) * self.current
+            val = self.controldBrdr(R, Z) * self.current
         else:
-            br = 0
-        return br
+            val = 0
+        return val
 
-    def dBzdz(self, R, Z):
+    def dBzdz(self, R: float | np.ndarray, Z: float | np.ndarray) -> float | np.ndarray:
         """
-        Calculate magnetic field dBzdz at (R,Z)
+        Calculate magnetic field gradient dBz/dz at (R, Z) due to the coil current.
+
+        Parameters
+        ----------
+        R : float or np.ndarray
+            Radial coordinate(s) in m.
+        Z : float or np.ndarray
+            Vertical coordinate(s) in m.
+
+        Returns
+        -------
+        float or np.ndarray
+            The quantity at (R, Z); 0 if the coil current is negligible
+            (|current| <= 1e-5 A).
         """
         if np.abs(self.current) > 1e-5:
-            bz = self.controldBzdz(R, Z) * self.current
+            val = self.controldBzdz(R, Z) * self.current
         else:
-            bz = 0
-        return bz
+            val = 0
+        return val
 
-    def dBrdz(self, R, Z):
+    def dBrdz(self, R: float | np.ndarray, Z: float | np.ndarray) -> float | np.ndarray:
         """
-        Calculate magnetic field dBrdz at (R,Z)
+        Calculate magnetic field gradient dBr/dz at (R, Z) due to the coil current.
+
+        Parameters
+        ----------
+        R : float or np.ndarray
+            Radial coordinate(s) in m.
+        Z : float or np.ndarray
+            Vertical coordinate(s) in m.
+
+        Returns
+        -------
+        float or np.ndarray
+            The quantity at (R, Z); 0 if the coil current is negligible
+            (|current| <= 1e-5 A).
         """
         if np.abs(self.current) > 1e-5:
-            br = self.controldBrdz(R, Z) * self.current
+            val = self.controldBrdz(R, Z) * self.current
         else:
-            br = 0
-        return br
+            val = 0
+        return val
 
-    def dBzdr(self, R, Z):
+    def dBzdr(self, R: float | np.ndarray, Z: float | np.ndarray) -> float | np.ndarray:
         """
-        Calculate magnetic field dBzdr at (R,Z)
+        Calculate magnetic field gradient dBz/dr at (R, Z) due to the coil current.
+
+        Parameters
+        ----------
+        R : float or np.ndarray
+            Radial coordinate(s) in m.
+        Z : float or np.ndarray
+            Vertical coordinate(s) in m.
+
+        Returns
+        -------
+        float or np.ndarray
+            The quantity at (R, Z); 0 if the coil current is negligible
+            (|current| <= 1e-5 A).
         """
         if np.abs(self.current) > 1e-5:
-            bz = self.controldBzdr(R, Z) * self.current
+            val = self.controldBzdr(R, Z) * self.current
         else:
-            bz = 0
-        return bz
+            val = 0
+        return val
 
-    def controlPsi(self, R, Z):
+    def controlPsi(
+        self, R: float | np.ndarray, Z: float | np.ndarray
+    ) -> float | np.ndarray:
         """
-        Calculate poloidal flux at (R,Z) due to a unit current
+        Calculate poloidal flux at (R, Z) due to a unit current.
+
+        Parameters
+        ----------
+        R : float or np.ndarray
+            Radial coordinate(s) in m.
+        Z : float or np.ndarray
+            Vertical coordinate(s) in m.
+
+        Returns
+        -------
+        float or np.ndarray
+            The quantity per unit coil current (scaled by the number of turns).
         """
         return Greens(self.R, self.Z, R, Z) * self.turns
 
-    def controlBr(self, R, Z):
+    def controlBr(
+        self, R: float | np.ndarray, Z: float | np.ndarray
+    ) -> float | np.ndarray:
         """
-        Calculate radial magnetic field Br at (R,Z) due to a unit current
+        Calculate radial magnetic field Br at (R, Z) due to a unit current.
+
+        Parameters
+        ----------
+        R : float or np.ndarray
+            Radial coordinate(s) in m.
+        Z : float or np.ndarray
+            Vertical coordinate(s) in m.
+
+        Returns
+        -------
+        float or np.ndarray
+            The quantity per unit coil current (scaled by the number of turns).
         """
         return GreensBr(self.R, self.Z, R, Z) * self.turns
 
-    def controlBz(self, R, Z):
+    def controlBz(
+        self, R: float | np.ndarray, Z: float | np.ndarray
+    ) -> float | np.ndarray:
         """
-        Calculate vertical magnetic field Bz at (R,Z) due to a unit current
+        Calculate vertical magnetic field Bz at (R, Z) due to a unit current.
+
+        Parameters
+        ----------
+        R : float or np.ndarray
+            Radial coordinate(s) in m.
+        Z : float or np.ndarray
+            Vertical coordinate(s) in m.
+
+        Returns
+        -------
+        float or np.ndarray
+            The quantity per unit coil current (scaled by the number of turns).
         """
         return GreensBz(self.R, self.Z, R, Z) * self.turns
 
-    def controldBrdr(self, R, Z):
+    def controldBrdr(
+        self, R: float | np.ndarray, Z: float | np.ndarray
+    ) -> float | np.ndarray:
         """
-        Calculate magnetic field dBrdr at (R,Z) due to a unit current
+        Calculate dBr/dr at (R, Z) due to a unit current.
+
+        Parameters
+        ----------
+        R : float or np.ndarray
+            Radial coordinate(s) in m.
+        Z : float or np.ndarray
+            Vertical coordinate(s) in m.
+
+        Returns
+        -------
+        float or np.ndarray
+            The quantity per unit coil current (scaled by the number of turns).
         """
         return GreensdBrdr(self.R, self.Z, R, Z) * self.turns
 
-    def controldBzdz(self, R, Z):
+    def controldBzdz(
+        self, R: float | np.ndarray, Z: float | np.ndarray
+    ) -> float | np.ndarray:
         """
-        Calculate magnetic field dBzdz at (R,Z) due to a unit current
+        Calculate dBz/dz at (R, Z) due to a unit current.
+
+        Parameters
+        ----------
+        R : float or np.ndarray
+            Radial coordinate(s) in m.
+        Z : float or np.ndarray
+            Vertical coordinate(s) in m.
+
+        Returns
+        -------
+        float or np.ndarray
+            The quantity per unit coil current (scaled by the number of turns).
         """
         return GreensdBzdz(self.R, self.Z, R, Z) * self.turns
 
-    def controldBrdz(self, R, Z):
+    def controldBrdz(
+        self, R: float | np.ndarray, Z: float | np.ndarray
+    ) -> float | np.ndarray:
         """
-        Calculate magnetic field dBrdz at (R,Z) due to a unit current
+        Calculate dBr/dz at (R, Z) due to a unit current.
+
+        Parameters
+        ----------
+        R : float or np.ndarray
+            Radial coordinate(s) in m.
+        Z : float or np.ndarray
+            Vertical coordinate(s) in m.
+
+        Returns
+        -------
+        float or np.ndarray
+            The quantity per unit coil current (scaled by the number of turns).
         """
         return GreensdBrdz(self.R, self.Z, R, Z) * self.turns
 
-    def controldBzdr(self, R, Z):
+    def controldBzdr(
+        self, R: float | np.ndarray, Z: float | np.ndarray
+    ) -> float | np.ndarray:
         """
-        Calculate magnetic field dBzdr at (R,Z) due to a unit current
+        Calculate dBz/dr at (R, Z) due to a unit current.
+
+        Parameters
+        ----------
+        R : float or np.ndarray
+            Radial coordinate(s) in m.
+        Z : float or np.ndarray
+            Vertical coordinate(s) in m.
+
+        Returns
+        -------
+        float or np.ndarray
+            The quantity per unit coil current (scaled by the number of turns).
         """
         return GreensdBzdr(self.R, self.Z, R, Z) * self.turns
 
-    def getForces(self, equilibrium):
+    def getForces(self, equilibrium: object) -> np.ndarray:
         """
-        Calculate forces on the coils in Newtons
-
-        Returns an array of two elements: [ Fr, Fz ]
-
+        Calculate forces on the coil in Newtons.
 
         Force on coil due to its own current:
-            Lorentz self‐forces on curved current loops
+            Lorentz self-forces on curved current loops
             Physics of Plasmas 1, 3425 (1998); https://doi.org/10.1063/1.870491
             David A. Garren and James Chen
+
+        The coil current is temporarily set to zero to evaluate the field
+        due to all other coils and the plasma, then restored.
+
+        Parameters
+        ----------
+        equilibrium : object
+            Equilibrium providing ``Br(R, Z)`` and ``Bz(R, Z)`` methods.
+
+        Returns
+        -------
+        np.ndarray
+            Array of two elements, ``[Fr, Fz]``, in N.
         """
         current = self.current  # current per turn
         total_current = current * self.turns  # Total toroidal current
@@ -350,14 +691,33 @@ class Coil:
             ]
         )  # Jphi x Br = - Fz
 
-    def __repr__(self):
-        """Describe the coil position, current, turns and control flag."""
+    def __repr__(self) -> str:
+        """
+        Describe the coil position, current, turns and control flag.
+
+        Returns
+        -------
+        str
+            String representation of the coil.
+        """
         return "Coil(R={0}, Z={1}, current={2:.1f}, turns={3}, control={4})".format(
             self.R, self.Z, self.current, self.turns, self.control
         )
 
-    def __eq__(self, other):
-        """Compare coil position, current, turns and control flag."""
+    def __eq__(self, other: Coil) -> bool:
+        """
+        Compare coil position, current, turns and control flag.
+
+        Parameters
+        ----------
+        other : Coil
+            Coil to compare against.
+
+        Returns
+        -------
+        bool
+            True if all of the compared attributes are equal.
+        """
         return (
             self.R == other.R
             and self.Z == other.Z
@@ -366,13 +726,30 @@ class Coil:
             and self.control == other.control
         )
 
-    def __ne__(self, other):
-        """Return whether the coils differ under the equality comparison."""
+    def __ne__(self, other: Coil) -> bool:
+        """
+        Return whether the coils differ under the equality comparison.
+
+        Parameters
+        ----------
+        other : Coil
+            Coil to compare against.
+
+        Returns
+        -------
+        bool
+            True if the coils are not equal.
+        """
         return not self == other
 
-    def to_numpy_array(self):
+    def to_numpy_array(self) -> np.ndarray:
         """
-        Helper method for writing output
+        Convert the coil to a structured array, for writing output.
+
+        Returns
+        -------
+        np.ndarray
+            Structured 0-d array with the coil serialization ``dtype``.
         """
         return np.array(
             (self.R, self.Z, self.current, self.turns, self.control),
@@ -380,8 +757,25 @@ class Coil:
         )
 
     @classmethod
-    def from_numpy_array(cls, value):
-        """Restore a coil from a structured record with the coil serialization dtype."""
+    def from_numpy_array(cls, value: np.ndarray) -> Coil:
+        """
+        Restore a coil from a structured record with the coil serialization dtype.
+
+        Parameters
+        ----------
+        value : np.ndarray
+            Structured array with dtype ``Coil.dtype``.
+
+        Returns
+        -------
+        Coil
+            The restored coil.
+
+        Raises
+        ------
+        ValueError
+            If ``value.dtype`` does not match ``Coil.dtype``.
+        """
         if value.dtype != cls.dtype:
             raise ValueError(
                 "Can't create {this} from dtype: {got} (expected: {dtype})".format(
@@ -391,9 +785,16 @@ class Coil:
         return Coil(*value[()])
 
     @property
-    def area(self):
+    def area(self) -> float:
         """
-        The cross-section area of the coil in m^2
+        The cross-section area of the coil in m^2.
+
+        If the stored area is a callable it is evaluated with the coil.
+
+        Returns
+        -------
+        float
+            Area in m^2.
         """
         if isinstance(self._area, numbers.Number):
             assert self._area >= 0
@@ -404,15 +805,35 @@ class Coil:
         return area
 
     @area.setter
-    def area(self, area):
-        """Set the cross-sectional area or a callable that computes it in square metres."""
+    def area(self, area: float | AreaCurrentLimit) -> None:
+        """
+        Set the cross-sectional area or a callable that computes it.
+
+        Parameters
+        ----------
+        area : float or callable
+            Area in m^2, or a callable taking the coil and returning the area.
+        """
         self._area = area
 
-    def plot(self, axis=None, show=False):
+    def plot(self, axis: object = None, show: bool = False) -> object:
         """
-        Plot the coil location, using axis if given
+        Plot the coil location, using axis if given.
 
-        The area of the coil is used to set the radius
+        The area of the coil is used to set the radius, unless the coil has
+        rectangular dimensions ``dR`` and ``dZ`` (see ``plot_nke``).
+
+        Parameters
+        ----------
+        axis : matplotlib.axes.Axes, optional
+            Axis to plot on. A new figure is created if None.
+        show : bool, optional
+            Passed to ``plot_nke``; unused otherwise.
+
+        Returns
+        -------
+        matplotlib.axes.Axes
+            The axis plotted on.
         """
 
         try:
@@ -436,10 +857,23 @@ class Coil:
 
         return axis
 
-    def plot_nke(self, axis=None, show=False):
+    def plot_nke(self, axis: object = None, show: bool = False) -> object:
         """
-        Plot the coil location, using axis if given
+        Plot the coil as a rectangle of size ``dR`` by ``dZ``.
 
+        Requires the coil to have ``dR`` and ``dZ`` attributes.
+
+        Parameters
+        ----------
+        axis : matplotlib.axes.Axes, optional
+            Axis to plot on. A new figure is created if None.
+        show : bool, optional
+            Unused.
+
+        Returns
+        -------
+        matplotlib.axes.Axes
+            The axis plotted on.
         """
         self.rectangle = Rectangle(
             (self.R - self.dR / 2, self.Z - self.dZ / 2),

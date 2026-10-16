@@ -23,6 +23,8 @@ You should have received a copy of the GNU Lesser General Public License
 along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 """
 
+from __future__ import annotations
+
 import numpy as np
 
 from . import polygons, quadrature
@@ -32,18 +34,9 @@ from .gradshafranov import Greens, GreensBr, GreensBz
 
 class ShapedCoil(Coil):
     """
-    Represents a coil with a specified shape
+    Represents a coil with a uniform current density over a polygonal region.
 
-    public members
-    --------------
-
-    R, Z - Location of the point coil/Locations of coil filaments
-    current - current in the coil(s) in Amps
-    turns   - Number of turns if using point coils
-    control - enable or disable control system
-    area    - Cross-section area in m^2
-
-    The total toroidal current carried by the coil block is current * turns
+    The total toroidal current carried by the coil block is ``current * turns``.
     """
 
     # A dtype for converting to Numpy array and storing in HDF5 files
@@ -59,17 +52,31 @@ class ShapedCoil(Coil):
         ]
     )
 
-    def __init__(self, shape, current=0.0, turns=1, control=True, npoints=6):
+    def __init__(
+        self,
+        shape: list[tuple[float, float]],
+        current: float = 0.0,
+        turns: int = 1,
+        control: bool = True,
+        npoints: int = 6,
+    ) -> None:
         """
-        Inputs
-        ------
-        shape     outline of the coil shape as a list of points [(r1,z1), (r2,z2), ...]
-                  Must have more than two points
-        current   The current in the circuit. The total current is current * turns
-        turns     Number of turns in point coil(s) block. Total block current is current * turns
-        control   enable or disable control system
-        npoints   Number of quadrature points per triangle. Valid choices: 1, 3, 6
+        Set the coil outline, current, turns and quadrature order.
 
+        Parameters
+        ----------
+        shape : list of (float, float)
+            Outline of the coil shape as a list of points
+            ``[(r1, z1), (r2, z2), ...]`` in m. Must have more than two points.
+        current : float, optional
+            The current in the circuit in A. The total current is
+            ``current * turns``.
+        turns : int, optional
+            Number of turns in the coil block.
+        control : bool, optional
+            Enable or disable control system.
+        npoints : int, optional
+            Number of quadrature points per triangle. Valid choices: 1, 3, 6.
         """
         assert len(shape) > 2
 
@@ -88,8 +95,15 @@ class ShapedCoil(Coil):
         self.npoints_per_triangle = npoints
         self._points = quadrature.polygon_quad(shape, n=npoints)
 
-    def copy(self):
-        """Copy the polygon and quadrature points while preserving coil settings."""
+    def copy(self) -> ShapedCoil:
+        """
+        Copy the polygon and quadrature points while preserving coil settings.
+
+        Returns
+        -------
+        ShapedCoil
+            The copied coil.
+        """
         R_centre = np.copy(self._R_centre)
         Z_centre = np.copy(self._Z_centre)
         points = np.copy(self._points)
@@ -108,82 +122,192 @@ class ShapedCoil(Coil):
 
         return new_obj
 
-    def controlPsi(self, R, Z):
+    def controlPsi(
+        self, R: float | np.ndarray, Z: float | np.ndarray
+    ) -> float | np.ndarray:
         """
-        Calculate poloidal flux at (R,Z) due to a unit current
+        Calculate poloidal flux at (R, Z) due to a unit current.
+
+        Sums the weighted contributions of the quadrature points.
+
+        Parameters
+        ----------
+        R : float or np.ndarray
+            Radial coordinate(s) in m.
+        Z : float or np.ndarray
+            Vertical coordinate(s) in m.
+
+        Returns
+        -------
+        float or np.ndarray
+            The quantity at (R, Z) per unit coil current.
         """
         result = 0.0
         for R_fil, Z_fil, weight in self._points:
             result += Greens(R_fil, Z_fil, R, Z) * weight
         return result
 
-    def controlBr(self, R, Z):
+    def controlBr(
+        self, R: float | np.ndarray, Z: float | np.ndarray
+    ) -> float | np.ndarray:
         """
-        Calculate radial magnetic field Br at (R,Z) due to a unit current
+        Calculate radial magnetic field Br at (R, Z) due to a unit current.
+
+        Sums the weighted contributions of the quadrature points.
+
+        Parameters
+        ----------
+        R : float or np.ndarray
+            Radial coordinate(s) in m.
+        Z : float or np.ndarray
+            Vertical coordinate(s) in m.
+
+        Returns
+        -------
+        float or np.ndarray
+            The quantity at (R, Z) per unit coil current.
         """
         result = 0.0
         for R_fil, Z_fil, weight in self._points:
             result += GreensBr(R_fil, Z_fil, R, Z) * weight
         return result
 
-    def controlBz(self, R, Z):
+    def controlBz(
+        self, R: float | np.ndarray, Z: float | np.ndarray
+    ) -> float | np.ndarray:
         """
-        Calculate vertical magnetic field Bz at (R,Z) due to a unit current
+        Calculate vertical magnetic field Bz at (R, Z) due to a unit current.
+
+        Sums the weighted contributions of the quadrature points.
+
+        Parameters
+        ----------
+        R : float or np.ndarray
+            Radial coordinate(s) in m.
+        Z : float or np.ndarray
+            Vertical coordinate(s) in m.
+
+        Returns
+        -------
+        float or np.ndarray
+            The quantity at (R, Z) per unit coil current.
         """
         result = 0.0
         for R_fil, Z_fil, weight in self._points:
             result += GreensBz(R_fil, Z_fil, R, Z) * weight
         return result
 
-    def __repr__(self):
-        """Describe the polygon, current, turns and control flag."""
+    def __repr__(self) -> str:
+        """
+        Describe the polygon, current, turns and control flag.
+
+        Returns
+        -------
+        str
+            String representation of the coil.
+        """
         return "ShapedCoil({0}, current={1:.1f}, turns={2}, control={3})".format(
             self.shape, self.current, self.turns, self.control
         )
 
     @property
-    def R(self):
+    def R(self) -> float:
         """
-        Major radius of the coil in m
+        Major radius of the coil centre in m.
+
+        Returns
+        -------
+        float
+            Mean radial position of the outline vertices.
         """
         return self._R_centre
 
     @R.setter
-    def R(self, Rnew):
+    def R(self, Rnew: float) -> None:
+        """
+        Translate radial quadrature coordinates to the requested centre.
+
+        Parameters
+        ----------
+        Rnew : float
+            New radial position of the coil centre in m.
+        """
         # Need to shift all points
-        """Translate radial quadrature coordinates to the requested centre."""
         Rshift = Rnew - self._R_centre
         self._points = [(r + Rshift, z, w) for r, z, w in self._points]
         self._R_centre = Rnew
 
     @property
-    def Z(self):
+    def Z(self) -> float:
         """
-        Height of the coil in m
+        Height of the coil centre in m.
+
+        Returns
+        -------
+        float
+            Mean vertical position of the outline vertices.
         """
         return self._Z_centre
 
     @Z.setter
-    def Z(self, Znew):
+    def Z(self, Znew: float) -> None:
+        """
+        Translate vertical quadrature coordinates to the requested centre.
+
+        Parameters
+        ----------
+        Znew : float
+            New vertical position of the coil centre in m.
+        """
         # Need to shift all points
-        """Translate vertical quadrature coordinates to the requested centre."""
         Zshift = Znew - self._Z_centre
         self._points = [(r, z + Zshift, w) for r, z, w in self._points]
         self._Z_centre = Znew
 
     @property
-    def area(self):
-        """Return the fixed polygon cross-sectional area in square metres."""
+    def area(self) -> float:
+        """
+        Fixed polygon cross-sectional area.
+
+        Returns
+        -------
+        float
+            Area in m^2.
+        """
         return self._area
 
     @area.setter
-    def area(self, area):
-        """Reject area changes because the cross-section is fixed by the polygon."""
+    def area(self, area: float) -> None:
+        """
+        Reject area changes because the cross-section is fixed by the polygon.
+
+        Parameters
+        ----------
+        area : float
+            Requested area (ignored).
+
+        Raises
+        ------
+        ValueError
+            Always, since the area of a ShapedCoil is fixed.
+        """
         raise ValueError("Area of a ShapedCoil is fixed")
 
-    def plot(self, axis=None, show=False):
+    def plot(self, axis: object = None, show: bool = False) -> object:
         """
-        Plot the coil shape, using axis if given
+        Plot the coil shape, using axis if given.
+
+        Parameters
+        ----------
+        axis : matplotlib.axes.Axes, optional
+            Axis to plot on. A new figure is created if None.
+        show : bool, optional
+            Unused.
+
+        Returns
+        -------
+        matplotlib.axes.Axes
+            The axis plotted on.
         """
         import matplotlib.pyplot as plt
 
@@ -202,9 +326,16 @@ class ShapedCoil(Coil):
 
         return axis
 
-    def to_numpy_array(self):
+    def to_numpy_array(self) -> np.ndarray:
         """
-        Helper method for writing output
+        Convert the coil to a structured array, for writing output.
+
+        The outline is zero-padded to 10 points.
+
+        Returns
+        -------
+        np.ndarray
+            Structured 0-d array with the coil serialization ``dtype``.
         """
         RZlen = len(self.shape)
         R = np.zeros(10)
@@ -226,8 +357,25 @@ class ShapedCoil(Coil):
         )
 
     @classmethod
-    def from_numpy_array(cls, value):
-        """Restore the coil polygon and settings from a structured record."""
+    def from_numpy_array(cls, value: np.ndarray) -> ShapedCoil:
+        """
+        Restore the coil polygon and settings from a structured record.
+
+        Parameters
+        ----------
+        value : np.ndarray
+            Structured array with dtype ``ShapedCoil.dtype``.
+
+        Returns
+        -------
+        ShapedCoil
+            The restored coil.
+
+        Raises
+        ------
+        ValueError
+            If ``value.dtype`` does not match ``ShapedCoil.dtype``.
+        """
         if value.dtype != cls.dtype:
             raise ValueError(
                 "Can't create {this} from dtype: {got} (expected: {dtype})".format(
@@ -250,8 +398,20 @@ class ShapedCoil(Coil):
             npoints=npoints,
         )
 
-    def __eq__(self, other):
-        """Compare polygon coordinates, current, turns and quadrature settings."""
+    def __eq__(self, other: ShapedCoil) -> bool:
+        """
+        Compare polygon coordinates, current, turns and quadrature settings.
+
+        Parameters
+        ----------
+        other : ShapedCoil
+            Coil to compare against.
+
+        Returns
+        -------
+        bool
+            True if the compared attributes are equal.
+        """
         return (
             np.allclose(self.shape, other.shape)
             and self.current == other.current
@@ -260,6 +420,18 @@ class ShapedCoil(Coil):
             and self.npoints_per_triangle == other.npoints_per_triangle
         )
 
-    def __ne__(self, other):
-        """Return whether the shaped coils differ under the equality comparison."""
+    def __ne__(self, other: ShapedCoil) -> bool:
+        """
+        Return whether the shaped coils differ under the equality comparison.
+
+        Parameters
+        ----------
+        other : ShapedCoil
+            Coil to compare against.
+
+        Returns
+        -------
+        bool
+            True if the coils are not equal.
+        """
         return not self == other

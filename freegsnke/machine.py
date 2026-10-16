@@ -21,6 +21,10 @@ You should have received a copy of the GNU Lesser General Public License
 along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 """
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 import numpy as np
 from numpy import linspace
 
@@ -28,6 +32,9 @@ from .coil import AreaCurrentLimit, Coil
 from .gradshafranov import Greens, GreensBr, GreensBz
 from .multi_coil import MultiCoil
 from .shaped_coil import ShapedCoil
+
+if TYPE_CHECKING:
+    from matplotlib.axes import Axes
 
 # We need this for the `label` part of the Circuit dtype for writing
 # to HDF5 files. See the following for information:
@@ -68,35 +75,48 @@ class Circuit:
         ]
     )
 
-    def __init__(self, coils, current=0.0, control=True):
+    def __init__(
+        self,
+        coils: list[tuple[str, object, float]],
+        current: float = 0.0,
+        control: bool = True,
+    ) -> None:
         """
-        Initializes a plasma equilibrium.
+        Initialise a circuit of coils sharing a single current.
 
         Parameters
         ----------
-        coils : coil.Coil
-            A list of tokamak coils with [ (label, Coil, multiplier) ].
-        current : float
-            Current in the coil [Amps].
-        control : bool
-            Whether the current in the coil is to be inferred during an inverse solve
-            (True) or not (False).
+        coils : list of tuple
+            The coils in the circuit as ``[(label, coil, multiplier), ...]``, where
+            `coil` is a ``Coil``-like object and `multiplier` scales the circuit
+            current in that coil (e.g. -1.0 for opposite polarity).
+        current : float, optional
+            Current in the circuit [A]. Default is 0.0.
+        control : bool, optional
+            Whether the circuit current is to be inferred during an inverse solve
+            (True) or not (False). Default is True.
         """
 
         self.coils = coils
         self.current = current
         self.control = control
 
-    def copy(self):
-        """Creates a copy of the circuit by initialising a new Circuit object.
+    def copy(self) -> Circuit:
+        """
+        Create a copy of the circuit by initialising a new Circuit object.
 
         The coils forming the circuit are copied by calling their individual
         `copy` methods.
+
+        Returns
+        -------
+        Circuit
+            New circuit with copies of the coils and the same current and control flag.
         """
         coils = [(label, c.copy(), m) for label, c, m in self.coils]
         return type(self)(coils, self.current, self.control)
 
-    def psi(self, R, Z):
+    def psi(self, R: np.ndarray | float, Z: np.ndarray | float) -> np.ndarray | float:
         """
         Poloidal flux due to coils in the circuit (at chosen R and Z).
 
@@ -119,21 +139,23 @@ class Circuit:
             psival += coil.psi(R, Z)
         return psival
 
-    def createPsiGreens(self, R, Z):
+    def createPsiGreens(
+        self, R: np.ndarray | float, Z: np.ndarray | float
+    ) -> dict[str, np.ndarray]:
         """
-        Calculate flux Greens function (matrix) for each coil in the circuit at (R,Z).
+        Calculate the flux Greens function for each coil in the circuit at (R,Z).
 
         Parameters
         ----------
-        R : float or np.array
-            Radial position(s) to evaluate at.
-        Z : float or np.array
-            Vertical position(s) to evaluate at.
+        R : np.ndarray or float
+            Radial position(s) to evaluate at [m].
+        Z : np.ndarray or float
+            Vertical position(s) to evaluate at [m].
 
         Returns
         -------
-        dict
-            Greens function (matrix) for flux from each coil in the circuit at (R,Z).
+        dict[str, np.ndarray]
+            Flux Greens function at (R,Z) for each coil, keyed by coil label.
         """
 
         pgreen = {}
@@ -141,82 +163,168 @@ class Circuit:
             pgreen[label] = coil.createPsiGreens(R, Z)
         return pgreen
 
-    def createPsiGreensVec(self, R, Z):
+    def createPsiGreensVec(self, R: np.ndarray, Z: np.ndarray) -> np.ndarray:
         """
-        Calculate Greens functions
+        Calculate the Greens function for the poloidal flux of the circuit. The contribution of each coil is weighted by its circuit multiplier.
+
+        Parameters
+        ----------
+        R : np.ndarray
+            Radial positions to evaluate at [m].
+        Z : np.ndarray
+            Vertical positions to evaluate at [m] (same shape as `R`).
+
+        Returns
+        -------
+        np.ndarray
+            Poloidal flux at (R,Z) per unit current in the circuit [Webers/2pi/A], same shape as `R`.
         """
         pgreen = np.zeros(np.shape(R))
         for label, coil, multiplier in self.coils:
             pgreen += multiplier * coil.createPsiGreens(R, Z)
         return pgreen
 
-    def createBrGreensVec(self, R, Z):
+    def createBrGreensVec(self, R: np.ndarray, Z: np.ndarray) -> np.ndarray:
         """
-        Calculate Br Greens functions
+        Calculate the Greens function for the radial magnetic field Br of the circuit. The contribution of each coil is weighted by its circuit multiplier.
+
+        Parameters
+        ----------
+        R : np.ndarray
+            Radial positions to evaluate at [m].
+        Z : np.ndarray
+            Vertical positions to evaluate at [m] (same shape as `R`).
+
+        Returns
+        -------
+        np.ndarray
+            Radial magnetic field Br at (R,Z) per unit current in the circuit [T/A], same shape as `R`.
         """
         pgreen = np.zeros(np.shape(R))
         for label, coil, multiplier in self.coils:
             pgreen += multiplier * coil.createBrGreensVec(R, Z)
         return pgreen
 
-    def createBzGreensVec(self, R, Z):
+    def createBzGreensVec(self, R: np.ndarray, Z: np.ndarray) -> np.ndarray:
         """
-        Calculate Bz Greens functions
+        Calculate the Greens function for the vertical magnetic field Bz of the circuit. The contribution of each coil is weighted by its circuit multiplier.
+
+        Parameters
+        ----------
+        R : np.ndarray
+            Radial positions to evaluate at [m].
+        Z : np.ndarray
+            Vertical positions to evaluate at [m] (same shape as `R`).
+
+        Returns
+        -------
+        np.ndarray
+            Vertical magnetic field Bz at (R,Z) per unit current in the circuit [T/A], same shape as `R`.
         """
         pgreen = np.zeros(np.shape(R))
         for label, coil, multiplier in self.coils:
             pgreen += multiplier * coil.createBzGreensVec(R, Z)
         return pgreen
 
-    def createdBrdrGreensVec(self, R, Z):
+    def createdBrdrGreensVec(self, R: np.ndarray, Z: np.ndarray) -> np.ndarray:
         """
-        Calculate dBrdr Greens functions
+        Calculate the Greens function for the radial derivative of Br, dBr/dR of the circuit. The contribution of each coil is weighted by its circuit multiplier.
+
+        Parameters
+        ----------
+        R : np.ndarray
+            Radial positions to evaluate at [m].
+        Z : np.ndarray
+            Vertical positions to evaluate at [m] (same shape as `R`).
+
+        Returns
+        -------
+        np.ndarray
+            Radial derivative of Br, dBr/dR at (R,Z) per unit current in the circuit [T/m/A], same shape as `R`.
         """
         pgreen = np.zeros(np.shape(R))
         for label, coil, multiplier in self.coils:
             pgreen += multiplier * coil.createdBrdrGreensVec(R, Z)
         return pgreen
 
-    def createdBzdzGreensVec(self, R, Z):
+    def createdBzdzGreensVec(self, R: np.ndarray, Z: np.ndarray) -> np.ndarray:
         """
-        Calculate dBzdz Greens functions
+        Calculate the Greens function for the vertical derivative of Bz, dBz/dZ of the circuit. The contribution of each coil is weighted by its circuit multiplier.
+
+        Parameters
+        ----------
+        R : np.ndarray
+            Radial positions to evaluate at [m].
+        Z : np.ndarray
+            Vertical positions to evaluate at [m] (same shape as `R`).
+
+        Returns
+        -------
+        np.ndarray
+            Vertical derivative of Bz, dBz/dZ at (R,Z) per unit current in the circuit [T/m/A], same shape as `R`.
         """
         pgreen = np.zeros(np.shape(R))
         for label, coil, multiplier in self.coils:
             pgreen += multiplier * coil.createdBzdzGreensVec(R, Z)
         return pgreen
 
-    def createdBrdzGreensVec(self, R, Z):
+    def createdBrdzGreensVec(self, R: np.ndarray, Z: np.ndarray) -> np.ndarray:
         """
-        Calculate dBrdz Greens functions
+        Calculate the Greens function for the vertical derivative of Br, dBr/dZ of the circuit. The contribution of each coil is weighted by its circuit multiplier.
+
+        Parameters
+        ----------
+        R : np.ndarray
+            Radial positions to evaluate at [m].
+        Z : np.ndarray
+            Vertical positions to evaluate at [m] (same shape as `R`).
+
+        Returns
+        -------
+        np.ndarray
+            Vertical derivative of Br, dBr/dZ at (R,Z) per unit current in the circuit [T/m/A], same shape as `R`.
         """
         pgreen = np.zeros(np.shape(R))
         for label, coil, multiplier in self.coils:
             pgreen += multiplier * coil.createdBrdzGreensVec(R, Z)
         return pgreen
 
-    def createdBzdrGreensVec(self, R, Z):
+    def createdBzdrGreensVec(self, R: np.ndarray, Z: np.ndarray) -> np.ndarray:
         """
-        Calculate dBzdr Greens functions
+        Calculate the Greens function for the radial derivative of Bz, dBz/dR of the circuit. The contribution of each coil is weighted by its circuit multiplier.
+
+        Parameters
+        ----------
+        R : np.ndarray
+            Radial positions to evaluate at [m].
+        Z : np.ndarray
+            Vertical positions to evaluate at [m] (same shape as `R`).
+
+        Returns
+        -------
+        np.ndarray
+            Radial derivative of Bz, dBz/dR at (R,Z) per unit current in the circuit [T/m/A], same shape as `R`.
         """
         pgreen = np.zeros(np.shape(R))
         for label, coil, multiplier in self.coils:
             pgreen += multiplier * coil.createdBzdrGreensVec(R, Z)
         return pgreen
 
-    def calcPsiFromGreens(self, pgreen):
+    def calcPsiFromGreens(self, pgreen: dict[str, np.ndarray]) -> np.ndarray | float:
         """
-        Calculate poloidal flux from Greens functions.
+        Calculate the poloidal flux from pre-computed Greens functions.
+
+        The current of each coil is first set to the circuit current times its multiplier.
 
         Parameters
         ----------
-        pgreen : dict
-            Dictionary of Greens functions for coils in the circuit.
+        pgreen : dict[str, np.ndarray]
+            Greens functions for each coil in the circuit, keyed by coil label.
 
         Returns
         -------
-        np.array
-            Poloidal flux from Greens functions [Webers/2pi].
+        np.ndarray or float
+            Poloidal flux from the Greens functions [Webers/2pi].
         """
 
         psival = 0.0
@@ -225,7 +333,7 @@ class Circuit:
             psival += coil.calcPsiFromGreens(pgreen[label])
         return psival
 
-    def Br(self, R, Z):
+    def Br(self, R: np.ndarray | float, Z: np.ndarray | float) -> np.ndarray | float:
         """
         Calculate radial magnetic field Br at (R,Z).
 
@@ -248,7 +356,7 @@ class Circuit:
             result += coil.Br(R, Z)
         return result
 
-    def Bz(self, R, Z):
+    def Bz(self, R: np.ndarray | float, Z: np.ndarray | float) -> np.ndarray | float:
         """
         Calculate vertical magnetic field Bz at (R,Z).
 
@@ -271,22 +379,21 @@ class Circuit:
             result += coil.Bz(R, Z)
         return result
 
-    def controlPsi(self, R, Z):
+    def controlPsi(self, R: np.ndarray | float, Z: np.ndarray | float) -> np.ndarray:
         """
-        Calculate poloidal flux at (R,Z) due to a single unit [Amp] of current genreated by
-        the coils in the circuit.
+        Calculate the poloidal flux at (R,Z) due to a single unit [Amp] of current in the coils in the circuit.
 
         Parameters
         ----------
-        R : float or np.array
-            Radial position(s) to evaluate at.
-        Z : float or np.array
-            Vertical position(s) to evaluate at.
+        R : np.ndarray or float
+            Radial position(s) to evaluate at [m].
+        Z : np.ndarray or float
+            Vertical position(s) to evaluate at [m].
 
         Returns
         -------
-        np.array
-            Poloidal flux at (R,Z) due to a single unit of current generated by the coils.
+        np.ndarray
+            Poloidal flux at (R,Z) per unit current [Webers/2pi/A].
         """
 
         result = 0.0
@@ -294,22 +401,21 @@ class Circuit:
             result += multiplier * coil.controlPsi(R, Z)
         return result
 
-    def controlBr(self, R, Z):
+    def controlBr(self, R: np.ndarray | float, Z: np.ndarray | float) -> np.ndarray:
         """
-        Calculate radial magnetic field Br at (R,Z) due to a single unit [Amp] of current genreated by
-        the coils in the circuit.
+        Calculate the radial magnetic field Br at (R,Z) due to a single unit [Amp] of current in the coils in the circuit.
 
         Parameters
         ----------
-        R : float or np.array
-            Radial position(s) to evaluate at.
-        Z : float or np.array
-            Vertical position(s) to evaluate at.
+        R : np.ndarray or float
+            Radial position(s) to evaluate at [m].
+        Z : np.ndarray or float
+            Vertical position(s) to evaluate at [m].
 
         Returns
         -------
-        np.array
-            Radial magnetic field Br at (R,Z) due to a single unit of current generated by the coils.
+        np.ndarray
+            Radial magnetic field Br at (R,Z) per unit current [T/A].
         """
 
         result = 0.0
@@ -317,22 +423,21 @@ class Circuit:
             result += multiplier * coil.controlBr(R, Z)
         return result
 
-    def controlBz(self, R, Z):
+    def controlBz(self, R: np.ndarray | float, Z: np.ndarray | float) -> np.ndarray:
         """
-        Calculate vertical magnetic field Bz at (R,Z) due to a single unit [Amp] of current genreated by
-        the coils in the circuit.
+        Calculate the vertical magnetic field Bz at (R,Z) due to a single unit [Amp] of current in the coils in the circuit.
 
         Parameters
         ----------
-        R : float or np.array
-            Radial position(s) to evaluate at.
-        Z : float or np.array
-            Vertical position(s) to evaluate at.
+        R : np.ndarray or float
+            Radial position(s) to evaluate at [m].
+        Z : np.ndarray or float
+            Vertical position(s) to evaluate at [m].
 
         Returns
         -------
-        np.array
-            Vertical magnetic field Bz at (R,Z) due to a single unit of current generated by the coils.
+        np.ndarray
+            Vertical magnetic field Bz at (R,Z) per unit current [T/A].
         """
 
         result = 0.0
@@ -340,22 +445,21 @@ class Circuit:
             result += multiplier * coil.controlBz(R, Z)
         return result
 
-    def controldBrdr(self, R, Z):
+    def controldBrdr(self, R: np.ndarray | float, Z: np.ndarray | float) -> np.ndarray:
         """
-        Calculate magnetic field dBrdr at (R,Z) due to a single unit [Amp] of current genreated by
-        the coils in the circuit.
+        Calculate the radial derivative of Br, dBr/dR at (R,Z) due to a single unit [Amp] of current in the coils in the circuit.
 
         Parameters
         ----------
-        R : float or np.array
-            Radial position(s) to evaluate at.
-        Z : float or np.array
-            Vertical position(s) to evaluate at.
+        R : np.ndarray or float
+            Radial position(s) to evaluate at [m].
+        Z : np.ndarray or float
+            Vertical position(s) to evaluate at [m].
 
         Returns
         -------
-        np.array
-            Magnetic field dBrdr at (R,Z) due to a single unit of current generated by the coils.
+        np.ndarray
+            Radial derivative of Br, dBr/dR at (R,Z) per unit current [T/m/A].
         """
 
         result = 0.0
@@ -363,22 +467,21 @@ class Circuit:
             result += multiplier * coil.controldBrdr(R, Z)
         return result
 
-    def controldBzdz(self, R, Z):
+    def controldBzdz(self, R: np.ndarray | float, Z: np.ndarray | float) -> np.ndarray:
         """
-        Calculate magnetic field dBzdz at (R,Z) due to a single unit [Amp] of current genreated by
-        the coils in the circuit.
+        Calculate the vertical derivative of Bz, dBz/dZ at (R,Z) due to a single unit [Amp] of current in the coils in the circuit.
 
         Parameters
         ----------
-        R : float or np.array
-            Radial position(s) to evaluate at.
-        Z : float or np.array
-            Vertical position(s) to evaluate at.
+        R : np.ndarray or float
+            Radial position(s) to evaluate at [m].
+        Z : np.ndarray or float
+            Vertical position(s) to evaluate at [m].
 
         Returns
         -------
-        np.array
-            Magnetic field dBzdz at (R,Z) due to a single unit of current generated by the coils.
+        np.ndarray
+            Vertical derivative of Bz, dBz/dZ at (R,Z) per unit current [T/m/A].
         """
 
         result = 0.0
@@ -386,22 +489,21 @@ class Circuit:
             result += multiplier * coil.controldBzdz(R, Z)
         return result
 
-    def controldBrdz(self, R, Z):
+    def controldBrdz(self, R: np.ndarray | float, Z: np.ndarray | float) -> np.ndarray:
         """
-        Calculate magnetic field dBrdz at (R,Z) due to a single unit [Amp] of current genreated by
-        the coils in the circuit.
+        Calculate the vertical derivative of Br, dBr/dZ at (R,Z) due to a single unit [Amp] of current in the coils in the circuit.
 
         Parameters
         ----------
-        R : float or np.array
-            Radial position(s) to evaluate at.
-        Z : float or np.array
-            Vertical position(s) to evaluate at.
+        R : np.ndarray or float
+            Radial position(s) to evaluate at [m].
+        Z : np.ndarray or float
+            Vertical position(s) to evaluate at [m].
 
         Returns
         -------
-        np.array
-            Magnetic field dBrdz at (R,Z) due to a single unit of current generated by the coils.
+        np.ndarray
+            Vertical derivative of Br, dBr/dZ at (R,Z) per unit current [T/m/A].
         """
 
         result = 0.0
@@ -409,22 +511,21 @@ class Circuit:
             result += multiplier * coil.controldBrdz(R, Z)
         return result
 
-    def controldBzdr(self, R, Z):
+    def controldBzdr(self, R: np.ndarray | float, Z: np.ndarray | float) -> np.ndarray:
         """
-        Calculate magnetic field dBzdr at (R,Z) due to a single unit [Amp] of current genreated by
-        the coils in the circuit.
+        Calculate the radial derivative of Bz, dBz/dR at (R,Z) due to a single unit [Amp] of current in the coils in the circuit.
 
         Parameters
         ----------
-        R : float or np.array
-            Radial position(s) to evaluate at.
-        Z : float or np.array
-            Vertical position(s) to evaluate at.
+        R : np.ndarray or float
+            Radial position(s) to evaluate at [m].
+        Z : np.ndarray or float
+            Vertical position(s) to evaluate at [m].
 
         Returns
         -------
-        np.array
-            Magnetic field dBzdr at (R,Z) due to a single unit of current generated by the coils.
+        np.ndarray
+            Radial derivative of Bz, dBz/dR at (R,Z) per unit current [T/m/A].
         """
 
         result = 0.0
@@ -432,37 +533,33 @@ class Circuit:
             result += multiplier * coil.controldBzdr(R, Z)
         return result
 
-    def getForces(self, equilibrium):
+    def getForces(self, equilibrium: object) -> dict[str, np.ndarray]:
         """
         Calculate the forces on the coils in the circuit.
 
         Parameters
         ----------
         equilibrium : object
-            Equilibrium object.
+            Equilibrium (or machine) object providing ``Br`` and ``Bz`` methods.
 
         Returns
         -------
-        dict
-            Returns a dictionary of coil labels and the forces on them [N].
+        dict[str, np.ndarray]
+            Coil labels mapped to the force on each coil, ``[Fr, Fz]`` [N].
         """
         forces = {}
         for label, coil, multiplier in self.coils:
             forces[label] = coil.getForces(equilibrium)
         return forces
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         """
         Return a string representation of the Circuit object.
-
-        Parameters
-        ----------
 
         Returns
         -------
         str
-            A string representation of the Circuit object, including its coils,
-            current, and control parameters.
+            String describing the circuit's coils, current and control flag.
         """
         result = "Circuit(["
         coils = [
@@ -474,7 +571,7 @@ class Circuit:
             self.current, self.control
         )
 
-    def __eq__(self, other):
+    def __eq__(self, other: object) -> bool:
         """
         Check if two Circuit objects are equal.
 
@@ -496,7 +593,7 @@ class Circuit:
             and self.control == other.control
         )
 
-    def __ne__(self, other):
+    def __ne__(self, other: object) -> bool:
         """
         Check if two Circuit objects are not equal.
 
@@ -513,17 +610,15 @@ class Circuit:
         """
         return not self == other
 
-    def to_numpy_array(self):
+    def to_numpy_array(self) -> np.ndarray:
         """
-        Convert the Circuit object to a NumPy array.
+        Convert the Circuit object to a structured NumPy array.
 
         Returns
         -------
         np.ndarray
-            A NumPy array representation of the circuit, where each entry contains:
-            - label (str): The coil label.
-            - coil (np.ndarray): The NumPy representation of the coil.
-            - multiplier (float): The multiplier associated with the coil.
+            Array with dtype ``Circuit.dtype``; each entry holds the coil label, the
+            NumPy representation of the coil, and the coil multiplier.
         """
         return np.array(
             [
@@ -534,7 +629,28 @@ class Circuit:
         )
 
     @classmethod
-    def from_numpy_array(cls, value):
+    def from_numpy_array(cls, value: np.ndarray) -> Circuit:
+        """
+        Create a Circuit from a structured NumPy array.
+
+        The current and control values are taken from the first coil in the array,
+        which should be consistent with the others.
+
+        Parameters
+        ----------
+        value : np.ndarray
+            Array with dtype ``Circuit.dtype`` (see `to_numpy_array`).
+
+        Returns
+        -------
+        Circuit
+            The reconstructed circuit.
+
+        Raises
+        ------
+        ValueError
+            If the dtype of `value` does not match ``Circuit.dtype``.
+        """
         if value.dtype != cls.dtype:
             raise ValueError(
                 "Can't create {this} from dtype: {got} (expected: {dtype})".format(
@@ -543,7 +659,20 @@ class Circuit:
             )
 
         # HDF5 reads strings as bytes by default, so convert to string
-        def toString(s):
+        def toString(s: bytes | str) -> str:
+            """
+            Convert a possibly-bytes HDF5 string to ``str``.
+
+            Parameters
+            ----------
+            s : bytes or str
+                Value read from the array label field.
+
+            Returns
+            -------
+            str
+                The decoded (UTF-8) string, or `s` unchanged if already a string.
+            """
             try:
                 return str(s, "utf-8")  # Convert bytes to string, using encoding
             except TypeError:
@@ -560,20 +689,20 @@ class Circuit:
             control=value[0][1]["control"],
         )
 
-    def plot(self, axis=None, show=False):
+    def plot(self, axis: Axes | None = None, show: bool = False) -> Axes | None:
         """
         Plot the coils in the circuit.
 
         Parameters
         ----------
         axis : matplotlib.axes.Axes, optional
-            An existing matplotlib axis to plot on. If None, a new axis is used.
+            Existing axis to plot on. If None, the coils create a new axis.
         show : bool, optional
-            If True, displays the plot after plotting the coils. Default is False.
+            If True, display the plot after plotting the coils. Default is False.
 
         Returns
         -------
-        matplotlib.axes.Axes
+        matplotlib.axes.Axes or None
             The axis used for plotting the coils.
         """
         for label, coil, multiplier in self.coils:
@@ -586,39 +715,44 @@ class Circuit:
 
 
 def MirroredCoil(
-    R,
-    Z,
-    current=0.0,
-    turns=1,
-    control=True,
-    area=AreaCurrentLimit(),
-    symmetric=True,
-):
+    R: float,
+    Z: float,
+    current: float = 0.0,
+    turns: int = 1,
+    control: bool = True,
+    area: AreaCurrentLimit = AreaCurrentLimit(),
+    symmetric: bool = True,
+) -> Circuit:
     """
-    Create a pair of coils positioned symmetrically at +/- Z.
+    Create a circuit of two coils intended to be positioned symmetrically about Z=0.
 
     Parameters
     ----------
     R : float
-        Radial position of the coils.
+        Radial position of the coils [m].
     Z : float
-        Vertical position of the upper coil (the lower coil is placed at -Z).
-    current : float
-        Current flowing through each coil.
-    turns : int
-        Number of turns in each coil.
-    control : bool
-        Whether the coil is actively controlled during an inverse solve.
-    area : AreaCurrentLimit
-        Current limit constraints for the coils. Default is an instance of AreaCurrentLimit.
+        Vertical position of the coils [m].
+    current : float, optional
+        Current flowing through each coil [A]. Default is 0.0.
+    turns : int, optional
+        Number of turns in each coil. Default is 1.
+    control : bool, optional
+        Whether the coils are actively controlled during an inverse solve. Default is True.
+    area : AreaCurrentLimit, optional
+        Current limit constraints for the coils. Default is an ``AreaCurrentLimit`` instance.
     symmetric : bool, optional
-        If True, both coils have the same current direction (in series).
-        If False, the coils have opposite current directions. Default is True.
+        If True, both coils carry the same current direction (multiplier +1).
+        If False, the lower coil has multiplier -1. Default is True.
 
     Returns
     -------
     Circuit
-        A Circuit object containing the mirrored pair of coils.
+        Circuit with coils labelled "U" and "L".
+
+    Notes
+    -----
+    Both coils are currently constructed at the same (R, Z); the lower coil is
+    not reflected to -Z.
     """
 
     return Circuit(
@@ -668,24 +802,35 @@ class Solenoid:
         ]
     )
 
-    def __init__(self, Rs, Zsmin, Zsmax, Ns, current=0.0, control=True):
+    def __init__(
+        self,
+        Rs: float,
+        Zsmin: float,
+        Zsmax: float,
+        Ns: int,
+        current: float = 0.0,
+        control: bool = True,
+    ) -> None:
         """
-        Initialize a solenoid with specified parameters.
+        Initialise a solenoid with the specified parameters.
+
+        The solenoid is modelled as `Ns` filaments at radius `Rs`, evenly spaced in Z
+        between `Zsmin` and `Zsmax`.
 
         Parameters
         ----------
         Rs : float
-            Radius of the solenoid.
+            Radius of the solenoid [m].
         Zsmin : float
-            Minimum axial position (lower bound) of the solenoid.
+            Lower vertical limit of the solenoid [m].
         Zsmax : float
-            Maximum axial position (upper bound) of the solenoid.
+            Upper vertical limit of the solenoid [m].
         Ns : int
             Number of turns in the solenoid.
         current : float, optional
-            Current flowing through each turn of the solenoid. Default is 0.0 A.
+            Current flowing through each turn [A]. Default is 0.0.
         control : bool, optional
-            Flag to enable or disable the control system (whether used in inverse solver). Default is True.
+            Whether the current is inferred during an inverse solve. Default is True.
         """
 
         self.Rs = Rs
@@ -695,7 +840,7 @@ class Solenoid:
         self.current = current
         self.control = control
 
-    def psi(self, R, Z):
+    def psi(self, R: np.ndarray | float, Z: np.ndarray | float) -> np.ndarray | float:
         """
         Poloidal flux due to the solenoid (at chosen R and Z).
 
@@ -714,213 +859,298 @@ class Solenoid:
 
         return self.controlPsi(R, Z) * self.current
 
-    def createPsiGreens(self, R, Z):
+    def createPsiGreens(
+        self, R: np.ndarray | float, Z: np.ndarray | float
+    ) -> np.ndarray:
         """
-        Calculate flux Greens function (matrix) for the solenoid at (R,Z).
+        Calculate the flux Greens function for the solenoid at (R,Z).
 
         Parameters
         ----------
-        R : float or np.array
-            Radial position(s) to evaluate at.
-        Z : float or np.array
-            Vertical position(s) to evaluate at.
+        R : np.ndarray or float
+            Radial position(s) to evaluate at [m].
+        Z : np.ndarray or float
+            Vertical position(s) to evaluate at [m].
 
         Returns
         -------
-        dict
-            Greens function (matrix) for flux from the solenoid at (R,Z).
+        np.ndarray
+            Flux per unit current in the solenoid at (R,Z) [Webers/2pi/A].
         """
         return self.controlPsi(R, Z)
 
-    def createPsiGreensVec(self, R, Z):
+    def createPsiGreensVec(self, R: np.ndarray, Z: np.ndarray) -> np.ndarray:
         """
-        Calculate Greens functions
+        Calculate the Greens function for the poloidal flux of the solenoid.
+
+        Parameters
+        ----------
+        R : np.ndarray
+            Radial positions to evaluate at [m].
+        Z : np.ndarray
+            Vertical positions to evaluate at [m] (same shape as `R`).
+
+        Returns
+        -------
+        np.ndarray
+            Poloidal flux at (R,Z) per unit current in the solenoid [Webers/2pi/A], same shape as `R`.
         """
         return self.controlPsi(R, Z)
 
-    def createBrGreensVec(self, R, Z):
+    def createBrGreensVec(self, R: np.ndarray, Z: np.ndarray) -> np.ndarray:
         """
-        Calculate Br Greens functions
+        Calculate the Greens function for the radial magnetic field Br of the solenoid.
+
+        Parameters
+        ----------
+        R : np.ndarray
+            Radial positions to evaluate at [m].
+        Z : np.ndarray
+            Vertical positions to evaluate at [m] (same shape as `R`).
+
+        Returns
+        -------
+        np.ndarray
+            Radial magnetic field Br at (R,Z) per unit current in the solenoid [T/A], same shape as `R`.
         """
         return self.controlBr(R, Z)
 
-    def createBzGreensVec(self, R, Z):
+    def createBzGreensVec(self, R: np.ndarray, Z: np.ndarray) -> np.ndarray:
         """
-        Calculate Bz Greens functions
-        """
-        return self.controlBz(R, Z)
-
-    def createdBrdrGreensVec(self, R, Z):
-        """
-        Calculate dBrdr Greens functions
-        """
-        return self.controldBrdr(R, Z)
-
-    def createdBzdzGreensVec(self, R, Z):
-        """
-        Calculate dBzdz Greens functions
-        """
-        return self.controldBzdz(R, Z)
-
-    def createdBrdzGreensVec(self, R, Z):
-        """
-        Calculate dBrdz Greens functions
-        """
-        return self.controldBrdz(R, Z)
-
-    def createdBzdrGreensVec(self, R, Z):
-        """
-        Calculate dBzdr Greens functions
-        """
-        return self.controldBzdr(R, Z)
-
-    def calcPsiFromGreens(self, pgreen):
-        """
-        Calculate poloidal flux from Greens functions.
+        Calculate the Greens function for the vertical magnetic field Bz of the solenoid.
 
         Parameters
         ----------
-        pgreen : dict
-            Dictionary of Greens functions for the solenoid.
+        R : np.ndarray
+            Radial positions to evaluate at [m].
+        Z : np.ndarray
+            Vertical positions to evaluate at [m] (same shape as `R`).
 
         Returns
         -------
-        np.array
-            Poloidal flux from Greens functions [Webers/2pi].
+        np.ndarray
+            Vertical magnetic field Bz at (R,Z) per unit current in the solenoid [T/A], same shape as `R`.
+        """
+        return self.controlBz(R, Z)
+
+    def createdBrdrGreensVec(self, R: np.ndarray, Z: np.ndarray) -> np.ndarray:
+        """
+        Calculate the Greens function for the radial derivative of Br, dBr/dR of the solenoid.
+
+        Parameters
+        ----------
+        R : np.ndarray
+            Radial positions to evaluate at [m].
+        Z : np.ndarray
+            Vertical positions to evaluate at [m] (same shape as `R`).
+
+        Returns
+        -------
+        np.ndarray
+            Radial derivative of Br, dBr/dR at (R,Z) per unit current in the solenoid [T/m/A], same shape as `R`.
+        """
+        return self.controldBrdr(R, Z)
+
+    def createdBzdzGreensVec(self, R: np.ndarray, Z: np.ndarray) -> np.ndarray:
+        """
+        Calculate the Greens function for the vertical derivative of Bz, dBz/dZ of the solenoid.
+
+        Parameters
+        ----------
+        R : np.ndarray
+            Radial positions to evaluate at [m].
+        Z : np.ndarray
+            Vertical positions to evaluate at [m] (same shape as `R`).
+
+        Returns
+        -------
+        np.ndarray
+            Vertical derivative of Bz, dBz/dZ at (R,Z) per unit current in the solenoid [T/m/A], same shape as `R`.
+        """
+        return self.controldBzdz(R, Z)
+
+    def createdBrdzGreensVec(self, R: np.ndarray, Z: np.ndarray) -> np.ndarray:
+        """
+        Calculate the Greens function for the vertical derivative of Br, dBr/dZ of the solenoid.
+
+        Parameters
+        ----------
+        R : np.ndarray
+            Radial positions to evaluate at [m].
+        Z : np.ndarray
+            Vertical positions to evaluate at [m] (same shape as `R`).
+
+        Returns
+        -------
+        np.ndarray
+            Vertical derivative of Br, dBr/dZ at (R,Z) per unit current in the solenoid [T/m/A], same shape as `R`.
+        """
+        return self.controldBrdz(R, Z)
+
+    def createdBzdrGreensVec(self, R: np.ndarray, Z: np.ndarray) -> np.ndarray:
+        """
+        Calculate the Greens function for the radial derivative of Bz, dBz/dR of the solenoid.
+
+        Parameters
+        ----------
+        R : np.ndarray
+            Radial positions to evaluate at [m].
+        Z : np.ndarray
+            Vertical positions to evaluate at [m] (same shape as `R`).
+
+        Returns
+        -------
+        np.ndarray
+            Radial derivative of Bz, dBz/dR at (R,Z) per unit current in the solenoid [T/m/A], same shape as `R`.
+        """
+        return self.controldBzdr(R, Z)
+
+    def calcPsiFromGreens(self, pgreen: np.ndarray) -> np.ndarray:
+        """
+        Calculate the poloidal flux from a pre-computed Greens function.
+
+        Parameters
+        ----------
+        pgreen : np.ndarray
+            Flux Greens function of the solenoid.
+
+        Returns
+        -------
+        np.ndarray
+            Poloidal flux from the Greens function [Webers/2pi].
         """
 
         return self.current * pgreen
 
-    def Br(self, R, Z):
+    def Br(self, R: np.ndarray | float, Z: np.ndarray | float) -> np.ndarray:
         """
-        Calculate radial magnetic field Br at (R,Z).
+        Calculate the radial magnetic field Br due to the solenoid at (R,Z).
 
         Parameters
         ----------
-        R : float or np.array
-            Radial position(s) to evaluate at.
-        Z : float or np.array
-            Vertical position(s) to evaluate at.
+        R : np.ndarray or float
+            Radial position(s) to evaluate at [m].
+        Z : np.ndarray or float
+            Vertical position(s) to evaluate at [m].
 
         Returns
         -------
-        np.array
-            Radial magnetic field at (R,Z) locations [T].
+        np.ndarray
+            Radial magnetic field Br at (R,Z) [T].
         """
 
         return self.controlBr(R, Z) * self.current
 
-    def Bz(self, R, Z):
+    def Bz(self, R: np.ndarray | float, Z: np.ndarray | float) -> np.ndarray:
         """
-        Calculate vertical magnetic field Bz at (R,Z).
+        Calculate the vertical magnetic field Bz due to the solenoid at (R,Z).
 
         Parameters
         ----------
-        R : float or np.array
-            Radial position(s) to evaluate at.
-        Z : float or np.array
-            Vertical position(s) to evaluate at.
+        R : np.ndarray or float
+            Radial position(s) to evaluate at [m].
+        Z : np.ndarray or float
+            Vertical position(s) to evaluate at [m].
 
         Returns
         -------
-        np.array
-            Vertical magnetic field at (R,Z) locations [T].
+        np.ndarray
+            Vertical magnetic field Bz at (R,Z) [T].
         """
 
         return self.controlBz(R, Z) * self.current
 
-    def dBrdr(self, R, Z):
+    def dBrdr(self, R: np.ndarray | float, Z: np.ndarray | float) -> np.ndarray:
         """
-        Calculate magnetic field dBrdr at (R,Z).
+        Calculate the magnetic field derivative dBr/dR due to the solenoid at (R,Z).
 
         Parameters
         ----------
-        R : float or np.array
-            Radial position(s) to evaluate at.
-        Z : float or np.array
-            Vertical position(s) to evaluate at.
+        R : np.ndarray or float
+            Radial position(s) to evaluate at [m].
+        Z : np.ndarray or float
+            Vertical position(s) to evaluate at [m].
 
         Returns
         -------
-        np.array
-            Magnetic field at (R,Z) locations [T].
+        np.ndarray
+            Magnetic field derivative dBr/dR at (R,Z) [T/m].
         """
 
         return self.controldBrdr(R, Z) * self.current
 
-    def dBzdz(self, R, Z):
+    def dBzdz(self, R: np.ndarray | float, Z: np.ndarray | float) -> np.ndarray:
         """
-        Calculate magnetic field dBzdz at (R,Z).
+        Calculate the magnetic field derivative dBz/dZ due to the solenoid at (R,Z).
 
         Parameters
         ----------
-        R : float or np.array
-            Radial position(s) to evaluate at.
-        Z : float or np.array
-            Vertical position(s) to evaluate at.
+        R : np.ndarray or float
+            Radial position(s) to evaluate at [m].
+        Z : np.ndarray or float
+            Vertical position(s) to evaluate at [m].
 
         Returns
         -------
-        np.array
-            Magnetic field at (R,Z) locations [T].
+        np.ndarray
+            Magnetic field derivative dBz/dZ at (R,Z) [T/m].
         """
 
         return self.controldBzdz(R, Z) * self.current
 
-    def dBrdz(self, R, Z):
+    def dBrdz(self, R: np.ndarray | float, Z: np.ndarray | float) -> np.ndarray:
         """
-        Calculate magnetic field dBrdz at (R,Z).
+        Calculate the magnetic field derivative dBr/dZ due to the solenoid at (R,Z).
 
         Parameters
         ----------
-        R : float or np.array
-            Radial position(s) to evaluate at.
-        Z : float or np.array
-            Vertical position(s) to evaluate at.
+        R : np.ndarray or float
+            Radial position(s) to evaluate at [m].
+        Z : np.ndarray or float
+            Vertical position(s) to evaluate at [m].
 
         Returns
         -------
-        np.array
-            Magnetic field at (R,Z) locations [T].
+        np.ndarray
+            Magnetic field derivative dBr/dZ at (R,Z) [T/m].
         """
 
         return self.controldBrdz(R, Z) * self.current
 
-    def dBzdr(self, R, Z):
+    def dBzdr(self, R: np.ndarray | float, Z: np.ndarray | float) -> np.ndarray:
         """
-        Calculate magnetic field dBzdr at (R,Z).
+        Calculate the magnetic field derivative dBz/dR due to the solenoid at (R,Z).
 
         Parameters
         ----------
-        R : float or np.array
-            Radial position(s) to evaluate at.
-        Z : float or np.array
-            Vertical position(s) to evaluate at.
+        R : np.ndarray or float
+            Radial position(s) to evaluate at [m].
+        Z : np.ndarray or float
+            Vertical position(s) to evaluate at [m].
 
         Returns
         -------
-        np.array
-            Magnetic field at (R,Z) locations [T].
+        np.ndarray
+            Magnetic field derivative dBz/dR at (R,Z) [T/m].
         """
 
         return self.controldBzdr(R, Z) * self.current
 
-    def controlPsi(self, R, Z):
+    def controlPsi(self, R: np.ndarray | float, Z: np.ndarray | float) -> np.ndarray:
         """
-        Calculate poloidal flux at (R,Z) due to a single unit [Amp] of current genreated by
-        the solenoid.
+        Calculate the poloidal flux at (R,Z) due to a single unit [Amp] of current in the solenoid.
 
         Parameters
         ----------
-        R : float or np.array
-            Radial position(s) to evaluate at.
-        Z : float or np.array
-            Vertical position(s) to evaluate at.
+        R : np.ndarray or float
+            Radial position(s) to evaluate at [m].
+        Z : np.ndarray or float
+            Vertical position(s) to evaluate at [m].
 
         Returns
         -------
-        np.array
-            Poloidal flux at (R,Z) due to a single unit of current generated by the solenoid.
+        np.ndarray
+            Poloidal flux at (R,Z) per unit current [Webers/2pi/A].
         """
 
         result = 0.0
@@ -928,22 +1158,21 @@ class Solenoid:
             result += Greens(self.Rs, Zs, R, Z)
         return result
 
-    def controlBr(self, R, Z):
+    def controlBr(self, R: np.ndarray | float, Z: np.ndarray | float) -> np.ndarray:
         """
-        Calculate radial magnetic field Br at (R,Z) due to a single unit [Amp] of current genreated by
-        the solenoid.
+        Calculate the radial magnetic field Br at (R,Z) due to a single unit [Amp] of current in the solenoid.
 
         Parameters
         ----------
-        R : float or np.array
-            Radial position(s) to evaluate at.
-        Z : float or np.array
-            Vertical position(s) to evaluate at.
+        R : np.ndarray or float
+            Radial position(s) to evaluate at [m].
+        Z : np.ndarray or float
+            Vertical position(s) to evaluate at [m].
 
         Returns
         -------
-        np.array
-            Radial magnetic field Br at (R,Z) due to a single unit of current generated by the solenoid.
+        np.ndarray
+            Radial magnetic field Br at (R,Z) per unit current [T/A].
         """
 
         result = 0.0
@@ -951,22 +1180,21 @@ class Solenoid:
             result += GreensBr(self.Rs, Zs, R, Z)
         return result
 
-    def controlBz(self, R, Z):
+    def controlBz(self, R: np.ndarray | float, Z: np.ndarray | float) -> np.ndarray:
         """
-        Calculate vertical magnetic field Br at (R,Z) due to a single unit [Amp] of current genreated by
-        the solenoid.
+        Calculate the vertical magnetic field Bz at (R,Z) due to a single unit [Amp] of current in the solenoid.
 
         Parameters
         ----------
-        R : float or np.array
-            Radial position(s) to evaluate at.
-        Z : float or np.array
-            Vertical position(s) to evaluate at.
+        R : np.ndarray or float
+            Radial position(s) to evaluate at [m].
+        Z : np.ndarray or float
+            Vertical position(s) to evaluate at [m].
 
         Returns
         -------
-        np.array
-            Vertical magnetic field Br at (R,Z) due to a single unit of current generated by the solenoid.
+        np.ndarray
+            Vertical magnetic field Bz at (R,Z) per unit current [T/A].
         """
 
         result = 0.0
@@ -974,22 +1202,21 @@ class Solenoid:
             result += GreensBz(self.Rs, Zs, R, Z)
         return result
 
-    def controldBrdr(self, R, Z):
+    def controldBrdr(self, R: np.ndarray | float, Z: np.ndarray | float) -> np.ndarray:
         """
-        Calculate radial magnetic field dBrdr at (R,Z) due to a single unit [Amp] of current genreated by
-        the solenoid.
+        Calculate the radial derivative of Br, dBr/dR at (R,Z) due to a single unit [Amp] of current in the solenoid.
 
         Parameters
         ----------
-        R : float or np.array
-            Radial position(s) to evaluate at.
-        Z : float or np.array
-            Vertical position(s) to evaluate at.
+        R : np.ndarray or float
+            Radial position(s) to evaluate at [m].
+        Z : np.ndarray or float
+            Vertical position(s) to evaluate at [m].
 
         Returns
         -------
-        np.array
-            Radial magnetic field dBrdr at (R,Z) due to a single unit of current generated by the solenoid.
+        np.ndarray
+            Radial derivative of Br, dBr/dR at (R,Z) per unit current [T/m/A].
         """
 
         result = 0.0
@@ -997,22 +1224,21 @@ class Solenoid:
             result += GreensdBrdr(self.Rs, Zs, R, Z)
         return result
 
-    def controldBzdz(self, R, Z):
+    def controldBzdz(self, R: np.ndarray | float, Z: np.ndarray | float) -> np.ndarray:
         """
-        Calculate vertical magnetic field dBzdz at (R,Z) due to a single unit [Amp] of current genreated by
-        the solenoid.
+        Calculate the vertical derivative of Bz, dBz/dZ at (R,Z) due to a single unit [Amp] of current in the solenoid.
 
         Parameters
         ----------
-        R : float or np.array
-            Radial position(s) to evaluate at.
-        Z : float or np.array
-            Vertical position(s) to evaluate at.
+        R : np.ndarray or float
+            Radial position(s) to evaluate at [m].
+        Z : np.ndarray or float
+            Vertical position(s) to evaluate at [m].
 
         Returns
         -------
-        np.array
-            Vertical magnetic field dBzdz at (R,Z) due to a single unit of current generated by the solenoid.
+        np.ndarray
+            Vertical derivative of Bz, dBz/dZ at (R,Z) per unit current [T/m/A].
         """
 
         result = 0.0
@@ -1020,22 +1246,21 @@ class Solenoid:
             result += GreensdBzdz(self.Rs, Zs, R, Z)
         return result
 
-    def controldBrdz(self, R, Z):
+    def controldBrdz(self, R: np.ndarray | float, Z: np.ndarray | float) -> np.ndarray:
         """
-        Calculate radial magnetic field dBrdz at (R,Z) due to a single unit [Amp] of current genreated by
-        the solenoid.
+        Calculate the vertical derivative of Br, dBr/dZ at (R,Z) due to a single unit [Amp] of current in the solenoid.
 
         Parameters
         ----------
-        R : float or np.array
-            Radial position(s) to evaluate at.
-        Z : float or np.array
-            Vertical position(s) to evaluate at.
+        R : np.ndarray or float
+            Radial position(s) to evaluate at [m].
+        Z : np.ndarray or float
+            Vertical position(s) to evaluate at [m].
 
         Returns
         -------
-        np.array
-            Radial magnetic field dBrdz at (R,Z) due to a single unit of current generated by the solenoid.
+        np.ndarray
+            Vertical derivative of Br, dBr/dZ at (R,Z) per unit current [T/m/A].
         """
 
         result = 0.0
@@ -1043,22 +1268,21 @@ class Solenoid:
             result += GreensdBrdz(self.Rs, Zs, R, Z)
         return result
 
-    def controldBzdr(self, R, Z):
+    def controldBzdr(self, R: np.ndarray | float, Z: np.ndarray | float) -> np.ndarray:
         """
-        Calculate vertical magnetic field dBzdr at (R,Z) due to a single unit [Amp] of current genreated by
-        the solenoid.
+        Calculate the radial derivative of Bz, dBz/dR at (R,Z) due to a single unit [Amp] of current in the solenoid.
 
         Parameters
         ----------
-        R : float or np.array
-            Radial position(s) to evaluate at.
-        Z : float or np.array
-            Vertical position(s) to evaluate at.
+        R : np.ndarray or float
+            Radial position(s) to evaluate at [m].
+        Z : np.ndarray or float
+            Vertical position(s) to evaluate at [m].
 
         Returns
         -------
-        np.array
-            Vertical magnetic field dBzdr at (R,Z) due to a single unit of current generated by the solenoid.
+        np.ndarray
+            Radial derivative of Bz, dBz/dR at (R,Z) per unit current [T/m/A].
         """
 
         result = 0.0
@@ -1066,26 +1290,24 @@ class Solenoid:
             result += GreensdBzdr(self.Rs, Zs, R, Z)
         return result
 
-    def getForces(self, equilibrium):
+    def getForces(self, equilibrium: object) -> dict:
         """
-        Calculate the forces on the solenoid.
-
-        Not currently implemented.
+        Calculate the forces on the solenoid (not currently implemented).
 
         Parameters
         ----------
         equilibrium : object
-            Equilibrium object.
+            Equilibrium object (unused).
 
         Returns
         -------
         dict
-            Returns a dictionary of coil labels and the forces on them [N].
+            Always an empty dictionary.
         """
 
         return {}
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         """
         Return a string representation of the Solenoid object.
 
@@ -1104,7 +1326,7 @@ class Solenoid:
             self.control,
         )
 
-    def __eq__(self, other):
+    def __eq__(self, other: object) -> bool:
         """
         Check if two Solenoid objects are equal.
 
@@ -1127,7 +1349,7 @@ class Solenoid:
             and self.control == other.control
         )
 
-    def __ne__(self, other):
+    def __ne__(self, other: object) -> bool:
         """
         Check if two Solenoid objects are not equal.
 
@@ -1143,20 +1365,15 @@ class Solenoid:
         """
         return not self == other
 
-    def to_numpy_array(self):
+    def to_numpy_array(self) -> np.ndarray:
         """
-        Convert the Solenoid object to a NumPy array.
+        Convert the Solenoid object to a structured NumPy array.
 
         Returns
         -------
         np.ndarray
-            A NumPy array containing the solenoid parameters:
-            - Rs (float): Radius of the solenoid.
-            - Zsmin (float): Minimum axial position.
-            - Zsmax (float): Maximum axial position.
-            - Ns (int): Number of turns.
-            - current (float): Current in the solenoid.
-            - control (bool): Control status of the solenoid.
+            Array with dtype ``Solenoid.dtype`` holding Rs, Zsmin, Zsmax, Ns, current
+            and control.
         """
         return np.array(
             (
@@ -1171,7 +1388,25 @@ class Solenoid:
         )
 
     @classmethod
-    def from_numpy_array(cls, value):
+    def from_numpy_array(cls, value: np.ndarray) -> Solenoid:
+        """
+        Create a Solenoid from a structured NumPy array.
+
+        Parameters
+        ----------
+        value : np.ndarray
+            Zero-dimensional array with dtype ``Solenoid.dtype`` (see `to_numpy_array`).
+
+        Returns
+        -------
+        Solenoid
+            The reconstructed solenoid.
+
+        Raises
+        ------
+        ValueError
+            If the dtype of `value` does not match ``Solenoid.dtype``.
+        """
         if value.dtype != cls.dtype:
             raise ValueError(
                 "Can't create {this} from dtype: {got} (expected: {dtype})".format(
@@ -1180,21 +1415,21 @@ class Solenoid:
             )
         return Solenoid(*value[()])
 
-    def plot(self, axis=None, show=False):
+    def plot(self, axis: Axes | None = None, show: bool = False) -> Axes | None:
         """
-        Plot the solenoid (currently a placeholder).
+        Plot the solenoid (currently a placeholder that draws nothing).
 
         Parameters
         ----------
         axis : matplotlib.axes.Axes, optional
-            An existing matplotlib axis to plot on. If None, a new axis would typically be created.
+            Existing axis to plot on (returned unchanged).
         show : bool, optional
-            If True, the plot would be displayed. Currently, this argument has no effect.
+            Currently has no effect.
 
         Returns
         -------
         matplotlib.axes.Axes or None
-            The axis used for plotting, or None if no plotting is performed.
+            The `axis` argument, unchanged.
         """
         return axis
 
@@ -1204,27 +1439,27 @@ class Wall:
     Represents the wall of the device. Consists of an ordered list of (R,Z) points.
     """
 
-    def __init__(self, R, Z):
+    def __init__(self, R: np.ndarray, Z: np.ndarray) -> None:
         """
-        Initialize a Wall object with given radial and axial coordinates.
+        Initialise a Wall from ordered radial and vertical coordinates.
 
         Parameters
         ----------
-        R : array-like
-            Array of radial coordinates defining the wall.
-        Z : array-like
-            Array of axial coordinates defining the wall.
+        R : np.ndarray
+            Radial coordinates of the wall points [m].
+        Z : np.ndarray
+            Vertical coordinates of the wall points [m], same length as `R`.
 
         Raises
         ------
         AssertionError
-            If the lengths of R and Z do not match.
+            If the lengths of `R` and `Z` do not match.
         """
         assert len(R) == len(Z)
         self.R = R
         self.Z = Z
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         """
         Return a string representation of the Wall object.
 
@@ -1235,7 +1470,7 @@ class Wall:
         """
         return "Wall(R={R}, Z={Z})".format(R=self.R, Z=self.Z)
 
-    def __eq__(self, other):
+    def __eq__(self, other: object) -> bool:
         """
         Check if two Wall objects are equal.
 
@@ -1251,7 +1486,7 @@ class Wall:
         """
         return np.allclose(self.R, other.R) and np.allclose(self.Z, other.Z)
 
-    def __ne__(self, other):
+    def __ne__(self, other: object) -> bool:
         """
         Check if two Wall objects are not equal.
 
@@ -1287,16 +1522,21 @@ class Machine:
     - The `__getitem__` method is implemented to allow access to coils by label.
     """
 
-    def __init__(self, coils, wall=None):
+    def __init__(
+        self, coils: list[tuple[str, object]], wall: Wall | None = None
+    ) -> None:
         """
-        Initialize a Machine object.
+        Initialise a Machine from labelled coils and an optional wall.
+
+        Also builds the coil name list, the label-to-index map ``coil_order`` and the
+        current vector ``current_vec``.
 
         Parameters
         ----------
-        coils : list of tuples
-            A list of labeled coil components [(label, Coil | Circuit | Solenoid)].
+        coils : list of tuple
+            Labelled coil components ``[(label, Coil | Circuit | Solenoid), ...]``.
         wall : Wall, optional
-            The wall structure of the machine. Default is None.
+            The wall of the machine. Default is None.
         """
 
         self.coils = coils
@@ -1312,15 +1552,21 @@ class Machine:
         for i, coil in enumerate(self.coil_names):
             self.coil_order[coil] = i
 
-    def copy(self):
-        """Creates a copy of the machine by initialising a new object.
+    def copy(self) -> Machine:
+        """
+        Create a copy of the machine by initialising a new object.
 
-        The coils are copied by calling the `copy` method for the coil/circuit.
+        The coils are copied by calling the `copy` method of each coil/circuit.
+
+        Returns
+        -------
+        Machine
+            New machine with copied coils and the same wall object.
         """
         coils = [(label, c.copy()) for label, c in self.coils]
         return type(self)(coils, self.wall)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         """
         Return a string representation of the Machine object.
 
@@ -1333,7 +1579,7 @@ class Machine:
             coils=self.coils, wall=self.wall
         )
 
-    def __eq__(self, other):
+    def __eq__(self, other: object) -> bool:
         """
         Check if two Machine objects are equal.
 
@@ -1349,7 +1595,7 @@ class Machine:
         """
         return sorted(self.coils) == sorted(other.coils) and self.wall == other.wall
 
-    def __ne__(self, other):
+    def __ne__(self, other: object) -> bool:
         """
         Check if two Machine objects are not equal.
 
@@ -1365,7 +1611,7 @@ class Machine:
         """
         return not self == other
 
-    def __getitem__(self, name):
+    def __getitem__(self, name: str) -> object:
         """
         Retrieve a coil by its label.
 
@@ -1389,7 +1635,7 @@ class Machine:
                 return coil
         raise KeyError("Machine does not contain coil with label '{0}'".format(name))
 
-    def psi(self, R, Z):
+    def psi(self, R: np.ndarray | float, Z: np.ndarray | float) -> np.ndarray | float:
         """
         Poloidal flux due to the coils (at chosen R and Z).
 
@@ -1412,21 +1658,23 @@ class Machine:
 
         return psi_coils
 
-    def createPsiGreens(self, R, Z):
+    def createPsiGreens(
+        self, R: np.ndarray | float, Z: np.ndarray | float
+    ) -> dict[str, object]:
         """
-        Calculate flux Greens function (matrix) for the coils at (R,Z).
+        Calculate the flux Greens function of each coil at (R,Z).
 
         Parameters
         ----------
-        R : float or np.array
-            Radial position(s) to evaluate at.
-        Z : float or np.array
-            Vertical position(s) to evaluate at.
+        R : np.ndarray or float
+            Radial position(s) to evaluate at [m].
+        Z : np.ndarray or float
+            Vertical position(s) to evaluate at [m].
 
         Returns
         -------
         dict
-            Greens function (matrix) for flux from each coil in the circuit at (R,Z).
+            Flux Greens functions at (R,Z), keyed by coil label.
         """
 
         pgreen = {}
@@ -1434,11 +1682,30 @@ class Machine:
             pgreen[label] = coil.createPsiGreens(R, Z)
         return pgreen
 
-    def createPsiGreensVec(self, R, Z, coils=None):
+    def createPsiGreensVec(
+        self,
+        R: np.ndarray,
+        Z: np.ndarray,
+        coils: list[tuple[str, object]] | None = None,
+    ) -> np.ndarray:
         """
-        Pre-computes the Greens functions
-        and puts into arrays for each coil. This map can then be
-        called at a later time, and quickly return the field
+        Pre-compute the Greens functions for the poloidal flux of each coil.
+
+        The result can be stored and used later to evaluate the field quickly.
+
+        Parameters
+        ----------
+        R : np.ndarray
+            Radial positions to evaluate at [m].
+        Z : np.ndarray
+            Vertical positions to evaluate at [m] (same shape as `R`).
+        coils : list of tuple, optional
+            Labelled coils to use. Default is None, which uses ``self.coils``.
+
+        Returns
+        -------
+        np.ndarray
+            Greens functions of shape ``(len(coils), *R.shape)``.
         """
         if coils == None:
             coils = self.coils
@@ -1450,10 +1717,30 @@ class Machine:
             i += 1
         return pgreen
 
-    def createBrGreensVec(self, R, Z, coils=None):
+    def createBrGreensVec(
+        self,
+        R: np.ndarray,
+        Z: np.ndarray,
+        coils: list[tuple[str, object]] | None = None,
+    ) -> np.ndarray:
         """
-        Pre-computes the Br Greens functions
-        and puts into arrays for each coil.
+        Pre-compute the Greens functions for the radial magnetic field Br of each coil.
+
+        The result can be stored and used later to evaluate the field quickly.
+
+        Parameters
+        ----------
+        R : np.ndarray
+            Radial positions to evaluate at [m].
+        Z : np.ndarray
+            Vertical positions to evaluate at [m] (same shape as `R`).
+        coils : list of tuple, optional
+            Labelled coils to use. Default is None, which uses ``self.coils``.
+
+        Returns
+        -------
+        np.ndarray
+            Greens functions of shape ``(len(coils), *R.shape)``.
         """
         if coils == None:
             coils = self.coils
@@ -1465,10 +1752,30 @@ class Machine:
             i += 1
         return pgreen
 
-    def createBzGreensVec(self, R, Z, coils=None):
+    def createBzGreensVec(
+        self,
+        R: np.ndarray,
+        Z: np.ndarray,
+        coils: list[tuple[str, object]] | None = None,
+    ) -> np.ndarray:
         """
-        Pre-computes the Br Greens functions
-        and puts into arrays for each coil.
+        Pre-compute the Greens functions for the vertical magnetic field Bz of each coil.
+
+        The result can be stored and used later to evaluate the field quickly.
+
+        Parameters
+        ----------
+        R : np.ndarray
+            Radial positions to evaluate at [m].
+        Z : np.ndarray
+            Vertical positions to evaluate at [m] (same shape as `R`).
+        coils : list of tuple, optional
+            Labelled coils to use. Default is None, which uses ``self.coils``.
+
+        Returns
+        -------
+        np.ndarray
+            Greens functions of shape ``(len(coils), *R.shape)``.
         """
         if coils == None:
             coils = self.coils
@@ -1480,10 +1787,30 @@ class Machine:
             i += 1
         return pgreen
 
-    def createdBrdrGreensVec(self, R, Z, coils=None):
+    def createdBrdrGreensVec(
+        self,
+        R: np.ndarray,
+        Z: np.ndarray,
+        coils: list[tuple[str, object]] | None = None,
+    ) -> np.ndarray:
         """
-        Pre-computes the dBrdr Greens functions
-        and puts into arrays for each coil.
+        Pre-compute the Greens functions for the radial derivative of Br, dBr/dR of each coil.
+
+        The result can be stored and used later to evaluate the field quickly.
+
+        Parameters
+        ----------
+        R : np.ndarray
+            Radial positions to evaluate at [m].
+        Z : np.ndarray
+            Vertical positions to evaluate at [m] (same shape as `R`).
+        coils : list of tuple, optional
+            Labelled coils to use. Default is None, which uses ``self.coils``.
+
+        Returns
+        -------
+        np.ndarray
+            Greens functions of shape ``(len(coils), *R.shape)``.
         """
         if coils == None:
             coils = self.coils
@@ -1495,10 +1822,30 @@ class Machine:
             i += 1
         return pgreen
 
-    def createdBzdzGreensVec(self, R, Z, coils=None):
+    def createdBzdzGreensVec(
+        self,
+        R: np.ndarray,
+        Z: np.ndarray,
+        coils: list[tuple[str, object]] | None = None,
+    ) -> np.ndarray:
         """
-        Pre-computes the dBzdz Greens functions
-        and puts into arrays for each coil.
+        Pre-compute the Greens functions for the vertical derivative of Bz, dBz/dZ of each coil.
+
+        The result can be stored and used later to evaluate the field quickly.
+
+        Parameters
+        ----------
+        R : np.ndarray
+            Radial positions to evaluate at [m].
+        Z : np.ndarray
+            Vertical positions to evaluate at [m] (same shape as `R`).
+        coils : list of tuple, optional
+            Labelled coils to use. Default is None, which uses ``self.coils``.
+
+        Returns
+        -------
+        np.ndarray
+            Greens functions of shape ``(len(coils), *R.shape)``.
         """
         if coils == None:
             coils = self.coils
@@ -1510,10 +1857,30 @@ class Machine:
             i += 1
         return pgreen
 
-    def createdBrdzGreensVec(self, R, Z, coils=None):
+    def createdBrdzGreensVec(
+        self,
+        R: np.ndarray,
+        Z: np.ndarray,
+        coils: list[tuple[str, object]] | None = None,
+    ) -> np.ndarray:
         """
-        Pre-computes the dBrdz Greens functions
-        and puts into arrays for each coil.
+        Pre-compute the Greens functions for the vertical derivative of Br, dBr/dZ of each coil.
+
+        The result can be stored and used later to evaluate the field quickly.
+
+        Parameters
+        ----------
+        R : np.ndarray
+            Radial positions to evaluate at [m].
+        Z : np.ndarray
+            Vertical positions to evaluate at [m] (same shape as `R`).
+        coils : list of tuple, optional
+            Labelled coils to use. Default is None, which uses ``self.coils``.
+
+        Returns
+        -------
+        np.ndarray
+            Greens functions of shape ``(len(coils), *R.shape)``.
         """
         if coils == None:
             coils = self.coils
@@ -1525,10 +1892,30 @@ class Machine:
             i += 1
         return pgreen
 
-    def createdBzdrGreensVec(self, R, Z, coils=None):
+    def createdBzdrGreensVec(
+        self,
+        R: np.ndarray,
+        Z: np.ndarray,
+        coils: list[tuple[str, object]] | None = None,
+    ) -> np.ndarray:
         """
-        Pre-computes the dBzdr Greens functions
-        and puts into arrays for each coil.
+        Pre-compute the Greens functions for the radial derivative of Bz, dBz/dR of each coil.
+
+        The result can be stored and used later to evaluate the field quickly.
+
+        Parameters
+        ----------
+        R : np.ndarray
+            Radial positions to evaluate at [m].
+        Z : np.ndarray
+            Vertical positions to evaluate at [m] (same shape as `R`).
+        coils : list of tuple, optional
+            Labelled coils to use. Default is None, which uses ``self.coils``.
+
+        Returns
+        -------
+        np.ndarray
+            Greens functions of shape ``(len(coils), *R.shape)``.
         """
         if coils == None:
             coils = self.coils
@@ -1540,19 +1927,19 @@ class Machine:
             i += 1
         return pgreen
 
-    def calcPsiFromGreens(self, pgreen):
+    def calcPsiFromGreens(self, pgreen: dict[str, object]) -> np.ndarray | float:
         """
-        Calculate poloidal flux from Greens functions.
+        Calculate the poloidal flux from pre-computed Greens functions.
 
         Parameters
         ----------
         pgreen : dict
-            Dictionary of Greens functions for the active and passive coils.
+            Greens functions for the coils, keyed by coil label.
 
         Returns
         -------
-        np.array
-            Poloidal flux from Greens functions [Webers/2pi].
+        np.ndarray or float
+            Poloidal flux from the Greens functions [Webers/2pi].
         """
 
         psi_coils = 0.0
@@ -1560,33 +1947,31 @@ class Machine:
             psi_coils += coil.calcPsiFromGreens(pgreen[label])
         return psi_coils
 
-    def getPsitokamak(self, vgreen):
+    def getPsitokamak(self, vgreen: np.ndarray) -> np.ndarray:
         """
-        Calculate flux from all active and passive coil currents.
+        Calculate the flux from all active and passive coil currents.
 
-        The leading axis of ``vgreen`` indexes coils. Flattening the spatial
+        The leading axis of `vgreen` indexes coils. Flattening the spatial
         axes expresses the weighted sum as one matrix multiplication, avoiding
         the full-sized temporary array created by broadcast multiplication.
 
         Parameters
         ----------
-        vgreen : np.array
-            Array of Greens functions for the active and passive coils.
+        vgreen : np.ndarray
+            Greens functions of shape ``(n_coils, *spatial_shape)``, in the order of
+            ``current_vec``.
 
         Returns
         -------
-        np.array
-            Poloidal flux from Greens functions [Webers/2pi].
-        """
-
-        """
+        np.ndarray
+            Poloidal flux of shape ``spatial_shape`` [Webers/2pi].
         """
         spatial_shape = vgreen.shape[1:]
         return (
             self.current_vec @ vgreen.reshape(vgreen.shape[0], np.prod(spatial_shape))
         ).reshape(spatial_shape)
 
-    def Br(self, R, Z):
+    def Br(self, R: np.ndarray | float, Z: np.ndarray | float) -> np.ndarray | float:
         """
         Calculate radial magnetic field Br at (R,Z).
 
@@ -1608,7 +1993,7 @@ class Machine:
 
         return Br
 
-    def Bz(self, R, Z):
+    def Bz(self, R: np.ndarray | float, Z: np.ndarray | float) -> np.ndarray | float:
         """
         Calculate vertical magnetic field Br at (R,Z).
 
@@ -1630,154 +2015,170 @@ class Machine:
 
         return Bz
 
-    def controlBr(self, R, Z):
+    def controlBr(
+        self, R: np.ndarray | float, Z: np.ndarray | float
+    ) -> list[np.ndarray | float]:
         """
-        Calculate radial magnetic field Br at (R,Z) due to a single unit [Amp] of current genreated by
-        coils in the tokamak (that have control=True).
+        Calculate the radial magnetic field Br at (R,Z) due to a single unit [Amp] of current in each controlled coil.
+
+        Only coils with ``control=True`` are included.
 
         Parameters
         ----------
-        R : float or np.array
-            Radial position(s) to evaluate at.
-        Z : float or np.array
-            Vertical position(s) to evaluate at.
+        R : np.ndarray or float
+            Radial position(s) to evaluate at [m].
+        Z : np.ndarray or float
+            Vertical position(s) to evaluate at [m].
 
         Returns
         -------
-        np.array
-            Radial magnetic field Br at (R,Z) due to a single unit of current generated by the solenoid.
+        list
+            One entry per controlled coil: the radial magnetic field Br at (R,Z) per unit current [T/A].
         """
         return [coil.controlBr(R, Z) for label, coil in self.coils if coil.control]
 
-    def controlBz(self, R, Z):
+    def controlBz(
+        self, R: np.ndarray | float, Z: np.ndarray | float
+    ) -> list[np.ndarray | float]:
         """
-        Calculate vertical magnetic field Br at (R,Z) due to a single unit [Amp] of current genreated by
-        coils in the tokamak (that have control=True).
+        Calculate the vertical magnetic field Bz at (R,Z) due to a single unit [Amp] of current in each controlled coil.
+
+        Only coils with ``control=True`` are included.
 
         Parameters
         ----------
-        R : float or np.array
-            Radial position(s) to evaluate at.
-        Z : float or np.array
-            Vertical position(s) to evaluate at.
+        R : np.ndarray or float
+            Radial position(s) to evaluate at [m].
+        Z : np.ndarray or float
+            Vertical position(s) to evaluate at [m].
 
         Returns
         -------
-        np.array
-            Vertical magnetic field Br at (R,Z) due to a single unit of current generated by the solenoid.
+        list
+            One entry per controlled coil: the vertical magnetic field Bz at (R,Z) per unit current [T/A].
         """
         return [coil.controlBz(R, Z) for label, coil in self.coils if coil.control]
 
-    def controldBrdr(self, R, Z):
+    def controldBrdr(
+        self, R: np.ndarray | float, Z: np.ndarray | float
+    ) -> list[np.ndarray | float]:
         """
-        Calculate magnetic field dBrdr at (R,Z) due to a single unit [Amp] of current genreated by
-        coils in the tokamak (that have control=True).
+        Calculate the radial derivative of Br, dBr/dR at (R,Z) due to a single unit [Amp] of current in each controlled coil.
+
+        Only coils with ``control=True`` are included.
 
         Parameters
         ----------
-        R : float or np.array
-            Radial position(s) to evaluate at.
-        Z : float or np.array
-            Vertical position(s) to evaluate at.
+        R : np.ndarray or float
+            Radial position(s) to evaluate at [m].
+        Z : np.ndarray or float
+            Vertical position(s) to evaluate at [m].
 
         Returns
         -------
-        np.array
-            Magnetic field dBrdr at (R,Z) due to a single unit of current generated by the solenoid.
+        list
+            One entry per controlled coil: the radial derivative of Br, dBr/dR at (R,Z) per unit current [T/m/A].
         """
         return [coil.controldBrdr(R, Z) for label, coil in self.coils if coil.control]
 
-    def controldBzdz(self, R, Z):
+    def controldBzdz(
+        self, R: np.ndarray | float, Z: np.ndarray | float
+    ) -> list[np.ndarray | float]:
         """
-        Calculate magnetic field dBzdz at (R,Z) due to a single unit [Amp] of current genreated by
-        coils in the tokamak (that have control=True).
+        Calculate the vertical derivative of Bz, dBz/dZ at (R,Z) due to a single unit [Amp] of current in each controlled coil.
+
+        Only coils with ``control=True`` are included.
 
         Parameters
         ----------
-        R : float or np.array
-            Radial position(s) to evaluate at.
-        Z : float or np.array
-            Vertical position(s) to evaluate at.
+        R : np.ndarray or float
+            Radial position(s) to evaluate at [m].
+        Z : np.ndarray or float
+            Vertical position(s) to evaluate at [m].
 
         Returns
         -------
-        np.array
-            Magnetic field dBzdz at (R,Z) due to a single unit of current generated by the solenoid.
+        list
+            One entry per controlled coil: the vertical derivative of Bz, dBz/dZ at (R,Z) per unit current [T/m/A].
         """
         return [coil.controldBzdz(R, Z) for label, coil in self.coils if coil.control]
 
-    def controldBrdz(self, R, Z):
+    def controldBrdz(
+        self, R: np.ndarray | float, Z: np.ndarray | float
+    ) -> list[np.ndarray | float]:
         """
-        Calculate magnetic field dBrdz at (R,Z) due to a single unit [Amp] of current genreated by
-        coils in the tokamak (that have control=True).
+        Calculate the vertical derivative of Br, dBr/dZ at (R,Z) due to a single unit [Amp] of current in each controlled coil.
+
+        Only coils with ``control=True`` are included.
 
         Parameters
         ----------
-        R : float or np.array
-            Radial position(s) to evaluate at.
-        Z : float or np.array
-            Vertical position(s) to evaluate at.
+        R : np.ndarray or float
+            Radial position(s) to evaluate at [m].
+        Z : np.ndarray or float
+            Vertical position(s) to evaluate at [m].
 
         Returns
         -------
-        np.array
-            Magnetic field dBrdz at (R,Z) due to a single unit of current generated by the solenoid.
+        list
+            One entry per controlled coil: the vertical derivative of Br, dBr/dZ at (R,Z) per unit current [T/m/A].
         """
         return [coil.controldBrdz(R, Z) for label, coil in self.coils if coil.control]
 
-    def controldBzdr(self, R, Z):
+    def controldBzdr(
+        self, R: np.ndarray | float, Z: np.ndarray | float
+    ) -> list[np.ndarray | float]:
         """
-        Calculate magnetic field dBzdr at (R,Z) due to a single unit [Amp] of current genreated by
-        coils in the tokamak (that have control=True).
+        Calculate the radial derivative of Bz, dBz/dR at (R,Z) due to a single unit [Amp] of current in each controlled coil.
+
+        Only coils with ``control=True`` are included.
 
         Parameters
         ----------
-        R : float or np.array
-            Radial position(s) to evaluate at.
-        Z : float or np.array
-            Vertical position(s) to evaluate at.
+        R : np.ndarray or float
+            Radial position(s) to evaluate at [m].
+        Z : np.ndarray or float
+            Vertical position(s) to evaluate at [m].
 
         Returns
         -------
-        np.array
-            Magnetic field dBzdr at (R,Z) due to a single unit of current generated by the solenoid.
+        list
+            One entry per controlled coil: the radial derivative of Bz, dBz/dR at (R,Z) per unit current [T/m/A].
         """
         return [coil.controldBzdr(R, Z) for label, coil in self.coils if coil.control]
 
-    def controlPsi(self, R, Z):
+    def controlPsi(
+        self, R: np.ndarray | float, Z: np.ndarray | float
+    ) -> list[np.ndarray | float]:
         """
-        Calculate poloidal flux at (R,Z) due to a single unit [Amp] of current genreated by
-        coils in the tokamak (that have control=True).
+        Calculate the poloidal flux at (R,Z) due to a single unit [Amp] of current in each controlled coil.
+
+        Only coils with ``control=True`` are included.
 
         Parameters
         ----------
-        R : float or np.array
-            Radial position(s) to evaluate at.
-        Z : float or np.array
-            Vertical position(s) to evaluate at.
+        R : np.ndarray or float
+            Radial position(s) to evaluate at [m].
+        Z : np.ndarray or float
+            Vertical position(s) to evaluate at [m].
 
         Returns
         -------
-        np.array
-            Poloidal flux at (R,Z) due to a single unit of current generated by the solenoid.
+        list
+            One entry per controlled coil: the poloidal flux at (R,Z) per unit current [Webers/2pi/A].
         """
         return [coil.controlPsi(R, Z) for label, coil in self.coils if coil.control]
 
-    def controlAdjust(self, current_change):
+    def controlAdjust(self, current_change: np.ndarray) -> None:
         """
-        Adjust the currents in the coils according to those that have the control attribute set to True.
+        Adjust the currents of the coils that have ``control=True``.
 
         Parameters
         ----------
-        current_change : np.array
-            Changes in coil currents to be applied [Amps].
-
-        Returns
-        -------
-
-        Notes
-        -------
-        The current_change(s) must be the same length as the list returned by controlBr, controlBz
+        current_change : np.ndarray
+            Changes in coil currents to apply [A], one per controlled coil and in the
+            same order as the lists returned by `controlBr`, `controlBz`, etc. Each
+            element must support ``.item()``.
         """
 
         # Get list of coils being controlled
@@ -1787,33 +2188,26 @@ class Machine:
             # Ensure that dI is a scalar
             coil.current += dI.item()
 
-    def controlCurrents(self):
+    def controlCurrents(self) -> list[float]:
         """
-        Return a list of coil currents for the coils being controlled.
-
-        Parameters
-        ----------
+        Return the currents of the coils being controlled.
 
         Returns
         -------
-        list
-            Coil currents [Amps] of the coils being controlled for (during an inverse solve).
+        list of float
+            Currents [A] of the coils with ``control=True`` (those solved for in an inverse solve).
         """
 
         return [coil.current for label, coil in self.coils if coil.control]
 
-    def setControlCurrents(self, currents):
+    def setControlCurrents(self, currents: list[float] | np.ndarray) -> None:
         """
-        Set the coil currents for the coils being controlled.
+        Set the currents of the coils being controlled.
 
         Parameters
         ----------
-        list
-            Coil currents [Amps] of the coils being controlled for (during an inverse solve).
-
-        Returns
-        -------
-
+        currents : list of float or np.ndarray
+            Currents [A] for the coils with ``control=True``, in machine coil order.
         """
 
         controlcoils = [coil for label, coil in self.coils if coil.control]
@@ -1821,9 +2215,9 @@ class Machine:
         for i in range(len(controlcoils_labels)):
             self.set_coil_current(controlcoils_labels[i], currents[i])
 
-    def printCurrents(self):
+    def printCurrents(self) -> None:
         """
-        Print the coil currents.
+        Print the label and state of each coil.
         """
 
         print("==========================")
@@ -1831,19 +2225,20 @@ class Machine:
             print(label + " : " + str(coil))
         print("==========================")
 
-    def getForces(self, equilibrium=None):
+    def getForces(self, equilibrium: object | None = None) -> dict[str, np.ndarray]:
         """
         Calculate the forces on the coils.
 
         Parameters
         ----------
-        equilibrium : object
-            Equilibrium object.
+        equilibrium : object, optional
+            Object providing ``Br`` and ``Bz`` methods. Default is None, which uses
+            the machine itself.
 
         Returns
         -------
-        dict
-            Returns a dictionary of coil labels and the forces on them [N].
+        dict[str, np.ndarray]
+            Coil labels mapped to the force on each coil, ``[Fr, Fz]`` [N].
         """
 
         if equilibrium is None:
@@ -1854,17 +2249,14 @@ class Machine:
             forces[label] = coil.getForces(equilibrium)
         return forces
 
-    def getCurrents(self):
+    def getCurrents(self) -> dict[str, float]:
         """
-        Returns a dictionary of coil labels and the currents [Amps].
-
-        Parameters
-        ----------
+        Return the current in each coil.
 
         Returns
         -------
-        dict
-            Returns a dictionary of coil labels and the currents in them [Amps].
+        dict[str, float]
+            Coil labels mapped to their currents [A].
         """
 
         currents = {}
@@ -1872,9 +2264,21 @@ class Machine:
             currents[label] = coil.current
         return currents
 
-    def getCurrentsVec(self, coils=None):
+    def getCurrentsVec(
+        self, coils: list[tuple[str, object]] | None = None
+    ) -> np.ndarray:
         """
-        Returns an array of coil currents in Amps
+        Return the coil currents as an array, and store it as ``current_vec``.
+
+        Parameters
+        ----------
+        coils : list of tuple, optional
+            Labelled coils to read. Default is None, which uses ``self.coils``.
+
+        Returns
+        -------
+        np.ndarray
+            Coil currents [A], in the order of `coils`.
         """
         if coils == None:
             coils = self.coils
@@ -1887,48 +2291,49 @@ class Machine:
         self.current_vec = currents
         return currents
 
-    def set_coil_current(self, coil_label, current_value):
-        """Allows to set the current value of a coil
+    def set_coil_current(self, coil_label: str, current_value: float) -> None:
+        """
+        Set the current of a single coil.
 
         Parameters
         ----------
-        coil_label : string
-            Coil label as from self.getCurrents().keys()
+        coil_label : str
+            Coil label, as in ``self.getCurrents().keys()``.
         current_value : float
-            Current value in Amps
+            Current value [A].
         """
         i = self.coil_order[coil_label]
         self.coils[i][1].current = current_value
         self.current_vec[i] = current_value
 
-    def set_all_coil_currents(self, current_vec):
-        """Allows to set all current values in the vec,
-        assuming correct order.
+    def set_all_coil_currents(self, current_vec: np.ndarray) -> None:
+        """
+        Set the currents of the first ``len(current_vec)`` coils, assuming the correct order.
 
         Parameters
         ----------
-        current_vec : np.array
-            Current values in Amps
+        current_vec : np.ndarray
+            Current values [A].
         """
 
         self.current_vec[: len(current_vec)] = current_vec
         for i in range(len(current_vec)):
             self.coils[i][1].current = current_vec[i]
 
-    def plot(self, axis=None, show=True):
+    def plot(self, axis: Axes | None = None, show: bool = True) -> Axes | None:
         """
-        Plot the coils in the circuit.
+        Plot the coils of the machine.
 
         Parameters
         ----------
         axis : matplotlib.axes.Axes, optional
-            An existing matplotlib axis to plot on. If None, a new axis is used.
+            Existing axis to plot on. If None, the coils create a new axis.
         show : bool, optional
-            If True, displays the plot after plotting the coils. Default is False.
+            If True, display the plot after plotting the coils. Default is True.
 
         Returns
         -------
-        matplotlib.axes.Axes
+        matplotlib.axes.Axes or None
             The axis used for plotting the coils.
         """
 
@@ -1941,16 +2346,26 @@ class Machine:
         return axis
 
 
-def EmptyTokamak():
+def EmptyTokamak() -> Machine:
     """
-    Creates a tokamak with no coils
+    Create a tokamak with no coils.
+
+    Returns
+    -------
+    Machine
+        Machine with an empty coil list.
     """
     return Machine([])
 
 
-def TestTokamak():
+def TestTokamak() -> Machine:
     """
-    Create a simple tokamak.
+    Create a simple test tokamak with four coils and a wall.
+
+    Returns
+    -------
+    Machine
+        Machine with coils P1L, P1U, P2L, P2U and a simple wall.
     """
 
     coils = [
@@ -1974,9 +2389,14 @@ def TestTokamak():
     return Machine(coils, wall)
 
 
-def DIIID():
+def DIIID() -> Machine:
     """
-    PF coil set from ef20030203.d3d (Corsica code).
+    Create the DIII-D machine: PF coil set from ef20030203.d3d (Corsica code).
+
+    Returns
+    -------
+    Machine
+        Machine with the DIII-D PF coils.
     """
 
     coils = [
@@ -2003,10 +2423,16 @@ def DIIID():
     return Machine(coils)
 
 
-def MAST():
+def MAST() -> Machine:
     """
-    Approximation of the Mega-Amp Spherical Tokamak (MAST). This version has all independent coils
-    so that each is powered by a separate coil.
+    Create an approximation of the Mega-Amp Spherical Tokamak (MAST) with independent coils.
+
+    Each PF coil is powered separately.
+
+    Returns
+    -------
+    Machine
+        Machine with coils P2-P6 (upper and lower) and the solenoid P1.
     """
 
     coils = [
@@ -2026,10 +2452,16 @@ def MAST():
     return Machine(coils)
 
 
-def MAST_sym():
+def MAST_sym() -> Machine:
     """
-    Appoximation of the Mega-Amp Spherical Tokamak (MAST). This version the upper and lower coils
-    are connected to the same circuits P2 - P6.
+    Create an approximation of the Mega-Amp Spherical Tokamak (MAST) with up-down paired coils.
+
+    The upper and lower coils are connected to the same circuits P2-P6.
+
+    Returns
+    -------
+    Machine
+        Machine with circuits P2-P6 and the solenoid P1.
     """
     coils = [
         (
@@ -2073,7 +2505,15 @@ def MAST_sym():
     return Machine(coils)
 
 
-def TCV():
+def TCV() -> Machine:
+    """
+    Create an approximation of the TCV coil set.
+
+    Returns
+    -------
+    Machine
+        Machine with the TCV PF coils and an ohmic circuit "OH" (no wall).
+    """
     coils = [
         #             ("A1", Coil(0.422500,0.000000)),
         #             ("B1", Coil(0.445700,-0.936000)),
@@ -2124,12 +2564,18 @@ def TCV():
     return Machine(coils)
 
 
-def MASTU_simple():
+def MASTU_simple() -> Machine:
     """
+    Create a simplified MAST-Upgrade (MAST-U) coil set with a wall.
 
-    This is an older version of the MAST-U coilset. A simplified set of coils, with
-    one strand per coil. This may be easier to use for initial development of scenarios,
-    but less detailed than the MultiCoil description (MASTU).
+    This is an older version of the MAST-U coilset, with one strand per coil.
+    It may be easier to use for initial development of scenarios, but is less
+    detailed than the MultiCoil description (`MASTU`).
+
+    Returns
+    -------
+    Machine
+        Machine with simplified MAST-U coils and wall.
     """
     coils = [
         ("Solenoid", Solenoid(0.19475, -1.581, 1.581, 324)),
@@ -2377,10 +2823,16 @@ def MASTU_simple():
     return Machine(coils, Wall(rwall, zwall))
 
 
-def MASTU():
+def MASTU() -> Machine:
     """
-    More complex, but not complete, MAST-Upgrade description. Uses MultiCoil to represent
-    coils with different locations for each strand.
+    Create a more detailed, but not complete, MAST-Upgrade (MAST-U) description with a wall.
+
+    Uses ``MultiCoil`` to represent coils with different locations for each strand.
+
+    Returns
+    -------
+    Machine
+        Machine with MAST-U multi-strand coils and wall.
     """
     d1_upper_r = [
         0.35275,

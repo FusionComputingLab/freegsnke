@@ -20,6 +20,8 @@ You should have received a copy of the GNU Lesser General Public License
 along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 """
 
+from __future__ import annotations
+
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.patches import Polygon
@@ -30,32 +32,40 @@ from .refine_passive import find_area, generate_refinement
 
 
 class PassiveStructure(coil.Coil):
-    """Inherits from freegsnke.coil.Coil.
-    Object to implement passive structures.
-    Rather than listing large number of filaments it averages the
-    relevant green functions so that currents are distributed over
-    the structure -- uniformly.
+    """
+    Passive structure with current distributed uniformly over a polygon.
+
+    Inherits from freegsnke.coil.Coil. Rather than listing a large number of
+    filaments, it averages the relevant Green's functions over refining
+    filaments so that current is distributed uniformly over the structure.
     """
 
     def __init__(
         self,
-        R,
-        Z,
-        min_refine_per_area,
-        min_refine_per_length,
-        refine_mode="G",
-    ):
-        """Instantiates the object and builds the refinement of the provided polygonal shape.
+        R: np.ndarray,
+        Z: np.ndarray,
+        min_refine_per_area: float,
+        min_refine_per_length: float,
+        refine_mode: str = "G",
+    ) -> None:
+        """
+        Instantiate the object and build the refinement of the polygonal shape.
 
         Parameters
         ----------
-        R : array
-            List of vertex coordinates, defining a passive structure polygon.
-        Z : array
-            List of vertex coordinates, defining a passive structure polygon.
+        R : np.ndarray
+            Radial vertex coordinates (m) defining the passive structure polygon.
+        Z : np.ndarray
+            Vertical vertex coordinates (m) defining the passive structure polygon.
+        min_refine_per_area : float
+            Minimum number of refining filaments per unit area (m^-2).
+        min_refine_per_length : float
+            Minimum number of refining filaments per unit length (m^-1), where
+            the length is the diagonal of the polygon bounding box.
         refine_mode : str, optional
-            refinement mode for passive structures inputted as polygons, by default 'G' for 'grid'
-            Use 'LH' for alternative mode using a Latin Hypercube implementation.
+            Refinement mode for passive structures input as polygons, by default
+            "G" for grid. Use "LH" for an alternative mode using a Latin
+            Hypercube implementation.
         """
 
         res = find_area(R, Z, 1e3)
@@ -83,31 +93,30 @@ class PassiveStructure(coil.Coil):
 
         self.greens = {}
 
-    def copy(self):
+    def copy(self) -> PassiveStructure:
         """
-        Create a shallow copy of the control object without reinitialising
-        geometry or recomputing Green's functions.
+        Create a shallow copy without reinitialising geometry or Green's functions.
 
         This method avoids calling the constructor for performance reasons and
-        instead manually copies attributes that define the control geometry and
-        cached electromagnetic response.
+        instead manually copies the attributes that define the geometry and
+        the cached electromagnetic response.
 
         Returns
         -------
-        object
+        PassiveStructure
             A new instance of the same class with duplicated state.
 
         Notes
         -----
         - Geometry-related arrays (e.g. `R`, `Z`, `vertices`, `filaments`) are
-        shared by reference and are assumed to be immutable.
+          shared by reference and are assumed to be immutable.
         - The `greens` dictionary is shallow-copied:
             - Safe usage: replacing entries (e.g. `greens["psi"] = new_array`)
             - Unsafe usage: in-place modification (e.g. `greens["psi"][:] = ...`)
         - This copy is therefore *not fully independent* and should be used only
-        when immutability assumptions hold.
+          when immutability assumptions hold.
         - The attribute `control` is currently assigned from `self.turns`
-        (this may be intentional or a likely typo depending on design intent).
+          (this may be intentional or a likely typo depending on design intent).
         """
         # dont instantiate the new object, it will be slow
         new_obj = type(self).__new__(type(self))
@@ -138,9 +147,11 @@ class PassiveStructure(coil.Coil):
 
         return new_obj
 
-    def create_RZ_key(self, R, Z):
+    def create_RZ_key(
+        self, R: np.ndarray, Z: np.ndarray
+    ) -> tuple[float, float, float, float, int]:
         """
-        Create a hashable key identifying a specific R–Z grid for caching Green's functions.
+        Create a hashable key identifying a specific R-Z grid for caching Green's functions.
 
         The key is based on the grid bounds and size, and is used to ensure that
         Green's function evaluations are reused only when the underlying spatial
@@ -156,37 +167,31 @@ class PassiveStructure(coil.Coil):
         Returns
         -------
         tuple
-            A hashable identifier of the form:
+            A hashable identifier of the form
             (R_min, R_max, Z_min, Z_max, N),
             where N = total number of grid points in `R`.
         """
         RZ_key = (np.min(R), np.max(R), np.min(Z), np.max(Z), np.size(R))
         return RZ_key
 
-    def build_refining_filaments(
-        self,
-    ):
+    def build_refining_filaments(self) -> np.ndarray:
         """
-        Construct the set of refining filaments used to discretise the control
-        region at higher resolution.
-
-        This routine generates a refined filament representation of the control
-        geometry, typically used to improve spatial resolution of control
-        response calculations.
+        Construct the set of refining filaments used to represent the structure.
 
         Returns
         -------
         np.ndarray
-            Array of filament coordinates generated by the refinement procedure.
+            Filament (R, Z) coordinates, shape (N, 2), generated by the
+            refinement procedure.
 
         Notes
         -----
-        - The filaments are generated from the control polygon defined by
-        `self.Rpolygon` and `self.Zpolygon`.
+        - The filaments are generated from the polygon defined by
+          `self.Rpolygon` and `self.Zpolygon`.
         - The refinement density is controlled by `self.n_refine`.
         - The refinement strategy is determined by `self.refine_mode`.
         - The function `generate_refinement` also returns an area estimate,
-        which is currently ignored.
+          which is currently ignored.
         """
 
         filaments, area = generate_refinement(
@@ -194,10 +199,10 @@ class PassiveStructure(coil.Coil):
         )
         return filaments
 
-    def build_control_psi(self, R, Z):
+    def build_control_psi(self, R: np.ndarray, Z: np.ndarray) -> None:
         """
-        Compute and cache the Green's function for the poloidal flux (ψ)
-        induced by the control filaments on a specified R–Z grid.
+        Compute and cache the Green's function for the poloidal flux (psi)
+        of the refining filaments on a specified R-Z grid.
 
         The result is obtained by evaluating the contribution from each filament
         (via `Greens`) and averaging across all filaments.
@@ -213,12 +218,8 @@ class PassiveStructure(coil.Coil):
         -----
         - Each filament is evaluated over the full grid using broadcasting.
         - Filament contributions are averaged to produce the total response.
-        - The result is cached in `self.greens[(R, Z)]["psi"]`.
-
-        Returns
-        -------
-        None
-            The computed Green's function is stored internally.
+        - The result is cached in `self.greens[key]["psi"]`, where `key` is
+          given by `create_RZ_key(R, Z)`.
         """
 
         greens_psi = Greens(
@@ -235,13 +236,13 @@ class PassiveStructure(coil.Coil):
         except:
             self.greens[RZ_key] = {"psi": greens_psi}
 
-    def build_control_br(self, R, Z):
+    def build_control_br(self, R: np.ndarray, Z: np.ndarray) -> None:
         """
         Compute and cache the Green's function for the radial magnetic field (Br)
-        induced by the control filaments on a specified R–Z grid.
+        of the refining filaments on a specified R-Z grid.
 
-        The field is obtained by evaluating the Biot–Savart contribution from each
-        filament (via `GreensBr`) and averaging over all filaments.
+        The result is obtained by evaluating the contribution from each filament
+        (via `GreensBr`) and averaging across all filaments.
 
         Parameters
         ----------
@@ -252,14 +253,10 @@ class PassiveStructure(coil.Coil):
 
         Notes
         -----
-        - Each filament is evaluated on the full R–Z grid using broadcasting.
-        - Contributions are averaged across filaments to form the final field.
-        - The result is cached in `self.greens[(R, Z)]["Br"]` to avoid recomputation.
-
-        Returns
-        -------
-        None
-            The computed Green's function is stored in `self.greens`.
+        - Each filament is evaluated over the full grid using broadcasting.
+        - Filament contributions are averaged to produce the total response.
+        - The result is cached in `self.greens[key]["Br"]`, where `key` is
+          given by `create_RZ_key(R, Z)`.
         """
 
         greens_br = GreensBr(
@@ -276,14 +273,13 @@ class PassiveStructure(coil.Coil):
         except:
             self.greens[RZ_key] = {"Br": greens_br}
 
-    def build_control_bz(self, R, Z):
+    def build_control_bz(self, R: np.ndarray, Z: np.ndarray) -> None:
         """
         Compute and cache the Green's function for the vertical magnetic field (Bz)
-        induced by the control filaments on a specified R–Z grid.
+        of the refining filaments on a specified R-Z grid.
 
-        The result is computed by averaging the filament-wise Biot–Savart
-        contributions and stored in the internal `self.greens` cache using a
-        grid-dependent key.
+        The result is obtained by evaluating the contribution from each filament
+        (via `GreensBz`) and averaging across all filaments.
 
         Parameters
         ----------
@@ -294,14 +290,10 @@ class PassiveStructure(coil.Coil):
 
         Notes
         -----
-        - The computation is performed using `GreensBz` evaluated for each filament.
-        - Filament contributions are averaged to produce the final field.
-        - Results are cached in `self.greens[(R, Z)]["Bz"]` to avoid recomputation.
-
-        Returns
-        -------
-        None
-            The result is stored internally in `self.greens`.
+        - Each filament is evaluated over the full grid using broadcasting.
+        - Filament contributions are averaged to produce the total response.
+        - The result is cached in `self.greens[key]["Bz"]`, where `key` is
+          given by `create_RZ_key(R, Z)`.
         """
 
         greens_bz = GreensBz(
@@ -318,25 +310,24 @@ class PassiveStructure(coil.Coil):
         except:
             self.greens[RZ_key] = {"Bz": greens_bz}
 
-    def controlPsi(self, R, Z):
+    def controlPsi(self, R: np.ndarray, Z: np.ndarray) -> np.ndarray:
         """
-        Return the poloidal flux ψ at a given observation point
-        due to a unit current in the control element.
+        Return the poloidal flux psi on the grid (R, Z) due to a unit current.
 
-        The value is retrieved from a cached Green's function table if available;
-        otherwise it is computed and stored.
+        The value is retrieved from the cached Green's function table if
+        available; otherwise it is computed with `build_control_psi` and stored.
 
         Parameters
         ----------
-        R : float
-            Major radius coordinate of the evaluation point.
-        Z : float
-            Vertical coordinate of the evaluation point.
+        R : np.ndarray
+            2D radial coordinate grid (m), used to build the cache key.
+        Z : np.ndarray
+            2D vertical coordinate grid (m), used to build the cache key.
 
         Returns
         -------
-        np.ndarray or float
-            Green's function contribution to ψ at (R, Z) for unit current.
+        np.ndarray
+            Green's function values on the grid for a unit current.
         """
 
         RZ_key = self.create_RZ_key(R, Z)
@@ -347,34 +338,24 @@ class PassiveStructure(coil.Coil):
             greens_ = self.greens[RZ_key]["psi"]
         return greens_
 
-    def controlBr(self, R, Z):
+    def controlBr(self, R: np.ndarray, Z: np.ndarray) -> np.ndarray:
         """
-        Retrieve the radial magnetic field component (Br) at a given
-        point (R, Z) due to a unit current source.
+        Return the radial magnetic field Br on the grid (R, Z) due to a unit current.
 
-        This method accesses a cached Green’s function if available.
-        If the requested value is not already cached, it is computed
-        on demand and stored for future reuse.
+        The value is retrieved from the cached Green's function table if
+        available; otherwise it is computed with `build_control_br` and stored.
 
         Parameters
         ----------
-        R : float
-            Radial coordinate of the evaluation point.
-        Z : float
-            Vertical coordinate of the evaluation point.
+        R : np.ndarray
+            2D radial coordinate grid (m), used to build the cache key.
+        Z : np.ndarray
+            2D vertical coordinate grid (m), used to build the cache key.
 
         Returns
         -------
-        float or np.ndarray
-            Radial magnetic field component Br at (R, Z) due to a unit current.
-
-        Notes
-        -----
-        - Values are stored in `self.greens` using a key derived from (R, Z).
-        - If the entry is missing, `self.build_control_br(R, Z)` is called
-        to populate the cache.
-        - Repeated queries at the same location are retrieved from cache,
-        avoiding recomputation.
+        np.ndarray
+            Green's function values on the grid for a unit current.
         """
 
         RZ_key = self.create_RZ_key(R, Z)
@@ -385,33 +366,24 @@ class PassiveStructure(coil.Coil):
             greens_ = self.greens[RZ_key]["Br"]
         return greens_
 
-    def controlBz(self, R, Z):
+    def controlBz(self, R: np.ndarray, Z: np.ndarray) -> np.ndarray:
         """
-        Retrieve the vertical magnetic field component (Bz) at a given
-        point (R, Z) due to a unit current source.
+        Return the vertical magnetic field Bz on the grid (R, Z) due to a unit current.
 
-        The method uses a cached Green’s function lookup when available.
-        If the requested value is not present in the cache, it is computed
-        on demand and stored for future use.
+        The value is retrieved from the cached Green's function table if
+        available; otherwise it is computed with `build_control_bz` and stored.
 
         Parameters
         ----------
-        R : float
-            Radial coordinate of evaluation point.
-        Z : float
-            Vertical coordinate of evaluation point.
+        R : np.ndarray
+            2D radial coordinate grid (m), used to build the cache key.
+        Z : np.ndarray
+            2D vertical coordinate grid (m), used to build the cache key.
 
         Returns
         -------
-        float or np.ndarray
-            Bz field contribution at (R, Z) due to a unit current source.
-
-        Notes
-        -----
-        - Results are cached in `self.greens` indexed by a key derived from (R, Z).
-        - If the entry is missing, `self.build_control_bz(R, Z)` is called,
-        which populates the cache.
-        - Subsequent calls with the same (R, Z) avoid recomputation.
+        np.ndarray
+            Green's function values on the grid for a unit current.
         """
 
         RZ_key = self.create_RZ_key(R, Z)
@@ -422,7 +394,7 @@ class PassiveStructure(coil.Coil):
             greens_ = self.greens[RZ_key]["Bz"]
         return greens_
 
-    def plot(self, axis=None, show=False):
+    def plot(self, axis: object = None, show: bool = False) -> object:
         """
         Plot the passive structure polygon on a Matplotlib axis.
 

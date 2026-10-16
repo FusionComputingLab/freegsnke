@@ -21,8 +21,7 @@ along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 import numpy as np
-from numpy import clip, pi, sqrt
-from scipy.integrate import romb
+from numpy import pi, sqrt
 from scipy.interpolate import CubicSpline, UnivariateSpline
 from scipy.special import beta as spbeta
 from scipy.special import betainc as spbinc

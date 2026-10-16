@@ -19,13 +19,15 @@ You should have received a copy of the GNU Lesser General Public License
 along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.  
 """
 
+from __future__ import annotations
+
 import math
 
 import numpy as np
 
 
 class implicit_euler_solver:
-    """An implicit Euler time stepper for the linearized circuit equations. Solves an equation of type
+    r"""An implicit Euler time stepper for the linearized circuit equations. Solves an equation of type
 
     $$M\dot{I} + RI = F$$,
 
@@ -40,8 +42,14 @@ class implicit_euler_solver:
     with M != L
     """
 
-    def __init__(self, Mmatrix, Rmatrix, full_timestep, max_internal_timestep):
-        """Sets up the implicit euler solver
+    def __init__(
+        self,
+        Mmatrix: np.ndarray,
+        Rmatrix: np.ndarray,
+        full_timestep: float,
+        max_internal_timestep: float,
+    ) -> None:
+        """Set up the implicit Euler solver.
 
         Parameters
         ----------
@@ -62,7 +70,7 @@ class implicit_euler_solver:
         self.set_timesteps(full_timestep, max_internal_timestep)
         self.empty_U = np.zeros(self.dims)  # dummy voltage vector
 
-    def set_Mmatrix(self, Mmatrix):
+    def set_Mmatrix(self, Mmatrix: np.ndarray) -> None:
         """Updates the mutual inductance matrix.
 
         Parameters
@@ -72,7 +80,7 @@ class implicit_euler_solver:
         """
         self.Mmatrix = Mmatrix
 
-    def set_Lmatrix(self, Lmatrix):
+    def set_Lmatrix(self, Lmatrix: np.ndarray) -> None:
         """Set a separate mutual inductance matrix L != M.
 
         Parameters
@@ -82,7 +90,7 @@ class implicit_euler_solver:
         """
         self.Lmatrix = Lmatrix
 
-    def set_Rmatrix(self, Rmatrix):
+    def set_Rmatrix(self, Rmatrix: np.ndarray) -> None:
         """Updates the resistance matrix.
 
         Parameters
@@ -92,16 +100,17 @@ class implicit_euler_solver:
         """
         self.Rmatrix = Rmatrix
 
-    def calc_inverse_operator(self):
-        """Calculates the inverse operator (M + Rdt)^-1
-        Note this needs done when M or R are updated
+    def calc_inverse_operator(self) -> None:
+        """Calculate the inverse operator (M + R dt)^-1 and store it as `inverse_operator`.
+
+        Note this needs to be redone whenever M, R or the internal timestep are updated.
         """
         self.inverse_operator = np.linalg.inv(
             self.Mmatrix + self.internal_timestep * self.Rmatrix
         )
 
-    def set_timesteps(self, full_timestep, max_internal_timestep):
-        """Sets the timesteps for the stepper and (re)calculate the inverse operator
+    def set_timesteps(self, full_timestep: float, max_internal_timestep: float) -> None:
+        """Sets the timesteps for the stepper and (re)calculate the inverse operator.
 
         Parameters
         ----------
@@ -117,30 +126,42 @@ class implicit_euler_solver:
         self.internal_timestep = self.full_timestep / self.n_steps
         self.calc_inverse_operator()
 
-    def internal_stepper(self, It, dtforcing):
-        """Calculates the next internal timestep I(t + internal_timestep)
+    def internal_stepper(self, It: np.ndarray, dtforcing: np.ndarray) -> np.ndarray:
+        """Calculate the next internal timestep I(t + internal_timestep).
 
         Parameters
         ----------
         It : np.ndarray
             Length N vector of the currents, I, at time t
         dtforcing : np.ndarray
-            Lenght N vector of the forcing F dt,  at time t
-            multiplied by self.internal_timestep
+            Length N vector of the forcing F at time t, multiplied by
+            `self.internal_timestep`.
+
+        Returns
+        -------
+        np.ndarray
+            Length N vector of the currents at time t + `self.internal_timestep`.
         """
         Itpdt = np.dot(self.inverse_operator, dtforcing + np.dot(self.Lmatrix, It))
         return Itpdt
 
-    def full_stepper(self, It, forcing):
-        """Calculates the next full timestep I(t + `self.full_timestep`) by repeatedly
-        solving for the internal timestep I(t + `self.internal_timestep`) for `self.n_steps` steps
+    def full_stepper(self, It: np.ndarray, forcing: np.ndarray) -> np.ndarray:
+        """Calculate the next full timestep I(t + `self.full_timestep`).
+
+        Repeatedly solves for the internal timestep I(t + `self.internal_timestep`)
+        for `self.n_steps` steps.
 
         Parameters
         ----------
         It : np.ndarray
             Length N vector of the currents, I, at time t
         forcing : np.ndarray
-            Lenght N vector of the forcing, F,  at time t
+            Length N vector of the forcing, F, at time t (held constant over the step).
+
+        Returns
+        -------
+        np.ndarray
+            Length N vector of the currents at time t + `self.full_timestep`.
         """
         dtforcing = forcing * self.internal_timestep
 

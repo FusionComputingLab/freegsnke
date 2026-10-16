@@ -19,15 +19,45 @@ You should have received a copy of the GNU Lesser General Public License
 along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 """
 
+from __future__ import annotations
+
 import itertools
+from typing import TYPE_CHECKING
 
 import cvxpy
 import numpy as np
 from scipy import interpolate
 
+if TYPE_CHECKING:
+    from matplotlib.axes import Axes
 
-def _solve_regularized_lstsq(A, b, regularization):
-    """Solve ``min ||A x - b||² + xᵀ diag(regularization) x`` in augmented form."""
+
+def _solve_regularized_lstsq(
+    A: np.ndarray, b: np.ndarray, regularization: np.ndarray
+) -> np.ndarray:
+    """
+    Solve ``min ||A x - b||² + xᵀ diag(regularization) x`` in augmented form.
+
+    Parameters
+    ----------
+    A : np.ndarray
+        Least-squares matrix of shape (n_constraints, n_variables).
+    b : np.ndarray
+        Right-hand side vector of length n_constraints.
+    regularization : np.ndarray
+        Non-negative Tikhonov weights, one per variable (length n_variables).
+
+    Returns
+    -------
+    np.ndarray
+        Least-squares solution x of length n_variables.
+
+    Raises
+    ------
+    ValueError
+        If `regularization` does not have one value per variable, or contains
+        negative or non-finite values.
+    """
     regularization = np.asarray(regularization)
     if regularization.shape != (A.shape[1],):
         raise ValueError(
@@ -48,19 +78,19 @@ class Inverse_optimizer:
 
     def __init__(
         self,
-        isoflux_set=None,
-        null_points=None,
-        null_points_2nd_order=None,
-        psi_vals=None,
-        coil_current_limits=None,
-        psi_norm_limits=None,
+        isoflux_set: list | np.ndarray | None = None,
+        null_points: list | np.ndarray | None = None,
+        null_points_2nd_order: list | np.ndarray | None = None,
+        psi_vals: list | np.ndarray | None = None,
+        coil_current_limits: list | None = None,
+        psi_norm_limits: list | np.ndarray | None = None,
         *,
-        weight_isoflux=1.0,
-        weight_nulls=1.0,
-        weight_psi=1.0,
-        mu_coils=1e5,
-        mu_psi_norm=1e6,
-    ):
+        weight_isoflux: float = 1.0,
+        weight_nulls: float = 1.0,
+        weight_psi: float = 1.0,
+        mu_coils: float = 1e5,
+        mu_psi_norm: float = 1e6,
+    ) -> None:
         """
         Initialise magnetic constraint definitions for inverse equilibrium optimisation.
 
@@ -80,97 +110,47 @@ class Inverse_optimizer:
 
         Parameters
         ----------
-        isoflux_set : list or ndarray, optional
-            Collection of isoflux constraint objects.
-
-            Each isoflux constraint is specified as:
-                [Rcoords, Zcoords, weights]
-
-            where:
-                Rcoords : 1D array of radial coordinates
-                Zcoords : 1D array of vertical coordinates
-                weights : (optional, array of 1's if not provided) 1D array of weights
-                        to increase/decrease the influence of the constraint on the solution.
-
-            All specified points within each set are required to share
-            the same poloidal flux value.
-
-        null_points : list or ndarray, optional
-            Magnetic null point constraints.
-
-            Structure:
-                [Rcoords, Zcoords]
-
-            Specifies coordinates of:
-                • X-points
-                • O-points (magnetic axes)
-
-        null_points_2nd_order : list or ndarray, optional
-            Second-order magnetic null point constraints.
-
-            Structure:
-                [Rcoords, Zcoords]
-
-            Specifies coordinates of desired 2nd-order null points, typically
-            used for snowflake divertor configurations.
-
-            Note: Do not repeat coordinates already provided in ``null_points``.
-
-        psi_vals : list or ndarray, optional
-            Direct flux value constraints.
-
-            Structure:
-                [Rcoords, Zcoords, psi_values]
-
-            where:
-                Rcoords, Zcoords, psi_values must have identical flattened shapes.
-
-            Used to enforce ψ(R,Z) = ψ_target at specified locations.
-
+        isoflux_set : list or np.ndarray, optional
+            Isoflux constraints. Each constraint set is ``[Rcoords, Zcoords, weights]``
+            (or a list of such sets), where `Rcoords` and `Zcoords` are 1D arrays of
+            coordinates and `weights` is an optional 1D array (ones if not provided)
+            used to increase/decrease the influence of each point on the solution.
+            All points within a set are required to share the same poloidal flux.
+        null_points : list or np.ndarray, optional
+            Magnetic null point (X-point and O-point) constraints, specified as
+            ``[Rcoords, Zcoords]``.
+        null_points_2nd_order : list or np.ndarray, optional
+            Second-order magnetic null point constraints (typically used for
+            snowflake divertor configurations), specified as ``[Rcoords, Zcoords]``.
+            Do not repeat coordinates already provided in `null_points`.
+        psi_vals : list or np.ndarray, optional
+            Direct flux value constraints ``[Rcoords, Zcoords, psi_values]``, where
+            the three entries have identical flattened shapes. Enforces
+            ψ(R,Z) = ψ_target at the specified locations.
         coil_current_limits : list, optional
-            Hard inequality bounds on coil currents.
-
-            Structure:
-                [upper_limits, lower_limits]
-
-            Each entry is a list with length equal to the number of controllable coils.
-
-            Example:
-                [ [Imax1, Imax2, ...], [Imin1, Imin2, ...] ]
-
-            Use None to indicate no bound.
-
-        psi_norm_limits : list or ndarray, optional
-            Normalised flux inequality constraints.
-
-            Structure:
-                [Rcoord, Zcoord, normalised_psi_value, constraint_sign]
-
-            Constraint form:
-                If constraint_sign =  1: ψ_norm ≥ ψ_target
-                If constraint_sign = -1: ψ_norm ≤ ψ_target
-
-            Normalised flux is defined:
-                ψ_norm = (ψ - ψ_axis) / (ψ_boundary - ψ_axis)
-
-        weight_isoflux : float
-            The weight of the isoflux constraints in the least-squares optimisation
+            Hard inequality bounds on coil currents, ``[upper_limits, lower_limits]``,
+            where each entry is a list with length equal to the number of controllable
+            coils, e.g. ``[[Imax1, Imax2, ...], [Imin1, Imin2, ...]]``. Use None
+            within a list to indicate no bound.
+        psi_norm_limits : list or np.ndarray, optional
+            Normalised flux inequality constraints, with one row per constraint
+            ``[Rcoord, Zcoord, normalised_psi_value, constraint_sign]``. A
+            `constraint_sign` of 1 enforces ψ_norm ≥ ψ_target and -1 enforces
+            ψ_norm ≤ ψ_target, where ψ_norm = (ψ - ψ_axis) / (ψ_boundary - ψ_axis).
+        weight_isoflux : float, optional
+            Weight of the isoflux constraints in the least-squares optimisation
             problem (default = 1.0).
-
-        weight_nulls : float
-            The weight of the null point (X-point) constraints in the least-squares
+        weight_nulls : float, optional
+            Weight of the null point (X-point) constraints in the least-squares
             optimisation problem (default = 1.0).
-
-        weight_psi : float
-            The weight of the psi value constraints in the least-squares optimisation
+        weight_psi : float, optional
+            Weight of the psi value constraints in the least-squares optimisation
             problem (default = 1.0).
-
-        mu_coils : float
-            A penalty factor applied to violation of the coil current limits
+        mu_coils : float, optional
+            Penalty factor applied to violation of the coil current limits
             (default = 1e5).
-
-        mu_psi_norm : float
-            A penalty factor applied to violation of the normalised psi limits
+        mu_psi_norm : float, optional
+            Penalty factor applied to violation of the normalised psi limits
             (default = 1e6).
 
         Notes
@@ -263,7 +243,9 @@ class Inverse_optimizer:
         self.weight_psi = weight_psi
 
     @staticmethod
-    def _extract_isoflux_constraints_weights(isoflux_set: np.ndarray):
+    def _extract_isoflux_constraints_weights(
+        isoflux_set: np.ndarray,
+    ) -> tuple[np.ndarray, np.ndarray]:
         """
         Extract isoflux constraint locations and associated weights.
 
@@ -273,15 +255,15 @@ class Inverse_optimizer:
 
         Parameters
         ----------
-        isoflux_set : ndarray
+        isoflux_set : np.ndarray
             Array of isoflux constraints with shape (2, N) or (3, N), where N is
             the number of constraint points.
 
         Returns
         -------
-        constraints : ndarray
+        constraints : np.ndarray
             Constraint coordinates with shape (2, N).
-        weights : ndarray
+        weights : np.ndarray
             Weights associated with each constraint point, shape (N,).
             Defaults to an array of ones if not provided in input.
 
@@ -299,7 +281,7 @@ class Inverse_optimizer:
             f"Expected isoflux set to be of shape (2, N) or (3, N) not {isoflux_set.shape}"
         )
 
-    def prepare_for_solve(self, eq):
+    def prepare_for_solve(self, eq: object) -> None:
         """
         Prepare constraint solver quantities after object instantiation.
 
@@ -316,23 +298,15 @@ class Inverse_optimizer:
 
         Parameters
         ----------
-        eq : freegsnke equilibrium object
-            Equilibrium object providing:
-
-                • Coil geometry
-                • Coil current state
-                • Magnetic Green's function operators
-
-        Returns
-        -------
-        None
-            Updates internal constraint solver state.
+        eq : object
+            Equilibrium object providing the coil geometry, coil current state and
+            magnetic Green's function operators.
         """
 
         self.build_control_coils(eq)
         self.build_greens(eq)
 
-    def source_domain_properties(self, eq):
+    def source_domain_properties(self, eq: object) -> None:
         """
         Source and cache computational domain geometry from the equilibrium object.
 
@@ -341,22 +315,15 @@ class Inverse_optimizer:
 
         Parameters
         ----------
-        eq : FreeGSNKE equilibrium object
-            Equilibrium object providing computational domain information:
-
-                • eq.R : 2D radial grid coordinates
-                • eq.Z : 2D vertical grid coordinates
-
-        Returns
-        -------
-        None
-            Stores domain geometry internally.
-
+        eq : object
+            Equilibrium object providing the computational domain grids
+            ``eq.R`` and ``eq.Z`` (2D radial and vertical coordinates). Stored as
+            `eqR` and `eqZ`.
         """
         self.eqR = eq.R
         self.eqZ = eq.Z
 
-    def build_control_coils(self, eq):
+    def build_control_coils(self, eq: object) -> None:
         """
         Identify and cache coil systems available for active control.
 
@@ -375,19 +342,10 @@ class Inverse_optimizer:
 
         Parameters
         ----------
-        eq : freegsnke equilibrium object
-            Provides tokamak coil system information.
-
-        Expected coil attributes:
-            eq.tokamak.coils : list of coil objects
-            Each coil must have:
-                - coil.control : bool indicating controllability
-
-        Returns
-        -------
-        None
-            Updates solver internal coil control state.
-
+        eq : object
+            Equilibrium providing the tokamak coil system. Each coil in
+            ``eq.tokamak.coils`` must have a boolean ``control`` attribute indicating
+            controllability.
         """
 
         # extract coils that are actively controllable
@@ -419,7 +377,7 @@ class Inverse_optimizer:
         # cache domain geometry (PDE solver grid)
         self.source_domain_properties(eq)
 
-    def build_control_currents(self, eq):
+    def build_control_currents(self, eq: object) -> None:
         """
         Extract coil current values for controllable coils from the equilibrium object.
 
@@ -428,22 +386,14 @@ class Inverse_optimizer:
 
         Parameters
         ----------
-        eq : freegsnke equilibrium object
-            Equilibrium object providing current coil state via:
-
-                eq.tokamak.getCurrentsVec()
-
-        Returns
-        -------
-        None
-            Stores result in:
-                self.control_currents
-
+        eq : object
+            Equilibrium object providing the coil current state via
+            ``eq.tokamak.getCurrentsVec``. The result is stored in `control_currents`.
         """
 
         self.control_currents = eq.tokamak.getCurrentsVec(coils=self.control_coils)
 
-    def build_control_currents_Vec(self, full_currents_vec):
+    def build_control_currents_Vec(self, full_currents_vec: np.ndarray) -> None:
         """
         Extract controllable coil currents from a full coil current vector.
 
@@ -456,22 +406,15 @@ class Inverse_optimizer:
 
         Parameters
         ----------
-        full_currents_vec : ndarray
-            Full vector of coil currents.
-
-            Example:
-                eq.tokamak.getCurrentsVec()
-
-        Returns
-        -------
-        None
-            Stores result in:
-                self.control_currents
+        full_currents_vec : np.ndarray
+            Full vector of coil currents, e.g. as returned by
+            ``eq.tokamak.getCurrentsVec()``. The result is stored in
+            `control_currents`.
         """
 
         self.control_currents = full_currents_vec[self.control_mask]
 
-    def build_full_current_vec(self, eq):
+    def build_full_current_vec(self, eq: object) -> None:
         """
         Build full coil current vector from equilibrium object.
 
@@ -482,20 +425,16 @@ class Inverse_optimizer:
 
         Parameters
         ----------
-        eq : freegsnke equilibrium object
-            Provides coil current state via:
-
-                eq.tokamak.getCurrentsVec()
-
-        Returns
-        -------
-        None
-            Stores result in:
-                self.full_currents_vec
+        eq : object
+            Equilibrium providing the coil current state via
+            ``eq.tokamak.getCurrentsVec``. The result is stored in
+            `full_currents_vec`.
         """
         self.full_currents_vec = eq.tokamak.getCurrentsVec()
 
-    def rebuild_full_current_vec(self, control_currents, filling=0):
+    def rebuild_full_current_vec(
+        self, control_currents: np.ndarray, filling: float = 0
+    ) -> np.ndarray:
         """
         Reconstruct a full coil current vector from control coil values.
 
@@ -512,15 +451,14 @@ class Inverse_optimizer:
 
         Parameters
         ----------
-        control_currents : ndarray
+        control_currents : np.ndarray
             Current values for actively controlled coils.
-
         filling : float, optional
             Default value used to fill non-controlled coil entries.
 
         Returns
         -------
-        full_current_vec : ndarray
+        np.ndarray
             Complete coil current vector in system ordering.
         """
 
@@ -529,7 +467,7 @@ class Inverse_optimizer:
             full_current_vec[self.coil_order[self.control_coils[i][0]]] = current
         return full_current_vec
 
-    def build_greens(self, eq):
+    def build_greens(self, eq: object) -> None:
         """
         Construct and cache magnetic Green's function response operators.
 
@@ -552,15 +490,9 @@ class Inverse_optimizer:
 
         Parameters
         ----------
-        eq : freegsnke equilibrium object
-            Provides access to tokamak geometry and magnetic response
+        eq : object
+            Equilibrium providing access to tokamak geometry and magnetic response
             calculation routines.
-
-        Returns
-        -------
-        None
-            Stores Green's function operators internally.
-
         """
 
         # ------------------------------------------------------------
@@ -676,7 +608,7 @@ class Inverse_optimizer:
                 R=self.psi_norm_limits[:, 0], Z=self.psi_norm_limits[:, 1]
             )
 
-    def build_plasma_vals(self, trial_plasma_psi):
+    def build_plasma_vals(self, trial_plasma_psi: np.ndarray) -> None:
         """
         Compute and cache plasma-dependent magnetic quantities from a candidate flux solution.
 
@@ -691,22 +623,15 @@ class Inverse_optimizer:
 
         Parameters
         ----------
-        trial_plasma_psi : ndarray
-            Candidate plasma poloidal flux solution.
+        trial_plasma_psi : np.ndarray
+            Candidate plasma poloidal flux solution, with the shape of the
+            equilibrium grid (``len(self.eqR) × len(self.eqZ)``).
 
-            Must have shape compatible with:
-                len(self.eqR) × len(self.eqZ)
-
-        Returns
-        -------
-        None
-            Updates internal solver state variables:
-
-                self.brp
-                self.bzp
-                self.d_psi_plasma_vals_iso
-                self.psi_plasma_vals
-
+        Notes
+        -----
+        Updates the internal state variables `brp`, `bzp`, the 2nd-order null point
+        field quantities, `d_psi_plasma_vals_iso` and `psi_plasma_vals`, depending on
+        which constraints are configured.
         """
 
         # interpolate current plasma flux map
@@ -861,7 +786,9 @@ class Inverse_optimizer:
                     self.psi_vals[0], self.psi_vals[1], grid=False
                 )
 
-    def build_isoflux_lsq(self, full_currents_vec):
+    def build_isoflux_lsq(
+        self, full_currents_vec: np.ndarray
+    ) -> tuple[list[np.ndarray], list[np.ndarray], list[float]]:
         """
         Construct linear least-squares system for enforcing isoflux magnetic constraints.
 
@@ -886,25 +813,21 @@ class Inverse_optimizer:
 
         Parameters
         ----------
-        full_currents_vec : ndarray
-            Full vector of all coil currents.
-
-            Example:
-                eq.tokamak.getCurrentsVec()
+        full_currents_vec : np.ndarray
+            Full vector of all coil currents, e.g. as returned by
+            ``eq.tokamak.getCurrentsVec()``.
 
         Returns
         -------
-        A : list of ndarray
+        A : list of np.ndarray
             List of arrays for each isoflux constraint set.
-
-        b : list of ndarray
+        b : list of np.ndarray
             Right-hand side residual vectors.
-
         loss : list of float
             Constraint violation magnitudes (L2 norms).
 
-        Mathematical formulation
-        ------------------------
+        Notes
+        -----
         For each isoflux constraint set:
 
             A_i = (dG_i)ᵀ P_control
@@ -950,7 +873,9 @@ class Inverse_optimizer:
 
         return A, b, loss
 
-    def build_null_points_lsq(self, full_currents_vec):
+    def build_null_points_lsq(
+        self, full_currents_vec: np.ndarray
+    ) -> tuple[np.ndarray, np.ndarray, list[float]]:
         """
         Construct a least-squares system enforcing magnetic null-point constraints.
 
@@ -975,24 +900,18 @@ class Inverse_optimizer:
 
         Parameters
         ----------
-        full_currents_vec : ndarray
-            Full vector of coil currents.
-
-            Example:
-                eq.tokamak.getCurrentsVec()
+        full_currents_vec : np.ndarray
+            Full vector of coil currents, e.g. as returned by
+            ``eq.tokamak.getCurrentsVec()``.
 
         Returns
         -------
-        A : ndarray
+        A : np.ndarray
             Combined Jacobian matrix for null-point field constraints.
-
-        b : ndarray
+        b : np.ndarray
             Residual field mismatch vector (negated for optimisation solving).
-
         loss : list of float
-            Constraint violation magnitudes:
-
-                [ ||B_R||₂ , ||B_Z||₂ ]
+            Constraint violation magnitudes ``[ ||B_R||₂ , ||B_Z||₂ ]``.
 
         Notes
         -----
@@ -1002,8 +921,6 @@ class Inverse_optimizer:
             • X-point control
             • Divertor topology shaping
 
-        Mathematical formulation
-        ------------------------
         The optimisation problem solved is:
 
             min_I || G I + B_plasma ||²
@@ -1031,7 +948,9 @@ class Inverse_optimizer:
 
         return A, b, loss
 
-    def build_psi_vals_lsq(self, full_currents_vec):
+    def build_psi_vals_lsq(
+        self, full_currents_vec: np.ndarray
+    ) -> tuple[np.ndarray, np.ndarray, list[float]]:
         """
         Construct a least-squares system enforcing direct flux value constraints.
 
@@ -1057,22 +976,18 @@ class Inverse_optimizer:
 
         Parameters
         ----------
-        full_currents_vec : ndarray
-            Full coil current vector.
-
-            Example:
-                eq.tokamak.getCurrentsVec()
+        full_currents_vec : np.ndarray
+            Full coil current vector, e.g. as returned by
+            ``eq.tokamak.getCurrentsVec()``.
 
         Returns
         -------
-        A : ndarray
+        A : np.ndarray
             Jacobian matrix mapping coil current perturbations → flux changes.
-
-        b : ndarray
+        b : np.ndarray
             Flux mismatch residual vector.
-
-        normalised_loss : list of float
-            Normalised constraint violation magnitude.
+        list of float
+            Single-element list with the normalised constraint violation magnitude.
 
         Notes
         -----
@@ -1082,8 +997,6 @@ class Inverse_optimizer:
             • Boundary flux matching
             • Profile shape control
 
-        Mathematical formulation
-        ------------------------
         Solve:
 
             min_I || G I + ψ_plasma − ψ_target ||²
@@ -1109,7 +1022,7 @@ class Inverse_optimizer:
 
         return A, b, [normalised_loss]
 
-    def build_lsq(self, full_currents_vec):
+    def build_lsq(self, full_currents_vec: np.ndarray) -> None:
         """
         Assemble the global least-squares optimisation system combining all
         active magnetic and control constraints.
@@ -1133,23 +1046,14 @@ class Inverse_optimizer:
 
         Parameters
         ----------
-        full_currents_vec : ndarray
-            Full vector of coil currents.
-
-            Example:
-                eq.tokamak.getCurrentsVec()
-
-        Returns
-        -------
-        None
-            Stores assembled optimisation system internally:
-
-                self.A
-                self.b
-                self.loss
+        full_currents_vec : np.ndarray
+            Full vector of coil currents, e.g. as returned by
+            ``eq.tokamak.getCurrentsVec()``.
 
         Notes
         -----
+        The assembled system is stored as `A`, `b` and `loss`.
+
         This formulation solves the global constrained optimisation problem:
 
             min_I || A I − b ||²
@@ -1210,8 +1114,13 @@ class Inverse_optimizer:
         self.loss = np.array(loss)
 
     def optimize_currents(
-        self, eq, profiles, full_currents_vec, trial_plasma_psi, l2_reg
-    ):
+        self,
+        eq: object,
+        profiles: object,
+        full_currents_vec: np.ndarray,
+        trial_plasma_psi: np.ndarray,
+        l2_reg: float | np.ndarray,
+    ) -> tuple[np.ndarray, float]:
         """
         Solve the constrained least-squares optimisation problem for coil current updates.
 
@@ -1234,40 +1143,32 @@ class Inverse_optimizer:
 
         Parameters
         ----------
-        eq : FreeGSNKE equilibrium object
+        eq : object
             Equilibrium providing geometry and tokamak configuration.
-
-        profiles : FreeGSNKE profile object
+        profiles : object
             Plasma profile properties used for constraint evaluation.
-
-        full_currents_vec : ndarray
-            Full vector of all coil currents.
-
-            Example:
-                eq.tokamak.getCurrentsVec()
-
-        trial_plasma_psi : ndarray
-            Candidate plasma flux solution.
-
-            Must have same shape as:
-                eq.R
-
-        l2_reg : float or ndarray
-            Tikhonov regularisation parameter.
-
-            If float:
-                R is the scalar value times the identity matrix.
-
-            If array:
-                R contains the supplied coil-wise values on its diagonal.
+        full_currents_vec : np.ndarray
+            Full vector of all coil currents, e.g. as returned by
+            ``eq.tokamak.getCurrentsVec()``.
+        trial_plasma_psi : np.ndarray
+            Candidate plasma flux solution, with the same shape as ``eq.R``.
+        l2_reg : float or np.ndarray
+            Tikhonov regularisation parameter. If a float, R is the scalar value
+            times the identity matrix; if an array (one entry per controlled coil),
+            R contains the supplied coil-wise values on its diagonal.
 
         Returns
         -------
-        delta_current : ndarray
+        delta_current : np.ndarray
             Optimal coil current update vector.
-
         loss : float
             Residual loss norm.
+
+        Raises
+        ------
+        ValueError
+            If `l2_reg` is an array whose length differs from the number of
+            controlled coils.
         """
         # prepare the plasma-related values
         self.build_plasma_vals(trial_plasma_psi=trial_plasma_psi)
@@ -1310,16 +1211,16 @@ class Inverse_optimizer:
 
     def optimize_currents_quadratic(
         self,
-        eq,
-        profiles,
-        full_currents_vec,
-        reg_matrix,
+        eq: object,
+        profiles: object,
+        full_currents_vec: np.ndarray,
+        reg_matrix: np.ndarray,
         *,
-        mu_coils=None,
-        mu_psi_norm=None,
-        A=None,
-        b=None,
-    ):
+        mu_coils: float | None = None,
+        mu_psi_norm: float | None = None,
+        A: np.ndarray | None = None,
+        b: np.ndarray | None = None,
+    ) -> tuple[np.ndarray, float]:
         """
         Solve the regularised constrained least-squares problem using convex optimisation.
 
@@ -1342,42 +1243,38 @@ class Inverse_optimizer:
 
         Parameters
         ----------
-        eq : FreeGSNKE equilibrium object
+        eq : object
             Equilibrium object used to evaluate plasma quantities and ψ_norm.
-
-        profiles : FreeGSNKE profile object
+        profiles : object
             Provides boundary flux (psi_bndry) and related quantities.
-
-        full_currents_vec : ndarray
+        full_currents_vec : np.ndarray
             Full vector of coil currents.
-
-        reg_matrix : ndarray
+        reg_matrix : np.ndarray
             Regularisation matrix (n_control_coils × n_control_coils),
             typically diagonal, encoding Tikhonov L2 regularisation.
-
-        mu_coils : float | None
-            Scaling factor for coil current limit slack penalties.
-            If None, defaults to self.mu_coils (default ~1e5).
-
-        mu_psi_norm : float | None
+        mu_coils : float or None, optional
+            Currently unused: the coil limit slack penalty always uses
+            ``self.mu_coils``.
+        mu_psi_norm : float or None, optional
             Scaling factor for ψ_norm slack penalties.
-            If None, defaults to self.mu_psi_norm.
-
-        A : ndarray | None
-            Sensitivity matrix. If None, uses self.A.
-
-        b : ndarray | None
-            Target residual vector. If None, uses self.b.
+            If None (or zero), defaults to ``self.mu_psi_norm``.
+        A : np.ndarray or None, optional
+            Sensitivity matrix. If None, uses ``self.A``.
+        b : np.ndarray or None, optional
+            Target residual vector. If None, uses ``self.b``.
 
         Returns
         -------
-        delta : ndarray
+        delta : np.ndarray
             Optimal coil current update vector ΔI.
-
         loss : float
-            Combined loss including:
-                • Magnetic constraint residual norm
-                • Slack variable penalties
+            Combined loss: the magnetic constraint residual norm plus the sum of
+            the slack variable values.
+
+        Raises
+        ------
+        ValueError
+            If a ψ_norm constraint sign in `psi_norm_limits` is not 1 or -1.
 
         Notes
         -----
@@ -1512,13 +1409,13 @@ class Inverse_optimizer:
 
     def optimize_currents_grad(
         self,
-        full_currents_vec,
-        trial_plasma_psi,
-        isoflux_weight=1.0,
-        null_points_weight=1.0,
-        null_points_2nd_order_weight=1.0,
-        psi_vals_weight=1.0,
-    ):
+        full_currents_vec: np.ndarray,
+        trial_plasma_psi: np.ndarray,
+        isoflux_weight: float = 1.0,
+        null_points_weight: float = 1.0,
+        null_points_2nd_order_weight: float = 1.0,
+        psi_vals_weight: float = 1.0,
+    ) -> tuple[np.ndarray, float]:
         """
         Compute the gradient of the magnetic least-squares objective
         with respect to control coil currents.
@@ -1537,33 +1434,28 @@ class Inverse_optimizer:
 
         Parameters
         ----------
-        full_currents_vec : ndarray
-            Full vector of all coil current values.
+        full_currents_vec : np.ndarray
+            Full vector of all coil current values, e.g. as returned by
+            ``eq.tokamak.getCurrentsVec()``.
 
-            Example:
-                eq.tokamak.getCurrentsVec()
-
-        trial_plasma_psi : ndarray
+        trial_plasma_psi : np.ndarray
             Plasma flux contribution. Must have same shape as eq.R.
-
         isoflux_weight : float, optional
             Weight applied to isoflux constraint residuals.
-
         null_points_weight : float, optional
             Weight applied to null-point field constraint residuals.
-
+        null_points_2nd_order_weight : float, optional
+            Weight applied to second-order null-point constraint residuals.
         psi_vals_weight : float, optional
             Weight applied to direct flux value constraint residuals.
 
         Returns
         -------
-        grad : ndarray
+        grad : np.ndarray
             Gradient of the weighted least-squares objective with respect
             to control coil current updates.
-
         loss : float
             Combined magnetic constraint loss (unweighted).
-
         """
 
         # prepare the plasma-related values
@@ -1594,7 +1486,7 @@ class Inverse_optimizer:
 
         return grad, np.linalg.norm(self.loss)
 
-    def plot(self, axis=None, show=True):
+    def plot(self, axis: Axes | None = None, show: bool = True) -> Axes:
         """
         Visualise the active coil control constraints.
 
@@ -1627,7 +1519,7 @@ class Inverse_optimizer:
 
         return plotIOConstraints(self, axis=axis, show=show)
 
-    def prepare_plasma_psi(self, trial_plasma_psi):
+    def prepare_plasma_psi(self, trial_plasma_psi: np.ndarray) -> None:
         """
         Preprocess plasma flux values for normalisation and constraint evaluation.
 
@@ -1636,8 +1528,12 @@ class Inverse_optimizer:
 
         Parameters
         ----------
-        trial_plasma_psi : ndarray
+        trial_plasma_psi : np.ndarray
             Plasma flux array.
+
+        Notes
+        -----
+        Sets the attributes `min_psi` and `psi0`.
         """
 
         self.min_psi = np.amin(trial_plasma_psi)
@@ -1645,7 +1541,7 @@ class Inverse_optimizer:
         self.min_psi -= 0.001 * (self.psi0 - self.min_psi)
         self.psi0 -= self.min_psi
 
-    def prepare_plasma_vals_for_plasma(self, trial_plasma_psi):
+    def prepare_plasma_vals_for_plasma(self, trial_plasma_psi: np.ndarray) -> None:
         """
         Precompute plasma-dependent quantities required for plasma optimisation.
 
@@ -1662,11 +1558,13 @@ class Inverse_optimizer:
 
         Parameters
         ----------
-        trial_plasma_psi : ndarray
+        trial_plasma_psi : np.ndarray
             Plasma flux array defined on the equilibrium grid (eqR, eqZ).
 
         Notes
         -----
+        Sets `d_psi_plasma_vals_iso` and `d_psi_for_plasma_iso`.
+
         For each isoflux constraint set:
 
             1. Interpolate ψ at constraint coordinates.
@@ -1718,7 +1616,7 @@ class Inverse_optimizer:
                     self.psi0 * d_hat_plasma_vals[self.mask_set[i]]
                 )
 
-    def prepare_for_plasma_optimization(self, eq):
+    def prepare_for_plasma_optimization(self, eq: object) -> None:
         """
         Prepare geometry- and Green's-function-dependent quantities
         required for plasma optimisation.
@@ -1730,8 +1628,8 @@ class Inverse_optimizer:
 
         Parameters
         ----------
-        eq : FreeGSNKE equilibrium object
-            Provides geometry, coil configuration, and grid data.
+        eq : object
+            Equilibrium providing geometry, coil configuration, and grid data.
 
         Notes
         -----
@@ -1742,7 +1640,9 @@ class Inverse_optimizer:
         self.source_domain_properties(eq)
         self.build_greens(eq=eq)
 
-    def build_plasma_isoflux_lsq(self, full_currents_vec, trial_plasma_psi):
+    def build_plasma_isoflux_lsq(
+        self, full_currents_vec: np.ndarray, trial_plasma_psi: np.ndarray
+    ) -> None:
         """
         Assemble the least-squares system for plasma-only isoflux optimisation.
 
@@ -1762,10 +1662,9 @@ class Inverse_optimizer:
 
         Parameters
         ----------
-        full_currents_vec : ndarray
+        full_currents_vec : np.ndarray
             Full vector of coil currents.
-
-        trial_plasma_psi : ndarray
+        trial_plasma_psi : np.ndarray
             Plasma flux array defined on the equilibrium grid.
 
         Notes
@@ -1812,7 +1711,9 @@ class Inverse_optimizer:
         self.b_plasma = np.concatenate(b, axis=0)
         self.loss_plasma = np.linalg.norm(loss)
 
-    def build_null_points_2nd_order_lsq(self, full_currents_vec):
+    def build_null_points_2nd_order_lsq(
+        self, full_currents_vec: np.ndarray
+    ) -> tuple[np.ndarray, np.ndarray, list[float]]:
         """
         Construct the linear least-squares system enforcing second-order null point constraints.
 
@@ -1854,17 +1755,13 @@ class Inverse_optimizer:
             Least-squares matrix of shape (n_constraints, n_control_coils),
             mapping control coil current corrections to changes in the magnetic
             field quantities at the null points.
-
         b : np.ndarray
             Right-hand side vector of shape (n_constraints,), representing the
             negative residuals of the current field configuration (coil + plasma).
-
         loss : list of float
-            List of L2 norms of each individual constraint residual before solving.
-            The entries correspond to:
-                [||B_R||, ||B_Z||,
-                ||∂B_R/∂R||, ||∂B_Z/∂Z||,
-                ||∂B_R/∂Z||, ||∂B_Z/∂R||]
+            L2 norms of each individual constraint residual before solving, in the
+            order ``[||B_R||, ||B_Z||, ||∂B_R/∂R||, ||∂B_Z/∂Z||, ||∂B_R/∂Z||,
+            ||∂B_Z/∂R||]``.
 
         Notes
         -----
@@ -1934,7 +1831,12 @@ class Inverse_optimizer:
         )
         return A, b, loss
 
-    def optimize_plasma_psi(self, full_currents_vec, trial_plasma_psi, l2_reg):
+    def optimize_plasma_psi(
+        self,
+        full_currents_vec: np.ndarray,
+        trial_plasma_psi: np.ndarray,
+        l2_reg: float | np.ndarray,
+    ) -> tuple[np.ndarray, float]:
         """
         Solve the regularised least-squares problem for plasma parameters.
 
@@ -1949,26 +1851,19 @@ class Inverse_optimizer:
 
         Parameters
         ----------
-        full_currents_vec : ndarray
+        full_currents_vec : np.ndarray
             Full vector of coil currents.
-
-        trial_plasma_psi : ndarray
+        trial_plasma_psi : np.ndarray
             Plasma flux array defined on the equilibrium grid.
-
-        l2_reg : float or ndarray (length 2)
-            Tikhonov regularisation strength.
-
-            If float:
-                Uniform regularisation applied.
-
-            If array:
-                Diagonal regularisation weights.
+        l2_reg : float or np.ndarray
+            Tikhonov regularisation strength. If a float, uniform regularisation is
+            applied; if an array (length 2), its entries are the diagonal
+            regularisation weights.
 
         Returns
         -------
-        delta_current : ndarray
+        delta_current : np.ndarray
             Optimal update vector for plasma parameters (length 2).
-
         loss_plasma : float
             Isoflux constraint violation norm (pre-update).
 

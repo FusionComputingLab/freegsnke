@@ -21,66 +21,80 @@ You should have received a copy of the GNU Lesser General Public License
 along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.   
 """
 
+from __future__ import annotations
+
 import numpy as np
 
 from .implicit_euler import implicit_euler_solver
 
 
 class simplified_solver_J1:
-    """Takes the full system of circuit equations (discretised in time and over the reduced plasma domain)
-    and applies that  $$I_y(t+dt) = \hat{I_y}*I_p(t+dt)$$
-    where $\hat{I_y}$ is assigned and such that np.sum(\hat{I_y})=1.
-    With this hypothesis, the system can be (linearly) solved to find ALL of the extensive currents at t+dt
-    (metal current and total plasma current).
+    r"""
+    Solver for the extensive currents under a fixed plasma current shape.
+
+    Takes the full system of circuit equations (discretised in time and over
+    the reduced plasma domain) and applies
+
+    .. math:: I_y(t+dt) = \hat{I_y} I_p(t+dt),
+
+    where :math:`\hat{I_y}` is assigned and such that
+    ``np.sum(hatIy) = 1``. With this hypothesis, the system can be (linearly)
+    solved to find ALL of the extensive currents at t+dt (metal currents and
+    total plasma current).
     """
 
     def __init__(
         self,
         # eq,
-        coil_numbers,
-        Lambdam1,
-        P,
-        Pm1,
-        Rm1,
-        Mey,
-        plasma_norm_factor,
-        plasma_resistance_1d,
-        full_timestep=0.0001,
-    ):
-        """Initialises the solver for the extensive currents.
+        coil_numbers: tuple[int, int],
+        Lambdam1: np.ndarray,
+        P: np.ndarray,
+        Pm1: np.ndarray,
+        Rm1: np.ndarray,
+        Mey: np.ndarray,
+        plasma_norm_factor: float,
+        plasma_resistance_1d: np.ndarray,
+        full_timestep: float = 0.0001,
+    ) -> None:
+        r"""
+        Initialise the solver for the extensive currents.
 
-        Based on the input plasma properties and coupling matrices, it prepares:
-            - an instance of the implicit Euler solver implicit_euler_solver()
-            - internal time-stepper for the implicit-Euler
+        Based on the input plasma properties and coupling matrices, it prepares
+        an instance of the implicit Euler solver ``implicit_euler_solver`` and
+        the internal time-stepper for the implicit Euler.
 
         Parameters
         ----------
-        eq : class
-            FreeGSNKE equilibrium Object
-        Lambdam1: np.array
-            State matrix of the circuit equations for the metal in normal mode form:
-            P is the identity on the active coils and diagonalises the isolated dynamics
-            of the passive coils, R^{-1}L_{passive}
-        P: np.array
-            change of basis matrix, as defined above, with modes appropriately removed
-        Pm1: np.array
-            Inverse of the change of basis matrix, as defined above, with modes appropriately removed
-        Rm1: np.array
-            matrix of all metal resitances to the power of -1. Diagonal.
-        Mey: np.array
-            matrix of inductance values between grid points in the reduced plasma domain and all metal coils
-            (active coils and passive-structure filaments)
-            Calculated by the metal_currents object
-        plasma_norm_factor: float
-            an overall factor to work with a rescaled plasma current, so that
-            it's within a comparable range with metal currents
-        plasma_resistance_1d: np.array
-            plasma reistance in each (reduced domain) plasma cell, R_yy, raveled to be of the same shape as I_y,
-            the lumped total plasma resistance is obtained by contracting
-            \hat{I_y}R_{yy}\hat{I_{y}} = I_y R_{yy} I_{y} / I_{p}^2
-        full_timestep: float
-            full timestep requested to the implicit-Euler solver
-
+        coil_numbers : tuple[int, int]
+            ``(n_active_coils, n_coils)``: number of active coils and total
+            number of metal elements.
+        Lambdam1 : np.ndarray
+            State matrix of the circuit equations for the metal in normal-mode
+            form. P is the identity on the active coils and diagonalises the
+            isolated dynamics of the passive coils, R^{-1}L_{passive}.
+        P : np.ndarray
+            Change of basis matrix, as defined above, with modes appropriately
+            removed.
+        Pm1 : np.ndarray
+            Inverse of the change of basis matrix, as defined above, with modes
+            appropriately removed.
+        Rm1 : np.ndarray
+            Diagonal matrix of all metal resistances to the power of -1.
+        Mey : np.ndarray
+            Matrix of inductance values between grid points in the reduced
+            plasma domain and all metal coils (active coils and
+            passive-structure filaments), calculated by the metal_currents
+            object.
+        plasma_norm_factor : float
+            Overall factor to work with a rescaled plasma current, so that it
+            is within a comparable range with metal currents.
+        plasma_resistance_1d : np.ndarray
+            Plasma resistance in each (reduced domain) plasma cell, R_yy,
+            raveled to be of the same shape as I_y. The lumped total plasma
+            resistance is obtained by contracting
+            :math:`\hat{I_y}R_{yy}\hat{I_{y}} = I_y R_{yy} I_{y} / I_{p}^2`.
+        full_timestep : float, optional
+            Full timestep requested of the implicit-Euler solver.
         """
 
         self.max_internal_timestep = full_timestep
@@ -126,15 +140,19 @@ class simplified_solver_J1:
         # dummy voltage vec for residuals
         self.residuals = np.zeros(self.n_independent_vars + 1)
 
-    def reset_timesteps(self, max_internal_timestep, full_timestep):
-        """Resets the integration timesteps, calling self.solver.set_timesteps
+    def reset_timesteps(
+        self, max_internal_timestep: float, full_timestep: float
+    ) -> None:
+        """
+        Reset the integration timesteps, calling ``self.solver.set_timesteps``.
 
         Parameters
         ----------
-        max_internal_timestep: float
-            integration substep of the ciruit equation, calling an implicit-Euler solver
-        full_timestep: float
-            integration timestep of the circuit equation
+        max_internal_timestep : float
+            Integration substep of the circuit equation, used by the
+            implicit-Euler solver.
+        full_timestep : float
+            Integration timestep of the circuit equation.
         """
 
         self.max_internal_timestep = max_internal_timestep
@@ -143,38 +161,51 @@ class simplified_solver_J1:
             full_timestep=full_timestep, max_internal_timestep=max_internal_timestep
         )
 
-    def reset_plasma_resistivity(self, plasma_resistance_1d):
-        """Resets the value of the plasma resistivity,
-        throught the vector of 'geometric resistances' in the plasma domain
+    def reset_plasma_resistivity(self, plasma_resistance_1d: np.ndarray) -> None:
+        """
+        Reset the plasma resistivity.
+
+        This is done through the vector of 'geometric resistances' in the
+        plasma domain.
 
         Parameters
         ----------
-        plasma_resistance_1d : ndarray
-            Vector of (2pi resistivity R/dA) for all domain grid points in the reduced plasma domain
+        plasma_resistance_1d : np.ndarray
+            Vector of (2 pi resistivity R/dA) for all domain grid points in the
+            reduced plasma domain.
         """
         self.plasma_resistance_1d = plasma_resistance_1d
 
     def prepare_solver(
-        self, hatIy_left, hatIy_0, hatIy_1, active_voltage_vec, Myy_hatIy_left
-    ):
-        """Computes the actual matrices that are needed in the ODE for the extensive currents
-         and that must be passed to the implicit-Euler solver.
+        self,
+        hatIy_left: np.ndarray,
+        hatIy_0: np.ndarray,
+        hatIy_1: np.ndarray,
+        active_voltage_vec: np.ndarray,
+        Myy_hatIy_left: np.ndarray,
+    ) -> None:
+        """
+        Compute the matrices needed in the ODE for the extensive currents.
+
+        The matrices are passed to the implicit-Euler solver, whose inverse
+        operator is recalculated. Also sets ``self.Rp`` and ``self.forcing``.
 
         Parameters
         ----------
-        hatIy_left: np.array
-            normalised plasma current distribution on the reduced domain.
+        hatIy_left : np.ndarray
+            Normalised plasma current distribution on the reduced domain.
             This is used to left-contract the plasma evolution equation
-            (e.g. at time t, or t+dt, or a combination)
-        hatIy_0: np.array
-            normalised plasma current distribution on the reduced domain at time t
-        hatIy_1: np.array
-            (guessed) normalised plasma current distribution on the reduced domain at time t+dt
-        active_voltage_vec: np.array
-            voltages applied to the active coils
-        Myy_hatIy_left : np.array
-            The matrix product np.dot(Myy, hatIy_left) in the same reduced domain as hatIy_left
-            This is provided by Myy_handler
+            (e.g. at time t, or t+dt, or a combination).
+        hatIy_0 : np.ndarray
+            Normalised plasma current distribution on the reduced domain at time t.
+        hatIy_1 : np.ndarray
+            (Guessed) normalised plasma current distribution on the reduced
+            domain at time t+dt.
+        active_voltage_vec : np.ndarray
+            Voltages applied to the active coils.
+        Myy_hatIy_left : np.ndarray
+            The matrix product ``np.dot(Myy, hatIy_left)`` in the same reduced
+            domain as `hatIy_left`. This is provided by Myy_handler.
         """
 
         Rp = np.sum(self.plasma_resistance_1d * hatIy_left * hatIy_1)
@@ -204,34 +235,43 @@ class simplified_solver_J1:
         self.forcing[:-1] = np.dot(self.Pm1Rm1, self.empty_U)
 
     def stepper(
-        self, It, hatIy_left, hatIy_0, hatIy_1, active_voltage_vec, Myy_hatIy_left
-    ):
-        """Computes and returns the set of extensive currents at time t+dt
+        self,
+        It: np.ndarray,
+        hatIy_left: np.ndarray,
+        hatIy_0: np.ndarray,
+        hatIy_1: np.ndarray,
+        active_voltage_vec: np.ndarray,
+        Myy_hatIy_left: np.ndarray,
+    ) -> np.ndarray:
+        """
+        Compute the set of extensive currents at time t+dt.
 
         Parameters
         ----------
-        It: np.array
-            vector of all extensive currents at time t: It = (all metals, plasma)
-            with dimension self.n_independent_vars + 1. Metal currents expressed in
-            terms of normal modes.
-        hatIy_left: np.array
-            normalised plasma current distribution on the reduced domain.
+        It : np.ndarray
+            Vector of all extensive currents at time t: ``It = (all metals,
+            plasma)``, with dimension ``self.n_independent_vars + 1``. Metal
+            currents are expressed in terms of normal modes.
+        hatIy_left : np.ndarray
+            Normalised plasma current distribution on the reduced domain.
             This is used to left-contract the plasma evolution equation
-            (e.g. at time t, or t+dt, or a combination)
-        hatIy_0: np.array
-            normalised plasma current distribution on the reduced domain at time t
-        hatIy_1: np.array
-            (guessed) normalised plasma current distribution on the reduced domain at time t+dt
-        active_voltage_vec: np.array
-            voltages applied to the active coils
-        Myy_hatIy_left : np.array
-            The matrix product np.dot(Myy, hatIy_left) in the same reduced domain as hatIy_left
-            This is provided by Myy_handler
+            (e.g. at time t, or t+dt, or a combination).
+        hatIy_0 : np.ndarray
+            Normalised plasma current distribution on the reduced domain at time t.
+        hatIy_1 : np.ndarray
+            (Guessed) normalised plasma current distribution on the reduced
+            domain at time t+dt.
+        active_voltage_vec : np.ndarray
+            Voltages applied to the active coils.
+        Myy_hatIy_left : np.ndarray
+            The matrix product ``np.dot(Myy, hatIy_left)`` in the same reduced
+            domain as `hatIy_left`. This is provided by Myy_handler.
 
         Returns
         -------
-        Itpdt: np.array
-            currents (active coils, vessel eigenmodes, total plasma current) at time t+dt
+        np.ndarray
+            Currents (active coils, vessel eigenmodes, total plasma current) at
+            time t+dt.
         """
         self.prepare_solver(
             hatIy_left, hatIy_0, hatIy_1, active_voltage_vec, Myy_hatIy_left
@@ -239,34 +279,52 @@ class simplified_solver_J1:
         Itpdt = self.solver.full_stepper(It, self.forcing)
         return Itpdt
 
-    def ceq_residuals(self, I_0, I_1, hatIy_left, hatIy_0, hatIy_1, active_voltage_vec):
-        """Computes and returns the set of residual for the full lumped circuit equations
-        (all metals in normal modes plus contracted plasma eq.) given extensive currents and
-        normalised plasma distributions at both times t and t+dt. Uses
+    def ceq_residuals(
+        self,
+        I_0: np.ndarray,
+        I_1: np.ndarray,
+        hatIy_left: np.ndarray,
+        hatIy_0: np.ndarray,
+        hatIy_1: np.ndarray,
+        active_voltage_vec: np.ndarray,
+    ) -> np.ndarray:
+        """
+        Compute the residual of the full lumped circuit equations.
+
+        The equations are the metal ones (in normal modes) plus the contracted
+        plasma one, evaluated given extensive currents and normalised plasma
+        distributions at both times t and t+dt.
 
         Parameters
         ----------
-        I_0: np.array
-            vector of all extensive currents at time t: It = (all metals, plasma)
-            with dimension self.n_independent_vars + 1. Metal currents expressed in
-            terms of normal modes.
-        I_1: np.array
-            as above at time t+dt.
-        hatIy_left: np.array
-            normalised plasma current distribution on the reduced domain.
+        I_0 : np.ndarray
+            Vector of all extensive currents at time t: ``(all metals,
+            plasma)``, with dimension ``self.n_independent_vars + 1``. Metal
+            currents are expressed in terms of normal modes.
+        I_1 : np.ndarray
+            As above, at time t+dt.
+        hatIy_left : np.ndarray
+            Normalised plasma current distribution on the reduced domain.
             This is used to left-contract the plasma evolution equation
-            (e.g. at time t, or t+dt, or a combination)
-        hatIy_0: np.array
-            normalised plasma current distribution on the reduced domain at time t
-        hatIy_1: np.array
-            normalised plasma current distribution on the reduced domain at time t+dt
-        active_voltage_vec: np.array
-            voltages applied to the active coils
+            (e.g. at time t, or t+dt, or a combination).
+        hatIy_0 : np.ndarray
+            Normalised plasma current distribution on the reduced domain at time t.
+        hatIy_1 : np.ndarray
+            Normalised plasma current distribution on the reduced domain at
+            time t+dt.
+        active_voltage_vec : np.ndarray
+            Voltages applied to the active coils.
 
         Returns
         -------
-        np.array
-            Residual of the circuit eq, lumped for the plasma: dimensions are self.n_independent_vars + 1.
+        np.ndarray
+            Residual of the circuit equations, lumped for the plasma, with
+            dimension ``self.n_independent_vars + 1``.
+
+        Notes
+        -----
+        Requires the attribute ``self.handleMyy`` (a Myy_handler) to have been
+        set externally; it is not created in ``__init__``.
         """
         residuals = np.zeros_like(I_1)
         empty_U = np.zeros(self.n_coils)

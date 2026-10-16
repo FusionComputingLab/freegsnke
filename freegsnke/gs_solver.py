@@ -21,6 +21,8 @@ along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 
 """
 
+from __future__ import annotations
+
 import warnings
 from abc import ABC, abstractmethod
 
@@ -46,38 +48,47 @@ class GSSolver(ABC):
     # for most solvers. Should consider ways to modify how this argument is handled.
 
     @abstractmethod
-    def __init__(self, R, Z, *, order=2, dtype=np.float64):
+    def __init__(
+        self,
+        R: np.ndarray,
+        Z: np.ndarray,
+        *,
+        order: int = 2,
+        dtype: type | np.dtype = np.float64,
+    ) -> None:
         """
         Recommended initialization signature for subclasses.
 
         Parameters
         ----------
-        R, Z: ndarray (nr,nz)
-            grids with the radius and height of each point in the domain
-        order: int
-            order of the finite difference approximation to the GS operator
-        dtype: dtype
-            datatype to use, per numpy conventions
+        R : np.ndarray
+            Grid of shape (nr, nz) with the radius of each point in the domain.
+        Z : np.ndarray
+            Grid of shape (nr, nz) with the height of each point in the domain.
+        order : int, optional
+            Order of the finite difference approximation to the GS operator.
+        dtype : type or np.dtype, optional
+            Datatype to use, per numpy conventions.
         """
         pass
 
-    def __call__(self, xi, rhs, **kwargs):
+    def __call__(self, xi: np.ndarray, rhs: np.ndarray, **kwargs: object) -> np.ndarray:
         """
         Calls the solver and returns the solution in the shape of the given rhs.
 
         Parameters
         ----------
-        xi: ndarray
-            initial guess (may be unused by the solver)
-        rhs: ndarray
-            right-hand-side of the GS equation, of shape `self.dimensions`
-        **kwargs:
-            passed on to `solve`
+        xi : np.ndarray
+            Initial guess (may be unused by the solver).
+        rhs : np.ndarray
+            Right-hand side of the GS equation, of shape `self.dimensions`.
+        **kwargs : object
+            Passed on to `solve`.
 
         Returns
         -------
-        ndarray
-            solution psi, with the shape of rhs
+        np.ndarray
+            Solution psi, with the shape of rhs.
 
         Raises
         ------
@@ -94,10 +105,25 @@ class GSSolver(ABC):
         return psi.reshape(rhs.shape)
 
     @abstractmethod
-    def solve(self, xi, rhs, **kwargs):
+    def solve(self, xi: np.ndarray, rhs: np.ndarray, **kwargs: object) -> np.ndarray:
         """
-        Solves the GS equation for the given rhs and returns psi (possibly flattened,
-        `__call__` restores the shape).
+        Solve the GS equation for the given rhs and return psi.
+
+        The result may be flattened; `__call__` restores the shape.
+
+        Parameters
+        ----------
+        xi : np.ndarray
+            Initial guess (may be unused by the solver).
+        rhs : np.ndarray
+            Right-hand side of the GS equation.
+        **kwargs : object
+            Solver-specific options.
+
+        Returns
+        -------
+        np.ndarray
+            Solution psi.
         """
         pass
 
@@ -116,20 +142,27 @@ class GSLUSolver(GSSolver):
 
     """
 
-    def __init__(self, R, Z, *, order=4, dtype=np.float64):
+    def __init__(
+        self,
+        R: np.ndarray,
+        Z: np.ndarray,
+        *,
+        order: int = 4,
+        dtype: type | np.dtype = np.float64,
+    ) -> None:
         """
         Initialize the solver with the given setup. R and Z define the grid (domain size and resolution).
 
         Parameters
         ----------
-        R: ndarray (nr,nz)
-            ndarray of the shape of the domain (nr,nz) with the radius of each point in the grid
-        Z: ndarray (nr,nz)
-            ndarray of the shape of the domain (nr,nz) with the height of each point in the grid
-        order: int
-            order of the finite difference approximation to use for the GS operator (2 or 4, default 4)
-        dtype: dtype
-            datatype to use, per numpy conventions
+        R : np.ndarray
+            Grid of shape (nr, nz) with the radius of each point.
+        Z : np.ndarray
+            Grid of shape (nr, nz) with the height of each point.
+        order : int, optional
+            Order of the finite difference approximation to the GS operator (2 or 4).
+        dtype : type or np.dtype, optional
+            Datatype to use, per numpy conventions.
 
         Raises
         ------
@@ -166,21 +199,21 @@ class GSLUSolver(GSSolver):
         operator_matrix = operator.discretize(nx, ny, format="csc")
         self.solver = factorized(operator_matrix)
 
-    def solve(self, xi, rhs):
+    def solve(self, xi: np.ndarray, rhs: np.ndarray) -> np.ndarray:
         """
         Solves the Grad-Shafranov equation with the given rhs.
 
         Parameters
         ----------
-        xi: ndarray
-            unused, present for cross-compatibility with other solvers
-        rhs: ndarray
-            right-hand-side of the GS equation (f)
+        xi : np.ndarray
+            Unused, present for cross-compatibility with other solvers.
+        rhs : np.ndarray
+            Right-hand side of the GS equation (f), of shape (nr, nz).
 
         Returns
         -------
-        psi
-            value of psi obtained for the given rhs
+        np.ndarray
+            Flattened psi obtained for the given rhs, of length nr * nz.
 
         """
 
@@ -203,21 +236,28 @@ class GSDSTSolver(GSSolver):
 
     order = 2
 
-    def __init__(self, R, Z, *, order=2, dtype=np.float64):
+    def __init__(
+        self,
+        R: np.ndarray,
+        Z: np.ndarray,
+        *,
+        order: int = 2,
+        dtype: type | np.dtype = np.float64,
+    ) -> None:
         """
         Initialize the solver with the given setup. R and Z define the grid (domain size and resolution).
 
         Parameters
         ----------
-        R: ndarray (nr,nz)
-            ndarray of the shape of the domain (nr,nz) with the radius of each point in the grid
-        Z: ndarray (nr,nz)
-            ndarray of the shape of the domain (nr,nz) with the height of each point in the grid
-        order: int
-            unused: the DST solver is always second order. A warning is issued if a different
-            value is given.
-        dtype: dtype
-            datatype to use, per numpy conventions
+        R : np.ndarray
+            Grid of shape (nr, nz) with the radius of each point.
+        Z : np.ndarray
+            Grid of shape (nr, nz) with the height of each point.
+        order : int, optional
+            Ignored, as the DST solver is always second order. A warning is issued if a
+            different value is given.
+        dtype : type or np.dtype, optional
+            Datatype to use, per numpy conventions.
 
         Raises
         ------
@@ -249,14 +289,35 @@ class GSDSTSolver(GSSolver):
         # Precompute batch tridiagonal diagonals and Z-eigenvalues
         self.__init_radial_operator()
 
-    def _dst1(self, x):
-        """Apply DST-I (orthonormal) along the last axis; function serves as its own inverse."""
+    def _dst1(self, x: np.ndarray) -> np.ndarray:
+        """
+        Apply an orthonormal DST-I along the last axis.
+
+        The transform is its own inverse.
+
+        Parameters
+        ----------
+        x : np.ndarray
+            Array to transform.
+
+        Returns
+        -------
+        np.ndarray
+            Transformed array, same shape as `x`.
+        """
         return dst(x, type=1, axis=-1, norm="ortho")
 
-    def __init_radial_operator(self):
+    def __init_radial_operator(self) -> None:
         """
-        Initializes the FD operator for the radial component of the Grad-Shafranov operator
-        d2/dR2 - (1/R)d/dR, in scipy banded format.
+        Initialize the FD operator for the radial component of the Grad-Shafranov operator.
+
+        Builds d2/dR2 - (1/R)d/dR in scipy banded format and stores it as
+        `self.ab_template`, along with the Z eigenvalues `self.mu`.
+
+        Raises
+        ------
+        ValueError
+            If the grid has fewer than 3 points in Z or in R.
         """
 
         R = self.R[:, 0]  # vector of R values (not grid)
@@ -306,21 +367,21 @@ class GSDSTSolver(GSSolver):
 
         self.ab_template = ab
 
-    def solve(self, xi, rhs):
+    def solve(self, xi: np.ndarray, rhs: np.ndarray) -> np.ndarray:
         """
         Solves the Grad-Shafranov equation with the given rhs.
 
         Parameters
         ----------
-        xi: ndarray
-            unused, present for cross-compatibility with other solvers
-        rhs: ndarray
-            right-hand-side of the GS equation (f)
+        xi : np.ndarray
+            Unused, present for cross-compatibility with other solvers.
+        rhs : np.ndarray
+            Right-hand side of the GS equation (f), of shape (nr, nz).
 
         Returns
         -------
-        psi
-            value of psi obtained for the given rhs
+        np.ndarray
+            Flattened psi obtained for the given rhs, of length nr * nz.
 
         """
 

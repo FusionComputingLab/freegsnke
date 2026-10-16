@@ -19,6 +19,8 @@ You should have received a copy of the GNU Lesser General Public License
 along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 """
 
+from __future__ import annotations
+
 from copy import deepcopy
 
 import numpy as np
@@ -26,7 +28,7 @@ import numpy as np
 from . import gradshafranov, multigrid
 from . import nk_solver_H as nk_solver
 from .gradshafranov import Greens
-from .inverse import _solve_regularized_lstsq
+from .inverse import Inverse_optimizer, _solve_regularized_lstsq
 
 
 class NKGSsolver:
@@ -70,12 +72,12 @@ class NKGSsolver:
 
     def __init__(
         self,
-        eq,
-        l2_reg=1e-6,
-        collinearity_reg=1e-6,
-        seed=42,
-        gs_operator_order=4,
-    ):
+        eq: object,
+        l2_reg: float = 1e-6,
+        collinearity_reg: float = 1e-6,
+        seed: int = 42,
+        gs_operator_order: int = 4,
+    ) -> None:
         """
         Initialise the Grad–Shafranov nonlinear solver.
 
@@ -89,38 +91,33 @@ class NKGSsolver:
 
         Parameters
         ----------
-        eq : FreeGSNKE equilibrium object
-            Defines the computational domain and geometry.
-
-            Required attributes:
-                eq.R : 2D radial grid
-                eq.Z : 2D vertical grid
-
-            The solver grid is fixed to this domain.
-
-        l2_reg : float, optional (default=1e-6)
-            Tikhonov regularisation coefficient applied to
-            nonlinear least-squares systems.
-
-        collinearity_reg : float, optional (default=1e-6)
-            Additional regularisation penalising collinear
-            search directions in Krylov space.
-            Improves numerical stability of NK iteration.
-
-        seed : int, optional (default=42)
-            Random number generator seed used for:
-                • Krylov perturbation generation
-                • Directional exploration in nonlinear solve
-
-        gs_operator_order : {2, 4}, optional (default=4)
+        eq : object
+            Equilibrium object defining the computational domain and geometry.
+            Must provide the 2D grids ``eq.R`` (radial) and ``eq.Z`` (vertical) and
+            ``eq.limiter_handler``. The solver grid is fixed to this domain.
+        l2_reg : float, optional
+            Tikhonov regularisation coefficient applied to nonlinear
+            least-squares systems.
+        collinearity_reg : float, optional
+            Additional regularisation penalising collinear search directions in
+            Krylov space. Improves numerical stability of NK iteration.
+        seed : int, optional
+            Random number generator seed used for Krylov perturbation generation
+            and directional exploration in the nonlinear solve.
+        gs_operator_order : {2, 4}, optional
             Finite-difference order of the linear Grad-Shafranov operator.
             Fourth order is more accurate; second order reduces sparse matrix
             construction and factorisation costs when that accuracy trade-off
             is acceptable.
 
+        Raises
+        ------
+        ValueError
+            If `gs_operator_order` is not 2 or 4.
+
         Attributes
         ----------
-        self.R, self.Z : ndarray
+        self.R, self.Z : np.ndarray
             Computational grid coordinates.
 
         self.nx, self.ny : int
@@ -217,8 +214,25 @@ class NKGSsolver:
         # random generator used for NK search direction exploration
         self.rng = np.random.default_rng(seed=seed)
 
-    def _build_boundary_green(self, source_mask):
-        """Build the boundary Green matrix for a selected set of source points."""
+    def _build_boundary_green(self, source_mask: np.ndarray) -> np.ndarray:
+        """
+        Build the boundary Green matrix for a selected set of source points.
+
+        Singular self-interactions are removed when the selected sources include
+        points on the computational boundary, and the matrix includes the cell
+        area element.
+
+        Parameters
+        ----------
+        source_mask : np.ndarray
+            Boolean mask of shape (nx, ny) selecting the source grid points.
+
+        Returns
+        -------
+        np.ndarray
+            Matrix of shape (n_boundary_points, n_sources) mapping source plasma
+            current density to boundary flux.
+        """
         source_indices = np.flatnonzero(source_mask)
         boundary_indices = np.ravel_multi_index(
             (self.bndry_indices[:, 0], self.bndry_indices[:, 1]),
@@ -242,11 +256,25 @@ class NKGSsolver:
         greenfunc[np.flatnonzero(matches), positions[matches]] = 0.0
         return np.ascontiguousarray(greenfunc * self.dRdZ)
 
-    def _boundary_flux_from_jtor(self, jtor):
-        """Return boundary flux from plasma current inside the limiter."""
+    def _boundary_flux_from_jtor(self, jtor: np.ndarray) -> np.ndarray:
+        """
+        Return boundary flux from plasma current inside the limiter.
+
+        Parameters
+        ----------
+        jtor : np.ndarray
+            Toroidal current density on the grid, shape (nx, ny).
+
+        Returns
+        -------
+        np.ndarray
+            Flux at the boundary grid points (ordered as `bndry_indices`).
+        """
         return self.greenfunc @ jtor[self.plasma_source_mask]
 
-    def freeboundary(self, plasma_psi, tokamak_psi, profiles):
+    def freeboundary(
+        self, plasma_psi: np.ndarray, tokamak_psi: np.ndarray, profiles: object
+    ) -> None:
         """
         Apply free-boundary Grad–Shafranov boundary conditions and compute
         plasma current source terms.
@@ -273,29 +301,17 @@ class NKGSsolver:
 
         Parameters
         ----------
-        plasma_psi : ndarray
-            Flattened plasma poloidal flux vector.
-            Shape = (nx * ny,).
-
-        tokamak_psi : ndarray
-            Vacuum flux contribution generated by:
-                • Active coils
-                • Passive structures
-
-        profiles : FreeGSNKE profile object
-            Provides plasma current model Jtor(ψ).
-
-        Returns
-        -------
-        None
-            Updates internal solver state:
-
-                self.jtor
-                self.rhs
-                self.psi_boundary
+        plasma_psi : np.ndarray
+            Flattened plasma poloidal flux vector, shape (nx * ny,).
+        tokamak_psi : np.ndarray
+            Flattened vacuum flux contribution generated by the active coils and
+            passive structures, shape (nx * ny,).
+        profiles : object
+            Profiles object providing the plasma current model Jtor(ψ).
 
         Notes
         -----
+        • Updates the internal solver state `jtor`, `rhs` and `psi_boundary`.
         • This method is called before solving the linearised GS equation.
         • Boundary flux is computed using Green's function convolution.
         """
@@ -351,7 +367,9 @@ class NKGSsolver:
         self.rhs[-1, :] = self.psi_boundary[-1, :]
         self.rhs[:, -1] = self.psi_boundary[:, -1]
 
-    def F_function(self, plasma_psi, tokamak_psi, profiles):
+    def F_function(
+        self, plasma_psi: np.ndarray, tokamak_psi: np.ndarray, profiles: object
+    ) -> np.ndarray:
         """
         Compute the nonlinear Grad–Shafranov residual written as a root-finding problem.
 
@@ -374,24 +392,19 @@ class NKGSsolver:
 
         Parameters
         ----------
-        plasma_psi : ndarray
-            Flattened plasma poloidal flux vector.
-            Shape = (nx * ny,).
-
-        tokamak_psi : ndarray
-            Vacuum flux contribution from:
-                • Active coils
-                • Passive conducting structures
-            Same flattened shape as plasma_psi.
-
-        profiles : freegsnke profile object
-            Plasma profile model used to compute toroidal current density:
-                Jtor(ψ).
+        plasma_psi : np.ndarray
+            Flattened plasma poloidal flux vector, shape (nx * ny,).
+        tokamak_psi : np.ndarray
+            Flattened vacuum flux contribution from the active coils and passive
+            conducting structures, same shape as `plasma_psi`.
+        profiles : object
+            Plasma profile model used to compute the toroidal current density
+            Jtor(ψ).
 
         Returns
         -------
-        residual : ndarray
-            Nonlinear GS residual vector.
+        np.ndarray
+            Nonlinear GS residual vector (flattened).
             Root of this function corresponds to GS equilibrium.
 
         Notes
@@ -434,7 +447,7 @@ class NKGSsolver:
 
         return residual
 
-    def port_critical(self, eq, profiles):
+    def port_critical(self, eq: object, profiles: object) -> None:
         """
         Transfer critical equilibrium and topology information from the
         plasma profile solver to the equilibrium object after solving
@@ -455,27 +468,20 @@ class NKGSsolver:
 
         Parameters
         ----------
-        eq : FreeGSNKE equilibrium object
+        eq : object
             Equilibrium object that will be updated in-place.
-
-        profiles : FreeGSNKE profile object
-            Profile object used during GS solution. Must contain:
-
-                - profiles.xpt : X-point locations (if diverted plasma)
-                - profiles.opt : O-point / magnetic axis data
-                - profiles.psi_bndry : Boundary flux value
-                - profiles.flag_limiter : Limiter configuration flag
-                - profiles.has_relevant_xpoint : Whether an X-point defines a
-                  relevant separatrix in the solution domain
-                - profiles.jtor : Toroidal current density profile
-
-        Returns
-        -------
-        None
-            Updates are performed in-place on the equilibrium object.
+        profiles : object
+            Profile object used during GS solution. Must provide ``xpt`` (X-point
+            locations), ``opt`` (O-point / magnetic axis data), ``psi_bndry``
+            (boundary flux value), ``flag_limiter`` (limiter configuration flag),
+            ``jtor`` (toroidal current density profile), ``copy`` and, optionally,
+            ``has_relevant_xpoint`` (whether an X-point defines a relevant
+            separatrix in the solution domain).
 
         Notes
         -----
+        Updates are performed in-place on the equilibrium object.
+
         This routine ensures consistency between:
             - Plasma topology diagnostics
             - Flux solution storage
@@ -504,7 +510,7 @@ class NKGSsolver:
         except:
             pass
 
-    def relative_norm_residual(self, res, psi):
+    def relative_norm_residual(self, res: np.ndarray, psi: np.ndarray) -> float:
         """
         Compute a relative residual using Euclidean (L2) norm normalisation.
 
@@ -525,10 +531,9 @@ class NKGSsolver:
 
         Parameters
         ----------
-        res : ndarray
+        res : np.ndarray
             Flattened nonlinear Grad–Shafranov residual vector.
-
-        psi : ndarray
+        psi : np.ndarray
             Flattened plasma poloidal flux field.
 
         Returns
@@ -543,7 +548,9 @@ class NKGSsolver:
         """
         return np.linalg.norm(res) / np.linalg.norm(psi)
 
-    def relative_del_residual(self, res, psi):
+    def relative_del_residual(
+        self, res: np.ndarray, psi: np.ndarray
+    ) -> tuple[float, float]:
         """
         Compute a relative residual measure based on the range (max − min)
         of the residual and flux field.
@@ -568,20 +575,17 @@ class NKGSsolver:
 
         Parameters
         ----------
-        res : ndarray
+        res : np.ndarray
             Flattened nonlinear Grad–Shafranov residual vector.
-
-        psi : ndarray
+        psi : np.ndarray
             Flattened plasma poloidal flux field.
 
         Returns
         -------
         rel_residual : float
             Relative residual defined using amplitude range normalisation.
-
         del_psi : float
-            Flux amplitude range:
-                max(ψ) − min(ψ)
+            Flux amplitude range, max(ψ) − min(ψ).
 
         Notes
         -----
@@ -600,21 +604,21 @@ class NKGSsolver:
 
     def forward_solve(
         self,
-        eq,
-        profiles,
-        target_relative_tolerance,
-        max_solving_iterations=100,
-        Picard_handover=0.11,
-        step_size=2.5,
-        scaling_with_n=-1.0,
-        target_relative_unexplained_residual=0.2,
-        max_n_directions=16,
-        max_rel_update_size=0.2,
-        clip=10,
-        force_up_down_symmetric=False,
-        verbose=False,
-        suppress=False,
-    ):
+        eq: object,
+        profiles: object,
+        target_relative_tolerance: float,
+        max_solving_iterations: int = 100,
+        Picard_handover: float = 0.11,
+        step_size: float = 2.5,
+        scaling_with_n: float = -1.0,
+        target_relative_unexplained_residual: float = 0.2,
+        max_n_directions: int = 16,
+        max_rel_update_size: float = 0.2,
+        clip: float = 10,
+        force_up_down_symmetric: bool = False,
+        verbose: bool = False,
+        suppress: bool = False,
+    ) -> None:
         """
         Solve the forward static Grad–Shafranov (GS) equilibrium problem.
 
@@ -641,14 +645,12 @@ class NKGSsolver:
 
         Parameters
         ----------
-        eq : FreeGSNKE equilibrium object
-            Provides:
-                - metal currents (via eq.tokamak)
-                - initial guess eq.plasma_psi
-                - Green's functions eq._vgreen
-
-        profiles : FreeGSNKE profile object
-            Defines plasma current model Jtor(ψ).
+        eq : object
+            Equilibrium object providing the metal currents (via ``eq.tokamak``),
+            the initial guess ``eq.plasma_psi`` and the Green's functions
+            ``eq._vgreen``. Updated in-place.
+        profiles : object
+            Profiles object defining the plasma current model Jtor(ψ).
 
         target_relative_tolerance : float
             Iterations stop when the relative nonlinear residual
@@ -692,18 +694,11 @@ class NKGSsolver:
         suppress : bool
             Suppresses all print output.
 
-        Returns
-        -------
-        None
-
-        Side Effects
-        ------------
-        • Updates eq.plasma_psi
-        • Updates profiles via Jtor(...)
-        • Updates internal convergence diagnostics
-
         Notes
         -----
+        Updates ``eq.plasma_psi``, the profiles (via ``Jtor``) and the internal
+        convergence diagnostics.
+
         This solver includes:
             • Adaptive initialisation
             • Residual-based step control
@@ -1005,7 +1000,9 @@ class NKGSsolver:
                     f"Forward static solve SUCCESS. Tolerance {rel_change:.2e} (vs. requested {target_relative_tolerance:.2e}) reached in {int(iterations)}/{int(max_solving_iterations)} iterations."
                 )
 
-    def get_rel_delta_psit(self, delta_current, profiles, vgreen):
+    def get_rel_delta_psit(
+        self, delta_current: np.ndarray, profiles: object, vgreen: np.ndarray
+    ) -> float:
         """
         Estimate the relative core-region flux perturbation induced by a
         requested coil current change.
@@ -1041,15 +1038,13 @@ class NKGSsolver:
 
         Parameters
         ----------
-        delta_current : ndarray
+        delta_current : np.ndarray
             One-dimensional array of requested coil current changes.
             Shape (n_coils,).
-
-        profiles : freegsnke profile object
-            Provides the plasma core mask via
-            `profiles.diverted_core_mask`, if available.
-
-        vgreen : ndarray
+        profiles : object
+            Profiles object providing the plasma core mask via
+            ``profiles.diverted_core_mask``, if available.
+        vgreen : np.ndarray
             Array of coil Green's functions.
             Shape (n_coils, Nx, Ny), where each slice
             `vgreen[i]` corresponds to the flux response
@@ -1131,7 +1126,9 @@ class NKGSsolver:
 
         return rel_delta_psit
 
-    def get_rel_delta_psi(self, new_psi, previous_psi, profiles):
+    def get_rel_delta_psi(
+        self, new_psi: np.ndarray, previous_psi: np.ndarray, profiles: object
+    ) -> float:
         """
         Compute the relative change between two flux states in the plasma core.
 
@@ -1159,17 +1156,15 @@ class NKGSsolver:
 
         Parameters
         ----------
-        new_psi : ndarray
+        new_psi : np.ndarray
             Flattened array of the updated poloidal flux values.
-
-        previous_psi : ndarray
+        previous_psi : np.ndarray
             Flattened array of the previous poloidal flux values.
             Must be the same shape as `new_psi`.
-
-        profiles : freegsnke profile object
-            Used to obtain the plasma core mask:
-                - profiles.diverted_core_mask if available
-                - otherwise the entire computational domain is used.
+        profiles : object
+            Profiles object used to obtain the plasma core mask
+            (``profiles.diverted_core_mask`` if available, otherwise the entire
+            computational domain is used).
 
         Returns
         -------
@@ -1229,15 +1224,15 @@ class NKGSsolver:
 
     def optimize_currents(
         self,
-        eq,
-        profiles,
-        constrain,
-        target_relative_tolerance,
-        relative_psit_size=1e-3,
-        l2_reg=1e-12,
-        verbose=False,
-        force_up_down_symmetric=False,
-    ):
+        eq: object,
+        profiles: object,
+        constrain: Inverse_optimizer,
+        target_relative_tolerance: float,
+        relative_psit_size: float = 1e-3,
+        l2_reg: float | np.ndarray = 1e-12,
+        verbose: bool = False,
+        force_up_down_symmetric: bool = False,
+    ) -> tuple[np.ndarray, float]:
         """
         Compute coil current updates using the full (plasma-aware) Jacobian.
 
@@ -1277,54 +1272,49 @@ class NKGSsolver:
 
         Parameters
         ----------
-        eq : freegsnke equilibrium object
-            Contains:
-                - Current coil currents
-                - Current plasma_psi
-            Modified only through auxiliary copies inside this routine.
-
-        profiles : freegsnke profile object
-            Provides plasma properties required to solve
-            the forward Grad–Shafranov problem.
-
-        constrain : freegsnke inverse_optimizer object
-            Defines:
-                - Control coils
-                - Constraint residual vector b
-                - Loss function
-                - Optional current or flux limits
-
+        eq : object
+            Equilibrium object containing the current coil currents and
+            ``plasma_psi``. Perturbed solves use auxiliary copies, but the baseline
+            forward solve updates ``eq`` in-place.
+        profiles : object
+            Profiles object providing the plasma properties required to solve the
+            forward Grad–Shafranov problem.
+        constrain : Inverse_optimizer
+            Defines the control coils, the constraint residual vector b, the loss
+            function and any optional current or flux limits.
         target_relative_tolerance : float
             Forward GS tolerance used when recomputing equilibria
             for each Jacobian column.
-
-        relative_psit_size : float, optional (default=1e-3)
+        relative_psit_size : float, optional
             Target relative change in tokamak flux used to scale the
             finite-difference perturbations δI. A zero component in the
             preliminary current step is replaced by a response-based fallback.
             Ensures perturbations are neither too small (noise-dominated)
             nor too large (nonlinear).
 
-        l2_reg : float or 1D array, optional (default=1e-12)
-            Tikhonov regularisation factor.
-            If scalar: isotropic regularisation.
-            If array: per-coil regularisation weights.
-
+        l2_reg : float or np.ndarray, optional
+            Tikhonov regularisation factor. If a float, isotropic regularisation;
+            if an array, per-coil regularisation weights.
         verbose : bool, optional
             If True, prints progress during Jacobian construction.
-
-        force_up_down_symmetric : bool, optional (default=False)
+        force_up_down_symmetric : bool, optional
             If True, enforce up-down symmetry in the baseline and perturbed
             forward solves used to construct the full Jacobian.
 
         Returns
         -------
-        Newton_delta_current : ndarray
+        Newton_delta_current : np.ndarray
             Optimal Newton update for control coil currents.
-
         loss : float
             Norm of the constraint residual after applying the
             computed Newton step (predicted reduction).
+
+        Raises
+        ------
+        ValueError
+            If `relative_psit_size` is not finite and positive, or if the
+            preliminary current step, its flux response or the response of any
+            control coil is non-finite (or zero for a coil with no preliminary step).
 
         Notes
         -----
@@ -1478,32 +1468,32 @@ class NKGSsolver:
 
     def inverse_solve(
         self,
-        eq,
-        profiles,
-        constrain,
-        target_relative_tolerance,
-        target_relative_psit_update=1e-3,
-        max_solving_iterations=100,
-        max_iter_per_update=5,
-        Picard_handover=0.15,
-        step_size=2.5,
-        scaling_with_n=-1.0,
-        target_relative_unexplained_residual=0.3,
-        max_n_directions=16,
-        clip=10,
-        max_rel_update_size=0.15,
-        threshold_val=0.18,
-        l2_reg=1e-9,
-        forward_tolerance_increase=100,
-        max_rel_psit=0.02,
-        damping_factor=0.995,
-        use_full_Jacobian=True,
-        full_jacobian_handover=[1e-5, 7e-3],
-        l2_reg_fj=1e-8,
-        force_up_down_symmetric=False,
-        verbose=False,
-        suppress=False,
-    ):
+        eq: object,
+        profiles: object,
+        constrain: Inverse_optimizer,
+        target_relative_tolerance: float,
+        target_relative_psit_update: float = 1e-3,
+        max_solving_iterations: int = 100,
+        max_iter_per_update: int = 5,
+        Picard_handover: float = 0.15,
+        step_size: float = 2.5,
+        scaling_with_n: float = -1.0,
+        target_relative_unexplained_residual: float = 0.3,
+        max_n_directions: int = 16,
+        clip: float = 10,
+        max_rel_update_size: float = 0.15,
+        threshold_val: float = 0.18,
+        l2_reg: float | np.ndarray = 1e-9,
+        forward_tolerance_increase: float = 100,
+        max_rel_psit: float = 0.02,
+        damping_factor: float = 0.995,
+        use_full_Jacobian: bool = True,
+        full_jacobian_handover: list[float] = [1e-5, 7e-3],
+        l2_reg_fj: float = 1e-8,
+        force_up_down_symmetric: bool = False,
+        verbose: bool = False,
+        suppress: bool = False,
+    ) -> None:
         """Inverse solver for static free-boundary Grad–Shafranov equilibria.
 
         This routine solves a coupled inverse problem:
@@ -1539,24 +1529,17 @@ class NKGSsolver:
 
         Parameters
         ----------
-        eq : FreeGSNKE equilibrium object
-            Contains the tokamak geometry and coil system.
-            - eq.tokamak holds coil currents.
-            - eq.plasma_psi holds the plasma poloidal flux.
-            This object is updated in-place.
-
-        profiles : FreeGSNKE profile object
-            Specifies the desired plasma profiles, including:
-                - Total plasma current
-                - Pressure profile p(psi)
-                - F(psi) profile
-            These define the toroidal current density Jtor(psi).
-
-        constrain : freegsnke inverse_optimizer object
-            Defines:
-                - Which coils are controllable
-                - The magnetic constraints to be satisfied
-                - The loss function measuring constraint violation
+        eq : object
+            Equilibrium object containing the tokamak geometry and coil system:
+            ``eq.tokamak`` holds the coil currents and ``eq.plasma_psi`` holds the
+            plasma poloidal flux. This object is updated in-place.
+        profiles : object
+            Profiles object specifying the desired plasma profiles (total plasma
+            current, pressure p(psi) and F(psi)), which define the toroidal
+            current density Jtor(psi).
+        constrain : Inverse_optimizer
+            Defines which coils are controllable, the magnetic constraints to be
+            satisfied and the loss function measuring constraint violation.
 
         target_relative_tolerance : float
             Target relative tolerance for the GS residual.
@@ -1606,7 +1589,7 @@ class NKGSsolver:
             Threshold relative GS residual below which the solver
             switches to more conservative update logic.
 
-        l2_reg : float or 1D numpy array, optional (default=1e-9)
+        l2_reg : float or np.ndarray, optional (default=1e-9)
             L2 regularisation factor applied when using the Green’s
             function Jacobian (simplified current optimisation).
             If array, must match number of control coils.
@@ -1648,17 +1631,16 @@ class NKGSsolver:
         suppress : bool, optional (default=False)
             If True, suppresses all output (overrides verbose).
 
-
-        Returns
-        -------
-        None
-            The solution is written in-place into:
-                eq.plasma_psi
-                eq.tokamak coil currents
-
+        Raises
+        ------
+        RuntimeError
+            If the GS residual cannot be computed for the initial plasma_psi and
+            coil currents.
 
         Notes
         -----
+        • The solution is written in-place into ``eq.plasma_psi`` and the
+          ``eq.tokamak`` coil currents.
         • The method is a nonlinear block-iterative inverse solver.
         • Early iterations use a frozen-plasma approximation
           for robustness and efficiency.
@@ -1949,31 +1931,31 @@ class NKGSsolver:
 
     def solve(
         self,
-        eq,
-        profiles,
-        constrain=None,
-        target_relative_tolerance=1e-5,
-        target_relative_psit_update=1e-3,
-        max_solving_iterations=100,
-        max_iter_per_update=5,
-        Picard_handover=0.1,
-        step_size=2.5,
-        scaling_with_n=-1.0,
-        target_relative_unexplained_residual=0.3,
-        max_n_directions=16,
-        clip=10,
-        max_rel_update_size=0.15,
-        l2_reg=1e-9,
-        forward_tolerance_increase=100,
-        max_rel_psit=0.01,
-        damping_factor=0.98,
-        use_full_Jacobian=True,
-        full_jacobian_handover=[1e-5, 7e-3],
-        l2_reg_fj=1e-8,
-        force_up_down_symmetric=False,
-        verbose=False,
-        suppress=False,
-    ):
+        eq: object,
+        profiles: object,
+        constrain: Inverse_optimizer | None = None,
+        target_relative_tolerance: float = 1e-5,
+        target_relative_psit_update: float = 1e-3,
+        max_solving_iterations: int = 100,
+        max_iter_per_update: int = 5,
+        Picard_handover: float = 0.1,
+        step_size: float = 2.5,
+        scaling_with_n: float = -1.0,
+        target_relative_unexplained_residual: float = 0.3,
+        max_n_directions: int = 16,
+        clip: float = 10,
+        max_rel_update_size: float = 0.15,
+        l2_reg: float | np.ndarray = 1e-9,
+        forward_tolerance_increase: float = 100,
+        max_rel_psit: float = 0.01,
+        damping_factor: float = 0.98,
+        use_full_Jacobian: bool = True,
+        full_jacobian_handover: list[float] = [1e-5, 7e-3],
+        l2_reg_fj: float = 1e-8,
+        force_up_down_symmetric: bool = False,
+        verbose: bool = False,
+        suppress: bool = False,
+    ) -> None:
         """
         Unified entry point for solving Grad–Shafranov problems
         (forward or inverse).
@@ -2034,25 +2016,17 @@ class NKGSsolver:
 
         Parameters
         ----------
-        eq : FreeGSNKE equilibrium object
-            Contains:
-                - Tokamak geometry and coils
-                - Current coil currents
-                - Current plasma flux (initial guess)
+        eq : object
+            Equilibrium object containing the tokamak geometry and coils, the
+            current coil currents and the current plasma flux (initial guess).
             Modified in-place.
-
-        profiles : FreeGSNKE profile object
-            Defines plasma profiles used to compute toroidal current density:
-                - Pressure profile p(ψ)
-                - F(ψ) profile
-                - Total plasma current
-
-        constrain : freegsnke inverse_optimizer object or None, optional
-            If None:
-                Forward equilibrium solve is performed.
-            If provided:
-                Specifies control coils and magnetic constraints
-                for inverse optimisation.
+        profiles : object
+            Profiles object defining the plasma profiles (pressure p(ψ), F(ψ) and
+            total plasma current) used to compute the toroidal current density.
+        constrain : Inverse_optimizer or None, optional
+            If None, a forward equilibrium solve is performed. If provided, it
+            specifies the control coils and magnetic constraints for inverse
+            optimisation.
 
         target_relative_tolerance : float, optional (default=1e-5)
             Target relative GS residual tolerance for forward solves.
@@ -2100,7 +2074,7 @@ class NKGSsolver:
             Maximum allowed relative change in plasma_psi per forward iteration.
             Updates exceeding this are rescaled.
 
-        l2_reg : float or 1D ndarray, optional (default=1e-9)
+        l2_reg : float or np.ndarray, optional (default=1e-9)
             (Inverse mode only)
             Tikhonov regularisation applied when using
             Green’s-function Jacobians for coil optimisation.
@@ -2143,17 +2117,10 @@ class NKGSsolver:
         suppress : bool, optional (default=False)
             If True, suppresses all printed output.
 
-
-        Returns
-        -------
-        None
-            The solution is written in-place into:
-                eq.plasma_psi
-                eq.tokamak coil currents (inverse mode only)
-
-
         Notes
         -----
+        • The solution is written in-place into ``eq.plasma_psi`` (and, in
+          inverse mode only, the ``eq.tokamak`` coil currents).
         • This is the recommended high-level API for solving equilibria.
         • Forward mode solves a nonlinear free-boundary PDE.
         • Inverse mode solves a nonlinear PDE-constrained least-squares problem.

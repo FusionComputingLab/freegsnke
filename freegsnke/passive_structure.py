@@ -20,17 +20,17 @@ You should have received a copy of the GNU Lesser General Public License
 along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 """
 
-import freegs4e
 import matplotlib.pyplot as plt
 import numpy as np
-from freegs4e.gradshafranov import Greens, GreensBr, GreensBz, mu0
 from matplotlib.patches import Polygon
 
+from . import coil
+from .gradshafranov import Greens, GreensBr, GreensBz, mu0
 from .refine_passive import find_area, generate_refinement
 
 
-class PassiveStructure(freegs4e.coil.Coil):
-    """Inherits from freegs4e.coil.Coil.
+class PassiveStructure(coil.Coil):
+    """Inherits from freegsnke.coil.Coil.
     Object to implement passive structures.
     Rather than listing large number of filaments it averages the
     relevant green functions so that currents are distributed over

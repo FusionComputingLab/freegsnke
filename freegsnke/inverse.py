@@ -1619,11 +1619,11 @@ class Inverse_optimizer:
         -----
         This is a thin wrapper around:
 
-            freegs4e.plotting.plotIOConstraints
+            freegsnke.plotting.plotIOConstraints
 
         and exists primarily for convenience and API consistency.
         """
-        from freegs4e.plotting import plotIOConstraints
+        from .plotting import plotIOConstraints
 
         return plotIOConstraints(self, axis=axis, show=show)
 

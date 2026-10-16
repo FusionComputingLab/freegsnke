@@ -59,7 +59,7 @@ def _flux_surface_geometry(eq, psi_n, fpol_1d):
         `elongation`, `triangularity_upper`, `triangularity_lower` : standard
             Miller-style shape parameters, using the surface's own
             (Rmin, Rmax, Zmin, Zmax) extent - the same formulas as
-            freegs4e's `geometricElongation`/`triangularity_upper/lower`,
+            freegsnke's `geometricElongation`/`triangularity_upper/lower`,
             generalised from the LCFS to an arbitrary internal surface.
         `avg_inv_R`, `avg_inv_R2` : flux-surface averages <1/R>, <1/R^2>.
         `avg_R_Bp`, `avg_R2_Bp2`, `avg_Bp2` : flux-surface averages

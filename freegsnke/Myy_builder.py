@@ -21,7 +21,8 @@ along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 import numpy as np
-from freegs4e.gradshafranov import Greens
+
+from .gradshafranov import Greens
 
 # class plasma_current:
 #     """Implements the plasma circuit equation in projection on $I_{y}^T$:

@@ -1,16 +1,15 @@
 from copy import deepcopy
 from pathlib import Path
 
-import freegs4e
 import matplotlib.pyplot as plt
 import numpy as np
 import pytest
-from freegs4e.critical import find_critical
-from freegs4e.plotting import plotConstraints
 from IPython.display import clear_output, display
 from matplotlib.widgets import Slider
 
 from freegsnke import build_machine
+from freegsnke.critical import find_critical
+from freegsnke.plotting import plotConstraints
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 TEST_DATA_DIR = Path(__file__).resolve().parent / "baselines"
@@ -25,8 +24,8 @@ def create_machine():
     # Create the machine, which specifies coil locations
     # and equilibrium, specifying the domain to solve over
     # this has to be either
-    # freegs4e.machine.MASTU(), in which case:
-    # tokamak = freegs4e.machine.MASTU()
+    # freegsnke.machine.MASTU(), in which case:
+    # tokamak = freegsnke.machine.MASTU()
     # or
     # MASTU_coils.MASTU_wpass()
     # from freegsnke import MASTU_coils
@@ -174,7 +173,7 @@ def test_static_solve(create_machine):
     eq.tokamak["Solenoid"].control = False
     eq.tokamak.set_coil_current("Solenoid", 15000)
 
-    # # freegs4e.solve(
+    # # freegsnke.solve(
     # NK.solve(
     #     eq=eq,  # The equilibrium to adjust
     #     profiles=profiles,  # The plasma profiles
@@ -221,7 +220,7 @@ def test_second_order_static_solve(create_machine):
 
 
 def test_static_solver_rejects_invalid_operator_order(create_machine):
-    """Only the two finite-difference operators supplied by FreeGS4E are valid."""
+    """Only the two finite-difference operators supplied by FreeGSNKE are valid."""
     eq, _, _ = create_machine
 
     from freegsnke import GSstaticsolver
@@ -238,7 +237,9 @@ def test_limiter_reduced_boundary_green_is_exact(create_machine):
 
     solver = GSstaticsolver.NKGSsolver(eq)
     boundary_indices = solver.bndry_indices
-    full_green = freegs4e.gradshafranov.Greens(
+    from freegsnke.gradshafranov import Greens
+
+    full_green = Greens(
         eq.R[np.newaxis, :, :],
         eq.Z[np.newaxis, :, :],
         eq.R[:, 0][boundary_indices[:, 0]][:, np.newaxis, np.newaxis],

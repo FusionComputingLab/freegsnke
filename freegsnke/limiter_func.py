@@ -188,7 +188,7 @@ class Limiter_handler:
         ----------
         eq : FreeGSNKE Equilibrium object
             Specifies the domain properties
-        limiter : freegs4e.machine.Wall object
+        limiter : freegsnke.machine.Wall object
             Specifies the limiter contour points
         Returns
         -------
@@ -525,7 +525,7 @@ class Limiter_handler:
             This is xpt[0][2] for a diverted configuration, where xpt is the output of critical.find_critical
         core_mask : np.array
             The mask identifying the plasma region under the assumption of a diverted configuration.
-            This is the result of FreeGS4E's critical.core_mask
+            This is the result of FreeGSNKE's critical.core_mask
             Same size as psi.
         limiter_mask_out : np.array
             The mask identifying the border of the limiter, including points just inside it, the 'last' accessible to the plasma.

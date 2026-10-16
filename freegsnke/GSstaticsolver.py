@@ -21,11 +21,11 @@ along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 
 from copy import deepcopy
 
-import freegs4e
 import numpy as np
-from freegs4e.gradshafranov import Greens
 
+from . import gradshafranov, multigrid
 from . import nk_solver_H as nk_solver
+from .gradshafranov import Greens
 from .inverse import _solve_regularized_lstsq
 
 
@@ -166,9 +166,9 @@ class NKGSsolver:
         self.dRdZ = dR * dZ
 
         if gs_operator_order == 2:
-            gs_operator = freegs4e.gradshafranov.GSsparse
+            gs_operator = gradshafranov.GSsparse
         elif gs_operator_order == 4:
-            gs_operator = freegs4e.gradshafranov.GSsparse4thOrder
+            gs_operator = gradshafranov.GSsparse4thOrder
         else:
             raise ValueError("gs_operator_order must be either 2 or 4")
         self.gs_operator_order = gs_operator_order
@@ -181,7 +181,7 @@ class NKGSsolver:
         )
 
         # linear GS solver used inside nonlinear iteration
-        self.linear_GS_solver = freegs4e.multigrid.createVcycle(
+        self.linear_GS_solver = multigrid.createVcycle(
             nx,
             ny,
             gs_operator(eq.R[0, 0], eq.R[-1, 0], eq.Z[0, 0], eq.Z[0, -1]),
@@ -212,7 +212,7 @@ class NKGSsolver:
         # Precompute geometric RHS coefficient
         # Comes from GS equation:
         # Δψ = - μ₀ R Jtor
-        self.rhs_before_jtor = -freegs4e.gradshafranov.mu0 * eq.R
+        self.rhs_before_jtor = -gradshafranov.mu0 * eq.R
 
         # random generator used for NK search direction exploration
         self.rng = np.random.default_rng(seed=seed)

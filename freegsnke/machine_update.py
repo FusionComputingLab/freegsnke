@@ -1,5 +1,5 @@
 """
-Defines the FreeGSNKE machine object, which inherits from the FreeGS4E machine object. 
+Defines a machine with limiter support, extending freegsnke.machine.Machine.
 
 Copyright 2025 UKAEA, UKRI-STFC, and The Authors, as per the COPYRIGHT and README files.
 
@@ -19,24 +19,24 @@ You should have received a copy of the GNU Lesser General Public License
 along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.   
 """
 
-import freegs4e
+from . import machine
 
 
-class Machine(freegs4e.machine.Machine):
-    """Same as freegs4e.machine.Machine.
-    It can have an additional freegs4e.machine.Wall object which specifies the limiter's properties.
+class Machine(machine.Machine):
+    """Same as freegsnke.machine.Machine.
+    It can have an additional freegsnke.machine.Wall object which specifies the limiter's properties.
     """
 
     def __init__(self, coils, wall=None, limiter=None):
-        """Instantiates the Machine, same as freegs4e.machine.Machine.
+        """Instantiates the Machine, same as freegsnke.machine.Machine.
 
         Parameters
         ----------
-        coils : FreeGS4E coils[(label, Coil|Circuit|Solenoid]
+        coils : coils[(label, Coil|Circuit|Solenoid]
             List of coils
-        wall : FreeGS4E machine.Wall object
+        wall : freegsnke machine.Wall object
             It is only used to display the wall in plots.
-        limiter : FreeGS4E machine.Wall object
+        limiter : freegsnke machine.Wall object
             This is the limiter. Used to define limiter plasma configurations.
         """
         super().__init__(coils, wall)

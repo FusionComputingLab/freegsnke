@@ -1,6 +1,5 @@
 import os
 
-import freegs4e
 import matplotlib.pyplot as plt
 import numpy as np
 import pytest

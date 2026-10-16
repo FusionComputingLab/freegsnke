@@ -101,7 +101,7 @@ class nksolver:
                 candidate_x = x0 + dx1
                 R_dx = F_function(candidate_x, *args)
                 res_calculated = True
-            except:
+            except Exception:
                 dx1 *= 0.75
                 self.Q[:, self.n_it] *= 0.75
         useful_residual = R_dx - R0
@@ -119,7 +119,7 @@ class nksolver:
         #             candidate_x = x0 + dx1
         #             R_dx = F_function(candidate_x, *args)
         #             res_calculated = True
-        #         except:
+        #         except Exception:
         #             dx1 *= 0.75
         #             self.Q[:, self.n_it] *= 0.75
         #     useful_residual = R_dx - R0

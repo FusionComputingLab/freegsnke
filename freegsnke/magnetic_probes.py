@@ -519,7 +519,7 @@ class Probes:
         if probe == "floops":
             try:
                 plasma_greens = self.greens_psi_plasma_floops[eq_key]
-            except:
+            except Exception:
                 #  add new greens functions to dictionary
                 self.greens_psi_plasma_floops[eq_key] = self.create_green_psi_plasma(
                     eq, "floops"
@@ -856,7 +856,7 @@ class Probes:
         try:
             greens_br = self.greens_br_plasma_pickup[eq_key]
             greens_bz = self.greens_bz_plasma_pickup[eq_key]
-        except:
+        except Exception:
             (
                 self.greens_br_plasma_pickup[eq_key],
                 self.greens_bz_plasma_pickup[eq_key],
@@ -907,7 +907,7 @@ class Probes:
         if probe == "pickups":
             try:
                 greens_pl = self.greens_br_plasma_pickup[eq_key]
-            except:
+            except Exception:
                 self.greens_br_plasma_pickup[eq_key] = self.create_greens_BrBz_plasma(
                     eq, "pickups"
                 )[0]
@@ -957,7 +957,7 @@ class Probes:
         if probe == "pickups":
             try:
                 greens_pl = self.greens_bz_plasma_pickup[eq_key]
-            except:
+            except Exception:
                 self.greens_bz_plasma_pickup[eq_key] = self.create_greens_BrBz_plasma(
                     eq, "pickups"
                 )[1]
@@ -1042,7 +1042,7 @@ class Probes:
         if probe == "pickups":
             try:
                 greens_pl = self.greens_B_plasma_oriented[eq_key]
-            except:
+            except Exception:
                 #  add new greens functions to dictionary
                 self.greens_B_plasma_oriented[eq_key] = (
                     self.create_greens_B_oriented_plasma(eq, "floops")

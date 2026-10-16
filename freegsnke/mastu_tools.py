@@ -1688,7 +1688,7 @@ def load_currents_voltages_and_TS_signals(
                     "times": taa_v.time.data,
                     "units": taa_v.units,
                 }
-            except:
+            except Exception:
                 pass  # print('voltages not found for coil '+attk+', shot '+str(shotn))
         return outdict
 
@@ -1736,7 +1736,7 @@ def load_currents_voltages_and_TS_signals(
                     "times": taa_v.time.data,
                     "units": taa_v.units,
                 }
-            except:
+            except Exception:
                 outdict[coil] = {
                     "data": np.array([0, 1]),
                     "times": np.array([0, 1]),
@@ -1788,7 +1788,7 @@ def load_currents_voltages_and_TS_signals(
                         "units": taa_c.units,
                     }
 
-                except:
+                except Exception:
                     pass  # print('current not found for coil '+attk+', shot '+str(shotn))
         return outdict
 
@@ -1843,7 +1843,7 @@ def load_currents_voltages_and_TS_signals(
                     "times": taa_c.time.data,
                     "units": taa_c.units,
                 }
-            except:
+            except Exception:
                 pass  # print('current not found for coil '+attk+', shot '+str(shotn))
         return outdict
 
@@ -1894,7 +1894,7 @@ def load_currents_voltages_and_TS_signals(
                         "data": td.data,
                         "times": td.time.data,
                     }
-                except:
+                except Exception:
                     pass  # print('rogext data not found for coil '+attk+' '+rn+', shot '+str(shotn))
             if tinner["rogint"]:
                 outdict[attk]["rogint"] = {}
@@ -1906,7 +1906,7 @@ def load_currents_voltages_and_TS_signals(
                             "data": td.data,
                             "times": td.time.data,
                         }
-                    except:
+                    except Exception:
                         pass  # print('rogint data not found for coil '+attk+' '+rn+', shot '+str(shotn))
         return outdict
 
@@ -2009,7 +2009,7 @@ def load_currents_voltages_and_TS_signals(
             # try:
             #     aIp = client.get('AMC/PLASMA_CURRENT', shotn)
             #     flag_plasma = np.any(abs(aIp.data)>1)
-            # except:
+            # except Exception:
             #     pass
             # else:
             #     print('Trying to store plasma.')
@@ -2031,7 +2031,7 @@ def load_currents_voltages_and_TS_signals(
                 data_out["TS"]["full_T"] = ne.data
                 ne = client.get("/AYC/N_E", shotn)
                 data_out["TS"]["full_N"] = ne.data
-            except:
+            except Exception:
                 pass
             print("Data stored.")
             # with open('U2/'+str(shotn)+'_AMC_XDC_AYC.pickle', 'wb') as handle:

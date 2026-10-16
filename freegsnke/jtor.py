@@ -21,14 +21,17 @@ along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 import numpy as np
-from numpy import clip, pi, reshape, sqrt, zeros
-from scipy.integrate import quad, romb
+from numpy import clip, pi, sqrt
+from scipy.integrate import romb
 from scipy.interpolate import CubicSpline, UnivariateSpline
 from scipy.special import beta as spbeta
 from scipy.special import betainc as spbinc
 
 from . import critical
 from .gradshafranov import mu0
+
+# Gauss-Legendre nodes/weights (on [-1, 1]) used to integrate p' and FF' over psi_n
+_GAUSS_LEGENDRE_NODES, _GAUSS_LEGENDRE_WEIGHTS = np.polynomial.legendre.leggauss(128)
 
 
 class Profile(object):
@@ -86,6 +89,37 @@ class Profile(object):
         self.flag_limiter = not uses_xpoint_boundary
         return self.Jtor_part2(R, Z, psi, opt[0][2], psi_bndry, core_mask)
 
+    @staticmethod
+    def _integrate_to_boundary(func, psinorm):
+        """
+        Integrate a function of the normalised flux from psinorm to 1 (all values at once).
+
+        Uses a vectorised Gauss-Legendre rule, so `func` is called once with an array.
+
+        Parameters
+        ----------
+        func : callable
+            Function of the normalised psi (accepting arrays), e.g. pprime or ffprime.
+        psinorm : float or np.array
+            Lower integration limit(s) (normalised psi), between 0 and 1.
+
+        Returns
+        -------
+        float or np.array
+            The integral of `func` over [psinorm, 1], in the shape of `psinorm`.
+        """
+
+        psinorm = np.asarray(psinorm, dtype=float)
+        lower = psinorm.reshape(-1, 1)
+        half_width = 0.5 * (1.0 - lower)
+        points = half_width * (_GAUSS_LEGENDRE_NODES[None, :] + 1.0) + lower
+        values = np.sum(
+            half_width * _GAUSS_LEGENDRE_WEIGHTS[None, :] * func(points), axis=1
+        )
+        if psinorm.ndim == 0:
+            return float(values[0])
+        return values.reshape(psinorm.shape)
+
     def pressure(self, psinorm):
         """
         Calculate the 1D pressure profile in the plasma (vs. the normalised
@@ -93,33 +127,20 @@ class Profile(object):
 
         Parameters
         ----------
-        psinorm : np.array
-            Array of normalised psi values between 0 and 1.
+        psinorm : float or np.array
+            Normalised psi value(s) between 0 and 1.
 
         Returns
         -------
-        np.array
+        float or np.array
             The computed pressure values at each normalised psi value.
         """
 
-        # to store psi and integral values
-        pvals = reshape(psinorm, -1)
-        ovals = reshape(zeros(psinorm.shape), -1)
-
-        if len(pvals) != len(ovals):
-            raise ValueError("Input and output arrays of different lengths")
-
-        for i in range(len(pvals)):
-            # integrate
-            val, _ = quad(self.pprime, pvals[i], 1.0)
-
-            # convert from integral in normalised psi to integral in psi
-            val *= self.psi_axis - self.psi_bndry
-            ovals[i] = val
-
-        # pressure at the edge is zero so no need for constant of integration
-
-        return reshape(ovals, psinorm.shape)
+        # integral in normalised psi, converted to an integral in psi
+        # (pressure at the edge is zero so no need for constant of integration)
+        return self._integrate_to_boundary(self.pprime, psinorm) * (
+            self.psi_axis - self.psi_bndry
+        )
 
     def fpol(self, psinorm):
         """
@@ -128,44 +149,23 @@ class Profile(object):
 
         Parameters
         ----------
-        psinorm : np.array
-            Array of normalised psi values between 0 and 1.
+        psinorm : float or np.array
+            Normalised psi value(s) between 0 and 1.
 
         Returns
         -------
-        np.array
+        float or np.array
             The computed F values at each normalised psi value.
         """
 
-        # if a single value
-        if not hasattr(psinorm, "__len__"):
-            # integrate
-            val, _ = quad(self.ffprime, psinorm, 1.0)
-            # convert from integral in normalised psi to integral in psi
-            val *= self.psi_axis - self.psi_bndry
+        # integral in normalised psi, converted to an integral in psi
+        val = self._integrate_to_boundary(self.ffprime, psinorm) * (
+            self.psi_axis - self.psi_bndry
+        )
 
-            # ffprime = 0.5*d/dpsi(f^2)
-            # apply boundary condition at psinorm=1 val = fvac**2
-            return sqrt(2.0 * val + self.fvac() ** 2)
-
-        # to store psi and integral values
-        pvals = reshape(psinorm, -1)
-        ovals = reshape(zeros(psinorm.shape), -1)
-
-        if len(pvals) != len(ovals):
-            raise ValueError("Input and output arrays of different lengths")
-        for i in range(len(pvals)):
-            # integrate
-            val, _ = quad(self.ffprime, pvals[i], 1.0)
-
-            # convert from integral in normalised psi to integral in psi
-            val *= self.psi_axis - self.psi_bndry
-
-            # ffprime = 0.5*d/dpsi(f^2)
-            # apply boundary condition at psinorm=1 val = fvac**2
-            ovals[i] = sqrt(2.0 * val + self.fvac() ** 2)
-
-        return reshape(ovals, psinorm.shape)
+        # ffprime = 0.5*d/dpsi(f^2)
+        # apply boundary condition at psinorm=1 val = fvac**2
+        return sqrt(2.0 * val + self.fvac() ** 2)
 
     def Jtor_part1(self, R, Z, psi, psi_bndry=None, mask_outside_limiter=None):
         """

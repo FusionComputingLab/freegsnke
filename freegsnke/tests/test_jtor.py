@@ -275,3 +275,19 @@ def test_tension_spline_reproduces_knot_values_in_any_position():
     assert np.isclose(
         profiles.tension_spline(np.array([0.4, 0.5]), *args)[1], values[2]
     )
+
+
+def test_tension_spline_profile_fpol_and_pressure_accept_scalars():
+    """fpol and pressure integrate with quad, which evaluates the profile at scalars."""
+    profiles = _tension_spline_profile()
+    # normally set when the current density is first calculated
+    profiles.psi_axis = 1.0
+    profiles.psi_bndry = 0.0
+    profiles.L = 1.0
+
+    psinorm = np.array([0.1, 0.4, 0.8])
+    for method in (profiles.fpol, profiles.pressure):
+        from_array = method(psinorm)
+        assert np.all(np.isfinite(from_array))
+        for pn, expected in zip(psinorm, from_array):
+            assert np.isclose(method(float(pn)), expected, rtol=1e-12)

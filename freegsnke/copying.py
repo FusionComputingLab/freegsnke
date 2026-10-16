@@ -1,5 +1,5 @@
 """
-Useful functions for copying attributed between FreeGSNKE objects.
+Useful functions for copying attributes between FreeGSNKE objects.
 
 Copyright 2025 UKAEA, UKRI-STFC, and The Authors, as per the COPYRIGHT and README files.
 
@@ -19,6 +19,8 @@ You should have received a copy of the GNU Lesser General Public License
 along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 """
 
+from __future__ import annotations
+
 import copy
 import logging
 
@@ -28,8 +30,14 @@ logger = logging.getLogger(__name__)
 
 
 def copy_into(
-    obj, new_obj, attr: str, *, mutable=False, strict=True, allow_deepcopy=False
-):
+    obj: object,
+    new_obj: object,
+    attr: str,
+    *,
+    mutable: bool = False,
+    strict: bool = True,
+    allow_deepcopy: bool = False,
+) -> None:
     """
     Copy an attribute from one object into another.
 
@@ -53,7 +61,7 @@ def copy_into(
         when possible.
 
     strict : bool, optional
-        If True, raise an AttributeError when `obj` does not have `attr`.
+        If True, raise an AttributeError (from ``getattr``) when `obj` does not have `attr`.
         If False, silently return without copying.
 
     allow_deepcopy : bool, optional
@@ -65,10 +73,6 @@ def copy_into(
     TypeError
         If `mutable=True`, the attribute is not a safe NumPy array copy,
         and `allow_deepcopy=False`.
-
-    Returns
-    -------
-    None
     """
 
     if not hasattr(obj, attr) and not strict:

@@ -24,18 +24,31 @@ You should have received a copy of the GNU Lesser General Public License
 along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 """
 
+from __future__ import annotations
+
 import bisect
 import copy
 import random
+from typing import Callable
 
 
-def mutate(obj, controls):
+def mutate(obj: object, controls: list[object]) -> object:
     """
-    Create a new object by taking an object and a set of control objects
-    to change randomly
+    Create a new object by randomly perturbing the controls of an object.
 
-    obj        An object to copy. This will be deepcopied, not modified
-    controls   A list of control objects
+    Each control value is scaled by a random factor in the range 0.95 to 1.05.
+
+    Parameters
+    ----------
+    obj : object
+        Object to copy. It is deep-copied, not modified.
+    controls : list[object]
+        Control objects, each providing ``get(obj)`` and ``set(obj, value)``.
+
+    Returns
+    -------
+    object
+        The perturbed deep copy of `obj`.
     """
     new_obj = copy.deepcopy(obj)
     for control in controls:
@@ -48,9 +61,25 @@ def mutate(obj, controls):
     return new_obj
 
 
-def pickUnique(N, m, e):
-    """Pick m random values from the range 0...(N-1), excluding those in list e
-    The returned values should be in a random order (not sorted)
+def pickUnique(N: int, m: int, e: list[int]) -> list[int]:
+    """
+    Pick random distinct integers from ``0 ... N-1``, excluding some values.
+
+    The returned values are in a random order (not sorted).
+
+    Parameters
+    ----------
+    N : int
+        Size of the range to pick from.
+    m : int
+        Number of values to pick; must satisfy ``m <= N - len(e)``.
+    e : list[int]
+        Values to exclude.
+
+    Returns
+    -------
+    list[int]
+        The `m` picked values.
     """
     assert m <= N - len(e)
 
@@ -66,39 +95,51 @@ def pickUnique(N, m, e):
     return others
 
 
-def optimise(obj, controls, measure, maxgen=10, N=10, CR=0.3, F=1.0, monitor=None):
-    """Use Differential Evolution to optimise an object
-    https://en.wikipedia.org/wiki/Differential_evolution
+def optimise(
+    obj: object,
+    controls: list[object],
+    measure: Callable[[object], float],
+    maxgen: int = 10,
+    N: int = 10,
+    CR: float = 0.3,
+    F: float = 1.0,
+    monitor: (
+        Callable[[int, tuple[float, object], list[tuple[float, object]]], None] | None
+    ) = None,
+) -> object:
+    """
+    Use Differential Evolution to optimise an object.
 
-    obj  is an object to be used as starting solution
-         These objects are deep copied, and passed as arguments
-         to controls and measure functions
+    See https://en.wikipedia.org/wiki/Differential_evolution
 
-    controls   A list of control objects. These objects must
-               have methods:
-         .set(object, value) which modifies the given object
-         .get(object)  which returns the value from the object
+    Parameters
+    ----------
+    obj : object
+        Starting solution. Objects are deep-copied and passed to `controls`
+        and `measure`.
+    controls : list[object]
+        Control objects, each with methods ``set(object, value)``, which
+        modifies the given object, and ``get(object)``, which returns the
+        value from the object.
+    measure : Callable[[object], float]
+        Returns a score for a given object; the optimiser minimises it.
+    maxgen : int, optional
+        Maximum number of generations.
+    N : int, optional
+        Population size (must be >= 4).
+    CR : float, optional
+        Crossover probability, in [0, 1].
+    F : float, optional
+        Differential weight, in [0, 2].
+    monitor : Callable or None, optional
+        Called each generation as ``monitor(generation, best, population)``,
+        where `generation` is an int, `best` is a ``(score, object)`` tuple and
+        `population` is a list of ``(score, object)`` tuples.
 
-    measure(object) is a function which returns a score (value) for a
-                    given object. The optimiser tries to minimise this
-                    value.
-
-    maxgen   is the maximum number of generations
-
-    N >= 4 is the population size
-    CR [0,1] is the crossover probability
-    F  [0,2] is the differential weight
-
-    monitor(generation, best, population)
-
-           A function to be called each generation with the best
-           solution and the whole population
-           generation = integer
-           best = (score, object)
-           population = [(score, object)]
-
-    Returns the object with the lowest measure (score).
-
+    Returns
+    -------
+    object
+        The object with the lowest score.
     """
     assert N >= 4
 

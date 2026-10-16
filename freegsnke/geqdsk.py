@@ -23,7 +23,10 @@ along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 
 """
 
+from __future__ import annotations
+
 import math
+from typing import Callable, TextIO
 
 import numpy as np
 from numpy import clip, linspace, ravel, reshape, zeros
@@ -36,16 +39,31 @@ from .gradshafranov import mu0
 from .machine import Wall
 
 
-def write(eq, fh, label=None, oxpoints=None, fileformat=_geqdsk.write):
+def write(
+    eq: Equilibrium,
+    fh: TextIO,
+    label: str | None = None,
+    oxpoints: tuple | None = None,
+    fileformat: Callable[..., None] = _geqdsk.write,
+) -> None:
     """
-    Write a GEQDSK equilibrium file, given a FreeGS Equilibrium object
+    Write a GEQDSK equilibrium file, given an Equilibrium object.
 
-    eq - Equilibrium object
-    fh - file handle
-
-    label - Text label to put in the file
-    oxpoints - O- and X-points  (opoint, xpoint) returned by critical.find_critical
-          If not given, it will be calculated using critical.find_critical
+    Parameters
+    ----------
+    eq : Equilibrium
+        Equilibrium object.
+    fh : TextIO
+        Open, writable text file handle.
+    label : str, optional
+        Text label to put in the file.
+    oxpoints : tuple, optional
+        O- and X-points ``(opoint, xpoint)`` as returned by
+        ``critical.find_critical``. If not given, they are calculated using
+        ``critical.find_critical``.
+    fileformat : Callable[..., None], optional
+        Low-level writer, called as ``fileformat(data, fh, label=label)``.
+        Defaults to the GEQDSK writer.
     """
     # Get poloidal flux
     psi = eq.psi()
@@ -128,84 +146,108 @@ def write(eq, fh, label=None, oxpoints=None, fileformat=_geqdsk.write):
     fileformat(data, fh, label=label)
 
 
-def isPow2(val):
+def isPow2(val: int) -> bool:
     """
-    Returns True if val is a power of 2
-    val     - Integer
+    Check whether an integer is a power of 2.
+
+    Parameters
+    ----------
+    val : int
+        Integer to test.
+
+    Returns
+    -------
+    bool
+        True if `val` is a power of 2.
     """
     return val & (val - 1) == 0
 
 
-def ceilPow2(val):
+def ceilPow2(val: float) -> int:
     """
-    Find a power of two greater than or equal to val
+    Find a power of two greater than or equal to `val`.
+
+    Parameters
+    ----------
+    val : float
+        Positive value.
+
+    Returns
+    -------
+    int
+        Smallest power of two that is >= `val`.
     """
     return 2 ** math.ceil(math.log2(val))
 
 
 def read(
-    fh,
-    machine,
-    rtol=1e-3,
-    ntheta=8,
-    show=False,
-    axis=None,
-    pause=0.0001,
-    cocos=1,
-    domain=None,
-    blend=0.0,
-    fit_sol=False,
-    maxits=50,
-):
+    fh: TextIO,
+    machine: object,
+    rtol: float = 1e-3,
+    ntheta: int = 8,
+    show: bool = False,
+    axis: object | None = None,
+    pause: float = 0.0001,
+    cocos: int = 1,
+    domain: tuple[float, float, float, float] | None = None,
+    blend: float = 0.0,
+    fit_sol: bool = False,
+    maxits: int | None = 50,
+) -> Equilibrium:
     """
-    Reads a G-EQDSK format file
+    Read a G-EQDSK format file and build an Equilibrium from it.
 
-    fh : File handle
-    machine : Machine object defining coil locations
-    rtol : float
-        Relative error in nonlinear solve
-    ntheta : integer
-        Number of points in poloidal angle on the separatrix
-        this is used to constrain the plasma shape
-    show : Boolean
-        Set to true to show solution in a new figure
-    axis : Matplotlib Axis object
-       Set to an axis for plotting. Implies show=True
-    pause : float
-       Delay between output plots. If negative, waits for window to be closed
-    cocos : integer
-        COordinate COnventions. Not fully handled yet,
-        only whether psi is divided by 2pi or not.
-        if > 10 then psi is divided by 2pi, otherwise not.
-    domain : list/tuple of 4 elements
-        Sets the (R,Z) domain to solve for
-        (Rmin, Rmax, Zmin, Zmax)
-    blend : float between 0 and 1
-        Weighting of the previous poloidal flux at each step of the
-        Picard iteration. The default (0.0) is to use no blending.
+    A nonlinear solve is performed, using Picard iteration.
+
+    Parameters
+    ----------
+    fh : TextIO
+        Open, readable text file handle.
+    machine : object
+        Machine object defining coil locations.
+    rtol : float, optional
+        Relative error in the nonlinear solve.
+    ntheta : int, optional
+        Number of points in poloidal angle on the separatrix, used to
+        constrain the plasma shape.
+    show : bool, optional
+        Set to True to show the solution in a new figure.
+    axis : object, optional
+        Matplotlib Axes for plotting. Implies ``show=True``.
+    pause : float, optional
+        Delay between output plots. If negative, waits for the window to be
+        closed.
+    cocos : int, optional
+        COordinate COnventions. Not fully handled yet, only whether psi is
+        divided by 2pi or not: if > 10 then psi is divided by 2pi.
+    domain : tuple[float, float, float, float], optional
+        The (R, Z) domain to solve for, ``(Rmin, Rmax, Zmin, Zmax)``.
+    blend : float, optional
+        Weighting (between 0 and 1) of the previous poloidal flux at each
+        step of the Picard iteration. The default (0.0) uses no blending.
         Blending slows convergence, but can stabilise some oscillating
         unstable solutions.
-    fit_sol : Boolean
-        If False (default) then only the poloidal flux inside the
-        separatrix is used to constrain the coil currents.
-        This is particularly for reading SCENE input, which is not valid
-        outside the separatrix.
-        If True, the whole domain is used in the fitting.
-        This is useful if the locations of strike points need to be constrained.
-    maxits : integer
-        Maximum number of iterations. Set to None for no limit.
-        If this limit is exceeded then a RuntimeError is raised.
-
-    A nonlinear solve will be performed, using Picard iteration
+    fit_sol : bool, optional
+        If False (default) then only the poloidal flux inside the separatrix
+        is used to constrain the coil currents. This is particularly for
+        reading SCENE input, which is not valid outside the separatrix. If
+        True, the whole domain is used in the fitting, which is useful if the
+        locations of strike points need to be constrained.
+    maxits : int or None, optional
+        Maximum number of Picard iterations. None means no limit; if the
+        limit is exceeded then a RuntimeError is raised.
 
     Returns
     -------
+    Equilibrium
+        The equilibrium. In addition, ``eq.control`` is the control system
+        (set only if an X-point is found) and ``eq._profiles`` the profiles
+        object.
 
-    An Equilibrium object eq. In addition, the following is available:
-
-    eq.control   - The control system
-    eq._profiles - The profiles object
-
+    Raises
+    ------
+    ValueError
+        If both `fit_sol` and `domain` are given.
     """
 
     if show:
@@ -270,27 +312,92 @@ def read(
     q_spl = interpolate.InterpolatedUnivariateSpline(psinorm, data["qpsi"])
 
     # functions to return p, pprime, f and ffprime
-    def p_func(psinorm):
+    def p_func(psinorm: float | np.ndarray) -> float | np.ndarray:
+        """
+        Evaluate the pressure spline at normalised poloidal flux.
+
+        Parameters
+        ----------
+        psinorm : float or np.ndarray
+            Normalised poloidal flux (0 at the axis, 1 at the boundary).
+
+        Returns
+        -------
+        float or np.ndarray
+            Values of pressure, with the same shape as `psinorm`.
+        """
         if hasattr(psinorm, "shape"):
             return reshape(p_spl(ravel(psinorm)), psinorm.shape)
         return p_spl(psinorm)
 
-    def f_func(psinorm):
+    def f_func(psinorm: float | np.ndarray) -> float | np.ndarray:
+        """
+        Evaluate the f = R*Bt spline at normalised poloidal flux.
+
+        Parameters
+        ----------
+        psinorm : float or np.ndarray
+            Normalised poloidal flux (0 at the axis, 1 at the boundary).
+
+        Returns
+        -------
+        float or np.ndarray
+            Values of f = R*Bt, with the same shape as `psinorm`.
+        """
         if hasattr(psinorm, "shape"):
             return reshape(f_spl(ravel(psinorm)), psinorm.shape)
         return f_spl(psinorm)
 
-    def pprime_func(psinorm):
+    def pprime_func(psinorm: float | np.ndarray) -> float | np.ndarray:
+        """
+        Evaluate the dp/dpsi spline at normalised poloidal flux.
+
+        Parameters
+        ----------
+        psinorm : float or np.ndarray
+            Normalised poloidal flux (0 at the axis, 1 at the boundary).
+
+        Returns
+        -------
+        float or np.ndarray
+            Values of dp/dpsi, with the same shape as `psinorm`.
+        """
         if hasattr(psinorm, "shape"):
             return reshape(pprime_spl(ravel(psinorm)), psinorm.shape)
         return pprime_spl(psinorm)
 
-    def ffprime_func(psinorm):
+    def ffprime_func(psinorm: float | np.ndarray) -> float | np.ndarray:
+        """
+        Evaluate the f df/dpsi spline at normalised poloidal flux.
+
+        Parameters
+        ----------
+        psinorm : float or np.ndarray
+            Normalised poloidal flux (0 at the axis, 1 at the boundary).
+
+        Returns
+        -------
+        float or np.ndarray
+            Values of f df/dpsi, with the same shape as `psinorm`.
+        """
         if hasattr(psinorm, "shape"):
             return reshape(ffprime_spl(ravel(psinorm)), psinorm.shape)
         return ffprime_spl(psinorm)
 
-    def q_func(psinorm):
+    def q_func(psinorm: float | np.ndarray) -> float | np.ndarray:
+        """
+        Evaluate the safety factor q spline at normalised poloidal flux.
+
+        Parameters
+        ----------
+        psinorm : float or np.ndarray
+            Normalised poloidal flux (0 at the axis, 1 at the boundary).
+
+        Returns
+        -------
+        float or np.ndarray
+            Values of safety factor q, with the same shape as `psinorm`.
+        """
         if hasattr(psinorm, "shape"):
             return reshape(q_spl(ravel(psinorm)), psinorm.shape)
         return q_spl(psinorm)

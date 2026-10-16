@@ -25,19 +25,39 @@ You should have received a copy of the GNU Lesser General Public License
 along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 """
 
+from __future__ import annotations
+
+from typing import Callable
+
 from . import polygons
 
 
-def triangle_quad(triangle, n=6):
+def triangle_quad(
+    triangle: list[tuple[float, float]], n: int = 6
+) -> list[tuple[float, float, float]]:
     """
-    Given a triangle in the form [(r1,z1), (r2,z2), (r3,z3)]
-    returns a list of evaluation points [(r,z,weight),...]
-
-    n   number of quadrature points.
-        currently: 1, 3 or 6
+    Quadrature points and weights for averaging over a triangle.
 
     Coefficients taken from http://www.cs.rpi.edu/~flaherje/pdf/fea6.pdf
-    Joseph E. Flaherty course notes, Rensselaer Polytechnic Institute
+    (Joseph E. Flaherty course notes, Rensselaer Polytechnic Institute).
+
+    Parameters
+    ----------
+    triangle : list[tuple[float, float]]
+        Triangle vertices ``[(r1, z1), (r2, z2), (r3, z3)]``.
+    n : int, optional
+        Number of quadrature points; currently 1, 3 or 6.
+
+    Returns
+    -------
+    list[tuple[float, float, float]]
+        Evaluation points and weights ``[(r, z, weight), ...]``; the weights
+        sum to 1.
+
+    Raises
+    ------
+    ValueError
+        If ``n`` is not 1, 3 or 6.
     """
 
     assert len(triangle) == 3
@@ -100,18 +120,27 @@ def triangle_quad(triangle, n=6):
         raise ValueError("Quadrature not available for n={}".format(n))
 
 
-def polygon_quad(polygon, n=6):
+def polygon_quad(
+    polygon: list[tuple[float, float]], n: int = 6
+) -> list[tuple[float, float, float]]:
     """
-    Given a polygon in the form [(r1,z1), (r2,z2), (r3,z3), ...]
-    calculates a set of quadrature points and weights, by splitting
-    the polygon into triangles.
+    Quadrature points and weights for averaging over a polygon.
 
-    returns a list of evaluation points and weights [(r,z,weight),...]
-    These are normalised to calculate the average value of a function
-    over the polygon; multiply by the area to get the integral.
+    The polygon is split into triangles. The weights are normalised to give
+    the average value of a function over the polygon; multiply by the area
+    to get the integral.
 
-    n   number of quadrature points in each triangle
-        currently: 1, 3 or 6
+    Parameters
+    ----------
+    polygon : list[tuple[float, float]]
+        Polygon vertices ``[(r1, z1), (r2, z2), (r3, z3), ...]``.
+    n : int, optional
+        Number of quadrature points in each triangle; currently 1, 3 or 6.
+
+    Returns
+    -------
+    list[tuple[float, float, float]]
+        Evaluation points and weights ``[(r, z, weight), ...]``.
     """
 
     # Split polygon into triangles
@@ -131,8 +160,23 @@ def polygon_quad(polygon, n=6):
     return quadrature
 
 
-def average(func, quad):
+def average(
+    func: Callable[[float, float], float], quad: list[tuple[float, float, float]]
+) -> float:
     """
-    Average func(r,z) using given quadrature
+    Average ``func(r, z)`` using the given quadrature.
+
+    Parameters
+    ----------
+    func : Callable[[float, float], float]
+        Function of R and Z to average.
+    quad : list[tuple[float, float, float]]
+        Quadrature points and weights ``[(r, z, weight), ...]``, e.g. from
+        ``polygon_quad``.
+
+    Returns
+    -------
+    float
+        Weighted sum of ``func`` over the quadrature points.
     """
     return sum(func(r, z) * w for r, z, w in quad)

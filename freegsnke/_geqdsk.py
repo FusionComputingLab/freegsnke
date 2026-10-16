@@ -20,38 +20,59 @@ along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 
 """
 
-from datetime import date
+from __future__ import annotations
 
+from datetime import date
+from typing import TextIO
+
+import numpy as np
 from numpy import pi, zeros
 
 from ._fileutils import ChunkOutput, f2s, next_value, write_1d, write_2d
 
 
-def write(data, fh, label=None, shot=None, time=None):
+def write(
+    data: dict,
+    fh: TextIO,
+    label: str | None = None,
+    shot: int | str | None = None,
+    time: int | str | None = None,
+) -> None:
     """
-    Write a GEQDSK equilibrium file, given a dictionary of data
+    Write a GEQDSK equilibrium file, given a dictionary of data.
 
-    data - dictionary
-      nx, ny        Number of points in R (x), Z (y)
-      rdim, zdim    Sizes of the R,Z dimensions
-      rcentr        Reference value of R
-      bcentr        Vacuum toroidal magnetic field at rcentr
-      rleft         R at left (inner) boundary
-      zmid          Z at middle of domain
-      rmagx, zmagx  R,Z at magnetic axis (O-point)
-      simagx        Poloidal flux psi at magnetic axis
-      sibdry        Poloidal flux psi at plasma boundary
-      cpasma        Plasma current [Amps]
+    Parameters
+    ----------
+    data : dict
+        Equilibrium data with keys:
 
-      fpol          1D array of f(psi)=R*Bt  [meter-Tesla]
-      pres          1D array of p(psi) [Pascals]
-      qpsi          1D array of q(psi)
-
-      psi           2D array (nx,ny) of poloidal flux
-
-    fh - file handle
-
-    label - Text label to put in the file
+        - ``nx``, ``ny``: number of points in R (x) and Z (y)
+        - ``rdim``, ``zdim``: sizes of the R and Z dimensions
+        - ``rcentr``: reference value of R
+        - ``bcentr``: vacuum toroidal magnetic field at ``rcentr``
+        - ``rleft``: R at the left (inner) boundary
+        - ``zmid``: Z at the middle of the domain
+        - ``rmagx``, ``zmagx``: R, Z at the magnetic axis (O-point)
+        - ``simagx``: poloidal flux psi at the magnetic axis
+        - ``sibdry``: poloidal flux psi at the plasma boundary
+        - ``cpasma``: plasma current [A]
+        - ``fpol``: 1D array of f(psi)=R*Bt [m T]
+        - ``pres``: 1D array of p(psi) [Pa]
+        - ``qpsi``: 1D array of q(psi)
+        - ``psi``: 2D array of poloidal flux, shape (nx, ny)
+        - ``ffprime``, ``pprime`` (optional): 1D arrays of ff'(psi) and
+          p'(psi); zeros are written if absent
+        - ``rbdry``, ``zbdry`` (optional): plasma boundary points
+        - ``rlim``, ``zlim`` (optional): limiter/wall points
+    fh : TextIO
+        Open, writable text file handle.
+    label : str, optional
+        Text label to put in the file (default ``"FREEGS"``); truncated if
+        too long.
+    shot : int or str, optional
+        Shot number, or a ready-formatted string. Default 0.
+    time : int or str, optional
+        Time in ms, or a ready-formatted string. Default 0.
     """
 
     nx = data["nx"]
@@ -168,38 +189,48 @@ def write(data, fh, label=None, shot=None, time=None):
         co.newline()
 
 
-def read(fh, cocos=1):
+def read(fh: TextIO, cocos: int = 1) -> dict:
     """
-    Read a G-EQDSK formatted equilibrium file
+    Read a G-EQDSK formatted equilibrium file.
 
-    Format is specified here:
-    https://fusion.gat.com/theory/Efitgeqdsk
+    Format is specified here: https://fusion.gat.com/theory/Efitgeqdsk
 
-    cocos   - COordinate COnventions. Not fully handled yet,
-              only whether psi is divided by 2pi or not.
-              if > 10 then psi is divided by 2pi, otherwise not.
+    Parameters
+    ----------
+    fh : TextIO
+        Open, readable text file handle.
+    cocos : int, optional
+        COordinate COnventions. Not fully handled yet, only whether psi is
+        divided by 2pi or not: if > 10 then psi is divided by 2pi (and
+        ``pprime`` and ``ffprime`` multiplied by 2pi), otherwise not.
 
     Returns
     -------
+    dict
+        Equilibrium data with keys:
 
-    A dictionary containing:
-      nx, ny        Number of points in R (x), Z (y)
-      rdim, zdim    Sizes of the R,Z dimensions
-      rcentr        Reference value of R
-      bcentr        Vacuum toroidal magnetic field at rcentr
-      rleft         R at left (inner) boundary
-      zmid          Z at middle of domain
-      rmagx, zmagx  R,Z at magnetic axis (O-point)
-      simagx        Poloidal flux psi at magnetic axis
-      sibdry        Poloidal flux psi at plasma boundary
-      cpasma        Plasma current [Amps]
+        - ``nx``, ``ny``: number of points in R (x) and Z (y)
+        - ``rdim``, ``zdim``: sizes of the R and Z dimensions
+        - ``rcentr``: reference value of R
+        - ``bcentr``: vacuum toroidal magnetic field at ``rcentr``
+        - ``rleft``: R at the left (inner) boundary
+        - ``zmid``: Z at the middle of the domain
+        - ``rmagx``, ``zmagx``: R, Z at the magnetic axis (O-point)
+        - ``simagx``: poloidal flux psi at the magnetic axis
+        - ``sibdry``: poloidal flux psi at the plasma boundary
+        - ``cpasma``: plasma current [A]
+        - ``fpol``: 1D array of f(psi)=R*Bt [m T]
+        - ``pres``: 1D array of p(psi) [Pa]
+        - ``qpsi``: 1D array of q(psi)
+        - ``psi``: 2D array of poloidal flux, shape (nx, ny)
+        - ``ffprime``, ``pprime``: 1D arrays of ff'(psi) and p'(psi)
+        - ``rbdry``, ``zbdry``: plasma boundary points (if present)
+        - ``rlim``, ``zlim``: limiter/wall points (if present)
 
-      fpol          1D array of f(psi)=R*Bt  [meter-Tesla]
-      pres          1D array of p(psi) [Pascals]
-      qpsi          1D array of q(psi)
-
-      psi           2D array (nx,ny) of poloidal flux
-
+    Raises
+    ------
+    ValueError
+        If the first line contains fewer than 3 numbers.
     """
 
     # Read the first line
@@ -249,18 +280,40 @@ def read(fh, cocos=1):
 
     # Read arrays
 
-    def read_1d(n):
+    def read_1d(n: int) -> np.ndarray:
         """
-        Read a 1D array of length n
+        Read a 1D array of length n.
+
+        Parameters
+        ----------
+        n : int
+            Number of values to read.
+
+        Returns
+        -------
+        np.ndarray
+            Array of shape (n,).
         """
         val = zeros(n)
         for i in range(n):
             val[i] = next(values)
         return val
 
-    def read_2d(n, m):
+    def read_2d(n: int, m: int) -> np.ndarray:
         """
-        Read a 2D (n,m) array in Fortran order
+        Read a 2D (n, m) array in Fortran order.
+
+        Parameters
+        ----------
+        n : int
+            Size of the first axis.
+        m : int
+            Size of the second axis.
+
+        Returns
+        -------
+        np.ndarray
+            Array of shape (n, m).
         """
         val = zeros([n, m])
         for y in range(m):

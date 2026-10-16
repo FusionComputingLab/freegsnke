@@ -22,15 +22,26 @@ You should have received a copy of the GNU Lesser General Public License
 along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 """
 
+from __future__ import annotations
+
+from typing import TextIO
+
 from . import _divgeo, geqdsk
 
 
-def write(eq, fh, oxpoints=None):
+def write(eq: object, fh: TextIO, oxpoints: object | None = None) -> None:
     """
-    Write a DivGeo equilibrium file, given a FreeGS Equilibrium object
+    Write a DivGeo equilibrium file for an equilibrium.
 
-    eq - Equilibrium object
-    fh - file handle
+    Parameters
+    ----------
+    eq : object
+        FreeGSNKE Equilibrium object.
+    fh : TextIO
+        Open, writable text file handle.
+    oxpoints : object, optional
+        Pre-computed O- and X-points, passed to ``geqdsk.write``. If None,
+        they are found from the equilibrium.
     """
 
     geqdsk.write(eq, fh, oxpoints=oxpoints, fileformat=_divgeo.write)

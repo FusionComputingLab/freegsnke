@@ -27,7 +27,10 @@ along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 # Py2/3 compatibility: h5py needs unicode for group/dataset names
-from __future__ import unicode_literals
+from __future__ import annotations, unicode_literals
+
+from types import TracebackType
+from typing import Type
 
 try:
     import h5py
@@ -46,20 +49,29 @@ from .shaped_coil import ShapedCoil
 
 
 class OutputFormatNotAvailableError(Exception):
-    """Raised when we couldn't import HDF5 (or some other library)
-    required for this OutputFile format
+    """
+    Raised when the library required for an OutputFile format is unavailable.
 
+    For example, when HDF5 (``h5py``) could not be imported.
     """
 
-    def __init__(self, file_format="HDF5"):
+    def __init__(self, file_format: str = "HDF5") -> None:
+        """
+        Store the error message.
+
+        Parameters
+        ----------
+        file_format : str, optional
+            Name of the unavailable file format.
+        """
         self.message = "Sorry, {} is not available!".format(file_format)
 
 
 class OutputFile(object):
     """
-    Read/write freegs Equilibrium objects to file
+    Read/write FreeGSNKE Equilibrium objects to file.
 
-    Currently supports HDF5 format only
+    Currently supports HDF5 format only.
 
     Given an Equilibrium object, eq, write to file like:
 
@@ -71,19 +83,6 @@ class OutputFile(object):
     >>> with freegs.OutputFile("test_readwrite.h5", 'r') as f:
     ...      eq = f.read_equilibrium()
 
-    Parameters
-    ----------
-    name : str
-           Name of file to open
-    mode : str
-           Mode string to pass to `h5py.File`, one of:
-             r  - Read-only, file must exist
-             r+ - Read-write, file must exist
-             w  - Create file, truncate if exists
-             w- - Create file, fail if exists
-             a  - Read-write if exists, create otherwise
-    **kwds
-           Other keyword arguments to pass to `h5py.File`
     """
 
     # Names of the groups in the file
@@ -91,27 +90,84 @@ class OutputFile(object):
     MACHINE_GROUP_NAME = "tokamak"
     COILS_GROUP_NAME = "coils"
 
-    def __init__(self, name, mode=None, **kwds):
+    def __init__(self, name: str, mode: str | None = None, **kwds: object) -> None:
+        """
+        Open the file.
+
+        Parameters
+        ----------
+        name : str
+            Name of file to open.
+        mode : str or None, optional
+            Mode string to pass to `h5py.File`, one of:
+
+            - ``r``: read-only, file must exist
+            - ``r+``: read-write, file must exist
+            - ``w``: create file, truncate if exists
+            - ``w-``: create file, fail if exists
+            - ``a``: read-write if exists, create otherwise
+        **kwds : object
+            Other keyword arguments to pass to `h5py.File`.
+
+        Raises
+        ------
+        OutputFormatNotAvailableError
+            If ``h5py`` could not be imported.
+        """
         if not has_hdf5:
             raise OutputFormatNotAvailableError("HDF5")
 
         self.handle = h5py.File(name, mode, **kwds)
 
-    def close(self):
-        """
-        Close the file
-        """
+    def close(self) -> None:
+        """Close the file."""
         self.handle.close()
 
-    def __enter__(self):
+    def __enter__(self) -> OutputFile:
+        """
+        Enter the context manager.
+
+        Returns
+        -------
+        OutputFile
+            This object.
+        """
         return self
 
-    def __exit__(self, type, value, traceback):
+    def __exit__(
+        self,
+        type: Type[BaseException] | None,
+        value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        """
+        Exit the context manager, closing the file.
+
+        Parameters
+        ----------
+        type : type[BaseException] or None
+            Exception type, if one was raised in the context.
+        value : BaseException or None
+            Exception instance, if one was raised.
+        traceback : TracebackType or None
+            Traceback, if an exception was raised.
+        """
         self.close()
 
-    def write_equilibrium(self, equilibrium):
+    def write_equilibrium(self, equilibrium: Equilibrium) -> None:
         """
-        Write `equilbrium` to file
+        Write an equilibrium to the file.
+
+        Parameters
+        ----------
+        equilibrium : Equilibrium
+            Equilibrium to write (grid, plasma current, flux, boundary function,
+            wall and coils).
+
+        Raises
+        ------
+        ValueError
+            If a coil has a type that cannot be saved.
         """
 
         self.handle["coil_dtype"] = Coil.dtype
@@ -182,14 +238,14 @@ class OutputFile(object):
             # type to restore it to later
             coils_group[label].attrs["freegs type"] = coil.__class__.__name__
 
-    def read_equilibrium(self):
+    def read_equilibrium(self) -> Equilibrium:
         """
-        Read an equilibrium from the file
+        Read an equilibrium from the file.
 
         Returns
         -------
         Equilibrium
-            A new `Equilibrium` object
+            A new `Equilibrium` object.
         """
 
         equilibrium_group = self.handle[self.EQUILIBRIUM_GROUP_NAME]
@@ -197,7 +253,20 @@ class OutputFile(object):
         coil_group = tokamak_group[self.COILS_GROUP_NAME]
 
         # HDF5 reads strings as bytes by default, so convert to string
-        def toString(s):
+        def toString(s: bytes | str) -> str:
+            """
+            Convert bytes read from HDF5 to a string.
+
+            Parameters
+            ----------
+            s : bytes or str
+                Value read from the file.
+
+            Returns
+            -------
+            str
+                The decoded string (returned unchanged if not bytes).
+            """
             try:
                 return str(s, "utf-8")  # Convert bytes to string, using encoding
             except TypeError:
@@ -206,7 +275,21 @@ class OutputFile(object):
         # This is also a bit hacky - find the appropriate class in
         # freegs.machine and then call the `from_numpy_array` class
         # method
-        def make_coil_set(thing):
+        def make_coil_set(thing: object) -> object:
+            """
+            Reconstruct a coil object from its HDF5 dataset.
+
+            Parameters
+            ----------
+            thing : object
+                HDF5 dataset with a ``"freegs type"`` attribute naming the
+                class in `machine`.
+
+            Returns
+            -------
+            object
+                The reconstructed coil, circuit or solenoid.
+            """
             return machine.__dict__[thing.attrs["freegs type"]].from_numpy_array(thing)
 
         # Unfortunately this creates the coils in lexographical order

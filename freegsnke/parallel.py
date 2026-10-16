@@ -22,12 +22,15 @@ along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 
 """
 
+from __future__ import annotations
+
 import concurrent.futures
 import os
 import sys
 import warnings
 from concurrent.futures import ThreadPoolExecutor
 from importlib.metadata import PackageNotFoundError, version
+from typing import Any
 
 import numexpr as ne
 import numpy as np
@@ -55,7 +58,7 @@ IDEAL_MAX_THREADCOUNT = ne.get_num_threads()  # is changed at the end of the scr
 thread_controller = ThreadpoolController()
 
 
-def get_num_threads():
+def get_num_threads() -> int:
     """
     Utility function to inquire the default number of threads used by functions in this
     parallel library.
@@ -70,23 +73,22 @@ def get_num_threads():
     return ne.get_num_threads()
 
 
-def set_num_threads(num_threads):
+def set_num_threads(num_threads: int) -> None:
     """
     Utility function to programatically set the default number of threads used by functions in
     this parallel library.
 
     Parameters
     ----------
-
-    num_threads: int
-        Number of threads
+    num_threads : int
+        Number of threads.
     """
 
     # for consistency in performance, always match the no. of threads used by numexpr
     ne.set_num_threads(num_threads)
 
 
-def set_max_threads():
+def set_max_threads() -> int:
     """
     Utility function to programatically set the default number of threads used by functions in
     this parallel library to the estimated ideal maximum.
@@ -101,7 +103,7 @@ def set_max_threads():
     return get_num_threads()
 
 
-def get_max_threads():
+def get_max_threads() -> int:
     """
     Utility function to inquire the maximum size allowed for a threadpool.
 
@@ -115,7 +117,13 @@ def get_max_threads():
 
 
 @thread_controller.wrap(limits={"blas": 1, "openmp": 1})
-def threaded_take(a, indices, axis=None, out=None, mode="raise"):
+def threaded_take(
+    a: np.ndarray,
+    indices: np.ndarray,
+    axis: int | None = None,
+    out: np.ndarray | None = None,
+    mode: str = "raise",
+) -> np.ndarray:
     """
     Parallel wrapper for numpy take. Detailed behavior of the function can be consulted on
     numpy docs. `indices` is divided into slices and each thread takes from its corresponding
@@ -140,6 +148,15 @@ def threaded_take(a, indices, axis=None, out=None, mode="raise"):
     -------
     ndarray
         The extracted values, with the dtype of `a`.
+
+    Raises
+    ------
+    TypeError
+        If running in parallel and `indices` or `out` is not a numpy ndarray.
+    numpy.exceptions.AxisError
+        If running in parallel and `axis` is out of bounds for `a`.
+    ValueError
+        If running in parallel and `out` has an incorrect shape.
     """
 
     num_threads = get_num_threads()
@@ -261,7 +278,9 @@ def threaded_take(a, indices, axis=None, out=None, mode="raise"):
 
 
 @thread_controller.wrap(limits={"blas": 1, "openmp": 1})
-def threaded_elliptics_ek(k2, out=None, single_thread=False):
+def threaded_elliptics_ek(
+    k2: np.ndarray, out: Any = None, single_thread: bool = False
+) -> tuple[np.ndarray, np.ndarray]:
     """
     Parallel wrapper for both scipy.special.ellipe() and scipy.special.ellipk(). Behavior of
     these functions can be consulted on scipy docs. `out` parameter is not supported and is
@@ -276,15 +295,22 @@ def threaded_elliptics_ek(k2, out=None, single_thread=False):
     ----------
     k2 : ndarray
         The parameter of the elliptic integral
-    out: Any, optional
+    out : Any, optional
         Unused. Only for compatibility (matching signatures) with wrapped functions.
-    single_thread: bool
-        If True, the function is run in serial regarding of the pre-set number of threads
+    single_thread : bool, optional
+        If True, the function is run in serial regardless of the pre-set number of threads.
 
     Returns
     -------
-    ndarray
-        Value of the elliptic integral
+    tuple[ndarray, ndarray]
+        Values of the complete elliptic integrals ``(E(k2), K(k2))`` of the
+        second and first kind, as returned by ``scipy.special.ellipe`` and
+        ``scipy.special.ellipk``.
+
+    Raises
+    ------
+    TypeError
+        If running in parallel and `k2` is not a numpy ndarray.
     """
 
     # The wrapper enssures that BLAS/OpenMP threads will not be spawned by scipy as this
@@ -365,7 +391,16 @@ def threaded_elliptics_ek(k2, out=None, single_thread=False):
 
 
 @thread_controller.wrap(limits={"blas": 1, "openmp": 1})
-def threaded_clip(k2, /, amin, amax, *, out=None, single_thread=False, **kwargs):
+def threaded_clip(
+    k2: np.ndarray,
+    /,
+    amin: Any,
+    amax: Any,
+    *,
+    out: np.ndarray | None = None,
+    single_thread: bool = False,
+    **kwargs: Any,
+) -> np.ndarray:
     """
     Parallel wrapper for numpy clip. Detailed behavior of the function can be consulted on
     numpy docs. This function only adds the argument `single_thread` (read below).
@@ -380,22 +415,30 @@ def threaded_clip(k2, /, amin, amax, *, out=None, single_thread=False, **kwargs)
         Minimum and maximum value. If ``None``, clipping is not performed on
         the corresponding edge. If both ``amin`` and ``amax`` are ``None``,
         the elements of the returned array stay the same. Both are broadcasted
-        against ``a``.
+        against `k2`.
     out : ndarray, optional
         The results will be placed in this array. It may be the input
         array for in-place clipping.  `out` must be of the right shape
         to hold the output.  Its type is preserved.
-    single_thread: bool
-        If True, the function is run in serial regarding of the pre-set number of threads
-    **kwargs:
+    single_thread : bool, optional
+        If True, the function is run in serial regardless of the pre-set number of threads.
+    **kwargs : Any
         As per numpy docs. Note that the ufunc argument `where` is not currently supported
         and is ignored.
+
     Returns
     -------
     ndarray
-        An array with the elements of `a`, but where values
-        < `a_min` are replaced with `a_min`, and those > `a_max`
-        with `a_max`.
+        An array with the elements of `k2`, but where values
+        < `amin` are replaced with `amin`, and those > `amax`
+        with `amax`.
+
+    Raises
+    ------
+    TypeError
+        If running in parallel and `k2` or `out` is not a numpy ndarray.
+    ValueError
+        If running in parallel and `k2` and `out` are not broadcastable.
     """
 
     # The wrapper enssures that BLAS/OpenMP threads will not be spawned by scipy as this
@@ -493,7 +536,7 @@ def threaded_clip(k2, /, amin, amax, *, out=None, single_thread=False, **kwargs)
 
 class CustomThreadController(LibController):
     """
-    A custom thread controller for this library to allow control with `threadpoolctl`
+    Custom thread controller allowing this library to be controlled with `threadpoolctl`.
     """
 
     user_api = USER_API_ID
@@ -506,16 +549,37 @@ class CustomThreadController(LibController):
     # of this package on numexpr, and may need to be changed in the future
     filename_prefixes = ("interpreter",)
 
-    def get_num_threads(self):
-        """Report this backend's current thread count to threadpoolctl."""
+    def get_num_threads(self) -> int:
+        """
+        Report this backend's current thread count to threadpoolctl.
+
+        Returns
+        -------
+        int
+            Current number of threads.
+        """
         return get_num_threads()
 
-    def set_num_threads(self, num_threads):
-        """Apply a threadpoolctl limit to this backend and numexpr."""
+    def set_num_threads(self, num_threads: int) -> None:
+        """
+        Apply a threadpoolctl limit to this backend and numexpr.
+
+        Parameters
+        ----------
+        num_threads : int
+            Number of threads to set.
+        """
         set_num_threads(num_threads)
 
-    def get_version(self):
-        """Report the installed FreeGSNKE distribution version."""
+    def get_version(self) -> str:
+        """
+        Report the installed FreeGSNKE distribution version.
+
+        Returns
+        -------
+        str
+            Version string, or ``"0+unknown"`` if the package is not installed.
+        """
         try:
             _version = version("freegsnke")
         except PackageNotFoundError:

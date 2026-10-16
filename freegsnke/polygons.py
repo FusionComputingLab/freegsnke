@@ -23,12 +23,37 @@ You should have received a copy of the GNU Lesser General Public License
 along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 """
 
+from __future__ import annotations
 
-def intersect(r1, z1, r2, z2, closed1=True, closed2=True):
-    """Test if two polynomials intersect. The polynomials consist of
-    (r1, z1) and (r2, z2) line segments. All inputs are expected to be lists.
 
-    Returns True or False.
+def intersect(
+    r1: list[float],
+    z1: list[float],
+    r2: list[float],
+    z2: list[float],
+    closed1: bool = True,
+    closed2: bool = True,
+) -> bool:
+    """
+    Test if two polylines (or polygons) intersect.
+
+    The polylines consist of the (r1, z1) and (r2, z2) line segments.
+
+    Parameters
+    ----------
+    r1, z1 : list[float]
+        R and Z coordinates of the vertices of the first polyline.
+    r2, z2 : list[float]
+        R and Z coordinates of the vertices of the second polyline.
+    closed1 : bool, optional
+        If True, the last vertex of the first polyline joins the first.
+    closed2 : bool, optional
+        If True, the last vertex of the second polyline joins the first.
+
+    Returns
+    -------
+    bool
+        True if any pair of segments intersect, False otherwise.
     """
 
     assert len(r1) == len(z1)
@@ -68,13 +93,21 @@ def intersect(r1, z1, r2, z2, closed1=True, closed2=True):
     return False
 
 
-def area(polygon):
+def area(polygon: list[tuple[float, float]]) -> float:
     """
-    Calculate the area of a polygon. Can be positive (clockwise) or negative (anticlockwise)
+    Calculate the signed area of a polygon.
 
-    Input
+    Positive for a clockwise polygon, negative for an anticlockwise one.
 
-    polygon   [ (r1, z1), (r2, z2), ... ]
+    Parameters
+    ----------
+    polygon : list[tuple[float, float]]
+        Vertices ``[(r1, z1), (r2, z2), ...]``.
+
+    Returns
+    -------
+    float
+        Signed area of the polygon.
     """
     nvert = len(polygon)  # Number of vertices
 
@@ -88,27 +121,39 @@ def area(polygon):
     return 0.5 * area
 
 
-def clockwise(polygon):
+def clockwise(polygon: list[tuple[float, float]]) -> bool:
     """
-    Detect whether a polygon is clockwise or anti-clockwise
-    True -> clockwise
-    False -> anticlockwise
+    Detect whether a polygon is clockwise or anti-clockwise.
 
-    Input
+    Parameters
+    ----------
+    polygon : list[tuple[float, float]]
+        Vertices ``[(r1, z1), (r2, z2), ...]``.
 
-    polygon   [ (r1, z1), (r2, z2), ... ]
+    Returns
+    -------
+    bool
+        True if the polygon is clockwise, False if anticlockwise.
     """
     # Work out the winding direction by calculating the area
     return area(polygon) > 0
 
 
-def triangulate(polygon):
+def triangulate(
+    polygon: list[tuple[float, float]],
+) -> list[list[tuple[float, float]]]:
     """
-    Use the ear clipping method to turn an arbitrary polygon into triangles
+    Use the ear clipping method to turn an arbitrary polygon into triangles.
 
-    Input
+    Parameters
+    ----------
+    polygon : list[tuple[float, float]]
+        Vertices ``[(r1, z1), (r2, z2), ...]`` (at least three).
 
-    polygon   [ (r1, z1), (r2, z2), ... ]
+    Returns
+    -------
+    list[list[tuple[float, float]]]
+        Triangles, each a list of three ``(r, z)`` vertices.
     """
 
     if clockwise(polygon):

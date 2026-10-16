@@ -130,4 +130,5 @@ myst_enable_extensions = [
     "dollarmath",
 ]
 
-nb_execution_timeout = 1200
+# never execute notebooks when building the docs (render stored outputs only)
+nb_execution_mode = "off"

@@ -1047,7 +1047,12 @@ def find_safety(
 
     This function determines the safety factor profile for a given equilbirium. Points on
     each flux surface are equally paced in poloidal angle. The function performs a line
-    integral around each flux surface to get q (on that flux surface).
+    integral around each flux surface to get q (on that flux surface):
+
+        q = 1/(2 pi) * integral of F / (R^2 B_p) dl,
+
+    where the poloidal field is B_p = |grad(psi)| / R. The flux surfaces are located along
+    rays from the magnetic axis, for all surfaces and angles at once.
 
     Parameters
     ----------
@@ -1119,32 +1124,57 @@ def find_safety(
         psirange = np.atleast_1d(np.asarray(psinorm, dtype=float)).reshape(-1)
         npsi = len(psirange)
 
-    psisurf = zeros([npsi, ntheta, 2])
+    # Rays from the magnetic axis (length 8 m, shortened to stay inside the grid), each
+    # sampled at 100 points. The unit direction is (sin(theta), cos(theta)) in (R, Z).
+    n_ray = 100
+    dir_r, dir_z = sin(theta_grid), cos(theta_grid)
+    with np.errstate(divide="ignore"):
+        t_max_r = np.where(
+            dir_r > 0,
+            (eq.Rmax - r0) / dir_r,
+            np.where(dir_r < 0, (eq.Rmin - r0) / dir_r, np.inf),
+        )
+        t_max_z = np.where(
+            dir_z > 0,
+            (eq.Zmax - z0) / dir_z,
+            np.where(dir_z < 0, (eq.Zmin - z0) / dir_z, np.inf),
+        )
+    t_max = np.minimum(8.0, np.minimum(t_max_r, t_max_z))
+    t = linspace(0, 1, n_ray)[None, :] * t_max[:, None]  # (ntheta, n_ray)
+    r_ray = r0 + t * dir_r[:, None]
+    z_ray = z0 + t * dir_z[:, None]
 
-    # Calculate flux surface positions
-    for i in range(npsi):
-        psin = psirange[i]
-        for j in range(ntheta):
-            theta = theta_grid[j]
-            r, z = find_psisurface(
-                eq,
-                psifunc,
-                r0,
-                z0,
-                r0 + 8.0 * sin(theta),
-                z0 + 8.0 * cos(theta),
-                psival=psin,
-                axis=axis,
-            )
-            psisurf[i, j, :] = [r, z]
+    if axis is not None:
+        for i in range(ntheta):
+            axis.plot(r_ray[i], z_ray[i])
+
+    # Normalised flux along every ray (evaluated once, whatever the number of surfaces)
+    p_ray = psifunc(r_ray, z_ray, grid=False)
+
+    # Calculate flux surface positions for all surfaces and angles at once: the first ray
+    # point beyond each surface, then linear interpolation to the surface
+    theta_index = np.arange(ntheta)[None, :]
+    beyond = argmax(
+        p_ray[None, :, :] > psirange[:, None, None], axis=2
+    )  # (npsi, ntheta)
+    p_beyond = p_ray[theta_index, beyond]
+    p_before = p_ray[theta_index, beyond - 1]
+    f = (p_beyond - psirange[:, None]) / (p_beyond - p_before)
+    r = (1.0 - f) * r_ray[theta_index, beyond] + f * r_ray[theta_index, beyond - 1]
+    z = (1.0 - f) * z_ray[theta_index, beyond] + f * z_ray[theta_index, beyond - 1]
+
+    if axis is not None:
+        axis.plot(r.reshape(-1), z.reshape(-1), "bo")
+
+    # Poloidal field B_p = |grad(psi)| / R on the surfaces, from the derivatives of the
+    # (normalised) flux spline: psi is an affine function of psinormal.
+    grad_psinormal = np.hypot(
+        psifunc(r, z, dx=1, grid=False), psifunc(r, z, dy=1, grid=False)
+    )
+    Bthe = grad_psinormal * abs(psi_boundary - opoint[0][2]) / r
 
     # Get variables for loop integral around flux surface
-    r = psisurf[:, :, 0]
-    z = psisurf[:, :, 1]
     fpol = eq.fpol(psirange[:]).reshape(npsi, 1)
-    Br = eq.Br(r, z)
-    Bz = eq.Bz(r, z)
-    Bthe = sqrt(Br**2 + Bz**2)
 
     # Differentiate location w.r.t. index
     dr_di = (np.roll(r, 1, axis=1) - np.roll(r, -1, axis=1)) / 2.0

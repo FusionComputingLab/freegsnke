@@ -26,7 +26,8 @@ import pickle
 
 import numpy as np
 from deepdiff import DeepDiff
-from freegs4e.gradshafranov import Greens, GreensBr, GreensBz
+
+from .gradshafranov import Greens, GreensBr, GreensBz
 
 
 class Probes:
@@ -1062,7 +1063,7 @@ class Probes:
         """
         Plot magnetic diagnostic probes (fluxloops and pickup coils).
 
-        This is a convenience wrapper around `freegs4e.plotting.plotProbes`.
+        This is a convenience wrapper around `freegsnke.plotting.plotProbes`.
 
         Parameters
         ----------
@@ -1082,7 +1083,7 @@ class Probes:
         axis : matplotlib.axes.Axes
             Matplotlib axis containing the plotted probes.
         """
-        from freegs4e.plotting import plotProbes
+        from .plotting import plotProbes
 
         return plotProbes(
             self,

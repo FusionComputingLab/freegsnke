@@ -1,5 +1,5 @@
 """
-Defines the FreeGSNKE equilibrium Object, which inherits from the FreeGS4E equilibrium object.
+Defines the FreeGSNKE equilibrium object, extending the native base equilibrium.
 
 Copyright 2025 UKAEA, UKRI-STFC, and The Authors, as per the COPYRIGHT and README files.
 
@@ -22,19 +22,17 @@ along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 import os
 import pickle
 
-import freegs4e.equilibrium
 import matplotlib.pyplot as plt
 import numpy as np
-from freegs4e import critical
 from scipy import interpolate
 
-from . import limiter_func
+from . import critical, equilibrium, limiter_func
 from .build_machine import copy_tokamak
 from .copying import copy_into
 
 
-class Equilibrium(freegs4e.equilibrium.Equilibrium):
-    """FreeGSNKE equilibrium object, extending the FreeGS4E equilibrium.
+class Equilibrium(equilibrium.Equilibrium):
+    """FreeGSNKE equilibrium object, extending the native equilibrium.
 
     Adds limiter handling, a self-checking plasma-flux interpolator, in-place
     machine-description updates, lightweight auxiliary copies, and optional
@@ -54,7 +52,7 @@ class Equilibrium(freegs4e.equilibrium.Equilibrium):
         Parameters
         ----------
         *args, **kwargs
-            Passed to ``freegs4e.equilibrium.Equilibrium.__init__``, e.g.
+            Passed to ``freegsnke.equilibrium.Equilibrium.__init__``, e.g.
             ``tokamak``, ``Rmin``, ``Rmax``, ``Zmin``, ``Zmax``, ``nx``,
             ``ny``, ``boundary``, ``psi``, ``current``.
 
@@ -72,7 +70,7 @@ class Equilibrium(freegs4e.equilibrium.Equilibrium):
         if self.equilibrium_path is not None:
             self.initialize_from_equilibrium()
 
-        # Retain FreeGSNKE's checked interpolator after FreeGS4E initialisation.
+        # Retain the checked interpolator after base-class initialisation.
         self._refresh_plasma_psi_interpolator()
 
         self.nxh = len(self.R) // 2
@@ -94,7 +92,7 @@ class Equilibrium(freegs4e.equilibrium.Equilibrium):
     def _updatePlasmaPsi(self, plasma_psi):
         """Update plasma flux while retaining the checked FreeGSNKE interpolator.
 
-        FreeGS4E's implementation stores the spline as an instance attribute
+        The base-class implementation stores the spline as an instance attribute
         ``psi_func``, which would hide this class's :meth:`psi_func` method.
         The spline is moved to ``psi_func_interp`` instead.
 
@@ -112,8 +110,8 @@ class Equilibrium(freegs4e.equilibrium.Equilibrium):
 
         Notes
         -----
-        The critical points and boundary flux are recomputed by FreeGS4E
-        without FreeGSNKE's limiter handling. Use :meth:`set_plasma_psi` to
+        The base class recomputes the critical points and boundary flux
+        without limiter handling. Use :meth:`set_plasma_psi` to
         replace the flux without touching the topology.
         """
         super()._updatePlasmaPsi(plasma_psi)
@@ -135,7 +133,7 @@ class Equilibrium(freegs4e.equilibrium.Equilibrium):
     def set_plasma_psi(self, plasma_psi):
         """Install plasma flux and synchronise its interpolation cache.
 
-        Unlike FreeGS4E's ``_updatePlasmaPsi``, this lightweight update does not
+        Unlike ``_updatePlasmaPsi``, this lightweight update does not
         recalculate critical points, masks, or boundary flux. Solvers should use
         it when committing a flux map before updating topology through their
         existing profile-aware path.
@@ -561,7 +559,7 @@ class Equilibrium(freegs4e.equilibrium.Equilibrium):
         # calculations which we can just copy the results of
         equilibrium = Equilibrium.__new__(Equilibrium)
 
-        # attributes that FreeGS4e sets
+        # Attributes set by the base equilibrium class.
         equilibrium.tokamak = copy_tokamak(self.tokamak)
         equilibrium.Rmin = self.Rmin
         equilibrium.Rmax = self.Rmax
@@ -573,8 +571,7 @@ class Equilibrium(freegs4e.equilibrium.Equilibrium):
         equilibrium.dZ = self.dZ
         equilibrium._applyBoundary = self._applyBoundary
         equilibrium._current = self._current
-        equilibrium.order = self.order
-        equilibrium._solver = self._solver
+        self._copy_solver_state_to(equilibrium)
 
         # attributes the FreeGSNKE sets
         equilibrium.solved = self.solved
@@ -634,7 +631,7 @@ class Equilibrium(freegs4e.equilibrium.Equilibrium):
     ):
         """Plot a solved FreeGSNKE equilibrium.
 
-        This overrides the FreeGS4E plotting wrapper so limited equilibria
+        This overrides the base plotting wrapper so limited equilibria
         without a relevant X-point in the solution domain can still be plotted.
         In that case the LCFS is drawn from ``psi_bndry`` and no primary
         X-point separatrix is requested.

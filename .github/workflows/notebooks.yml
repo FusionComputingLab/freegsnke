@@ -4,14 +4,16 @@ on:
   pull_request:
     branches:
       - main
-    types: [labeled]
+    types: [opened, synchronize, reopened, labeled]
 
 jobs:
   notebooks:
     strategy:
       fail-fast: false
     timeout-minutes: 60
-    if: ${{ github.event.label.name == 'ready-for-final-tests' }}
+    if: >-
+      contains(github.event.pull_request.labels.*.name, 'ready-for-final-tests') &&
+      (github.event.action != 'labeled' || github.event.label.name == 'ready-for-final-tests')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

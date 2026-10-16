@@ -21,7 +21,8 @@ along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 import numpy as np
-from freegs4e.gradshafranov import Greens
+
+from .gradshafranov import Greens
 
 
 def Myy(plasma_pts):

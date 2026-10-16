@@ -26,13 +26,13 @@ from copy import deepcopy
 
 import matplotlib.pyplot as plt
 import numpy as np
-from freegs4e import bilinear_interpolation
-from freegs4e.gradshafranov import GreensBr, GreensdBrdz
 from scipy.signal import convolve2d
 from threadpoolctl import threadpool_limits
 
+from . import bilinear_interpolation
 from . import nk_solver_H as nk_solver
 from .circuit_eq_metal import metal_currents
+from .gradshafranov import GreensBr, GreensdBrdz
 from .GSstaticsolver import NKGSsolver
 from .linear_solve import linear_solver
 from .Myy_builder import Myy_handler
@@ -1015,7 +1015,7 @@ class nl_solver:
 
         Parameters
         ----------
-        profiles : FreeGS4E profiles object
+        profiles : FreeGSNKE profiles object
             Profiles object of the linearisation-point equilibrium.
         rtol_NK : float
             Relative tolerance for the Newton–Krylov GS solves.
@@ -1302,7 +1302,7 @@ class nl_solver:
 
         Parameters
         ----------
-        profiles : FreeGS4E profiles object
+        profiles : FreeGSNKE profiles object
             Profiles object of the linearization-point equilibrium.
         rtol_NK : float
             Relative tolerance for the Newton–Krylov Grad–Shafranov solver.
@@ -1976,9 +1976,9 @@ class nl_solver:
 
         Parameters
         ----------
-        eq : FreeGS4E equilibrium object
+        eq : FreeGSNKE equilibrium object
             Equilibrium around which to linearize.
-        profiles : FreeGS4E profiles object
+        profiles : FreeGSNKE profiles object
             Plasma profiles associated with the equilibrium.
         dIydI : np.ndarray or None
             Optional input Jacobian of plasma current density with respect to metal currents.
@@ -2376,7 +2376,7 @@ class nl_solver:
 
     def get_profiles_values(self, profiles):
         """
-        Extracts and stores relevant properties from a FreeGS4E profiles object.
+        Extracts and stores relevant properties from a FreeGSNKE profiles object.
 
         Sets internal attributes describing the profile type, number of independent
         parameters, and their values, which are used in linearisation and stepper
@@ -2384,7 +2384,7 @@ class nl_solver:
 
         Parameters
         ----------
-        profiles : FreeGS4E profiles object
+        profiles : FreeGSNKE profiles object
             The profiles object of the initial equilibrium. This provides the parameters
             defining the plasma current density profile, e.g., alpha_m, alpha_n, paxis,
             betap, Beta0, or Lao coefficients.
@@ -2486,7 +2486,7 @@ class nl_solver:
         ----------
         eq : FreeGSNKE equilibrium object
             The equilibrium used to extract all metal currents before any mode truncation.
-        profiles : FreeGS4E profiles object
+        profiles : FreeGSNKE profiles object
             Profiles of the initial equilibrium. Used to extract the total plasma current.
         """
 
@@ -2529,9 +2529,9 @@ class nl_solver:
 
         Parameters
         ----------
-        eq : FreeGS4E equilibrium object
+        eq : FreeGSNKE equilibrium object
             The initial equilibrium, used to assign all metal currents.
-        profiles : FreeGS4E profiles object
+        profiles : FreeGSNKE profiles object
             Profiles of the initial equilibrium, used to assign the total plasma current.
         target_relative_tolerance_linearization : float, default=1e-7
             Relative tolerance for static Grad–Shafranov solves during initialization

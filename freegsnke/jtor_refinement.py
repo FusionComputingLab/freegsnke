@@ -46,7 +46,7 @@ class Jtor_refiner:
 
         Parameters
         ----------
-        eq : freegs4e.Equilibrium
+        eq : freegsnke.Equilibrium
             Equilibrium object defining the computational grid and limiter geometry.
         nnx : int (even)
             Refinement factor in the R-direction (number of subcells per cell).

@@ -145,7 +145,7 @@ class simplified_solver_J1:
 
     def reset_plasma_resistivity(self, plasma_resistance_1d):
         """Resets the value of the plasma resistivity,
-        throught the vector of 'geometric resistances' in the plasma domain
+        through the vector of 'geometric resistances' in the plasma domain
 
         Parameters
         ----------

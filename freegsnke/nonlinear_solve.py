@@ -1,5 +1,5 @@
 """
-Implements the core non-linear solver for the evolutive GS problem. Also handles the linearised evolution capabilites.
+Implements the core non-linear solver for the evolutive GS problem. Also handles the linearised evolution capabilities.
 
 Copyright 2025 UKAEA, UKRI-STFC, and The Authors, as per the COPYRIGHT and README files.
 
@@ -2599,7 +2599,7 @@ class nl_solver:
         self.eq2 = self.eq1.create_auxiliary_equilibrium()
         self.profiles2 = self.profiles1.copy()
 
-        # self.Iy is the istantaneous 1d vector representing the plasma current distribution
+        # self.Iy is the instantaneous 1d vector representing the plasma current distribution
         # on the reduced plasma domain, as from plasma_domain_mask
         # self.Iy is updated every timestep
         self.Iy = self.limiter_handler.Iy_from_jtor(self.profiles1.jtor)
@@ -2632,7 +2632,7 @@ class nl_solver:
             or self.plasma_descriptor_function,
         )
 
-        # set Myy matrix in place throught the handling object
+        # set Myy matrix in place through the handling object
         self.handleMyy.force_build_Myy(self.hatIy)
 
         # transfer linearization to linear solver:
@@ -2701,7 +2701,7 @@ class nl_solver:
             Myy_hatIy0=self.Myy_hatIy0,
         )
 
-        # reset internal objects incase modifed by above
+        # reset internal objects in case modified by above
         self.eq1 = original_eq1
         self.eq2 = original_eq2
         self.profiles1 = original_profiles1
@@ -3454,7 +3454,7 @@ class nl_solver:
                 )
             self.relinearise(verbose=verbose)
 
-            # we ned to update the initial descriptors to the values at the relinearisation time
+            # we need to update the initial descriptors to the values at the relinearisation time
             if no_GS:
                 self.initial_plasma_descriptors = self.plasma_descriptors_vec
 
@@ -3756,7 +3756,7 @@ class nl_solver:
         current_[:-1] += final_dI * np.real(self.linearised_sol.unstable_modes[:, 0])
         self.assign_currents_solve_GS(current_, rtol_NK)
 
-        # calculcate resulting positions
+        # calculate resulting positions
         R0n = self.eq2.Rcurrent()
         Z0n = self.eq2.Zcurrent()
 
@@ -3938,10 +3938,10 @@ class nl_solver:
             )
             greenm *= eq.tokamak.coils_dict[labelj]["polarity"][
                 np.newaxis, :
-            ]  # mulitply by polarity of filaments
+            ]  # multiply by polarity of filaments
             greenm *= eq.tokamak.coils_dict[labelj]["multiplier"][
                 np.newaxis, :
-            ]  # mulitply by mulitplier of filaments
+            ]  # multiply by multitplier of filaments
             greenm *= eq.tokamak.coils_dict[labelj]["coords"][0][
                 np.newaxis, :
             ]  # multiply by R co-ords

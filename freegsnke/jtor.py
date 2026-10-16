@@ -1442,8 +1442,8 @@ class TensionSpline(Profile):
 
         Parameters
         ----------
-        x : np.array
-            Array of normalised psi values between 0 and 1.
+        x : float or np.array
+            Normalised psi value(s) between 0 and 1 (a scalar or an array of any shape).
         xn : np.array
             Array of knot points between 0 and 1.
         yn : np.array
@@ -1455,14 +1455,15 @@ class TensionSpline(Profile):
 
         Returns
         -------
-        np.array
-            The tension spline evaluated at the points in x.
+        float or np.array
+            The tension spline evaluated at the points in x (a float if x is a
+            scalar, otherwise an array with the same shape as x).
         """
 
-        # find shape of x
+        # accept scalars as well as arrays of any shape
+        x = np.asarray(x, dtype=float)
         size = x.shape
-        if len(size) > 1:
-            x = x.flatten()
+        x = x.reshape(-1)
 
         # fixed parameters
         x_diffs = xn[1:] - xn[0:-1]
@@ -1490,16 +1491,13 @@ class TensionSpline(Profile):
         # sum to find (alomst) final solution
         f = np.sum(sol, axis=1)
 
-        # check if any of the interpolation and knot points are the same (if so we have double counted)
-        for i in np.where(np.isin(x, xn))[0]:
-            if i not in [0, len(x) - 1]:
-                f[i] /= 2
+        # points on an interior knot lie in two adjacent intervals so are double counted
+        f[np.isin(x, xn[1:-1])] /= 2
 
-        # rehape final output if required
-        if len(size) > 1:
-            return f.reshape(size)
-        else:
-            return f
+        # restore the shape of the input (a plain float for a scalar input)
+        if len(size) == 0:
+            return float(f[0])
+        return f.reshape(size)
 
 
 class GeneralPprimeFFprime(Profile):

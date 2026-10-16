@@ -32,7 +32,9 @@ from threadpoolctl import threadpool_limits
 _parallel_virtual_circuit_handler = None
 
 
-def _build_shape_matrix_column_worker(arguments):
+def _build_shape_matrix_column_worker(
+    arguments: tuple[int, list[str], float, float],
+) -> tuple[int, float, np.ndarray]:
     """
     Build one virtual-circuit shape-matrix column in a worker process.
 
@@ -44,8 +46,9 @@ def _build_shape_matrix_column_worker(arguments):
 
     Returns
     -------
-    object
-        The computed shape-matrix column.
+    tuple[int, float, np.ndarray]
+        ``(j, final_dI, shape_matrix_column)`` as returned by
+        ``_build_shape_matrix_column``.
     """
     return _parallel_virtual_circuit_handler._build_shape_matrix_column(*arguments)
 
@@ -112,10 +115,6 @@ class VirtualCircuitHandling:
     ) -> None:
         """
         Initialises the virtual circuits.
-
-        Parameters
-        ----------
-
         """
 
         # name to store the VC under
@@ -133,10 +132,6 @@ class VirtualCircuitHandling:
             The static Grad-Shafranov solver object.
         target_relative_tolerance : float
             Target relative tolerance to be met by the solver.
-
-        Returns
-        -------
-        None
             Modifies the class object in place.
         """
 
@@ -154,10 +149,6 @@ class VirtualCircuitHandling:
             The equilibrium object.
         coils : list
             List of strings containing the names of the coil currents to be stored.
-
-        Returns
-        -------
-        None
             Modifies the class object in place.
         """
 
@@ -183,12 +174,7 @@ class VirtualCircuitHandling:
         coils : list
             List of strings containing the names of the coil currents to be assigned.
         eq : object
-            The equilibrium object.
-
-        Returns
-        -------
-        None
-            Modifies the class object in place.
+            The equilibrium object, modified in place.
         """
 
         # directly assign the currents
@@ -214,10 +200,10 @@ class VirtualCircuitHandling:
         target_relative_tolerance : float
             Target relative tolerance to be met by the solver.
 
-        Returns
-        -------
-        None
-            Modifies the class (and other private) object(s) in place.
+        Raises
+        ------
+        AttributeError
+            If the solver has not been defined (see ``define_solver``).
         """
 
         # assign currents
@@ -267,10 +253,11 @@ class VirtualCircuitHandling:
         max_curr : float, optional, by default 300
             If inferred current value is above max_curr, clip to max_curr.
 
-        Returns
-        -------
-        None
-            Modifies the class (and other private) object(s) in place.
+        Raises
+        ------
+        ZeroDivisionError
+            If the plasma current change from the initial perturbation is
+            near zero, so no finite-difference slope can be inferred.
         """
 
         # copy of currents
@@ -368,9 +355,14 @@ class VirtualCircuitHandling:
 
         Parameters
         ----------
-        arguments : tuple[int, list[str], float, float]
-            ``(j, coils, target_dIy, starting_dI)``, unpacked and passed to
-            ``_parallel_virtual_circuit_handler._build_shape_matrix_column``.
+        j : int
+            Index of the coil current to perturb.
+        coils : list[str]
+            Names of the coil currents.
+        target_dIy : float
+            Target norm of delta(I_y) used for the finite-difference derivative.
+        starting_dI : float
+            Initial delta(I_j) used to infer the slope.
 
         Returns
         -------
@@ -480,6 +472,12 @@ class VirtualCircuitHandling:
         -------
         inverse : np.ndarray
             inverse of matrix
+
+        Raises
+        ------
+        ValueError
+            If ``tikhonov_lambda`` is not 1d or a 2d diagonal matrix, or its
+            size is inconsistent with the number of columns of ``matrix``.
         """
 
         # convert tensorflow to numpy
@@ -586,11 +584,13 @@ class VirtualCircuitHandling:
             Number of worker processes used to build independent shape-matrix
             columns. A value of 1 retains the serial calculation.
 
-        Returns
-        -------
-        None
-            Modifies the class (and other private) object(s) in place.
-
+        Raises
+        ------
+        ValueError
+            If ``target_calculator`` or ``target_names`` is missing or inconsistent,
+            or ``n_vc_workers`` is not a positive integer.
+        AttributeError
+            If the solver has not been defined (see ``define_solver``).
         """
 
         # store original currents
@@ -766,6 +766,14 @@ class VirtualCircuitHandling:
             Array of new target values.
         np.array
             Array of old target values.
+
+        Raises
+        ------
+        ValueError
+            If the length of ``requested_target_shifts`` does not match the
+            targets of ``VC_object``.
+        AttributeError
+            If the solver has not been defined (see ``define_solver``).
         """
 
         # verify targets, coils, and shifts all match those used to generate VCs

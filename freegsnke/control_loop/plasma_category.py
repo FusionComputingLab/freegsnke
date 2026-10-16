@@ -163,7 +163,7 @@ class PlasmaController:
         integral history of the plasma current error (`ip_hist`) using a blended feedback and
         feedforward control strategy.
 
-        Parameters:
+        Parameters
         ----------
         t : float
             Current time [s].
@@ -176,15 +176,15 @@ class PlasmaController:
         ip_err_prev : float
             Previous value of the plasma current error [A].
 
-        Returns:
+        Returns
         -------
         dip_dt : float
             Time derivative of the requested plasma current [A/s].
         ip_hist : float
             Updated integral of the plasma current error [A.s].
 
-        Notes:
-        ------
+        Notes
+        -----
         - The control law uses time-dependent interpolants for reference current (`ip_ref`),
         proportional gain (`k_prop`), integral gain (`k_int`), integral gain (`k_deriv`), blend factor (`ip_blend`),
         feedforward voltage (`vloop_ff`), and solenoid inductance (`M_solenoid`).

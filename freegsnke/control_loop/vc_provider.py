@@ -271,7 +271,7 @@ class VCGenerator(VirtualCircuitProvider):
 
         else:
             # reorder the target calculator outputs if targets are different order or a subset
-            def array_func(eq):
+            def array_func(eq: object) -> np.ndarray:
                 """
                 Evaluate all requested target quantities for a given equilibrium.
 

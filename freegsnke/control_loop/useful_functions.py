@@ -220,9 +220,6 @@ def check_data_entry(
     controller_name : str
         A string corresponding to which controller is being checked.
 
-    Returns
-    -------
-
     Raises
     ------
     ValueError

@@ -81,7 +81,7 @@ class VirtualCircuitsController:
         ctrl_coils: list[str],
         ctrl_targets: list[str],
         plasma_target: list[str],
-        vc_generator=None,
+        vc_generator: object | None = None,
     ) -> None:
         """
         Initialise the virtual circuits controller.

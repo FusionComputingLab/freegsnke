@@ -109,7 +109,7 @@ class PlasmaControlSystem:
         ctrl_targets: list[str],
         plasma_target: list[str],
         shape_control_mode: Optional[str] = None,
-        vc_generator=None,
+        vc_generator: object | None = None,
     ) -> None:
         """
         Initialise the top-level control system, composing all sub-controllers.

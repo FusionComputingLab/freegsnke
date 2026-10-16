@@ -20,7 +20,10 @@ You should have received a copy of the GNU Lesser General Public License
 along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 """
 
+from __future__ import annotations
+
 import warnings
+from typing import Callable
 
 import contourpy
 import matplotlib.pyplot as plt
@@ -43,25 +46,24 @@ from .plotting import plotEquilibrium
 class Equilibrium:
     """
     Represents the plasma equilibrium state and its associated properties.
-
     """
 
     def __init__(
         self,
-        tokamak=None,
-        Rmin=0.1,
-        Rmax=2.0,
-        Zmin=-1.0,
-        Zmax=1.0,
-        nx=65,
-        ny=65,
-        boundary=freeBoundary,
-        psi=None,
-        current=0.0,
-        order=None,
-    ):
+        tokamak: object | None = None,
+        Rmin: float = 0.1,
+        Rmax: float = 2.0,
+        Zmin: float = -1.0,
+        Zmax: float = 1.0,
+        nx: int = 65,
+        ny: int = 65,
+        boundary: Callable = freeBoundary,
+        psi: np.ndarray | Callable | None = None,
+        current: float = 0.0,
+        order: int | None = None,
+    ) -> None:
         """
-        Initializes a plasma equilibrium.
+        Initialise a plasma equilibrium.
 
         Parameters
         ----------
@@ -83,7 +85,7 @@ class Equilibrium:
         boundary : callable
             The boundary condition function. Can be either `freeBoundary`
             or `fixedBoundary`.
-        psi : np.array | None | callable
+        psi : np.ndarray | Callable | None
             Initial guess for plasma flux [Webers/2pi]. If `None`, default initial Gaussian-shaped
             guess used. If a callable is provided, it is called with the equilibrium to get the initial guess.
             The array (returned by the callable) must have the shape (nx, ny).
@@ -94,6 +96,11 @@ class Equilibrium:
             initialization; the value (default 4) is only used as the order of the sparse-LU
             solver that is lazily created by `callSolver`.
 
+        Raises
+        ------
+        ValueError
+            If ``Rmin > Rmax``, ``Zmin > Zmax``, ``nx`` or ``ny`` is negative, or the
+            shape of the initial ``psi`` does not match ``(nx, ny)``.
         """
 
         # assign tokamak object
@@ -167,8 +174,15 @@ class Equilibrium:
         self._updatePlasmaPsi(psi)
 
     @property
-    def order(self):
-        """Return the deprecated order used by the lazy compatibility solver."""
+    def order(self) -> int:
+        """
+        Return the deprecated order used by the lazy compatibility solver.
+
+        Returns
+        -------
+        int
+            Order of the sparse-LU solver created on first use.
+        """
         warnings.warn(
             "Order attribute of Equilibrium objects is deprecated, as no solver is created",
             DeprecationWarning,
@@ -176,8 +190,15 @@ class Equilibrium:
         return self._order
 
     @order.setter
-    def order(self, value):
-        """Set the order for a compatibility solver created on its next use."""
+    def order(self, value: int) -> None:
+        """
+        Set the order for a compatibility solver created on its next use.
+
+        Parameters
+        ----------
+        value : int
+            New order of the sparse-LU solver.
+        """
         warnings.warn(
             "Order attribute of Equilibrium objects is deprecated, as no solver is created",
             DeprecationWarning,
@@ -185,8 +206,15 @@ class Equilibrium:
         self._order = value
 
     @property
-    def _solver(self):
-        """Return the deprecated solver reference without creating a solver."""
+    def _solver(self) -> object | None:
+        """
+        Return the deprecated solver reference without creating a solver.
+
+        Returns
+        -------
+        object | None
+            The stored solver, or None if none has been created or set.
+        """
         warnings.warn(
             "Solver attribute of Equilibrium objects is deprecated. Equilibrium contains no linear solver.",
             DeprecationWarning,
@@ -194,63 +222,120 @@ class Equilibrium:
         return self.__solver
 
     @_solver.setter
-    def _solver(self, value):
-        """Replace or clear the deprecated compatibility solver reference."""
+    def _solver(self, value: object | None) -> None:
+        """
+        Replace or clear the deprecated compatibility solver reference.
+
+        Parameters
+        ----------
+        value : object | None
+            Callable solver ``value(x, b)``, or None to restore the default lazy solver.
+        """
         warnings.warn(
             "Solver attribute of Equilibrium objects is deprecated. Equilibrium contains no linear solver.",
             DeprecationWarning,
         )
         self.__solver = value
 
-    def _copy_solver_state_to(self, other):
-        """Share compatibility solver state without triggering lazy creation.
+    def _copy_solver_state_to(self, other: Equilibrium) -> None:
+        """
+        Share compatibility solver state without triggering lazy creation.
 
         Auxiliary equilibria use the same grid and historically shared the
         factorization. Preserve that behavior for initialized or custom solvers,
         and leave an uninitialized copy free to create its own solver on use.
+
+        Parameters
+        ----------
+        other : Equilibrium
+            Equilibrium (on the same grid) that receives the solver order and solver reference.
         """
         other._order = self._order
         other.__solver = self.__solver
 
-    def create_psi_plasma_default(self, adaptive_centre=False, gpars=(0.5, 0.5, 0, 2)):
-        """This method is kept for backwards compatibility and will generate a Gaussian-shaped
-        initial guess for the plasma flux. It is NOT called by this class anymore.
+    def create_psi_plasma_default(
+        self,
+        adaptive_centre: bool = False,
+        gpars: tuple[float, float, float, float] = (0.5, 0.5, 0, 2),
+    ) -> np.ndarray:
+        """
+        Generate a Gaussian-shaped initial guess for the plasma flux.
+
+        Kept for backwards compatibility; it is NOT called by this class anymore.
+
+        Parameters
+        ----------
+        adaptive_centre : bool
+            Passed to `PsiGuessGaussian`; if True the Gaussian is centred adaptively.
+        gpars : tuple[float, float, float, float]
+            Gaussian parameters passed to `PsiGuessGaussian`.
+
+        Returns
+        -------
+        np.ndarray
+            Initial guess for the plasma flux on the (R, Z) grid [Webers/2pi].
         """
         return PsiGuessGaussian(adaptive_centre, gpars)(self)
 
-    def setSolverVcycle(self, nlevels=1, ncycle=1, niter=1, direct=True, order=4):
+    def setSolverVcycle(
+        self,
+        nlevels: int = 1,
+        ncycle: int = 1,
+        niter: int = 1,
+        direct: bool = True,
+        order: int = 4,
+    ) -> None:
         """
-        Deprecated. Equilibrium objects do not contain a multigrid solver. All arguments
-        are ignored and any previously set solver is discarded, so that the default
-        sparse-LU solver is (lazily) used again.
+        Deprecated. Equilibrium objects do not contain a multigrid solver.
+
+        All arguments are ignored and any previously set solver is discarded, so that
+        the default sparse-LU solver is (lazily) used again.
+
+        Parameters
+        ----------
+        nlevels : int
+            Ignored.
+        ncycle : int
+            Ignored.
+        niter : int
+            Ignored.
+        direct : bool
+            Ignored.
+        order : int
+            Ignored.
         """
         self.setSolver(None)
 
-    def setSolver(self, solver):
+    def setSolver(self, solver: Callable | None) -> None:
         """
-        Deprecated. Sets the solver used by `callSolver`. The object must be callable as
-        `solver(x, b)`, where x is the initial guess and b the right hand side. Passing
-        None restores the default sparse-LU solver (created lazily on next use).
+        Deprecated. Set the solver used by `callSolver`.
+
+        Parameters
+        ----------
+        solver : Callable | None
+            Object callable as ``solver(x, b)``, where x is the initial guess and b the
+            right hand side. None restores the default sparse-LU solver (created lazily
+            on next use).
         """
         self._solver = solver
 
-    def callSolver(self, psi, rhs):
+    def callSolver(self, psi: np.ndarray, rhs: np.ndarray) -> np.ndarray:
         """
-        Solves the GS elliptic equation for the given right hand side. The solver
+        Solve the GS elliptic equation for the given right hand side. The solver
         (a sparse-LU `GSLUSolver` of the order given at initialization) is created
         lazily on first use, so that constructing an Equilibrium carries no
         factorization cost.
 
         Parameters
         ----------
-        psi : np.array
+        psi : np.ndarray
             The initial guess [Webers/2pi] (unused by the LU solver).
-        rhs : np.array
+        rhs : np.ndarray
             The right hand side of the GS equation.
 
         Returns
         -------
-        np.array
+        np.ndarray
             The solution of the GS equation, with the shape of `rhs`.
         """
 
@@ -259,39 +344,31 @@ class Equilibrium:
 
         return self.__solver(psi, rhs)
 
-    def getMachine(self):
+    def getMachine(self) -> object:
         """
-        Machine object.
-
-        Parameters
-        ----------
+        Return the tokamak (machine) object.
 
         Returns
         -------
         object
-            Returns the tokamak object.
-
+            The tokamak object this equilibrium was built with.
         """
 
         return self.tokamak
 
-    def plasmaCurrent(self):
+    def plasmaCurrent(self) -> float:
         """
-        Returns the plasma current [Amps].
-
-        Parameters
-        ----------
+        Return the plasma current [Amps].
 
         Returns
         -------
         float
-            Returns the total plasma current [Amps].
-
+            The total plasma current [Amps].
         """
 
         return self._current
 
-    def plasmaVolume(self):
+    def plasmaVolume(self) -> float:
         """
         Plasma volume [m^3] calculated using:
 
@@ -299,13 +376,15 @@ class Equilibrium:
 
         where the integral is evaluated over the plasma core domain.
 
-        Parameters
-        ----------
-
         Returns
         -------
         float
-            Returns the total plasma volume [m^3].
+            The total plasma volume [m^3].
+
+        Raises
+        ------
+        AttributeError
+            If the equilibrium has not been solved yet (no core mask available).
         """
 
         # volume element
@@ -323,7 +402,9 @@ class Equilibrium:
         # integrate volume in 2D
         return np.sum(dV)
 
-    def plasmaBr(self, R, Z):
+    def plasmaBr(
+        self, R: float | np.ndarray, Z: float | np.ndarray
+    ) -> float | np.ndarray:
         """
         Radial magnetic field due to plasma:
 
@@ -333,43 +414,45 @@ class Equilibrium:
 
         Parameters
         ----------
-        R : float or np.array
+        R : float | np.ndarray
             Radial position(s) to evaluate at.
-        Z : float or np.array
+        Z : float | np.ndarray
             Vertical position(s) to evaluate at.
 
         Returns
         -------
-        float or np.array
+        float | np.ndarray
             The radial magnetic field due to the plasma at the given (R, Z) positions [T].
         """
 
         return -self.psi_func(R, Z, dy=1, grid=False) / R
 
-    def plasmaBz(self, R, Z):
+    def plasmaBz(
+        self, R: float | np.ndarray, Z: float | np.ndarray
+    ) -> float | np.ndarray:
         """
-        Vertical magnetic field Bz due to plasma::
+        Vertical magnetic field Bz due to plasma:
 
-            Bz_p(R, Z) = (1 / R) * dψ/dR (R, Z),
+            Bz_p(R, Z) = (1 / R) * dψ_p/dR (R, Z),
 
         where ψ_p is the plasma flux.
 
         Parameters
         ----------
-        R : float or np.array
+        R : float | np.ndarray
             Radial position(s) to evaluate at.
-        Z : float or np.array
+        Z : float | np.ndarray
             Vertical position(s) to evaluate at.
 
         Returns
         -------
-        float or np.array
+        float | np.ndarray
             The vertical magnetic field due to the plasma at the given (R, Z) positions [T].
         """
 
         return self.psi_func(R, Z, dx=1, grid=False) / R
 
-    def Br(self, R, Z):
+    def Br(self, R: float | np.ndarray, Z: float | np.ndarray) -> float | np.ndarray:
         """
         Total radial magnetic field due to plasma and coils:
 
@@ -379,20 +462,20 @@ class Equilibrium:
 
         Parameters
         ----------
-        R : float or np.array
+        R : float | np.ndarray
             Radial position(s) to evaluate at.
-        Z : float or np.array
+        Z : float | np.ndarray
             Vertical position(s) to evaluate at.
 
         Returns
         -------
-        float or np.array
+        float | np.ndarray
             The total radial magnetic field at the given (R, Z) positions [T].
         """
 
         return self.plasmaBr(R, Z) + self.tokamak.Br(R, Z)
 
-    def Bz(self, R, Z):
+    def Bz(self, R: float | np.ndarray, Z: float | np.ndarray) -> float | np.ndarray:
         """
         Total vertical magnetic field due to plasma and coils:
 
@@ -402,42 +485,49 @@ class Equilibrium:
 
         Parameters
         ----------
-        R : float or np.array
+        R : float | np.ndarray
             Radial position(s) to evaluate at.
-        Z : float or np.array
+        Z : float | np.ndarray
             Vertical position(s) to evaluate at.
 
         Returns
         -------
-        float or np.array
+        float | np.ndarray
             The total vertical magnetic field at the given (R, Z) positions [T].
         """
 
         return self.plasmaBz(R, Z) + self.tokamak.Bz(R, Z)
 
-    def Btor(self, R, Z):
+    def Btor(self, R: float | np.ndarray, Z: float | np.ndarray) -> float | np.ndarray:
         """
         Total toroidal magnetic field:
 
-            Btor(R, Z) = I(R, Z) * fpol(ψ_n) + (1 - I(R, Z)) * fvac,
+            Btor(R, Z) = [ I(R, Z) * fpol(ψ_n) + (1 - I(R, Z)) * fvac ] / R,
 
         where:
             - I(R, Z) = 1 inside core plasma, 0 outside.
             - fpol = R*Bt at specified values of normalised psi ψ_n (i.e.
-        inside the plasma core).
-            - fvac = = R*Bt in vacuum (i.e. outside plasma).
+              inside the plasma core).
+            - fvac = R*Bt in vacuum (i.e. outside plasma).
 
         Parameters
         ----------
-        R : float or np.array
+        R : float | np.ndarray
             Radial position(s) to evaluate at.
-        Z : float or np.array
+        Z : float | np.ndarray
             Vertical position(s) to evaluate at.
 
         Returns
         -------
-        float or np.array
+        float | np.ndarray
             The toroidal magnetic field at the given (R, Z) positions [T].
+
+        Raises
+        ------
+        AttributeError
+            If the equilibrium has not been solved yet (no core mask available).
+        ValueError
+            If R and Z are not both scalars, both 1D arrays, or both 2D arrays.
         """
 
         # find f = R * Btor in the core
@@ -469,7 +559,7 @@ class Equilibrium:
         else:
             raise ValueError("Unexpected input shape for R and Z.")
 
-    def Bpol(self, R, Z):
+    def Bpol(self, R: float | np.ndarray, Z: float | np.ndarray) -> float | np.ndarray:
         """
         Total poloidal magnetic field due to plasma and coils:
 
@@ -477,14 +567,14 @@ class Equilibrium:
 
         Parameters
         ----------
-        R : float or np.array
+        R : float | np.ndarray
             Radial position(s) to evaluate at.
-        Z : float or np.array
+        Z : float | np.ndarray
             Vertical position(s) to evaluate at.
 
         Returns
         -------
-        float or np.array
+        float | np.ndarray
             The poloidal magnetic field at the given (R, Z) positions [T].
         """
 
@@ -493,7 +583,7 @@ class Equilibrium:
 
         return np.sqrt((Br * Br) + (Bz * Bz))
 
-    def psi(self):
+    def psi(self) -> np.ndarray:
         """
         Total poloidal flux due to plasma and coils on the
         entire (R,Z) grid:
@@ -504,18 +594,15 @@ class Equilibrium:
          -  ψ_p (R, Z) is the plasma flux.
          -  ψ_c (R, Z) is the coil flux.
 
-        Parameters
-        ----------
-
         Returns
         -------
-        np.array
+        np.ndarray
             The total poloidal flux due to the plasma and the coils [Webers/2pi].
         """
 
         return self.plasma_psi + self.tokamak.getPsitokamak(self._vgreen)
 
-    def psiRZ(self, R, Z):
+    def psiRZ(self, R: float | np.ndarray, Z: float | np.ndarray) -> float | np.ndarray:
         """
         Total poloidal flux due to plasma and coils (at chosen R and Z):
 
@@ -527,20 +614,22 @@ class Equilibrium:
 
         Parameters
         ----------
-        R : float or np.array
+        R : float | np.ndarray
             Radial position(s) to evaluate at.
-        Z : float or np.array
+        Z : float | np.ndarray
             Vertical position(s) to evaluate at.
 
         Returns
         -------
-        float or np.array
+        float | np.ndarray
             The total poloidal flux due to the plasma and the coils at chosen (R,Z) locations [Webers/2pi].
         """
 
         return self.psi_func(R, Z, grid=False) + self.tokamak.psi(R, Z)
 
-    def psiNRZ(self, R, Z):
+    def psiNRZ(
+        self, R: float | np.ndarray, Z: float | np.ndarray
+    ) -> float | np.ndarray:
         """
         Total poloidal flux due to plasma and coils (at chosen R and Z), normalised
         with respect to the flux on the magnetic axis and last closed flux surface:
@@ -553,20 +642,20 @@ class Equilibrium:
 
         Parameters
         ----------
-        R : float or np.array
+        R : float | np.ndarray
             Radial position(s) to evaluate at.
-        Z : float or np.array
+        Z : float | np.ndarray
             Vertical position(s) to evaluate at.
 
         Returns
         -------
-        float or np.array
+        float | np.ndarray
             The total normalised poloidal flux due to the plasma and the coils at chosen (R,Z) locations.
         """
 
         return (self.psiRZ(R, Z) - self.psi_axis) / (self.psi_bndry - self.psi_axis)
 
-    def psi_1D(self, N):
+    def psi_1D(self, N: int) -> np.ndarray:
         """
         Total poloidal flux between magnetic axis and last closed flux surface (at
         equally spaced locations).
@@ -578,14 +667,14 @@ class Equilibrium:
 
         Returns
         -------
-        np.array
+        np.ndarray
             The total poloidal flux due to the plasma and the coils between the magnetic axis
             and last closed flux surface [Webers/2pi].
         """
 
         return np.linspace(self.psi_axis, self.psi_bndry, N)
 
-    def psiN_1D(self, N):
+    def psiN_1D(self, N: int) -> np.ndarray:
         """
         Total normalised poloidal flux between magnetic axis and last closed flux surface.
 
@@ -596,17 +685,14 @@ class Equilibrium:
 
         Returns
         -------
-        np.array
+        np.ndarray
             The total normalised poloidal flux due to the plasma and the coils between the magnetic axis
             and last closed flux surface.
         """
 
         return np.linspace(0, 1, N)
 
-    def rho_1D(
-        self,
-        N,
-    ):
+    def rho_1D(self, N: int) -> float | np.ndarray:
         """
         Toroidal flux ρ (at locations of normalised psi) such that:
 
@@ -624,8 +710,8 @@ class Equilibrium:
 
         Returns
         -------
-        np.array
-            The toroidal flux (at locations of normalised psi).
+        float | np.ndarray
+            The toroidal flux (at locations of normalised psi); a scalar if ``N == 1``.
         """
 
         # calculate safety factor of the (normalised) flux surfaces
@@ -642,13 +728,13 @@ class Equilibrium:
             return integral[0]
         return integral
 
-    def rhoN_1D(self, N):
+    def rhoN_1D(self, N: int) -> np.ndarray:
         """
-        Normalised toroidal flux ρ_n (at locations of normailsed psi) such that:
+        Normalised toroidal flux ρ_n (at locations of normalised psi) such that:
 
-        ρ_n = sqrt( ρ / ρ_b ),
+            ρ_n = sqrt( ρ / ρ_b ),
 
-        where ρ_b is the toridal flux at the last closed flux surface.
+        where ρ_b is the toroidal flux at the last closed flux surface.
 
         Parameters
         ----------
@@ -657,7 +743,7 @@ class Equilibrium:
 
         Returns
         -------
-        np.array
+        np.ndarray
             The normalised toroidal flux (at locations of normalised psi).
         """
 
@@ -666,30 +752,27 @@ class Equilibrium:
 
         return np.sqrt(rho / rho[-1])
 
-    def fpol(self, psinorm):
+    def fpol(self, psinorm: float | np.ndarray) -> float | np.ndarray:
         """
         Return f = R*Bt at specified values of normalised psi (i.e.
         inside the plasma core).
 
         Parameters
         ----------
-        psinorm : np.array
-            Array of normalised psi values between 0 and 1.
+        psinorm : float | np.ndarray
+            Normalised psi value(s) between 0 and 1.
 
         Returns
         -------
-        np.array
+        float | np.ndarray
             fpol at values of normalised psi [Tm].
         """
 
         return self._profiles.fpol(psinorm)
 
-    def fvac(self):
+    def fvac(self) -> float:
         """
         Return vacuum f = R*Bt (i.e. outside the plasma core).
-
-        Parameters
-        ----------
 
         Returns
         -------
@@ -699,7 +782,7 @@ class Equilibrium:
 
         return self._profiles.fvac()
 
-    def q(self, psinorm):
+    def q(self, psinorm: np.ndarray) -> float | np.ndarray:
         """
         Safety factor q at normalised flux values.
 
@@ -708,13 +791,13 @@ class Equilibrium:
 
         Parameters
         ----------
-        psinorm : np.array
+        psinorm : np.ndarray
             Array of normalised psi values between (not including) 0 and 1.
 
         Returns
         -------
-        np.array
-            Safety factor q at values of normalised psi.
+        float | np.ndarray
+            Safety factor q at values of normalised psi; a scalar if one value is given.
         """
 
         # print warning if needed
@@ -732,58 +815,60 @@ class Equilibrium:
 
         return q
 
-    def pprime(self, psinorm):
+    def pprime(self, psinorm: float | np.ndarray) -> float | np.ndarray:
         """
         Return pprime (dp/dψ_n) at normalised flux values.
 
         Parameters
         ----------
-        psinorm : np.array
+        psinorm : np.ndarray
             Array of normalised psi values between (not including) 0 and 1.
 
         Returns
         -------
-        np.array
+        np.ndarray
             pprime (dp/dψ_n) at normalised flux values [Pa/(Webers/2pi)].
         """
 
         return self._profiles.pprime(psinorm)
 
-    def ffprime(self, psinorm):
+    def ffprime(self, psinorm: float | np.ndarray) -> float | np.ndarray:
         """
         Return ffprime (F * dF/dψ_n) at normalised flux values.
 
         Parameters
         ----------
-        psinorm : np.array
+        psinorm : np.ndarray
             Array of normalised psi values between (not including) 0 and 1.
 
         Returns
         -------
-        np.array
+        np.ndarray
             ffprime (F * dF/dψ_n) at normalised flux values [T^2 m^2/(Wb/2pi)].
         """
 
         return self._profiles.ffprime(psinorm)
 
-    def pressure(self, psinorm):
+    def pressure(self, psinorm: float | np.ndarray) -> float | np.ndarray:
         """
         Return pressure (p(ψ_n)) at normalised flux values.
 
         Parameters
         ----------
-        psinorm : np.array
+        psinorm : np.ndarray
             Array of normalised psi values between (not including) 0 and 1.
 
         Returns
         -------
-        np.array
+        np.ndarray
             pressure (p(ψ_n)) at normalised flux values [Pa].
         """
 
         return self._profiles.pressure(psinorm)
 
-    def separatrix(self, ntheta=360, IQR_factor=2.0, verbose=False):
+    def separatrix(
+        self, ntheta: int = 360, IQR_factor: float = 2.0, verbose: bool = False
+    ) -> np.ndarray:
         """
         Return (ntheta x 2) array of (R,Z) points on the last closed
         flux surface (plasma boundary), equally spaced in the geometric
@@ -799,14 +884,15 @@ class Equilibrium:
         ntheta : int
             Number of points on the boundary to return.
         IQR_factor : float
-            Scaling factor used when exluding spurious points.
+            Scaling factor used when excluding spurious points.
         verbose : bool
             Prints any outliers if True.
 
         Returns
         -------
-        np.array
-            (R,Z) points on the last closed flux surface (plasma boundary).
+        np.ndarray
+            (R,Z) points on the last closed flux surface (plasma boundary), shape
+            (n, 2) with n <= ntheta (spurious points are removed).
         """
 
         # initial points on core boundary
@@ -841,12 +927,9 @@ class Equilibrium:
 
         return filtered_points
 
-    def separatrix_area(self):
+    def separatrix_area(self) -> float:
         """
         The area of the last closed flux surface [m^2].
-
-        Parameters
-        ----------
 
         Returns
         -------
@@ -859,12 +942,9 @@ class Equilibrium:
 
         return self._sep_area
 
-    def separatrix_length(self):
+    def separatrix_length(self) -> float:
         """
         The circumference of the last closed flux surface [m].
-
-        Parameters
-        ----------
 
         Returns
         -------
@@ -877,37 +957,36 @@ class Equilibrium:
 
         return self._sep_length
 
-    def getForces(self):
+    def getForces(self) -> dict:
         """
-        Calculates the forces on the coils.
-
-        Parameters
-        ----------
+        Calculate the forces on the coils.
 
         Returns
         -------
         dict
-            Coil lables with the associated force [N].
+            Coil labels with the associated force [N] (nested for circuits).
         """
 
         return self.tokamak.getForces(self)
 
-    def printForces(self):
+    def printForces(self) -> None:
         """
-        Prints a table of forces on coils.
-
-        Parameters
-        ----------
-
-        Returns
-        -------
-        None
-            Table of forces on coils.
+        Print a table of forces on coils.
         """
 
         print("Forces on coils")
 
-        def print_forces(forces, prefix=""):
+        def print_forces(forces: dict, prefix: str = "") -> None:
+            """
+            Recursively print coil forces, indenting nested circuits.
+
+            Parameters
+            ----------
+            forces : dict
+                Mapping of coil/circuit label to ``(F_R, F_Z)`` [N], or to a nested dict for circuits.
+            prefix : str
+                String prepended to each printed line (indentation).
+            """
             for label, force in forces.items():
                 if isinstance(force, dict):
                     print(prefix + label + " (circuit)")
@@ -926,7 +1005,7 @@ class Equilibrium:
     def innerOuterSeparatrix(
         self,
         Z: float = 0.0,
-    ):
+    ) -> tuple[float, float]:
         """
         Locate inboard and outboard R co-ordinates of last closed flux surface
         at a given Z position.
@@ -939,10 +1018,8 @@ class Equilibrium:
 
         Returns
         -------
-        float
-            The inner separatrix major radius (at chosen Z) [m].
-        float
-            The outer separatrix major radius (at chosen Z) [m].
+        tuple[float, float]
+            The inner and outer separatrix major radii (at chosen Z) [m].
         """
 
         # Find the closest index to requested Z
@@ -989,10 +1066,7 @@ class Equilibrium:
 
         return R_in, R_out
 
-    def innerOuterSeparatrix2(
-        self,
-        Z=0.0,
-    ):
+    def innerOuterSeparatrix2(self, Z: float = 0.0) -> list[tuple[float, float]]:
         """
         Alternative (simpler) function to find inboard and outboard R co-ordinates of
         last closed flux surface at any given Z position (using shapely).
@@ -1005,8 +1079,15 @@ class Equilibrium:
 
         Returns
         -------
-        list
-            List with the two (R,Z) coordinates: (R_in, Z) and (R_out, Z) [m].
+        list[tuple[float, float]]
+            List of the (R, Z) intersection coordinates, normally (R_in, Z) and
+            (R_out, Z) [m]; empty if there is no intersection.
+
+        Raises
+        ------
+        ValueError
+            If the intersection of the separatrix with the line is neither a point nor
+            a set of points.
         """
 
         # use shapely to define polygon of core plasma
@@ -1033,18 +1114,15 @@ class Equilibrium:
 
         return intersection_coords
 
-    def intersectsWall(self):
+    def intersectsWall(self) -> bool:
         """
         Assess whether or not the core plasma touches the vessel
         walls.
 
-        Parameters
-        ----------
-
         Returns
         -------
         bool
-            True if they interect, False if not.
+            True if they intersect, False if not.
         """
 
         # generate list of points for each
@@ -1053,17 +1131,14 @@ class Equilibrium:
 
         return polygons.intersect(separatrix[:, 0], separatrix[:, 1], wall.R, wall.Z)
 
-    def magneticAxis(self):
+    def magneticAxis(self) -> np.ndarray:
         """
-        Returns the location of the magnetic axis and its total poloidal flux value.
-
-        Parameters
-        ----------
+        Return the location of the magnetic axis and its total poloidal flux value.
 
         Returns
         -------
-        list
-            Returns [R, Z, ψ(R, Z)] at magnetic axis location  [m, m, Webers/2pi].
+        np.ndarray
+            [R, Z, ψ(R, Z)] at the magnetic axis location [m, m, Webers/2pi].
         """
 
         # find critical points
@@ -1079,17 +1154,15 @@ class Equilibrium:
 
         # return opts[o_point_ind, :]
 
-    def Rcurrent(self):
+    def Rcurrent(self) -> float | None:
         """
-        The average major radius of the toroidal current distribution
-
-        Parameters
-        ----------
+        The average major radius of the toroidal current distribution.
 
         Returns
         -------
-        float
-            average major radius [m].
+        float | None
+            Average major radius [m]; None (with a printed message) if the equilibrium
+            has not been solved yet.
         """
 
         if hasattr(self, "_profiles"):
@@ -1098,17 +1171,15 @@ class Equilibrium:
         else:
             print("The equilibrium is not a GS solution. Please solve the eq. first.")
 
-    def Zcurrent(self):
+    def Zcurrent(self) -> float | None:
         """
-        The average height of the toroidal current distribution
-
-        Parameters
-        ----------
+        The average height of the toroidal current distribution.
 
         Returns
         -------
-        float
-            average height [m].
+        float | None
+            Average height [m]; None (with a printed message) if the equilibrium
+            has not been solved yet.
         """
 
         if hasattr(self, "_profiles"):
@@ -1117,12 +1188,9 @@ class Equilibrium:
         else:
             print("The equilibrium is not a GS solution. Please solve the eq. first.")
 
-    def Rmagnetic(self):
+    def Rmagnetic(self) -> float:
         """
         The major radius of the magnetic axis.
-
-        Parameters
-        ----------
 
         Returns
         -------
@@ -1132,12 +1200,9 @@ class Equilibrium:
 
         return self.magneticAxis()[0]
 
-    def Zmagnetic(self):
+    def Zmagnetic(self) -> float:
         """
         The height of the magnetic axis.
-
-        Parameters
-        ----------
 
         Returns
         -------
@@ -1147,17 +1212,14 @@ class Equilibrium:
 
         return self.magneticAxis()[1]
 
-    def geometricAxis(self):
+    def geometricAxis(self) -> np.ndarray:
         """
         The geometric axis (R_geom, Z_geom) of the plasma [m]. Calculated as
         the centre of a large number of points on the separatrix.
 
-        Parameters
-        ----------
-
         Returns
         -------
-        np.array
+        np.ndarray
             Geometric axis (R,Z) position [m].
         """
 
@@ -1171,12 +1233,9 @@ class Equilibrium:
             ]
         )
 
-    def Rgeometric(self):
+    def Rgeometric(self) -> float:
         """
         The major radius of the geometric axis.
-
-        Parameters
-        ----------
 
         Returns
         -------
@@ -1186,12 +1245,9 @@ class Equilibrium:
 
         return self.geometricAxis()[0]
 
-    def Zgeometric(self):
+    def Zgeometric(self) -> float:
         """
         The height of the geometric axis.
-
-        Parameters
-        ----------
 
         Returns
         -------
@@ -1201,12 +1257,9 @@ class Equilibrium:
 
         return self.geometricAxis()[1]
 
-    def minorRadius(self):
+    def minorRadius(self) -> float:
         """
         Calculate the minor radius of the plasma [m].
-
-        Parameters
-        ----------
 
         Returns
         -------
@@ -1219,12 +1272,9 @@ class Equilibrium:
 
         return (self._sep_Rmax - self._sep_Rmin) / 2
 
-    def aspectRatio(self):
+    def aspectRatio(self) -> float:
         """
         Calculate the aspect ratio of the plasma.
-
-        Parameters
-        ----------
 
         Returns
         -------
@@ -1238,12 +1288,9 @@ class Equilibrium:
 
         return (self._sep_Rmax + self._sep_Rmin) / (self._sep_Rmax - self._sep_Rmin)
 
-    def geometricElongation(self):
+    def geometricElongation(self) -> float:
         """
         Calculate the geometric elongation of the plasma.
-
-        Parameters
-        ----------
 
         Returns
         -------
@@ -1256,12 +1303,9 @@ class Equilibrium:
 
         return (self._sep_Zmax - self._sep_Zmin) / (self._sep_Rmax - self._sep_Rmin)
 
-    def geometricElongation_upper(self):
+    def geometricElongation_upper(self) -> float:
         """
         Calculate the geometric elongation of the upper part of the plasma.
-
-        Parameters
-        ----------
 
         Returns
         -------
@@ -1276,12 +1320,9 @@ class Equilibrium:
             2 * (self._sep_Zmax - self._sep_ZRmax) / (self._sep_Rmax - self._sep_Rmin)
         )
 
-    def geometricElongation_lower(self):
+    def geometricElongation_lower(self) -> float:
         """
         Calculate the geometric elongation of the lower part of the plasma.
-
-        Parameters
-        ----------
 
         Returns
         -------
@@ -1296,12 +1337,9 @@ class Equilibrium:
             2 * (self._sep_ZRmax - self._sep_Zmin) / (self._sep_Rmax - self._sep_Rmin)
         )
 
-    def effectiveElongation(self):
+    def effectiveElongation(self) -> float:
         """
         Calculate the effective elongation of the plasma, using plasma volume.
-
-        Parameters
-        ----------
 
         Returns
         -------
@@ -1317,17 +1355,14 @@ class Equilibrium:
 
         return self.plasmaVolume() / (2.0 * R_geom * (np.pi**2) * (R_minor**2))
 
-    def shafranov_shift(self):
+    def shafranov_shift(self) -> np.ndarray:
         """
         Calculate the Shafranov shift of the plasma (i.e. the shift between the magnetic
-        axis and the geometrix axis).
-
-        Parameters
-        ----------
+        axis and the geometric axis).
 
         Returns
         -------
-        float
+        np.ndarray
             Shafranov shift of the plasma [del_R, del_Z] [m].
         """
 
@@ -1336,12 +1371,9 @@ class Equilibrium:
 
         return np.array([mag_axis[0] - geom_axis[0], mag_axis[1] - geom_axis[1]])
 
-    def triangularity_upper(self):
+    def triangularity_upper(self) -> float:
         """
         Calculate the upper triangularity of the plasma.
-
-        Parameters
-        ----------
 
         Returns
         -------
@@ -1357,12 +1389,9 @@ class Equilibrium:
 
         return (R_geom - self._sep_RZmax) / R_minor
 
-    def triangularity_lower(self):
+    def triangularity_lower(self) -> float:
         """
         Calculate the lower triangularity of the plasma.
-
-        Parameters
-        ----------
 
         Returns
         -------
@@ -1378,12 +1407,9 @@ class Equilibrium:
 
         return (R_geom - self._sep_RZmin) / R_minor
 
-    def triangularity(self):
+    def triangularity(self) -> float:
         """
         Calculate the triangularity of the plasma.
-
-        Parameters
-        ----------
 
         Returns
         -------
@@ -1399,27 +1425,18 @@ class Equilibrium:
 
         return (R_geom - 0.5 * (self._sep_RZmax + self._sep_RZmin)) / R_minor
 
-    def squareness(self):
+    def squareness(self) -> tuple[float, float, float, float]:
         """
-        This function calculates the squareness of the plasma core for each of the four quadrants:
-        upper outer, upper lower, lower outer, and lower inner. Method outlined in:
+        Calculate the squareness of the plasma core for each of the four quadrants:
+        upper outer, upper inner, lower outer, and lower inner. Method outlined in:
 
         An analytic functional form for characterization and generation of axisymmetric plasma
         boundaries. Plasma Physics and Controlled Fusion. 2013. T C Luce.
 
-        Parameters
-        ----------
-
         Returns
         -------
-        float
-            Upper outer squareness.
-        float
-            Upper inner squareness.
-        float
-            Lower outer squareness.
-        float
-            Lower inner squareness.
+        tuple[float, float, float, float]
+            Upper outer, upper inner, lower outer and lower inner squareness.
         """
 
         # calculate separatrix metrics
@@ -1507,18 +1524,15 @@ class Equilibrium:
 
         return s_uo, s_ui, s_lo, s_li
 
-    def closest_wall_point(self):
+    def closest_wall_point(self) -> list[np.ndarray | float]:
         """
-        This function calculates the (R,Z) point on the wall that is closest
-        to the last closed flux surface boundary (and the corresponding distance).
-
-        Parameters
-        ----------
+        Calculate the point on the last closed flux surface boundary that is closest
+        to the wall (and the corresponding distance).
 
         Returns
         -------
-        list
-            Contains coordinates array and minimum distance to wall: [ (R,Z), min_distance ] [m,m,m].
+        list[np.ndarray | float]
+            Coordinates array and minimum distance to the wall: [ (R,Z), min_distance ] [m, m, m].
         """
 
         # create shapely linestring objects
@@ -1551,11 +1565,11 @@ class Equilibrium:
 
         return [np.array(closest_point.coords[0]), min_distance]
 
-    def internalInductance1(self):
+    def internalInductance1(self) -> float:
         """
-        Calculates plasma internal inductance according to:
+        Calculate plasma internal inductance according to:
 
-            li = ( (integral() dl * integral(Bpol) dV) / (mu0 * Ip * V) )^2,
+            li = ( (L * integral(Bpol) dV) / (mu0 * Ip * V) )^2,
 
         where:
          - L = length of the separatrix (LCFS).
@@ -1567,13 +1581,15 @@ class Equilibrium:
 
         This definition is also used in the Fiesta/Topeol equilibrium codes.
 
-        Parameters
-        ----------
-
         Returns
         -------
         float
             Plasma internal inductance.
+
+        Raises
+        ------
+        AttributeError
+            If the equilibrium has not been solved yet (no core mask available).
         """
 
         # volume elements
@@ -1597,9 +1613,9 @@ class Equilibrium:
             / (mu0 * self.plasmaCurrent() * self.plasmaVolume())
         ) ** 2
 
-    def internalInductance2(self):
+    def internalInductance2(self) -> float:
         """
-        Calculates plasma internal inductance according to:
+        Calculate plasma internal inductance according to:
 
             li = ( integral(Bpol**2) dV ) / ( ( integral(Bpol) dl / L )**2 * V),
 
@@ -1614,13 +1630,15 @@ class Equilibrium:
 
         This definition is also used in the Fiesta/Topeol equilibrium codes.
 
-        Parameters
-        ----------
-
         Returns
         -------
         float
             Plasma internal inductance.
+
+        Raises
+        ------
+        AttributeError
+            If the equilibrium has not been solved yet (no core mask available).
         """
 
         # volume elements
@@ -1658,9 +1676,9 @@ class Equilibrium:
             (integral_Bpol_lcfs / self.separatrix_length()) ** 2 * self.plasmaVolume()
         )
 
-    def internalInductance3(self):
+    def internalInductance3(self) -> float:
         """
-        Calculates plasma internal inductance according to:
+        Calculate plasma internal inductance according to:
 
             li = (2 * integral(Bpol^2) dV) / (mu0^2 * Ip^2 * R_geom),
 
@@ -1673,13 +1691,15 @@ class Equilibrium:
 
         This definition is also used in the Fiesta/Topeol equilibrium codes.
 
-        Parameters
-        ----------
-
         Returns
         -------
         float
             Plasma internal inductance.
+
+        Raises
+        ------
+        AttributeError
+            If the equilibrium has not been solved yet (no core mask available).
         """
 
         # volume elements
@@ -1700,9 +1720,9 @@ class Equilibrium:
 
         return 2 * integral / ((mu0 * self.plasmaCurrent()) ** 2 * self.Rgeometric())
 
-    def internalInductance4(self):
+    def internalInductance4(self) -> float:
         """
-        Calculates plasma internal inductance according to:
+        Calculate plasma internal inductance according to:
 
             li = (2 * integral(Bpol^2) dV) / (mu0^2 * Ip^2 * R_mag),
 
@@ -1714,13 +1734,15 @@ class Equilibrium:
          - R_mag = radial coords of magnetic axis.
 
 
-        Parameters
-        ----------
-
         Returns
         -------
         float
             Plasma internal inductance.
+
+        Raises
+        ------
+        AttributeError
+            If the equilibrium has not been solved yet (no core mask available).
         """
 
         # volume elements
@@ -1741,9 +1763,9 @@ class Equilibrium:
 
         return 2 * integral / ((mu0 * self.plasmaCurrent()) ** 2 * self.Rmagnetic())
 
-    def internalInductance5(self):
+    def internalInductance5(self) -> float:
         """
-        Calculates plasma internal inductance according to:
+        Calculate plasma internal inductance according to:
 
             li = [(2 * integral(Bpol^2) dV) / (mu0^2 * Ip^2 * R_geom)] * [(1 + geom_elon^2)/(2 * eff_elon)],
 
@@ -1756,13 +1778,15 @@ class Equilibrium:
          - geom_elon = geometric elongation.
          - eff_elon = effective elongation.
 
-        Parameters
-        ----------
-
         Returns
         -------
         float
             Plasma internal inductance.
+
+        Raises
+        ------
+        AttributeError
+            If the equilibrium has not been solved yet (no core mask available).
         """
 
         # volume elements
@@ -1785,9 +1809,9 @@ class Equilibrium:
             (2 * integral) / ((mu0 * self.plasmaCurrent()) ** 2 * self.Rgeometric())
         ) * ((1 + self.geometricElongation() ** 2) / (2.0 * self.effectiveElongation()))
 
-    def poloidalBeta1(self):
+    def poloidalBeta1(self) -> float:
         """
-        Calculates poloidal beta from the following definition:
+        Calculate poloidal beta from the following definition:
 
             betap = (8 * pi / (mu0 * Ip^2)) * integral(p) dR dZ,
 
@@ -1798,13 +1822,15 @@ class Equilibrium:
 
         This definition is also used in the Fiesta/Topeol equilibrium codes.
 
-        Parameters
-        ----------
-
         Returns
         -------
         float
-            Returns the poloidal beta value.
+            The poloidal beta value.
+
+        Raises
+        ------
+        AttributeError
+            If the equilibrium has not been solved yet (no core mask available).
         """
 
         # volume elements
@@ -1824,14 +1850,21 @@ class Equilibrium:
 
         return ((8.0 * pi) / mu0) * pressure_integral / (self.plasmaCurrent() ** 2)
 
-    def poloidalBeta(self):
-        """Backward-compatible alias for :meth:`poloidalBeta1`."""
+    def poloidalBeta(self) -> float:
+        """
+        Backward-compatible alias for :meth:`poloidalBeta1`.
+
+        Returns
+        -------
+        float
+            The poloidal beta value.
+        """
 
         return self.poloidalBeta1()
 
-    def poloidalBeta2(self):
+    def poloidalBeta2(self) -> float:
         """
-        Calculates poloidal beta from the following definition:
+        Calculate poloidal beta from the following definition:
 
             betap = 2 * mu0 * integral(p) dV / integral(Bpol^2) dV,
 
@@ -1843,13 +1876,15 @@ class Equilibrium:
 
         This definition is also used in the Fiesta/Topeol equilibrium codes.
 
-        Parameters
-        ----------
-
         Returns
         -------
         float
-            Returns the poloidal beta value.
+            The poloidal beta value.
+
+        Raises
+        ------
+        AttributeError
+            If the equilibrium has not been solved yet (no core mask available).
         """
 
         # volume elements
@@ -1870,9 +1905,9 @@ class Equilibrium:
 
         return 2 * mu0 * pressure_integral / field_integral_pol
 
-    def poloidalBeta3(self):
+    def poloidalBeta3(self) -> float:
         """
-        Calculates poloidal beta from the following definition:
+        Calculate poloidal beta from the following definition:
 
             betap = 2 * mu0 * ( integral(p) dV / V)
                     / (integral(Bpol) dl / L)**2,
@@ -1887,13 +1922,15 @@ class Equilibrium:
 
         This definition is also used in the Fiesta/Topeol equilibrium codes.
 
-        Parameters
-        ----------
-
         Returns
         -------
         float
-            Returns the poloidal beta value.
+            The poloidal beta value.
+
+        Raises
+        ------
+        AttributeError
+            If the equilibrium has not been solved yet (no core mask available).
         """
 
         # volume elements
@@ -1933,9 +1970,9 @@ class Equilibrium:
             / (integral_Bpol_lcfs / self.separatrix_length()) ** 2
         )
 
-    def poloidalBeta4(self):
+    def poloidalBeta4(self) -> float:
         """
-        Calculates poloidal beta from the following definition:
+        Calculate poloidal beta from the following definition:
 
             betap = 4 * integral(p) dV / (mu0 * Ip^2 * integral(R) dV / V),
 
@@ -1949,13 +1986,15 @@ class Equilibrium:
 
         This definition is also used in the Fiesta/Topeol equilibrium codes.
 
-        Parameters
-        ----------
-
         Returns
         -------
         float
-            Returns the poloidal beta value.
+            The poloidal beta value.
+
+        Raises
+        ------
+        AttributeError
+            If the equilibrium has not been solved yet (no core mask available).
         """
 
         # volume elements
@@ -1976,9 +2015,9 @@ class Equilibrium:
 
         return (4 * pressure_integral) / (mu0 * self.plasmaCurrent() ** 2 * R_avg)
 
-    def toroidalBeta1(self):
+    def toroidalBeta1(self) -> float:
         """
-        Calculates a toroidal beta from the following definition:
+        Calculate a toroidal beta from the following definition:
 
             betat = 2 * mu0 * integral(p) dR dZ / integral(Btor**2) dR dZ,
 
@@ -1989,13 +2028,15 @@ class Equilibrium:
 
         This definition is also used in the Fiesta/Topeol equilibrium codes.
 
-        Parameters
-        ----------
-
         Returns
         -------
         float
-            Returns the toroidal beta value.
+            The toroidal beta value.
+
+        Raises
+        ------
+        AttributeError
+            If the equilibrium has not been solved yet (no core mask available).
         """
 
         # plasma pressure and toroidal fields
@@ -2018,9 +2059,9 @@ class Equilibrium:
 
         return 2 * mu0 * pressure_integral / Btor2_integral
 
-    def toroidalBeta2(self):
+    def toroidalBeta2(self) -> float:
         """
-        Calculates a toroidal beta from the following definition:
+        Calculate a toroidal beta from the following definition:
 
             betat = 2 * mu0 * integral(p) dV / integral(Btor**2) dV,
 
@@ -2032,13 +2073,15 @@ class Equilibrium:
 
         This definition is also used in the Fiesta/Topeol equilibrium codes.
 
-        Parameters
-        ----------
-
         Returns
         -------
         float
-            Returns the toroidal beta value.
+            The toroidal beta value.
+
+        Raises
+        ------
+        AttributeError
+            If the equilibrium has not been solved yet (no core mask available).
         """
 
         # volume elements
@@ -2059,9 +2102,9 @@ class Equilibrium:
 
         return 2 * mu0 * pressure_integral / Btor2_int
 
-    def toroidalBeta3(self):
+    def toroidalBeta3(self) -> float:
         """
-        Calculates a toroidal beta from the following definition:
+        Calculate a toroidal beta from the following definition:
 
             betat = 2 * mu0 * integral(p) dV / integral(Btor**2 + Bpol**2) dV,
 
@@ -2074,13 +2117,15 @@ class Equilibrium:
 
         This definition is also used in the Fiesta/Topeol equilibrium codes.
 
-        Parameters
-        ----------
-
         Returns
         -------
         float
-            Returns the toroidal beta value.
+            The toroidal beta value.
+
+        Raises
+        ------
+        AttributeError
+            If the equilibrium has not been solved yet (no core mask available).
         """
 
         # volume elements
@@ -2103,9 +2148,9 @@ class Equilibrium:
 
         return 2 * mu0 * pressure_integral / B_int
 
-    def toroidalBeta4(self):
+    def toroidalBeta4(self) -> float:
         """
-        Calculates a toroidal beta from the following definition:
+        Calculate a toroidal beta from the following definition:
 
             betat = 2 * mu0 * integral(p) dV / Btor_vac(R_geom,Z_geom)^2 * V,
 
@@ -2114,18 +2159,20 @@ class Equilibrium:
          - p = plasma pressure (at each (R,Z)).
          - dV = volume element.
          - Btor_vac(R,Z) = vacuum toroidal magnetic field (at an (R,Z)).
-         - (Rgeom,Zgeom) = geoemtric axis.
+         - (Rgeom,Zgeom) = geometric axis.
          - V = total plasma volume.
 
         This definition is also used in the Fiesta/Topeol equilibrium codes.
 
-        Parameters
-        ----------
-
         Returns
         -------
         float
-            Returns the toroidal beta value.
+            The toroidal beta value.
+
+        Raises
+        ------
+        AttributeError
+            If the equilibrium has not been solved yet (no core mask available).
         """
 
         # volume elements
@@ -2146,47 +2193,50 @@ class Equilibrium:
 
         return 2 * mu0 * pressure_integral / (Btor_vac**2 * self.plasmaVolume())
 
-    def normalised_total_Beta(self):
+    def normalised_total_Beta(self) -> float:
         """
-        Calculates the total beta from the following definition:
+        Calculate the total beta from the following definition:
 
             normalised_total_Beta = ( (1 / poloidalBeta1) + (1/toroidalBeta1) )^(-1).
-
-        Parameters
-        ----------
 
         Returns
         -------
         float
             Returns the normalised total beta value.
-
         """
 
         return 1.0 / ((1.0 / self.poloidalBeta1()) + (1.0 / self.toroidalBeta1()))
 
     def strikepoints(
         self,
-        quadrant="all",
-        loc=None,
-    ):
+        quadrant: str = "all",
+        loc: tuple[float, float] | None = None,
+    ) -> np.ndarray | None:
         """
-        This function can be used to find the strikepoints of an equilibrium (i.e
-        the points at which the psi_boundary contour intersect the wall.
+        Find the strikepoints of an equilibrium (i.e. the points at which the
+        psi_boundary contour intersects the wall).
 
         Parameters
         ----------
-        quadrant: str
+        quadrant : str
             Which strikepoints to return to the user, options are "all" (returns all points) or
             one of "lower left", "lower right", "upper left", or "upper right" quadrants (which
             returns point(s) in quadrant of poloidal plane with centre given by 'loc' (R,Z) pair).
-        loc: tuple
-            (R,Z) point at which to centre the quadrants choice [m].
+        loc : tuple[float, float] | None
+            (R,Z) point at which to centre the quadrants choice [m]. Required unless
+            ``quadrant == "all"``.
 
         Returns
         -------
-        np.array
-            Returns an array of the (R,Z) strikepoints [m].
+        np.ndarray | None
+            Array of the (R,Z) strikepoints [m]. None if there are no strikepoints; an
+            array ``[None, None]`` if a quadrant is requested and contains none.
 
+        Raises
+        ------
+        ValueError
+            If a quadrant other than "all" is requested without ``loc``, or if
+            ``quadrant`` is not one of the allowed options.
         """
 
         # find contour object for psi_boundary
@@ -2270,11 +2320,11 @@ class Equilibrium:
 
     def dr_sep(
         self,
-        Z_level=None,
-        sign_flip=False,
-    ):
+        Z_level: float | None = None,
+        sign_flip: bool = False,
+    ) -> list[float | None]:
         """
-        Computes the radial separation (on the inboard and outboard sides) at vertical position `Z_level`
+        Compute the radial separation (on the inboard and outboard sides) at vertical position `Z_level`
         between flux surfaces passing through the lower and upper X-points. This requires two X-points to
         be located within the vessel region.
 
@@ -2287,8 +2337,8 @@ class Equilibrium:
 
         Parameters
         ----------
-        Z_level : float
-            Vertical height at which to calculate dr_sep [m]. Defaults to eq.Zgeoemtric().
+        Z_level : float | None
+            Vertical height at which to calculate dr_sep [m]. Defaults to ``Zgeometric()``.
         sign_flip : bool
             By convention, the function assumes the first X-point corresponds to the lower
             X-point, and the second to the upper X-point. So for an upper single null plasma,
@@ -2297,9 +2347,15 @@ class Equilibrium:
 
         Returns
         -------
-        list of float
+        list[float | None]
             A list containing the inboard and outboard dr_sep values:
-            [dr_sep_in, dr_sep_out].
+            [dr_sep_in, dr_sep_out]. Both are None (with a printed message) if the
+            intersections could not be resolved.
+
+        Raises
+        ------
+        ValueError
+            If fewer than two X-points lie inside the wall.
         """
 
         # check if Z position specified, else set to Zgeometric
@@ -2424,12 +2480,12 @@ class Equilibrium:
 
     def flux_averaged_function(
         self,
-        f,
-        psi_n=None,
-    ):
+        f: Callable[[np.ndarray, np.ndarray], np.ndarray],
+        psi_n: float | np.ndarray | None = None,
+    ) -> tuple[np.ndarray, np.ndarray]:
         """
-        Calculates the flux averaged value of a 2D scalar field f on a (normalised) flux surface
-        of psi (denotes by psi_n) within the last closed flux surface according to:
+        Calculate the flux averaged value of a 2D scalar field f on a (normalised) flux surface
+        of psi (denoted by psi_n) within the last closed flux surface according to:
 
             < f >(psi_n) = integral_{psi_n} (f/B_pol) dl /  integral_{psi_n} (1/B_pol) dl,
 
@@ -2443,21 +2499,21 @@ class Equilibrium:
 
         Parameters
         ----------
-        f(R,Z) : function
-            2D scalar function that is to be flux averaged. Must be able to take in arrays of
-            (R,Z) coordinates.
-        psi_n : float or np.array, optional
-            Range of normalised flux values to average on (each element must be 0 < psi_n(i) < 1). One
-            value returned for each element in psi_n.
+        f : Callable[[np.ndarray, np.ndarray], np.ndarray]
+            2D scalar function f(R, Z) that is to be flux averaged. Must be able to take in
+            arrays of (R,Z) coordinates.
+        psi_n : float | np.ndarray | None
+            Range of normalised flux values to average on (values are clipped to [0.01, 0.99]).
+            One value returned for each element in psi_n. If None, 65 values equally spaced
+            in [0.01, 0.99] are used.
 
         Returns
         -------
-        flux_averaged_quantity : float or np.array
+        flux_averaged_quantity : np.ndarray
             The flux averaged quantity evaluated at each value in psi_n.
-        psi_n : float or np.array
+        psi_n : np.ndarray
             The values of psi_n used to calculate each value in flux_averaged_quantity (may be different
-            to the input psi_n if the input array had values outside [0,1]).
-
+            to the input psi_n if the input array had values outside [0.01, 0.99]).
         """
 
         # cannot solve for psi_n = 0 or 1, so clip
@@ -2528,27 +2584,29 @@ class Equilibrium:
 
         return flux_averaged_quantity, psi_n
 
-    def solve(self, profiles, Jtor=None, psi=None, psi_bndry=None):
+    def solve(
+        self,
+        profiles: object,
+        Jtor: np.ndarray | None = None,
+        psi: np.ndarray | None = None,
+        psi_bndry: float | None = None,
+    ) -> None:
         """
-        This is a legacy function that can be used to solve for the plasma equilibrium. It
-        performs a linear Grad-Shafranov solve.
+        Legacy function that solves for the plasma equilibrium (a linear Grad-Shafranov
+        solve). Modifies the equilibrium in place.
 
         Parameters
         ----------
-        profiles: class
-            Class containing the toroidal current density profile information.
-        Jtor: np.array
-            Toroidal current density field over (R,Z) [A/m^2].
-        psi: np.array
-            Total poloidal magnetic flux over (R,Z) [Webers/2pi].
-        psi_bndry: float
+        profiles : object
+            Profiles object containing the toroidal current density profile information.
+        Jtor : np.ndarray | None
+            Toroidal current density field over (R,Z) [A/m^2]. If None, it is computed
+            from ``profiles``.
+        psi : np.ndarray | None
+            Total poloidal magnetic flux over (R,Z) [Webers/2pi], used to compute Jtor if it
+            is not given. Defaults to the current total flux.
+        psi_bndry : float | None
             Total poloidal magnetic flux on the plasma boundary [Webers/2pi].
-
-        Returns
-        -------
-        None
-            Modifies the equilbirium class object in place.
-
         """
 
         # set profiles
@@ -2582,21 +2640,16 @@ class Equilibrium:
         # update plasma current
         self._current = np.sum(Jtor) * self.dR * self.dZ
 
-    def _updatePlasmaPsi(self, plasma_psi):
+    def _updatePlasmaPsi(self, plasma_psi: np.ndarray) -> None:
         """
-        Sets the plasma psi data using spline interpoation coefficients.
+        Set the plasma psi data using spline interpolation coefficients.
+
+        Modifies plasma_psi, psi_func, mask, mask_func, psi_axis, and psi_bndry in place.
 
         Parameters
         ----------
-        plasma_psi: np.array
+        plasma_psi : np.ndarray
             Plasma poloidal magnetic flux over (R,Z) [Webers/2pi].
-
-        Returns
-        -------
-        None
-            Modifies plasma_psi, mask, psi_axis, and psi_bndry in the class
-            object in place.
-
         """
 
         # set plasma psi
@@ -2636,14 +2689,14 @@ class Equilibrium:
 
     def plot(
         self,
-        axis=None,
-        xpoints=True,
-        opoints=True,
-        wall=True,
-        limiter=True,
-        legend=False,
-        show=True,
-    ):
+        axis: object | None = None,
+        xpoints: bool = True,
+        opoints: bool = True,
+        wall: bool = True,
+        limiter: bool = True,
+        legend: bool = False,
+        show: bool = True,
+    ) -> object:
         """
         Plot the magnetic equilibrium flux surfaces and key geometric features.
 
@@ -2654,19 +2707,19 @@ class Equilibrium:
 
         Parameters
         ----------
-        axis : matplotlib.axes.Axes, optional
+        axis : matplotlib.axes.Axes | None
             Axis object on which to plot. If `None`, a new figure and axis are created.
-        xpoints : bool, default=True
+        xpoints : bool
             If True, plot magnetic X-points as red 'x' markers.
-        opoints : bool, default=True
+        opoints : bool
             If True, plot magnetic O-points as green '*' markers.
-        wall : bool, default=True
+        wall : bool
             If True, plot the tokamak wall outline as a solid black line.
-        limiter : bool, default=True
+        limiter : bool
             If True, plot the limiter outline as a dashed black line.
-        legend : bool, default=False
+        legend : bool
             If True, display a legend describing plotted features.
-        show : bool, default=True
+        show : bool
             If True, call `matplotlib.pyplot.show()` before returning.
 
         Returns
@@ -2678,11 +2731,11 @@ class Equilibrium:
         -----
         - This method is a wrapper around `plotEquilibrium(self, ...)`.
         - The equilibrium must be solved before plotting; otherwise, a warning
-        will be printed.
+          will be printed.
 
         Examples
         --------
-            eq.solve()
+            eq.solve(profiles)
             axis = eq.plot(legend=True)
             axis.set_title("Plasma Equilibrium Flux Surfaces")
         """
@@ -2698,20 +2751,16 @@ class Equilibrium:
             show=show,
         )
 
-    def _separatrix_metrics(self):
+    def _separatrix_metrics(self) -> None:
         """
-        Function that returns min/max (R,Z) points on the last closed flux surface,
-        its area, and its circumference.
+        Compute min/max (R,Z) points on the last closed flux surface, its area, and
+        its circumference.
+
+        Results are stored in place as the ``_sep_*`` attributes (``_sep_Rmin``,
+        ``_sep_Rmax``, ``_sep_Zmin``, ``_sep_Zmax``, ``_sep_ZRmin``, ``_sep_ZRmax``,
+        ``_sep_RZmin``, ``_sep_RZmax``, ``_sep_area``, ``_sep_length``).
 
         Depiction here: https://imas-data-dictionary.readthedocs.io/en/latest/_downloads/23716946c6f02da1817f55b2f453444d/DefinitionEqBoundary.svg
-
-        Parameters
-        ----------
-
-        Returns
-        -------
-        None
-            Modifies eq object in place.
         """
 
         # calculate core separatrix
@@ -2752,16 +2801,23 @@ class Equilibrium:
         self._sep_length = length
 
 
-def ellipse_points(R0, Z0, A, B, N=360):
+def ellipse_points(
+    R0: float, Z0: float, A: float, B: float, N: int = 360
+) -> np.ndarray:
     """
-    This function generates the (R,Z) points of an ellipse:
-    (x/A)**2 + (y/B)**2 = 1.
+    Generate the (R,Z) points of an ellipse: ((R-R0)/A)**2 + ((Z-Z0)/B)**2 = 1.
 
     Parameters
     ----------
-    R0, Z0, A, B: floats
-        Centre of ellipse (R0,Z0) and the ellipticity parameters A and B.
-    N: int
+    R0 : float
+        Radial centre of the ellipse [m].
+    Z0 : float
+        Vertical centre of the ellipse [m].
+    A : float
+        Radial semi-axis of the ellipse [m].
+    B : float
+        Vertical semi-axis of the ellipse [m].
+    N : int
         Number of points to generate on the ellipse.
 
     Returns
@@ -2778,14 +2834,17 @@ def ellipse_points(R0, Z0, A, B, N=360):
 
 
 class PsiGuessGaussian:
-    """Generate a Gaussian initial plasma flux with an optional adaptive centre."""
+    """
+    Generate a Gaussian initial plasma flux with an optional adaptive centre.
+    """
 
     def __init__(
         self,
         adaptive_centre: bool = False,
         gpars: tuple[float, ...] = (0.5, 0.5, 0, 2),
-    ):
-        """Class to generate a Gaussian-shaped initial guess for the plasma flux.
+    ) -> None:
+        """
+        Initialise the Gaussian-shaped initial guess for the plasma flux.
 
         The flux function ψ(R, Z) is given by:
 
@@ -2796,28 +2855,34 @@ class PsiGuessGaussian:
 
         Parameters
         ----------
-        adaptive_centre : bool, optional
+        adaptive_centre : bool
             If True, the plasma core position (xc, yc) is adjusted dynamically.
             If False (default), it remains fixed.
-        gpars : tuple (xc, yc, C, p)
-            Parameters defining the flux shape:
-            - xc, yc : float
-                Coordinates of the flux center.
-            - C : float
-                Shift parameter in the exponent.
-            - p : float
-                Power of the distance term.
+        gpars : tuple[float, ...]
+            Parameters (xc, yc, C, p) defining the flux shape, in normalised grid
+            coordinates on [0, 1]:
+
+            - xc, yc : coordinates of the flux centre.
+            - C : shift parameter in the exponent.
+            - p : power of the distance term.
         """
         self._adaptive_centre = adaptive_centre
         self.gpars = gpars
 
-    def __call__(self, eq):
-        """Calculate the initial Gaussian-shaped psi guess.
+    def __call__(self, eq: Equilibrium) -> np.ndarray:
+        """
+        Calculate the initial Gaussian-shaped psi guess.
+
+        Parameters
+        ----------
+        eq : Equilibrium
+            Equilibrium providing the grid shape (``nx``, ``ny``) and, if
+            ``adaptive_centre`` is set, ``mask_inside_limiter``.
 
         Returns
         -------
-        np.array
-            The computed flux values on the given (R, Z) grid.
+        np.ndarray
+            The computed flux values on the given (R, Z) grid, with shape (nx, ny).
         """
 
         # define unit meshgrid
@@ -2854,10 +2919,22 @@ class PsiGuessGaussian:
 
 
 class PsiGuessParabolicJtor:
-    """Generate an initial flux estimate from a parabolic current distribution."""
+    """
+    Generate an initial flux estimate from a parabolic current distribution.
+    """
 
-    def __init__(self, h, k, a, b, Ip, *, psi_scale=1.0):
-        """A class to generate the initial psi guess from an elliptic description
+    def __init__(
+        self,
+        h: float,
+        k: float,
+        a: float,
+        b: float,
+        Ip: float,
+        *,
+        psi_scale: float = 1.0,
+    ) -> None:
+        """
+        Initialise the initial psi guess from an elliptic description
         of the plasma boundary and the plasma current.
 
         We assume a plasma core with a separatrix that can be described by an ellipse. From this,
@@ -2877,9 +2954,9 @@ class PsiGuessParabolicJtor:
         k : float
             The vertical centre of the ellipse [m].
         a : float
-            Half the length of the radial axis of the ellipse (normally the semi-major axis).
+            Half the length of the radial axis of the ellipse (normally the semi-major axis) [m].
         b : float
-            Half the length of the vertical axis of the ellipse (normally the semi-minor axis).
+            Half the length of the vertical axis of the ellipse (normally the semi-minor axis) [m].
         Ip : float
             The desired plasma current [A].
         psi_scale : float
@@ -2897,13 +2974,46 @@ class PsiGuessParabolicJtor:
         self._psi_scale = psi_scale
 
     @classmethod
-    def from_xpoint_and_midplane(cls, Rx, Zx, Ri, Ro, Zm, Ip, *, psi_scale=1.0):
-        """Finds the elliptic distribution function that produces a boundary
+    def from_xpoint_and_midplane(
+        cls,
+        Rx: float,
+        Zx: float,
+        Ri: float,
+        Ro: float,
+        Zm: float,
+        Ip: float,
+        *,
+        psi_scale: float = 1.0,
+    ) -> PsiGuessParabolicJtor:
+        """
+        Build the elliptic distribution function that produces a boundary
         according to the desired X-point location (Rx, Zx), inner midplane (Ri, Zm),
         and outer midplane (Ro, Zm).
 
         This assumes that the centroid of the ellipse (where the distribution function
         is 0) occurs radially at the average of Rx, Ri, Ro.
+
+        Parameters
+        ----------
+        Rx : float
+            Radial position of the X-point [m].
+        Zx : float
+            Vertical position of the X-point [m].
+        Ri : float
+            Radial position of the inner midplane point [m].
+        Ro : float
+            Radial position of the outer midplane point [m].
+        Zm : float
+            Vertical position of the midplane [m].
+        Ip : float
+            The desired plasma current [A].
+        psi_scale : float
+            Multiplies the psi estimate when calling the returned object.
+
+        Returns
+        -------
+        PsiGuessParabolicJtor
+            The initial psi guess generator.
         """
         h = (Rx + Ri + Ro) / 3
         k = Zm
@@ -2913,20 +3023,34 @@ class PsiGuessParabolicJtor:
         return cls(h, k, a, b, Ip, psi_scale=psi_scale)
 
     @classmethod
-    def from_separatrix_points(cls, Ip: float, *points, psi_scale=1.0):
-        """Finds the elliptic distribution function that best fits the
+    def from_separatrix_points(
+        cls,
+        Ip: float,
+        *points: tuple[float, float],
+        psi_scale: float = 1.0,
+    ) -> PsiGuessParabolicJtor:
+        """
+        Build the elliptic distribution function that best fits the
         provided points that describe the desired core's separatrix.
 
         Parameters
         ----------
         Ip : float
             The desired plasma current [A].
-        points : tuple[tuple[float, float], ...]
-            A list of (R, Z) locations on the separatrix.
+        *points : tuple[float, float]
+            (R, Z) locations on the separatrix [m]; at least 4 are required.
+        psi_scale : float
+            Multiplies the psi estimate when calling the returned object.
 
-        Notes
-        -----
-        This method requires at least 4 isoflux points
+        Returns
+        -------
+        PsiGuessParabolicJtor
+            The initial psi guess generator, using the least-squares ellipse fit.
+
+        Raises
+        ------
+        ValueError
+            If fewer than 4 points are provided.
         """
         if len(points) < 4:
             raise ValueError(
@@ -2937,7 +3061,20 @@ class PsiGuessParabolicJtor:
         Rpoints = points_np[:, 0]
         Zpoints = points_np[:, 1]
 
-        def _func(args):
+        def _func(args: np.ndarray) -> np.ndarray:
+            """
+            Residual of the elliptic function at the separatrix points from 1.
+
+            Parameters
+            ----------
+            args : np.ndarray
+                Ellipse parameters ``(h, k, a, b)``.
+
+            Returns
+            -------
+            np.ndarray
+                Values of ``E(R, Z) - 1`` at each separatrix point.
+            """
             h, k, a, b = args.squeeze().tolist()
 
             return cls._elliptic_function(Rpoints, Zpoints, h, k, a, b) - 1.0
@@ -2947,12 +3084,25 @@ class PsiGuessParabolicJtor:
         return cls(*result.x.tolist(), Ip, psi_scale=psi_scale)
 
     @staticmethod
-    def _elliptic_function(R, Z, h, k, a, b):
-        """Evaluates the elliptic function:
+    def _elliptic_function(
+        R: float | np.ndarray,
+        Z: float | np.ndarray,
+        h: float,
+        k: float,
+        a: float,
+        b: float,
+    ) -> float | np.ndarray:
+        """
+        Evaluate the elliptic function:
+
             E(R, Z) = (R-h)^2/a^2 + (Z-k)^2/b^2
 
         Parameters
         ----------
+        R : float | np.ndarray
+            Radial position(s) to evaluate at [m].
+        Z : float | np.ndarray
+            Vertical position(s) to evaluate at [m].
         h : float
             The radial centre of the ellipse.
         k : float
@@ -2961,34 +3111,61 @@ class PsiGuessParabolicJtor:
             Half the length of the radial axis of the ellipse (normally the semi-major axis).
         b : float
             Half the length of the vertical axis of the ellipse (normally the semi-minor axis).
+
+        Returns
+        -------
+        float | np.ndarray
+            The value of E(R, Z); equal to 1 on the ellipse.
         """
         return (((R - h) ** 2) / a**2) + (((Z - k) ** 2) / b**2)
 
-    def elliptic_distribution_function(self, R, Z):
-        """The elliptic distribution function (E(R, Z)) for the ellipse represented by this class.
+    def elliptic_distribution_function(
+        self, R: float | np.ndarray, Z: float | np.ndarray
+    ) -> float | np.ndarray:
+        """
+        Evaluate the elliptic distribution function (E(R, Z)) for the ellipse represented by this class.
 
         Parameters
         ----------
-        R : float | ndarray
-            The radial position(s) to evaluate the distribution function at.
-        Z : float | ndarray
-            The vertical position(s) to evaluate the distribution function at.
+        R : float | np.ndarray
+            The radial position(s) to evaluate the distribution function at [m].
+        Z : float | np.ndarray
+            The vertical position(s) to evaluate the distribution function at [m].
+
+        Returns
+        -------
+        float | np.ndarray
+            The value of E(R, Z); 0 at the ellipse centre and 1 on the separatrix.
         """
         return self._elliptic_function(R, Z, self._h, self._k, self._a, self._b)
 
-    def parabolic_jtor(self, eq, Ip, *, i=1.87, j=1.5):
-        """Calculate the Jtor assuming a parabolic current distribution for the given equilibrium.
+    def parabolic_jtor(
+        self, eq: Equilibrium, Ip: float, *, i: float = 1.87, j: float = 1.5
+    ) -> np.ndarray:
+        """
+        Calculate the Jtor assuming a parabolic current distribution for the given equilibrium.
 
         Solves the equation:
+
             Jtor = Jhat*(1-E(R,Z)^i)^j
+
         where Jhat is calculated according to the desired Ip.
 
         Parameters
         ----------
         eq : Equilibrium
-            The equilibrium object to calculate the initial psi for
+            The equilibrium object to calculate the initial psi for.
         Ip : float
-            The desired plasma current.
+            The desired plasma current [A].
+        i : float
+            First exponent in the current distribution.
+        j : float
+            Second exponent in the current distribution.
+
+        Returns
+        -------
+        np.ndarray
+            Toroidal current density over the (R, Z) grid [A/m^2], zero outside the ellipse.
         """
         x = self.elliptic_distribution_function(eq.R, eq.Z)
 
@@ -3007,9 +3184,21 @@ class PsiGuessParabolicJtor:
 
         return Jhat * Jtor_normalised * ~outside_core_mask
 
-    def __call__(self, eq: Equilibrium):
-        """Calculates the initial psi guess by approximating the Jtor and
+    def __call__(self, eq: Equilibrium) -> np.ndarray:
+        """
+        Calculate the initial psi guess by approximating the Jtor and
         applying a linear Grad-Shafranov step.
+
+        Parameters
+        ----------
+        eq : Equilibrium
+            Equilibrium to calculate the initial psi for. Its ``plasma_psi`` is reset
+            to zeros as a side effect.
+
+        Returns
+        -------
+        np.ndarray
+            Initial plasma flux over the (R, Z) grid, scaled by ``psi_scale`` [Webers/2pi].
         """
         # ensure equilibrium has attribute plasma_psi which will be overwritten later
         eq.plasma_psi = np.zeros((eq.nx, eq.ny))

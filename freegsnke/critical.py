@@ -20,7 +20,10 @@ along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 
 """
 
+from __future__ import annotations
+
 import warnings
+from typing import Callable
 
 import numpy as np
 from numpy import (
@@ -47,7 +50,22 @@ try:
 except ImportError:
     warnings.warn("Numba not found, using slower version")
 
-    def njit(*args, **kwargs):
+    def njit(*args: object, **kwargs: object) -> Callable[[Callable], Callable]:
+        """
+        Fallback no-op replacement for ``numba.njit`` when numba is unavailable.
+
+        Parameters
+        ----------
+        *args : object
+            Ignored positional arguments.
+        **kwargs : object
+            Ignored keyword arguments.
+
+        Returns
+        -------
+        callable
+            A decorator that returns the decorated function unchanged.
+        """
         return lambda f: f
 
 
@@ -56,29 +74,31 @@ from . import bilinear_interpolation
 # from unittest import makeSuite
 
 
-def find_critical_old(R, Z, psi, discard_xpoints=True):
+def find_critical_old(
+    R: np.ndarray, Z: np.ndarray, psi: np.ndarray, discard_xpoints: bool = True
+) -> tuple[list[tuple[float, float, float]], list[tuple[float, float, float]]]:
     """
-    Finds the critical points in the total poloidal flux map ψ.
+    Finds the critical points in the total poloidal flux map ψ (legacy Newton-iteration version).
 
     Parameters
     ----------
-    R : np.array
-        Radial positions at which flux measured.
-    Z : np.array
-        Vertical positions at which flux measured.
-    psi : np.array
-        Total poloidal flux [Webers/2pi].
-    discard_xpoints : bool
+    R : np.ndarray
+        Radial positions at which flux measured, shape (nx, ny).
+    Z : np.ndarray
+        Vertical positions at which flux measured, shape (nx, ny).
+    psi : np.ndarray
+        Total poloidal flux [Webers/2pi], shape (nx, ny).
+    discard_xpoints : bool, optional
         Discard X-points not on (or close to) the separatrix.
 
     Returns
     -------
-    list
-        A list of tuples containing the O-point locations and flux values (R, Z, psi). Note
-        the first tuple is the primary O-point (i.e. the magnetic axis).
-    list
-        A list of tuples containing the X-point locations and flux values (R, Z, psi). Note
-        the first tuple is the primary X-point (i.e. closest to the magnetic axis, usually on
+    opoint : list of tuple
+        O-point locations and flux values (R, Z, psi). The first tuple is the
+        primary O-point (i.e. the magnetic axis).
+    xpoint : list of tuple
+        X-point locations and flux values (R, Z, psi). The first tuple is the
+        primary X-point (i.e. closest in flux to the magnetic axis, usually on
         the plasma separatrix).
     """
 
@@ -235,21 +255,22 @@ def find_critical_old(R, Z, psi, discard_xpoints=True):
     return opoint, xpoint
 
 
-def remove_dup(points):
+def remove_dup(
+    points: list[tuple[float, float, float]],
+) -> list[tuple[float, float, float]]:
     """
     Removes duplicate points in the list 'points' based on
-    a squared Euclidean distance.
+    a squared Euclidean distance (in R and Z) below 1e-5.
 
     Parameters
     ----------
-    points : list
-        List of coordinate pairs.
+    points : list of tuple
+        List of points, each with (R, Z, ...) as its first two entries.
 
     Returns
     -------
-    list
-        List of "unique" points.
-
+    list of tuple
+        List of "unique" points (first occurrence kept).
     """
 
     result = []
@@ -264,34 +285,43 @@ def remove_dup(points):
     return result
 
 
-def find_critical(R, Z, psi, mask_inside_limiter=None, signIp=1, discard_xpoints=True):
+def find_critical(
+    R: np.ndarray,
+    Z: np.ndarray,
+    psi: np.ndarray,
+    mask_inside_limiter: np.ndarray | None = None,
+    signIp: int | None = 1,
+    discard_xpoints: bool = True,
+) -> tuple[np.ndarray, np.ndarray]:
     """
     Finds the critical points in the total poloidal flux map ψ.
 
     Parameters
     ----------
-    R : np.array
-        Radial positions at which flux measured.
-    Z : np.array
-        Vertical positions at which flux measured.
-    psi : np.array
-        Total poloidal flux [Webers/2pi].
-    mask_inside_limiter : np.array
+    R : np.ndarray
+        Radial positions at which flux measured, shape (nx, ny).
+    Z : np.ndarray
+        Vertical positions at which flux measured, shape (nx, ny).
+    psi : np.ndarray
+        Total poloidal flux [Webers/2pi], shape (nx, ny).
+    mask_inside_limiter : np.ndarray or None, optional
         Masking array, describing which (R, Z) grid points are inside the limiter.
-    signIp : int
-        Sign of the plasma current (+1 or -1).
-    discard_xpoints : bool
-        Discard X-points not on (or close to) the separatrix.
+    signIp : int or None, optional
+        Sign of the plasma current (+1 or -1). If None, X-points are not
+        selected by their flux ordering relative to the O-point.
+    discard_xpoints : bool, optional
+        Unused (X-points not on a monotonic line of sight from the O-point
+        are always discarded).
 
     Returns
     -------
-    list
-        A list of tuples containing the O-point locations and flux values (R, Z, psi). Note
-        the first tuple is the primary O-point (i.e. the magnetic axis).
-    list
-        A list of tuples containing the X-point locations and flux values (R, Z, psi). Note
-        the first tuple is the primary X-point (i.e. closest to the magnetic axis, usually on
-        the plasma separatrix).
+    opoint : np.ndarray
+        O-point locations and flux values (R, Z, psi) as rows, shape (n_o, 3). The
+        first row is the primary O-point (i.e. the magnetic axis).
+    xpoint : np.ndarray
+        X-point locations and flux values (R, Z, psi) as rows, shape (n_x, 3). The
+        first row is the primary X-point (i.e. closest in flux to the magnetic axis,
+        usually on the plasma separatrix). May be empty.
     """
 
     # if old:
@@ -321,28 +351,31 @@ def find_critical(R, Z, psi, mask_inside_limiter=None, signIp=1, discard_xpoints
 
 # # this is 10x faster if the numba import works; otherwise, @njit is the identity and fastcrit is 3x faster anyways
 @njit(cache=True, fastmath=True)
-def scan_for_crit(R, Z, psi):
+def scan_for_crit(
+    R: np.ndarray, Z: np.ndarray, psi: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
     """
-    Finds the critical points in the total poloidal flux map ψ.
+    Scans the grid for critical points of the total poloidal flux map ψ.
+
+    Candidate points are local minima of |grad psi|^2 on the grid, refined by a
+    single quadratic (Newton) step and classified as O- or X-points by the sign
+    of the Hessian determinant. The points are not ordered.
 
     Parameters
     ----------
-    R : np.array
-        Radial positions at which flux measured.
-    Z : np.array
-        Vertical positions at which flux measured.
-    psi : np.array
-        Total poloidal flux [Webers/2pi].
+    R : np.ndarray
+        Radial positions at which flux measured, shape (nx, ny).
+    Z : np.ndarray
+        Vertical positions at which flux measured, shape (nx, ny).
+    psi : np.ndarray
+        Total poloidal flux [Webers/2pi], shape (nx, ny).
 
     Returns
     -------
-    list
-        A list of tuples containing the O-point locations and flux values (R, Z, psi). Note
-        the first tuple is the primary O-point (i.e. the magnetic axis).
-    list
-        A list of tuples containing the X-point locations and flux values (R, Z, psi). Note
-        the first tuple is the primary X-point (i.e. closest to the magnetic axis, usually on
-        the plasma separatrix).
+    opoint : np.ndarray
+        O-point locations and flux values (R, Z, psi) as rows, shape (n_o, 3).
+    xpoint : np.ndarray
+        X-point locations and flux values (R, Z, psi) as rows, shape (n_x, 3).
     """
 
     dR = R[1, 0] - R[0, 0]
@@ -411,30 +444,42 @@ def scan_for_crit(R, Z, psi):
     return opoint, xpoint
 
 
-def fastcrit(R, Z, psi, mask_inside_limiter):
+def fastcrit(
+    R: np.ndarray,
+    Z: np.ndarray,
+    psi: np.ndarray,
+    mask_inside_limiter: np.ndarray | None,
+) -> tuple[np.ndarray, np.ndarray]:
     """
-    Finds the critical points in the total poloidal flux map ψ.
+    Finds and orders the critical points in the total poloidal flux map ψ.
 
     Parameters
     ----------
-    R : np.array
-        Radial positions at which flux measured.
-    Z : np.array
-        Vertical positions at which flux measured.
-    psi : np.array
-        Total poloidal flux [Webers/2pi].
-    mask_inside_limiter : np.array
+    R : np.ndarray
+        Radial positions at which flux measured, shape (nx, ny).
+    Z : np.ndarray
+        Vertical positions at which flux measured, shape (nx, ny).
+    psi : np.ndarray
+        Total poloidal flux [Webers/2pi], shape (nx, ny).
+    mask_inside_limiter : np.ndarray or None
         Masking array, describing which (R, Z) grid points are inside the limiter.
+        If not None, O-points outside the limiter are discarded.
 
     Returns
     -------
-    list
-        A list of tuples containing the O-point locations and flux values (R, Z, psi). Note
-        the first tuple is the primary O-point (i.e. the magnetic axis).
-    list
-        A list of tuples containing the X-point locations and flux values (R, Z, psi). Note
-        the first tuple is the primary X-point (i.e. closest to the magnetic axis, usually on
-        the plasma separatrix).
+    opoint : np.ndarray
+        O-point locations and flux values (R, Z, psi) as rows, shape (n_o, 3), ordered
+        by distance from the domain centre. The first row is the primary O-point
+        (i.e. the magnetic axis).
+    xpoint : np.ndarray
+        X-point locations and flux values (R, Z, psi) as rows, shape (n_x, 3), ordered
+        by closeness of their flux to the axis flux. The first row is the primary
+        X-point.
+
+    Raises
+    ------
+    ValueError
+        If no (valid) O-points are found.
     """
 
     opoint, xpoint = scan_for_crit(R, Z, psi)
@@ -524,23 +569,29 @@ def fastcrit(R, Z, psi, mask_inside_limiter):
     return opoint, xpoint
 
 
-def discard_xpoints_f(R, Z, psi, opoint, xpt):
+def discard_xpoints_f(
+    R: np.ndarray,
+    Z: np.ndarray,
+    psi: np.ndarray,
+    opoint: np.ndarray,
+    xpt: np.ndarray,
+) -> bool:
     """
-
-    This function discards X-points not on (or close to) the separatrix.
+    Checks whether an X-point is reachable from the O-point along a line of
+    monotonic flux, so that X-points not on (or close to) the separatrix can be discarded.
 
     Parameters
     ----------
-    R : np.array
-        Radial positions at which flux measured.
-    Z : np.array
-        Vertical positions at which flux measured.
-    psi : np.array
-        Total poloidal flux [Webers/2pi].
-    opoint : list
-        The list of O-point tuples (R,Z,psi).
-    xpt : list
-        The list of X-point tuples (R,Z,psi).
+    R : np.ndarray
+        Radial positions at which flux measured, shape (nx, ny).
+    Z : np.ndarray
+        Vertical positions at which flux measured, shape (nx, ny).
+    psi : np.ndarray
+        Total poloidal flux [Webers/2pi], shape (nx, ny).
+    opoint : np.ndarray
+        The (primary) O-point as (R, Z, psi).
+    xpt : np.ndarray
+        The individual X-point to test, as (R, Z, psi).
 
     Returns
     -------
@@ -591,32 +642,39 @@ def discard_xpoints_f(R, Z, psi, opoint, xpt):
     return result
 
 
-def core_mask(R, Z, psi, opoint, xpoint=[], psi_bndry=None):
+def core_mask(
+    R: np.ndarray,
+    Z: np.ndarray,
+    psi: np.ndarray,
+    opoint: np.ndarray | list,
+    xpoint: np.ndarray | list = [],
+    psi_bndry: float | None = None,
+) -> np.ndarray:
     """
-
-    This function generates a masking array of computational grid points (R,Z) that
+    Generates a masking array of computational grid points (R,Z) that
     reside within the last closed flux surface (plasma boundary).
 
     Parameters
     ----------
-    R : np.array
-        Radial positions at which flux measured.
-    Z : np.array
-        Vertical positions at which flux measured.
-    psi : np.array
-        Total poloidal flux [Webers/2pi].
-    opoint : list
-        The list of O-point tuples (R,Z,psi).
-    xpoint : list
-        The list of X-point tuples (R,Z,psi).
-    psi_bndry : float
-        Total poloidal flux on the plasma boundary [Webers/2pi].
+    R : np.ndarray
+        Radial positions at which flux measured, shape (nx, ny).
+    Z : np.ndarray
+        Vertical positions at which flux measured, shape (nx, ny).
+    psi : np.ndarray
+        Total poloidal flux [Webers/2pi], shape (nx, ny).
+    opoint : np.ndarray or list
+        The O-point tuples/rows (R,Z,psi); the first is the primary O-point.
+    xpoint : np.ndarray or list, optional
+        The X-point tuples/rows (R,Z,psi).
+    psi_bndry : float or None, optional
+        Total poloidal flux on the plasma boundary [Webers/2pi]. If None, the flux
+        of the first X-point is used.
 
     Returns
     -------
-    np.array
-        Returns a 2D Boolean array (at (R,Z) locations) where 1 denotes a point inside
-        the core and 0 denostes a point outside.
+    np.ndarray
+        Float array of shape (nx, ny) where 1 denotes a point inside the core and 0
+        denotes a point outside.
     """
 
     mask = zeros(psi.shape)
@@ -687,41 +745,41 @@ def core_mask(R, Z, psi, opoint, xpoint=[], psi_bndry=None):
 
 @njit(fastmath=True, cache=True)
 def inside_mask_(
-    R,
-    Z,
-    psi,
-    opoint,
-    xpoint=[],
-    mask_outside_limiter=None,
-    psi_bndry=None,
-):
+    R: np.ndarray,
+    Z: np.ndarray,
+    psi: np.ndarray,
+    opoint: np.ndarray,
+    xpoint: np.ndarray | list = [],
+    mask_outside_limiter: np.ndarray | None = None,
+    psi_bndry: float | None = None,
+) -> np.ndarray:
     """
-
-    This function identifies the plasma region inside the separatrix by performing
+    Identifies the plasma region inside the separatrix by performing
     a flood-fill algorithm starting from the magnetic axis (O-point).
 
     Parameters
     ----------
-    R : np.array
-        Radial positions at which flux measured.
-    Z : np.array
-        Vertical positions at which flux measured.
-    psi : np.array
-        Total poloidal flux [Webers/2pi].
-    opoint : list
-        The list of O-point tuples (R,Z,psi).
-    xpoint : list
-        The list of X-point tuples (R,Z,psi).
-    mask_outside_limiter : np.array
-        Masking array, describing which (R, Z) grid points are outside the limiter.
-    psi_bndry : float
-        Total poloidal flux on the plasma boundary [Webers/2pi].
+    R : np.ndarray
+        Radial positions at which flux measured, shape (nx, ny).
+    Z : np.ndarray
+        Vertical positions at which flux measured, shape (nx, ny).
+    psi : np.ndarray
+        Total poloidal flux [Webers/2pi], shape (nx, ny).
+    opoint : np.ndarray
+        O-points as rows (R,Z,psi); the first is the primary O-point.
+    xpoint : np.ndarray or list, optional
+        X-points as rows (R,Z,psi).
+    mask_outside_limiter : np.ndarray or None, optional
+        Masking array of shape (nx, ny), non-zero for (R, Z) grid points outside the limiter.
+    psi_bndry : float or None, optional
+        Total poloidal flux on the plasma boundary [Webers/2pi]. If None, the flux
+        of the first X-point is used.
 
     Returns
     -------
-    np.array
-        Returns a 2D Boolean array (at (R,Z) locations) where 1 denotes a point inside
-        the core and 0 denostes a point outside.
+    np.ndarray
+        Boolean array of shape (nx, ny) where True denotes a point inside the core
+        and False a point outside.
     """
 
     #
@@ -792,18 +850,19 @@ def inside_mask_(
 
 
 def inside_mask(
-    R,
-    Z,
-    psi,
-    opoint,
-    xpoint=[],
-    mask_outside_limiter=None,
-    psi_bndry=None,
-    use_geom=True,
-):
+    R: np.ndarray,
+    Z: np.ndarray,
+    psi: np.ndarray,
+    opoint: np.ndarray,
+    xpoint: np.ndarray | list = [],
+    mask_outside_limiter: np.ndarray | None = None,
+    psi_bndry: float | None = None,
+    use_geom: bool = True,
+) -> np.ndarray:
     """
-    This function calls inside_mask_ to find plasma region inside the separatrix (with
+    Calls inside_mask_ to find plasma region inside the separatrix (with
     the option of calling geom_inside_mask too).
+
     geom_inside_mask applies an additional geometrical contraint
     aimed at resolving cases of 'flooding' of the core mask through the primary Xpoint.
     It excludes regions based on perpendicular to segment
@@ -811,29 +870,29 @@ def inside_mask(
 
     Parameters
     ----------
-    R : np.array
-        Radial positions at which flux measured.
-    Z : np.array
-        Vertical positions at which flux measured.
-    psi : np.array
-        Total poloidal flux [Webers/2pi].
-    opoint : list
-        The list of O-point tuples (R,Z,psi).
-    xpoint : list
-        The list of X-point tuples (R,Z,psi).
-    mask_outside_limiter : np.array
-        Masking array, describing which (R, Z) grid points are outside the limiter.
-    psi_bndry : float
+    R : np.ndarray
+        Radial positions at which flux measured, shape (nx, ny).
+    Z : np.ndarray
+        Vertical positions at which flux measured, shape (nx, ny).
+    psi : np.ndarray
+        Total poloidal flux [Webers/2pi], shape (nx, ny).
+    opoint : np.ndarray
+        O-points as rows (R,Z,psi); the first is the primary O-point.
+    xpoint : np.ndarray or list, optional
+        X-points as rows (R,Z,psi).
+    mask_outside_limiter : np.ndarray or None, optional
+        Masking array of shape (nx, ny), non-zero for (R, Z) grid points outside the limiter.
+    psi_bndry : float or None, optional
         Total poloidal flux on the plasma boundary [Webers/2pi].
-    use_geom : bool
+    use_geom : bool, optional
         Use (refined) geom_inside_mask function in conjuction with inside_mask_
         to find the mask when at least one X-point is available (if set to True).
 
     Returns
     -------
-    np.array
-        Returns a 2D Boolean array (at (R,Z) locations) where 1 denotes a point inside
-        the core and 0 denostes a point outside.
+    np.ndarray
+        Boolean array of shape (nx, ny) where True denotes a point inside the core
+        and False a point outside.
     """
 
     mask = inside_mask_(R, Z, psi, opoint, xpoint, mask_outside_limiter, psi_bndry)
@@ -850,21 +909,24 @@ def inside_mask(
     return mask
 
 
-def geom_inside_mask(R, Z, opoint, xpoint):
+def geom_inside_mask(
+    R: np.ndarray, Z: np.ndarray, opoint: np.ndarray, xpoint: np.ndarray
+) -> np.ndarray:
     """
-
     Excludes grid regions based on a line perpendicular to the segment from
     the O-point to the primary X-point. Points on the O-point's side of that
     line are considered part of the plasma core.
 
     Parameters
     ----------
-    R, Z : ndarray
-        Grid coordinates.
-    opoint : ndarray, shape (1, 2)
-        (R, Z) coordinates of the O-point.
-    xpoint : ndarray, shape (1, 2)
-        (R, Z) coordinates of the primary X-point.
+    R : np.ndarray
+        Grid R coordinates, shape (nx, ny).
+    Z : np.ndarray
+        Grid Z coordinates, shape (nx, ny).
+    opoint : np.ndarray
+        O-points as rows; only the (R, Z) of the first row is used.
+    xpoint : np.ndarray
+        X-points as rows; only the (R, Z) of the first row (the primary X-point) is used.
 
     Returns
     -------
@@ -880,18 +942,28 @@ def geom_inside_mask(R, Z, opoint, xpoint):
     return geom_mask
 
 
-def find_psisurface(eq, psifunc, r0, z0, r1, z1, psival=1.0, n=100, axis=None):
+def find_psisurface(
+    eq: object,
+    psifunc: Callable[..., np.ndarray],
+    r0: float,
+    z0: float,
+    r1: float,
+    z1: float,
+    psival: float = 1.0,
+    n: int = 100,
+    axis: object | None = None,
+) -> tuple[float, float]:
     """
-
-    This function determines the (R,Z) location on a specified magnetic flux surface by
+    Determines the (R,Z) location on a specified magnetic flux surface by
     interpolating along a straight line in the poloidal plane (defined by (r0,z0) and (r1,z1)).
 
     Parameters
     ----------
     eq : object
-        Equilibrium object.
-    psifunc : func
-        Callable function for the flux map.
+        Equilibrium object (provides the domain limits Rmin, Rmax, Zmin, Zmax).
+    psifunc : callable
+        Callable function for the (normalised) flux map, called as
+        ``psifunc(r, z, grid=False)``.
     r0 : float
         Starting R location inside the separatrix [m].
     z0 : float
@@ -900,18 +972,19 @@ def find_psisurface(eq, psifunc, r0, z0, r1, z1, psival=1.0, n=100, axis=None):
         Final R location outside the separatrix [m].
     z1 : float
         Final Z location outside the separatrix [m].
-    psival : float
-        Reference total poloidal flux value to find surface of [Webers/2pi].
-    n : int
-        Number of starting points to use.
-    axis : object
+    psival : float, optional
+        Value of the flux (in the units of `psifunc`) to find the surface of.
+    n : int, optional
+        Number of starting points to use along the line.
+    axis : object or None, optional
         Matplotlib axis object, used for plotting.
 
     Returns
     -------
-    np.array
-        Returns a 2D Boolean array (at (R,Z) locations) where 1 denotes a point inside
-        the core and 0 denostes a point outside.
+    r : float
+        R coordinate of the point on the flux surface [m].
+    z : float
+        Z coordinate of the point on the flux surface [m].
     """
 
     # Clip (r1,z1) to be inside domain
@@ -955,10 +1028,14 @@ def find_psisurface(eq, psifunc, r0, z0, r1, z1, psival=1.0, n=100, axis=None):
     return r, z
 
 
-def find_separatrix(eq, ntheta=20, axis=None, psival=1.0):
+def find_separatrix(
+    eq: object,
+    ntheta: int = 20,
+    axis: object | None = None,
+    psival: float = 1.0,
+) -> list[tuple[float, float, float, float]]:
     """
-
-    This function determines the (R,Z) locations (at 'ntheta' points) of the last
+    Determines the (R,Z) locations (at 'ntheta' points) of the last
     closed flux surface (i.e. the separatrix). The 'ntheta' points are equally spaced
     in the geometrix poloidal angle.
 
@@ -966,17 +1043,18 @@ def find_separatrix(eq, ntheta=20, axis=None, psival=1.0):
     ----------
     eq : object
         Equilibrium object.
-    ntheta : int
+    ntheta : int, optional
         Number of points to spawn in the geometric poloidal angle.
-    axis : object
+    axis : object or None, optional
         Matplotlib axis object, used for plotting.
-    psival : float
-        Reference total poloidal flux value to find surface of [Webers/2pi].
+    psival : float, optional
+        Normalised flux value (0 at the axis, 1 at the boundary) of the surface to find.
 
     Returns
     -------
-    list
-        Returns a list of (R,Z) points on the plasma boundary (last closed flux surface).
+    list of tuple
+        One tuple (R, Z, R_X, Z_X) per poloidal angle: the point on the plasma
+        boundary (last closed flux surface) and the (R, Z) of the primary X-point.
     """
 
     psi = eq.psi()
@@ -1034,18 +1112,17 @@ def find_separatrix(eq, ntheta=20, axis=None, psival=1.0):
 
 
 def find_safety(
-    eq,
-    npsi=1,
-    psinorm=None,
-    ntheta=128,
-    psi=None,
-    opoint=None,
-    xpoint=None,
-    axis=None,
-):
+    eq: object,
+    npsi: int = 1,
+    psinorm: float | np.ndarray | list[float] | None = None,
+    ntheta: int = 128,
+    psi: np.ndarray | None = None,
+    opoint: np.ndarray | list | None = None,
+    xpoint: np.ndarray | list | None = None,
+    axis: object | None = None,
+) -> np.ndarray:
     """
-
-    This function determines the safety factor profile for a given equilbirium. Points on
+    Determines the safety factor profile for a given equilbirium. Points on
     each flux surface are equally paced in poloidal angle. The function performs a line
     integral around each flux surface to get q (on that flux surface).
 
@@ -1053,25 +1130,27 @@ def find_safety(
     ----------
     eq : object
         Equilibrium object.
-    npsi : int
-        Number of flux surface values to find q for.
-    psinorm : np.array
-        The flux surfaces to calculate q for (length must be equal to npsi).
-    ntheta : int
+    npsi : int, optional
+        Number of flux surface values to find q for. Overridden by the length of
+        `psinorm` if given, or set to 100 if `psinorm` is None.
+    psinorm : float or np.ndarray or list of float or None, optional
+        The normalised flux surface value(s) to calculate q for. If None, 100
+        surfaces are used.
+    ntheta : int, optional
         Number of poloidal points to find q values on.
-    psi : np.array
-        Total poloidal flux [Webers/2pi].
-    opoint : list
-        The list of O-point tuples (R,Z,psi).
-    xpoint : list
-        The list of X-point tuples (R,Z,psi).
-    axis : object
+    psi : np.ndarray or None, optional
+        Total poloidal flux [Webers/2pi], shape (nx, ny). Defaults to ``eq.psi()``.
+    opoint : np.ndarray or list or None, optional
+        The O-point tuples/rows (R,Z,psi). Calculated if `opoint` or `xpoint` is None.
+    xpoint : np.ndarray or list or None, optional
+        The X-point tuples/rows (R,Z,psi). Calculated if `opoint` or `xpoint` is None.
+    axis : object or None, optional
         Matplotlib axis object, used for plotting.
 
     Returns
     -------
-    np.array
-        Returns the safety factor at 'npsi' points in normalised psi.
+    np.ndarray
+        Returns the safety factor at each of the normalised psi values.
     """
 
     if psi is None:

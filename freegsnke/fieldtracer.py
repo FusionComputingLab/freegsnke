@@ -15,6 +15,8 @@ You should have received a copy of the GNU Lesser General Public License
 along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 """  # Field line tracing
 
+from __future__ import annotations
+
 from builtins import object
 
 import numpy as np
@@ -25,11 +27,19 @@ from . import critical
 
 
 class FieldTracer(object):
-    """A class for following magnetic field lines"""
+    """Follow magnetic field lines in an equilibrium."""
 
-    def __init__(self, eq):
+    def __init__(self, eq: object) -> None:
         """
-        Initialise a FieldTracer with an Equilibrium eq
+        Initialise a FieldTracer for an equilibrium.
+
+        The domain-checking method is the wall-based one if the equilibrium's
+        tokamak has a wall, otherwise the computational domain is used.
+
+        Parameters
+        ----------
+        eq : object
+            Equilibrium object.
         """
         self._eq = eq
 
@@ -40,10 +50,26 @@ class FieldTracer(object):
             # No wall, so just use the domain
             self.updateEvolving = self.eqDomain
 
-    def eqDomain(self, R, Z, evolving):
-        """Update an array `evolving`, of the same shape as R and Z.
-        Set all entries to zero which correspond to (R,Z) points outside
-        the domain."""
+    def eqDomain(
+        self, R: np.ndarray, Z: np.ndarray, evolving: np.ndarray
+    ) -> np.ndarray:
+        """
+        Zero the entries of `evolving` for points outside the computational domain.
+
+        Parameters
+        ----------
+        R : np.ndarray
+            Major radius of the points [m].
+        Z : np.ndarray
+            Height of the points [m].
+        evolving : np.ndarray
+            Array of the same shape as R and Z, modified in place.
+
+        Returns
+        -------
+        np.ndarray
+            The updated `evolving` array.
+        """
 
         eps = 1e-2
 
@@ -55,11 +81,22 @@ class FieldTracer(object):
         ] = 0.0
         return evolving
 
-    def wallDomain(self, R, Z, evolving):
-        """Updates an array `evolving`, of the same shape as R and Z.
-        Set all entries to zero which correspond to (R,Z) points outside
-        the domain.
-        This is done by counting intersections with the wall"""
+    def wallDomain(self, R: np.ndarray, Z: np.ndarray, evolving: np.ndarray) -> None:
+        """
+        Zero the entries of `evolving` for points outside the wall.
+
+        This is done by counting intersections of the line from the domain
+        centre to each point with the wall.
+
+        Parameters
+        ----------
+        R : np.ndarray
+            Major radius of the points [m].
+        Z : np.ndarray
+            Height of the points [m].
+        evolving : np.ndarray
+            Array of the same shape as R and Z, modified in place.
+        """
 
         Rwall = self._eq.tokamak.wall.R
         Zwall = self._eq.tokamak.wall.Z
@@ -103,9 +140,34 @@ class FieldTracer(object):
             )
         evolving[outside] = 0.0
 
-    def fieldDirection(self, pos, toroidal_angle, evolving, backward):
+    def fieldDirection(
+        self,
+        pos: np.ndarray,
+        toroidal_angle: float,
+        evolving: np.ndarray,
+        backward: bool,
+    ) -> np.ndarray:
         """
-        Calculate the magnetic field direction at a given pos
+        Calculate the rate of change of position with toroidal angle.
+
+        Used as the right-hand side of the ODE integrated by ``follow``.
+
+        Parameters
+        ----------
+        pos : np.ndarray
+            Flattened (R, Z, length) positions of the field lines.
+        toroidal_angle : float
+            Toroidal angle (unused; the field is axisymmetric).
+        evolving : np.ndarray
+            Per-line flags, 1 for lines still inside the domain and 0 once they
+            have left it; updated in place.
+        backward : bool
+            If True, follow the field lines in the -B direction.
+
+        Returns
+        -------
+        np.ndarray
+            Flattened (dR/dphi, dZ/dphi, dl/dphi) for each line.
         """
         position = pos.reshape((-1, 3))
         R = position[:, 0]
@@ -137,11 +199,35 @@ class FieldTracer(object):
 
         return np.column_stack((dRdphi, dZdphi, dldphi)).flatten()
 
-    def follow(self, Rstart, Zstart, angles, rtol=None, backward=False):
-        """Follow magnetic field lines from (Rstart, Zstart) locations
-        to given toroidal angles.
-        If backward is True then the field lines are followed in the
-        -B direction"""
+    def follow(
+        self,
+        Rstart: np.ndarray,
+        Zstart: np.ndarray,
+        angles: np.ndarray,
+        rtol: float | None = None,
+        backward: bool = False,
+    ) -> np.ndarray:
+        """
+        Follow magnetic field lines from (Rstart, Zstart) to given toroidal angles.
+
+        Parameters
+        ----------
+        Rstart : np.ndarray
+            Starting major radii [m].
+        Zstart : np.ndarray
+            Starting heights [m], same shape as `Rstart`.
+        angles : np.ndarray
+            Toroidal angles at which to output the positions [rad].
+        rtol : float, optional
+            Relative tolerance passed to ``scipy.integrate.odeint``.
+        backward : bool, optional
+            If True, the field lines are followed in the -B direction.
+
+        Returns
+        -------
+        np.ndarray
+            (R, Z, length) along each line, shape ``angles.shape + Rstart.shape + (3,)``.
+        """
 
         Rstart = np.array(Rstart)
         Zstart = np.array(Zstart)
@@ -166,46 +252,77 @@ class FieldTracer(object):
 
 
 class LineCoordinates:
-    """Coordinates of a field line
-    R   Major radius [m]
-    Z   Height [m]
-    length   Field line length [m]
+    """
+    Coordinates of a field line.
 
-    All {R, Z, length} are NumPy arrays of the same shape
+    Attributes
+    ----------
+    R : np.ndarray
+        Major radius [m].
+    Z : np.ndarray
+        Height [m].
+    length : np.ndarray
+        Field line length [m].
+
+    All of R, Z and length are NumPy arrays of the same shape.
     """
 
-    def __init__(self, R, Z, length):
+    def __init__(self, R: np.ndarray, Z: np.ndarray, length: np.ndarray) -> None:
+        """
+        Store the field line coordinates.
+
+        Parameters
+        ----------
+        R : np.ndarray
+            Major radius [m].
+        Z : np.ndarray
+            Height [m].
+        length : np.ndarray
+            Field line length [m].
+        """
         self.R = R
         self.Z = Z
         self.length = length
 
 
-def traceFieldLines(eq, solwidth=0.03, nlines=10, nturns=50, npoints=200, axis=None):
-    """Trace field lines from the outboard midplane
+def traceFieldLines(
+    eq: object,
+    solwidth: float = 0.03,
+    nlines: int = 10,
+    nturns: int = 50,
+    npoints: int = 200,
+    axis: object | None = None,
+) -> tuple[LineCoordinates, LineCoordinates]:
+    """
+    Trace field lines from the outboard midplane.
 
-    Inputs
-    ------
-
-    eq          Equilibrium object
-    solwidth    The width of the SOL in meters
-    nlines      Number of field lines to follow
-    nturns      Number of times around the tokamak to follow
-    npoints     Maximum number of points per line. May hit a wall
-
-    axis        Matplotlib figure Axis. If given, field lines
-                are plotted on the axis
+    Parameters
+    ----------
+    eq : object
+        Equilibrium object.
+    solwidth : float, optional
+        The width of the SOL [m].
+    nlines : int, optional
+        Number of field lines to follow.
+    nturns : int, optional
+        Number of times around the tokamak to follow.
+    npoints : int, optional
+        Maximum number of points per line. Lines may hit a wall.
+    axis : object, optional
+        Matplotlib Axes. If given, field lines are plotted on it.
 
     Returns
     -------
+    forward : LineCoordinates
+        Coordinates of the field lines followed in the +B direction.
+    backward : LineCoordinates
+        Coordinates of the field lines followed in the -B direction.
+        Both have ``R``, ``Z`` and ``length`` as 2D arrays of shape
+        (npoints, nlines).
 
-    The forward and backward field line coordinates
-    stored in LineCoordinates objects
-
+    Examples
+    --------
     >>> forward, backward = traceFieldLines(eq)
-
-    forward and backward have data members
-    R, Z, length  2D arrays of shape (npoints, nlines)
-
     """
     ft = FieldTracer(eq)
 

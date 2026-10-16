@@ -12,41 +12,44 @@ the Free Software Foundation, either version 3 of the License, or
 
 FreeGSNKE is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 GNU Lesser General Public License for more details.
 
 You should have received a copy of the GNU Lesser General Public License
-along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
-
+along with FreeGSNKE. If not, see <http://www.gnu.org/licenses/>.
 """
+
+from __future__ import annotations
+
+from typing import TextIO
 
 import numpy as np
 
 from ._fileutils import ChunkOutput, write_1d, write_2d
 
 
-def write(data, fh, label=None):
+def write(data: dict, fh: TextIO, label: str | None = None) -> None:
     """
-    Write a DivGeo file, given a dictionary of data
+    Write a DivGeo file, given a dictionary of data.
 
-    data - dictionary
-      nx, ny        Number of points in R (x), Z (y)
-      rcentr        Reference value of R
-      bcentr        Vacuum toroidal magnetic field at rcentr
-      sibdry        Poloidal flux psi at plasma boundary
+    Parameters
+    ----------
+    data : dict
+        Equilibrium data with keys:
 
-      either:
-        r[nx]       1D array of R values
-      or
-        rdim        Size of the R dimension
-        rleft       Innermost R point
-
-      either:
-        z[ny]       1D array of Z values
-      or
-        zdim        Size of the Z dimension
-        zmid        Middle of the Z dimension
-
+        - ``nx``, ``ny``: number of points in R (x) and Z (y)
+        - ``rcentr``: reference value of R
+        - ``bcentr``: vacuum toroidal magnetic field at ``rcentr``
+        - ``sibdry``: poloidal flux psi at the plasma boundary
+        - ``psi``: 2D array of poloidal flux, shape (nx, ny)
+        - either ``r`` (1D array of R values, length nx) or ``rdim``
+          (size of the R dimension) and ``rleft`` (innermost R point)
+        - either ``z`` (1D array of Z values, length ny) or ``zdim``
+          (size of the Z dimension) and ``zmid`` (middle of the Z dimension)
+    fh : TextIO
+        Open, writable text file handle.
+    label : str, optional
+        Unused; present for interface compatibility with the other writers.
     """
 
     # Write header

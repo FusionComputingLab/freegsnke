@@ -1,7 +1,9 @@
 """
-Plot aspects of the tokamak and equilibrium. 
+Plot aspects of the tokamak and equilibrium.
 
 Copyright 2024 Nicola C. Amorisco, Adriano Agnello, George K. Holt, Ben Dudson.
+
+This file is part of FreeGSNKE.
 
 FreeGSNKE is free software: you can redistribute it and/or modify
 it under the terms of the GNU Lesser General Public License as published by
@@ -10,22 +12,24 @@ the Free Software Foundation, either version 3 of the License, or
 
 FreeGSNKE is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 GNU Lesser General Public License for more details.
 
 You should have received a copy of the GNU Lesser General Public License
-along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
-
+along with FreeGSNKE. If not, see <http://www.gnu.org/licenses/>.
 """
+
+from __future__ import annotations
 
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.axes import Axes
 from numpy import amax, amin, linspace
 
 from . import critical
 
 
-def plotCoils(coils, axis=None):
+def plotCoils(coils: object, axis: Axes | None = None) -> Axes:
     """
     Plot the geometry of magnetic field coils.
 
@@ -62,7 +66,9 @@ def plotCoils(coils, axis=None):
     return axis
 
 
-def plotConstraints(control, axis=None, show=True):
+def plotConstraints(
+    control: object, axis: Axes | None = None, show: bool = True
+) -> Axes:
     """
     Plot magnetic control constraints such as X-points and isoflux surfaces.
 
@@ -128,7 +134,9 @@ def plotConstraints(control, axis=None, show=True):
     return axis
 
 
-def plotIOConstraints(control, axis=None, show=True):
+def plotIOConstraints(
+    control: object, axis: Axes | None = None, show: bool = True
+) -> Axes:
     """
     Plot magnetic control constraints for equilibrium reconstruction.
 
@@ -142,9 +150,11 @@ def plotIOConstraints(control, axis=None, show=True):
     ----------
     control : object
         An object containing magnetic control data with attributes:
-        - `null_points` : tuple of array-like
+        - `null_points` : tuple of array-like or None
             Coordinates (R, Z) of magnetic null points, if defined.
-        - `isoflux_set` : list of array-like
+        - `null_points_2nd_order` : tuple of array-like or None
+            Coordinates (R, Z) of second-order null points, if defined.
+        - `isoflux_set` : list of array-like or None
             A list of isoflux constraint points, where each element is a pair
             of arrays (R, Z) defining a set of target locations for equal
             poloidal flux.
@@ -160,7 +170,8 @@ def plotIOConstraints(control, axis=None, show=True):
 
     Notes
     -----
-    - Null points are plotted as purple downward tick markers (`"1"`).
+    - Null points are plotted as purple downward tick markers (`"1"`) and
+      second-order null points as orange ones.
     - Isoflux constraints are plotted as plus markers (`"+"`) in distinct colors.
     - A legend is automatically displayed in the upper-right corner if `show=True`.
 
@@ -251,19 +262,20 @@ def plotIOConstraints(control, axis=None, show=True):
 
 
 def plotEquilibrium(
-    eq,
-    axis=None,
-    xpoints=True,
-    opoints=True,
-    wall=True,
-    limiter=True,
-    legend=False,
-    show=True,
-):
+    eq: object,
+    axis: Axes | None = None,
+    xpoints: bool = True,
+    opoints: bool = True,
+    wall: bool = True,
+    limiter: bool = True,
+    legend: bool = False,
+    show: bool = True,
+) -> Axes:
     """
-    Plot poloidal magnetic ψ(R, Z) flux surfaces and key geometric features of an equilibrium in
-    FreeGSNKE. It can also overlay the separatrix, magnetic X- and
-    O-points, the plasma-facing wall, and the limiter geometry.
+    Plot poloidal magnetic ψ(R, Z) flux surfaces and key geometric features of an equilibrium.
+
+    It can also overlay the separatrix, magnetic X- and O-points, the
+    plasma-facing wall, and the limiter geometry.
 
     Parameters
     ----------
@@ -291,10 +303,15 @@ def plotEquilibrium(
     axis : matplotlib.axes.Axes
         The matplotlib axis containing the plotted equilibrium.
 
+    Raises
+    ------
+    RuntimeError
+        If the equilibrium has not been solved (i.e. `psi()` or the profile
+        O-/X-points are unavailable).
+
     Notes
     -----
-    - The function assumes that the equilibrium has already been solved;
-      if not, it will print a warning message.
+    - The function assumes that the equilibrium has already been solved.
     - The separatrix is plotted using a solid red line for diverted equilibria
       and a dashed red line for limited equilibria.
 
@@ -398,12 +415,12 @@ def plotEquilibrium(
     return axis
 
 
-def make_broad_mask(mask, layer_size=1):
+def make_broad_mask(mask: np.ndarray, layer_size: int = 1) -> np.ndarray:
     """
     Expand a binary mask by adding a border layer of specified thickness.
 
     This function broadens a 2D boolean or binary mask by marking all points
-    that lie within a specified Manhattan distance (`layer_size`) from the
+    that lie within a specified distance (`layer_size` pixels along each axis, i.e. a square neighbourhood) from the
     original masked region. The result is a new mask that includes both the
     original region and its expanded boundary.
 
@@ -417,28 +434,28 @@ def make_broad_mask(mask, layer_size=1):
 
     Returns
     -------
-    layer_mask : np.ndarray
+    np.ndarray
         Boolean array of the same shape as `mask`, where `True` values
         correspond to the original region plus an outer layer of width
         `layer_size`.
 
     Notes
     -----
-    - The expansion is performed by convolving the mask with a square kernel
-      of size `(2 * layer_size + 1)`, effectively performing a morphological
-      dilation.
+    - The expansion is performed by summing shifted copies of the mask over a
+      square window of size `(2 * layer_size + 1)`, effectively performing a
+      morphological dilation.
     - This operation is useful for defining buffer regions (e.g., just outside
       a limiter or wall in equilibrium simulations).
 
     Examples
     --------
-        mask = np.array([[0, 1, 0],
+    >>> mask = np.array([[0, 0, 0],
     ...                  [0, 1, 0],
     ...                  [0, 0, 0]], dtype=bool)
-        make_broad_mask(mask, layer_size=1)
+    >>> make_broad_mask(mask, layer_size=1)
     array([[ True,  True,  True],
            [ True,  True,  True],
-           [ False,  True,  False]])
+           [ True,  True,  True]])
     """
 
     nx, ny = np.shape(mask)
@@ -453,8 +470,13 @@ def make_broad_mask(mask, layer_size=1):
 
 
 def plotProbes(
-    probes, axis=None, show=True, floops=True, pickups=True, pickups_scale=0.05
-):
+    probes: object,
+    axis: Axes | None = None,
+    show: bool = True,
+    floops: bool = True,
+    pickups: bool = True,
+    pickups_scale: float = 0.05,
+) -> Axes:
     """
     Plot magnetic diagnostics including flux loops and pickup coils.
 

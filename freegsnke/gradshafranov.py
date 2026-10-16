@@ -13,13 +13,14 @@ the Free Software Foundation, either version 3 of the License, or
 
 FreeGSNKE is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 GNU Lesser General Public License for more details.
 
 You should have received a copy of the GNU Lesser General Public License
-along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
-
+along with FreeGSNKE. If not, see <http://www.gnu.org/licenses/>.
 """
+
+from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from warnings import warn
@@ -27,7 +28,7 @@ from warnings import warn
 import numexpr as ne
 import numpy as np
 from numpy import pi
-from scipy.sparse import csc_array, csr_array, eye
+from scipy.sparse import csc_array, csc_matrix, csr_array, csr_matrix, eye
 
 from .parallel import threaded_clip, threaded_elliptics_ek
 
@@ -48,7 +49,7 @@ class GSElliptic:
 
     """
 
-    def __init__(self, Rmin, *, dtype=np.float64):
+    def __init__(self, Rmin: float, *, dtype: type = np.float64) -> None:
         """
         Initializes the class.
 
@@ -64,7 +65,7 @@ class GSElliptic:
         self.Rmin = Rmin
         self.dtype = dtype
 
-    def __call__(self, psi, dR, dZ):
+    def __call__(self, psi: np.ndarray, dR: float, dZ: float) -> np.ndarray:
         """
         Apply the elliptic operator to the flux function such that:
 
@@ -112,7 +113,7 @@ class GSElliptic:
                 )
         return b
 
-    def diag(self, dR, dZ):
+    def diag(self, dR: float, dZ: float) -> float:
         """
         Computes:
 
@@ -150,7 +151,14 @@ class GSsparse:
 
     order = 2
 
-    def __init__(self, Rmin, Rmax, Zmin, Zmax, dtype=np.float64):
+    def __init__(
+        self,
+        Rmin: float,
+        Rmax: float,
+        Zmin: float,
+        Zmax: float,
+        dtype: type = np.float64,
+    ) -> None:
         """
         Initializes the class.
 
@@ -177,13 +185,27 @@ class GSsparse:
 
         self.dtype = dtype
 
-    def __call__(self, nx, ny):
+    def __call__(self, nx: int, ny: int) -> csr_array | csr_matrix:
         """
         Equivalent to `discretize(nx, ny)` with the default (CSR) format.
+
+        Parameters
+        ----------
+        nx : int
+            Number of radial grid points (including boundaries).
+        ny : int
+            Number of vertical grid points (including boundaries).
+
+        Returns
+        -------
+        scipy.sparse.csr_array or scipy.sparse.csr_matrix
+            The operator matrix, in CSR format.
         """
         return self.discretize(nx, ny)
 
-    def discretize(self, nx, ny, format="csr"):
+    def discretize(
+        self, nx: int, ny: int, format: str = "csr"
+    ) -> csr_array | csc_array | csr_matrix | csc_matrix:
         """
         Generates the sparse elliptic operator Δ^* for a given number of
         grid points. Computes to second-order accuracy.
@@ -310,13 +332,27 @@ class GSsparse4thOrder(GSsparse):
         (4, 1.0 / 12),
     ]
 
-    def __call__(self, nx, ny):
+    def __call__(self, nx: int, ny: int) -> csr_array | csr_matrix:
         """
         Equivalent to `discretize(nx, ny)` with the default (CSR) format.
+
+        Parameters
+        ----------
+        nx : int
+            Number of radial grid points (including boundaries).
+        ny : int
+            Number of vertical grid points (including boundaries).
+
+        Returns
+        -------
+        scipy.sparse.csr_array or scipy.sparse.csr_matrix
+            The operator matrix, in CSR format.
         """
         return self.discretize(nx, ny)
 
-    def discretize(self, nx, ny, format="csr"):
+    def discretize(
+        self, nx: int, ny: int, format: str = "csr"
+    ) -> csr_array | csc_array | csr_matrix | csc_matrix:
         """
         Generates the sparse elliptic operator Δ^* for a given number of
         grid points. Computes to fourth-order accuracy.
@@ -335,6 +371,12 @@ class GSsparse4thOrder(GSsparse):
         -------
         scipy.sparse matrix/array
             The operator matrix, in the requested sparse format.
+
+        Raises
+        ------
+        KeyError
+            If an unrecognised derivative operator is encountered while
+            assembling the stencil (internal error).
         """
 
         # calculate grid spacing
@@ -546,7 +588,15 @@ class GSsparse4thOrder(GSsparse):
         return A
 
 
-def Greens(Rc, Zc, R, Z, limit_threading=False, scale_factor=1, out=None):
+def Greens(
+    Rc: float | np.ndarray,
+    Zc: float | np.ndarray,
+    R: float | np.ndarray,
+    Z: float | np.ndarray,
+    limit_threading: bool = False,
+    scale_factor: float = 1,
+    out: np.ndarray | None = None,
+) -> float | np.ndarray:
     """
     Calculate poloidal flux at (R,Z) due to a single unit of current at
     (Rc,Zc) using Greens function for the elliptic operator above. Greens
@@ -566,27 +616,27 @@ def Greens(Rc, Zc, R, Z, limit_threading=False, scale_factor=1, out=None):
 
     Parameters
     ----------
-    Rc : float
+    Rc : float or np.ndarray
         Radial position where current is located [m].
-    Zc : float
+    Zc : float or np.ndarray
         Vertical position where current is located [m].
-    R : float
-        Radial position where poloidal flux is to be calcualted [m].
-    Z : float
-        Vertical position where poloidal flux is to be calcualted [m].
+    R : float or np.ndarray
+        Radial position where poloidal flux is to be calculated [m].
+    Z : float or np.ndarray
+        Vertical position where poloidal flux is to be calculated [m].
     limit_threading : bool, optional
         If True, forces SOME internal functions, with high threading overhead, to run single
         threaded. Multiple threads will still be used for low overhead functionalities.
         Recommended when the input arrays are small (default: False).
     scale_factor : float, optional
         Scalar factor to apply on the final result (default: 1).
-    out : ndarray, optional
+    out : np.ndarray, optional
         Pre-allocated buffer for the final result.
 
     Returns
     -------
-    ndarray
-        Value of the poloidal flux at (R,Z).
+    float or np.ndarray
+        Value of the poloidal flux at (R,Z) [Webers/2pi].
     """
 
     # TODO: the next version of numexpr should allow for cache_disabling, this could
@@ -611,7 +661,13 @@ def Greens(Rc, Zc, R, Z, limit_threading=False, scale_factor=1, out=None):
     return res
 
 
-def GreensBz(Rc, Zc, R, Z, eps=1e-4):
+def GreensBz(
+    Rc: float | np.ndarray,
+    Zc: float | np.ndarray,
+    R: float | np.ndarray,
+    Z: float | np.ndarray,
+    eps: float = 1e-4,
+) -> float | np.ndarray:
     """
     Calculate vertical magnetic field at (R,Z) due to a single unit of current at
     (Rc,Zc) using Greens function for the elliptic operator above.
@@ -622,27 +678,33 @@ def GreensBz(Rc, Zc, R, Z, eps=1e-4):
 
     Parameters
     ----------
-    Rc : float
+    Rc : float or np.ndarray
         Radial position where current is located [m].
-    Zc : float
+    Zc : float or np.ndarray
         Vertical position where current is located [m].
-    R : float
-        Radial position where poloidal flux is to be calcualted [m].
-    Z : float
-        Vertical position where poloidal flux is to be calcualted [m].
-    eps : float
+    R : float or np.ndarray
+        Radial position where the field is evaluated [m].
+    Z : float or np.ndarray
+        Vertical position where the field is evaluated [m].
+    eps : float, optional
         Small step size for numerical differentiation in the radial direction [m].
 
     Returns
     -------
-    float
+    float or np.ndarray
         Value of the vertical magnetic field at (R,Z) [T].
     """
 
     return (Greens(Rc, Zc, R + eps, Z) - Greens(Rc, Zc, R - eps, Z)) / (2.0 * eps * R)
 
 
-def GreensBr(Rc, Zc, R, Z, eps=1e-4):
+def GreensBr(
+    Rc: float | np.ndarray,
+    Zc: float | np.ndarray,
+    R: float | np.ndarray,
+    Z: float | np.ndarray,
+    eps: float = 1e-4,
+) -> float | np.ndarray:
     """
     Calculate radial magnetic field at (R,Z) due to a single unit of current at
     (Rc,Zc) using Greens function for the elliptic operator above.
@@ -653,80 +715,92 @@ def GreensBr(Rc, Zc, R, Z, eps=1e-4):
 
     Parameters
     ----------
-    Rc : float
+    Rc : float or np.ndarray
         Radial position where current is located [m].
-    Zc : float
+    Zc : float or np.ndarray
         Vertical position where current is located [m].
-    R : float
-        Radial position where poloidal flux is to be calcualted [m].
-    Z : float
-        Vertical position where poloidal flux is to be calcualted [m].
-    eps : float
-        Small step size for numerical differentiation in the radial direction [m].
+    R : float or np.ndarray
+        Radial position where the field is evaluated [m].
+    Z : float or np.ndarray
+        Vertical position where the field is evaluated [m].
+    eps : float, optional
+        Small step size for numerical differentiation in the vertical direction [m].
 
     Returns
     -------
-    float
+    float or np.ndarray
         Value of the radial magnetic field at (R,Z) [T].
     """
 
     return (Greens(Rc, Zc, R, Z - eps) - Greens(Rc, Zc, R, Z + eps)) / (2.0 * eps * R)
 
 
-def GreensdBzdr(Rc, Zc, R, Z, eps=2e-3):
+def GreensdBzdr(
+    Rc: float | np.ndarray,
+    Zc: float | np.ndarray,
+    R: float | np.ndarray,
+    Z: float | np.ndarray,
+    eps: float = 2e-3,
+) -> float | np.ndarray:
     """
     Calculate radial derivative of vertical magnetic field at (R,Z) due to a
     single unit of current at (Rc,Zc) using Greens function for the
     elliptic operator above:
 
-        dBz/dR (R,Z) = (Bz(R + eps, Z) - Bz(R - eps, Z))/ 2 * eps.
+        dBz/dR (R,Z) = (Bz(R + eps, Z) - Bz(R - eps, Z))/ (2 * eps).
 
     Parameters
     ----------
-    Rc : float
+    Rc : float or np.ndarray
         Radial position where current is located [m].
-    Zc : float
+    Zc : float or np.ndarray
         Vertical position where current is located [m].
-    R : float
-        Radial position where poloidal flux is to be calcualted [m].
-    Z : float
-        Vertical position where poloidal flux is to be calcualted [m].
-    eps : float
+    R : float or np.ndarray
+        Radial position where the field is evaluated [m].
+    Z : float or np.ndarray
+        Vertical position where the field is evaluated [m].
+    eps : float, optional
         Small step size for numerical differentiation in the radial direction [m].
 
     Returns
     -------
-    float
+    float or np.ndarray
         Value of the derivative at (R,Z) [T/m].
     """
 
     return (GreensBz(Rc, Zc, R + eps, Z) - GreensBz(Rc, Zc, R - eps, Z)) / (2.0 * eps)
 
 
-def GreensdBrdz(Rc, Zc, R, Z, eps=2e-3):
+def GreensdBrdz(
+    Rc: float | np.ndarray,
+    Zc: float | np.ndarray,
+    R: float | np.ndarray,
+    Z: float | np.ndarray,
+    eps: float = 2e-3,
+) -> float | np.ndarray:
     """
     Calculate vertical derivative of radial magnetic field at (R,Z) due to a
     single unit of current at (Rc,Zc) using Greens function for the
     elliptic operator above:
 
-        dBr/dZ (R,Z) = (Br(R, Z + eps) - Br(R, Z - eps))/ 2 * eps.
+        dBr/dZ (R,Z) = (Br(R, Z + eps) - Br(R, Z - eps))/ (2 * eps).
 
     Parameters
     ----------
-    Rc : float
+    Rc : float or np.ndarray
         Radial position where current is located [m].
-    Zc : float
+    Zc : float or np.ndarray
         Vertical position where current is located [m].
-    R : float
-        Radial position where poloidal flux is to be calcualted [m].
-    Z : float
-        Vertical position where poloidal flux is to be calcualted [m].
-    eps : float
+    R : float or np.ndarray
+        Radial position where the field is evaluated [m].
+    Z : float or np.ndarray
+        Vertical position where the field is evaluated [m].
+    eps : float, optional
         Small step size for numerical differentiation in the vertical direction [m].
 
     Returns
     -------
-    float
+    float or np.ndarray
         Value of the derivative at (R,Z) [T/m].
     """
 
@@ -734,120 +808,144 @@ def GreensdBrdz(Rc, Zc, R, Z, eps=2e-3):
     # return GreensdBzdr(Rc, Zc, R, Z, eps)
 
 
-def GreensdBzdz(Rc, Zc, R, Z, eps=2e-3):
+def GreensdBzdz(
+    Rc: float | np.ndarray,
+    Zc: float | np.ndarray,
+    R: float | np.ndarray,
+    Z: float | np.ndarray,
+    eps: float = 2e-3,
+) -> float | np.ndarray:
     """
     Calculate vertical derivative of vertical magnetic field at (R,Z) due to a
     single unit of current at (Rc,Zc) using Greens function for the
     elliptic operator above:
 
-        dBz/dZ (R,Z) = (Bz(R, Z + eps) - Bz(R, Z - eps))/ 2 * eps.
+        dBz/dZ (R,Z) = (Bz(R, Z + eps) - Bz(R, Z - eps)) / (2 * eps).
 
     Parameters
     ----------
-    Rc : float
+    Rc : float or np.ndarray
         Radial position where current is located [m].
-    Zc : float
+    Zc : float or np.ndarray
         Vertical position where current is located [m].
-    R : float
-        Radial position where poloidal flux is to be calcualted [m].
-    Z : float
-        Vertical position where poloidal flux is to be calcualted [m].
-    eps : float
+    R : float or np.ndarray
+        Radial position where the field is evaluated [m].
+    Z : float or np.ndarray
+        Vertical position where the field is evaluated [m].
+    eps : float, optional
         Small step size for numerical differentiation in the vertical direction [m].
 
     Returns
     -------
-    float
+    float or np.ndarray
         Value of the derivative at (R,Z) [T/m].
     """
 
     return (GreensBz(Rc, Zc, R, Z + eps) - GreensBz(Rc, Zc, R, Z - eps)) / (2.0 * eps)
 
 
-def GreensdBrdr(Rc, Zc, R, Z, eps=2e-3):
+def GreensdBrdr(
+    Rc: float | np.ndarray,
+    Zc: float | np.ndarray,
+    R: float | np.ndarray,
+    Z: float | np.ndarray,
+    eps: float = 2e-3,
+) -> float | np.ndarray:
     """
     Calculate radial derivative of radial magnetic field at (R,Z) due to a
     single unit of current at (Rc,Zc) using Greens function for the
     elliptic operator above:
 
-        dBr/dR (R,Z) = (Br(R + eps, Z) - Br(R + pes, Z))/ 2 * eps.
+        dBr/dR (R,Z) = (Br(R + eps, Z) - Br(R - eps, Z))/ (2 * eps).
 
     Parameters
     ----------
-    Rc : float
+    Rc : float or np.ndarray
         Radial position where current is located [m].
-    Zc : float
+    Zc : float or np.ndarray
         Vertical position where current is located [m].
-    R : float
-        Radial position where poloidal flux is to be calcualted [m].
-    Z : float
-        Vertical position where poloidal flux is to be calcualted [m].
-    eps : float
+    R : float or np.ndarray
+        Radial position where the field is evaluated [m].
+    Z : float or np.ndarray
+        Vertical position where the field is evaluated [m].
+    eps : float, optional
         Small step size for numerical differentiation in the radial direction [m].
 
     Returns
     -------
-    float
+    float or np.ndarray
         Value of the derivative at (R,Z) [T/m].
     """
 
     return (GreensBr(Rc, Zc, R + eps, Z) - GreensBr(Rc, Zc, R - eps, Z)) / (2.0 * eps)
 
 
-def GreensdBrdz(Rc, Zc, R, Z, eps=2e-3):
+def GreensdBrdz(
+    Rc: float | np.ndarray,
+    Zc: float | np.ndarray,
+    R: float | np.ndarray,
+    Z: float | np.ndarray,
+    eps: float = 2e-3,
+) -> float | np.ndarray:
     """
     Calculate vertical derivative of radial magnetic field at (R,Z) due to a
     single unit of current at (Rc,Zc) using Greens function for the
     elliptic operator above:
 
-        dBr/dZ (R,Z) = (Br(R, Z + eps) - Br(R, Z - eps))/ 2 * eps.
+        dBr/dZ (R,Z) = (Br(R, Z + eps) - Br(R, Z - eps))/ (2 * eps).
 
     Parameters
     ----------
-    Rc : float
+    Rc : float or np.ndarray
         Radial position where current is located [m].
-    Zc : float
+    Zc : float or np.ndarray
         Vertical position where current is located [m].
-    R : float
-        Radial position where poloidal flux is to be calcualted [m].
-    Z : float
-        Vertical position where poloidal flux is to be calcualted [m].
-    eps : float
-        Small step size for numerical differentiation in the radial direction [m].
+    R : float or np.ndarray
+        Radial position where the field is evaluated [m].
+    Z : float or np.ndarray
+        Vertical position where the field is evaluated [m].
+    eps : float, optional
+        Small step size for numerical differentiation in the vertical direction [m].
 
     Returns
     -------
-    float
+    float or np.ndarray
         Value of the derivative at (R,Z) [T/m].
     """
 
     return (GreensBr(Rc, Zc, R, Z + eps) - GreensBr(Rc, Zc, R, Z - eps)) / (2.0 * eps)
 
 
-def GreensdBzdr(Rc, Zc, R, Z, eps=2e-3):
+def GreensdBzdr(
+    Rc: float | np.ndarray,
+    Zc: float | np.ndarray,
+    R: float | np.ndarray,
+    Z: float | np.ndarray,
+    eps: float = 2e-3,
+) -> float | np.ndarray:
     """
     Calculate radial derivative of vertical magnetic field at (R,Z) due to a
     single unit of current at (Rc,Zc) using Greens function for the
     elliptic operator above:
 
-        dBz/dR (R,Z) = (Bz(R + eps, Z) - Bz(R - eps, Z))/ 2 * eps.
+        dBz/dR (R,Z) = (Bz(R + eps, Z) - Bz(R - eps, Z))/ (2 * eps).
 
     Parameters
     ----------
-    Rc : float
+    Rc : float or np.ndarray
         Radial position where current is located [m].
-    Zc : float
+    Zc : float or np.ndarray
         Vertical position where current is located [m].
-    R : float
-        Radial position where poloidal flux is to be calcualted [m].
-    Z : float
-        Vertical position where poloidal flux is to be calcualted [m].
-    eps : float
-        Small step size for numerical differentiation in the vertical direction [m].
+    R : float or np.ndarray
+        Radial position where the field is evaluated [m].
+    Z : float or np.ndarray
+        Vertical position where the field is evaluated [m].
+    eps : float, optional
+        Small step size for numerical differentiation in the radial direction [m].
 
     Returns
     -------
-    float
+    float or np.ndarray
         Value of the derivative at (R,Z) [T/m].
     """
 

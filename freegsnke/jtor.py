@@ -205,6 +205,9 @@ class Profile(object):
         # find O- and X-points of equilibrium
         opt, xpt = critical.find_critical(R, Z, psi, self.mask_inside_limiter, self.Ip)
 
+        # flux on the magnetic axis (needed by fpol, pressure, and q, also without X-points)
+        self.psi_axis = opt[0][2]
+
         # find core plasma mask (using user-defined psi_bndry)
         if psi_bndry is not None:
             diverted_core_mask = critical.inside_mask(
@@ -213,7 +216,6 @@ class Profile(object):
         elif len(xpt) > 0:
             # find core plasma mask using psi_bndry from xpt
             psi_bndry = xpt[0][2]
-            self.psi_axis = opt[0][2]
             # check correct sorting between psi_axis and psi_bndry
             if (self.psi_axis - psi_bndry) * self.Ip < 0:
                 raise ValueError(

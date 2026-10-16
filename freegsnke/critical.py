@@ -1055,8 +1055,9 @@ def find_safety(
         Equilibrium object.
     npsi : int
         Number of flux surface values to find q for.
-    psinorm : np.array
-        The flux surfaces to calculate q for (length must be equal to npsi).
+    psinorm : float or np.array
+        The flux surface(s) to calculate q for (a scalar or an array-like, which
+        is flattened). If None, 100 surfaces are used.
     ntheta : int
         Number of poloidal points to find q values on.
     psi : np.array
@@ -1071,7 +1072,8 @@ def find_safety(
     Returns
     -------
     np.array
-        Returns the safety factor at 'npsi' points in normalised psi.
+        Returns the safety factor at 'npsi' points in normalised psi
+        (a 1d array, one value per element of the flattened 'psinorm').
     """
 
     if psi is None:
@@ -1080,8 +1082,9 @@ def find_safety(
     if (opoint is None) or (xpoint is None):
         opoint, xpoint = find_critical(eq.R, eq.Z, psi)
 
-    if (xpoint is None) or (len(xpoint) == 0):
-        # No X-point - e.g. a limiter-bounded plasma
+    # a limiter plasma is bounded by psi_bndry, even if X-points exist elsewhere in the grid
+    limited = getattr(getattr(eq, "_profiles", None), "flag_limiter", False)
+    if limited or (xpoint is None) or (len(xpoint) == 0):
         psi_boundary = eq.psi_bndry
     else:
         psi_boundary = xpoint[0][2]
@@ -1095,28 +1098,26 @@ def find_safety(
     theta_grid = linspace(0, 2 * pi, ntheta, endpoint=False)
     dtheta = theta_grid[1] - theta_grid[0]
 
-    # Avoid putting theta grid points exactly on the X-points
-    xpoint_theta = arctan2(xpoint[0][0] - r0, xpoint[0][1] - z0)
-    xpoint_theta = xpoint_theta * (xpoint_theta >= 0) + (xpoint_theta + 2 * pi) * (
-        xpoint_theta < 0
-    )  # let's make it between 0 and 2*pi
-    # How close in theta to allow theta grid points to the X-point
-    TOLERANCE = 1.0e-3
+    # Avoid putting theta grid points exactly on the X-points (if there are any)
+    if (xpoint is not None) and (len(xpoint) > 0):
+        xpoint_theta = arctan2(xpoint[0][0] - r0, xpoint[0][1] - z0)
+        xpoint_theta = xpoint_theta * (xpoint_theta >= 0) + (xpoint_theta + 2 * pi) * (
+            xpoint_theta < 0
+        )  # let's make it between 0 and 2*pi
+        # How close in theta to allow theta grid points to the X-point
+        TOLERANCE = 1.0e-3
 
-    if any(abs(theta_grid - xpoint_theta) < TOLERANCE):
-        warnings.warn("Theta grid too close to X-point, shifting by half-step")
-        theta_grid += dtheta / 2
+        if any(abs(theta_grid - xpoint_theta) < TOLERANCE):
+            warnings.warn("Theta grid too close to X-point, shifting by half-step")
+            theta_grid += dtheta / 2
 
     if psinorm is None:
         npsi = 100
         psirange = linspace(1.0 / (npsi + 1), 1.0, npsi, endpoint=False)
     else:
-        try:
-            psirange = psinorm
-            npsi = len(psinorm)
-        except TypeError:
-            npsi = 1
-            psirange = [psinorm]
+        # accept a scalar or an array-like of any shape (flattened here)
+        psirange = np.atleast_1d(np.asarray(psinorm, dtype=float)).reshape(-1)
+        npsi = len(psirange)
 
     psisurf = zeros([npsi, ntheta, 2])
 

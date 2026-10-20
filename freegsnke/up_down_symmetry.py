@@ -990,14 +990,18 @@ def _identify_active_pairs(active_data, explicit_pairs, z_midplane):
     # internally symmetric, rather than silently treating it as an unmatched
     # upper- or lower-only source.
     self_names = [name for name in names if name not in paired]
+    raise_error = False
     for name in self_names:
         z_values = np.concatenate(
             [np.asarray(part["Z"]) for _, part in _active_parts(active_data[name])]
         )
         if not (np.any(z_values > z_midplane) and np.any(z_values < z_midplane)):
-            raise ValueError(
+            print(
                 f"Unpaired active circuit '{name}' does not span the symmetry plane."
             )
+            raise_error = True
+    if raise_error:
+        raise ValueError("Unpaired active circuits found. Aborting symetrization.")
     return pairs, self_names
 
 

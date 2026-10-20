@@ -25,6 +25,7 @@ from copy import deepcopy
 
 import numpy as np
 
+from . import polygons
 from .coil import Coil
 from .copying import copy_into
 from .machine import Circuit, Wall
@@ -39,6 +40,235 @@ from .magnetic_probes import Probes
 from .multi_coil import MultiCoil
 from .passive_structure import PassiveStructure
 from .refine_passive import generate_refinement
+
+
+def _point_in_polygon(point, polygon):
+    """Return whether a point is strictly inside a polygon."""
+    x, y = point
+    inside = False
+    coordinate_scale = max(
+        abs(x),
+        abs(y),
+        *(abs(value) for vertex in polygon for value in vertex),
+    )
+    scale = max(
+        float(np.ptp([vertex[0] for vertex in polygon])),
+        float(np.ptp([vertex[1] for vertex in polygon])),
+    )
+    tolerance = (
+        np.finfo(float).eps
+        * max(scale**2, coordinate_scale * scale)
+        * 16
+    )
+
+    for index, start in enumerate(polygon):
+        end = polygon[(index + 1) % len(polygon)]
+        dx = end[0] - start[0]
+        dy = end[1] - start[1]
+        cross = (x - start[0]) * dy - (y - start[1]) * dx
+        dot = (x - start[0]) * (x - end[0]) + (y - start[1]) * (y - end[1])
+        if abs(cross) <= tolerance and dot <= tolerance:
+            return False
+
+        if (start[1] > y) != (end[1] > y):
+            crossing_x = start[0] + (y - start[1]) * dx / dy
+            if x < crossing_x:
+                inside = not inside
+
+    return inside
+
+
+def _segments_cross_interior(start1, end1, start2, end2):
+    """Return whether two segments cross away from their endpoints."""
+
+    def orientation(start, end, point):
+        return (end[0] - start[0]) * (point[1] - start[1]) - (
+            end[1] - start[1]
+        ) * (point[0] - start[0])
+
+    scale = max(
+        abs(end1[0] - start1[0]),
+        abs(end1[1] - start1[1]),
+        abs(end2[0] - start2[0]),
+        abs(end2[1] - start2[1]),
+    )
+    coordinate_scale = max(
+        abs(value)
+        for point in (start1, end1, start2, end2)
+        for value in point
+    )
+    tolerance = (
+        np.finfo(float).eps
+        * max(scale**2, coordinate_scale * scale)
+        * 16
+    )
+    first = orientation(start1, end1, start2)
+    second = orientation(start1, end1, end2)
+    third = orientation(start2, end2, start1)
+    fourth = orientation(start2, end2, end1)
+    return (
+        (first > tolerance and second < -tolerance)
+        or (first < -tolerance and second > tolerance)
+    ) and (
+        (third > tolerance and fourth < -tolerance)
+        or (third < -tolerance and fourth > tolerance)
+    )
+
+
+def _polygon_interior_points(polygon):
+    """Yield points safely inside a non-degenerate polygon."""
+    area = polygons.area(polygon)
+    if area == 0:
+        return
+
+    yield (
+        sum(vertex[0] for vertex in polygon) / len(polygon),
+        sum(vertex[1] for vertex in polygon) / len(polygon),
+    )
+
+    scale = max(
+        float(np.ptp([vertex[0] for vertex in polygon])),
+        float(np.ptp([vertex[1] for vertex in polygon])),
+    )
+    offset = scale * 1e-7
+    direction = 1.0 if area > 0 else -1.0
+    for index, start in enumerate(polygon):
+        end = polygon[(index + 1) % len(polygon)]
+        dx = end[0] - start[0]
+        dy = end[1] - start[1]
+        length = np.hypot(dx, dy)
+        if length == 0:
+            continue
+        yield (
+            (start[0] + end[0]) / 2 + direction * dy / length * offset,
+            (start[1] + end[1]) / 2 - direction * dx / length * offset,
+        )
+
+
+def _polygons_overlap(first, second):
+    """Return whether two polygon interiors overlap."""
+    if polygons.area(first) == 0 or polygons.area(second) == 0:
+        return False
+
+    for index, start in enumerate(first):
+        end = first[(index + 1) % len(first)]
+        for other_index, other_start in enumerate(second):
+            other_end = second[(other_index + 1) % len(second)]
+            if _segments_cross_interior(start, end, other_start, other_end):
+                return True
+
+    for point in _polygon_interior_points(first):
+        if _point_in_polygon(point, first) and _point_in_polygon(point, second):
+            return True
+    for point in _polygon_interior_points(second):
+        if _point_in_polygon(point, second) and _point_in_polygon(point, first):
+            return True
+    return False
+
+
+def _rectangle_from_center(r, z, dR, dZ):
+    """Build a polygon for an element specified by its centre and dimensions."""
+    half_width = float(dR) / 2
+    half_height = float(dZ) / 2
+    if not np.isfinite([r, z, half_width, half_height]).all():
+        raise ValueError("Element coordinates and dimensions must be finite.")
+    if half_width <= 0 or half_height <= 0:
+        raise ValueError("Element dimensions 'dR' and 'dZ' must be positive.")
+    return [
+        (r - half_width, z - half_height),
+        (r + half_width, z - half_height),
+        (r + half_width, z + half_height),
+        (r - half_width, z + half_height),
+    ]
+
+
+def check_for_overlapping_elements(active_data, passive_data):
+    """Find overlapping pairs among active and passive machine elements.
+
+    Active ``R`` and ``Z`` arrays are winding centres, with ``dR`` and ``dZ``
+    defining each winding's rectangular cross-section. A passive entry with
+    scalar ``R`` and ``Z`` is treated as a rectangular filament; array-valued
+    coordinates define a polygon.
+
+    Returns
+    -------
+    list[tuple[str, str]]
+        Labels for each overlapping pair. Multi-winding active entries include
+        a zero-based winding index in their label. Active-active pairs come
+        first, followed by passive-passive and active-passive pairs.
+    """
+    active_elements = []
+    for name, coil_data in active_data.items():
+        if "R" in coil_data or "Z" in coil_data:
+            coils = [(name, coil_data)]
+        else:
+            coils = [
+                (f"{name}.{subname}", subcoil_data)
+                for subname, subcoil_data in coil_data.items()
+            ]
+
+        for coil_name, element in coils:
+            r_values = np.asarray(element["R"], dtype=float).reshape(-1)
+            z_values = np.asarray(element["Z"], dtype=float).reshape(-1)
+            if r_values.size != z_values.size:
+                raise ValueError(
+                    f"Active element '{coil_name}' must have matching R and Z values."
+                )
+            if r_values.size == 0:
+                raise ValueError(f"Active element '{coil_name}' has no windings.")
+            for index, (r, z) in enumerate(zip(r_values, z_values)):
+                label = (
+                    coil_name
+                    if r_values.size == 1
+                    else f"{coil_name}[{index}]"
+                )
+                active_elements.append(
+                    (
+                        label,
+                        _rectangle_from_center(r, z, element["dR"], element["dZ"]),
+                    )
+                )
+
+    passive_elements = []
+    for index, element in enumerate(passive_data):
+        label = element.get("name", f"passive_{index}")
+        r_values = np.asarray(element["R"], dtype=float).reshape(-1)
+        z_values = np.asarray(element["Z"], dtype=float).reshape(-1)
+        if r_values.size != z_values.size:
+            raise ValueError(
+                f"Passive element '{label}' must have matching R and Z values."
+            )
+        if not np.isfinite(r_values).all() or not np.isfinite(z_values).all():
+            raise ValueError(f"Passive element '{label}' coordinates must be finite.")
+        if r_values.size == 1:
+            shape = _rectangle_from_center(
+                r_values[0], z_values[0], element["dR"], element["dZ"]
+            )
+        else:
+            if r_values.size < 3:
+                raise ValueError(
+                    f"Passive polygon '{label}' must have at least three vertices."
+                )
+            shape = list(zip(r_values, z_values))
+        passive_elements.append((label, shape))
+
+    overlaps = []
+    for index, (first_name, first_shape) in enumerate(active_elements):
+        for second_name, second_shape in active_elements[index + 1 :]:
+            if _polygons_overlap(first_shape, second_shape):
+                overlaps.append((first_name, second_name))
+
+    for index, (first_name, first_shape) in enumerate(passive_elements):
+        for second_name, second_shape in passive_elements[index + 1 :]:
+            if _polygons_overlap(first_shape, second_shape):
+                overlaps.append((first_name, second_name))
+
+    for active_name, active_shape in active_elements:
+        for passive_name, passive_shape in passive_elements:
+            if _polygons_overlap(active_shape, passive_shape):
+                overlaps.append((active_name, passive_name))
+
+    return overlaps
 
 
 def tokamak(
@@ -177,7 +407,7 @@ def build_tokamak_components(
         FreeGSNKE coil metadata, coil counts, and the probe object needed to
         initialise or update a :class:`freegsnke.machine_update.Machine`.
     """
-
+    
     # check data can be loaded correctly
     active_coils, passive_coils, limiter, wall = load_data_dicts(
         active_coils_data=active_coils_data,
@@ -190,6 +420,16 @@ def build_tokamak_components(
         wall_path=wall_path,
     )
 
+    overlapping_elements = check_for_overlapping_elements(
+            active_data=active_coils,
+            passive_data=passive_coils,
+        )
+    if overlapping_elements:
+        overlap_list = "; ".join(
+            f"{first} and {second}" for first, second in overlapping_elements
+        )
+        raise ValueError(f"Overlapping coil elements detected: {overlap_list}")
+    
     # build the actives into their circuits
     coil_circuits = build_actives(active_coils=active_coils)
     n_active_coils = len(coil_circuits)
@@ -1764,7 +2004,6 @@ def copy_tokamak(tokamak: Machine):
     new_tokamak.probes = tokamak.probes
 
     return new_tokamak
-
 
 if __name__ == "__main__":
     for coil_name in active_coils:

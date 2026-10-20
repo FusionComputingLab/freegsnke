@@ -472,3 +472,99 @@ def test_example_machine_plot_smoke(monkeypatch, tmp_path, example_tokamak):
     ax.plot(example_tokamak.limiter.R, example_tokamak.limiter.Z)
     ax.plot(example_tokamak.wall.R, example_tokamak.wall.Z)
     plt.close(fig)
+
+
+def test_check_for_overlapping_elements_reports_all_pair_types():
+    active = {
+        "pair": {
+            "upper": {
+                "R": [1.0],
+                "Z": [0.0],
+                "dR": 0.2,
+                "dZ": 0.2,
+            },
+            "lower": {
+                "R": [2.0],
+                "Z": [0.0],
+                "dR": 0.2,
+                "dZ": 0.2,
+            },
+        },
+        "overlapping": {
+            "R": [1.05, 1.08],
+            "Z": [0.0, 0.0],
+            "dR": 0.2,
+            "dZ": 0.2,
+        },
+        "clear": {
+            "R": [3.0],
+            "Z": [0.0],
+            "dR": 0.2,
+            "dZ": 0.2,
+        },
+    }
+    passive = [
+        {
+            "name": "pin",
+            "R": 1.0,
+            "Z": 0.0,
+            "dR": 0.2,
+            "dZ": 0.2,
+        },
+        {
+            "name": "plate",
+            "R": [1.95, 2.2, 2.2, 1.95],
+            "Z": [-0.1, -0.1, 0.1, 0.1],
+        },
+        {
+            "name": "overlapping_plate",
+            "R": [2.1, 2.3, 2.3, 2.1],
+            "Z": [-0.1, -0.1, 0.1, 0.1],
+        },
+        {
+            "name": "clear_plate",
+            "R": [3.5, 3.7, 3.7, 3.5],
+            "Z": [-0.1, -0.1, 0.1, 0.1],
+        },
+    ]
+
+    overlaps = build_machine.check_for_overlapping_elements(active, passive)
+
+    assert ("pair.upper", "overlapping[0]") in overlaps
+    assert ("overlapping[0]", "overlapping[1]") in overlaps
+    assert ("plate", "overlapping_plate") in overlaps
+    assert ("pair.lower", "plate") in overlaps
+    assert ("pair.upper", "pin") in overlaps
+    assert ("clear", "clear_plate") not in overlaps
+
+
+def test_check_for_overlapping_elements_detects_contained_polygons():
+    active = {
+        "coil": {
+            "R": [1.0],
+            "Z": [0.0],
+            "dR": 0.1,
+            "dZ": 0.1,
+        }
+    }
+    passive = [
+        {
+            "name": "enclosing_structure",
+            "R": [0.5, 1.5, 1.5, 0.5],
+            "Z": [-0.5, -0.5, 0.5, 0.5],
+        }
+    ]
+
+    assert build_machine.check_for_overlapping_elements(active, passive) == [
+        ("coil", "enclosing_structure")
+    ]
+
+
+def test_check_for_overlapping_elements_does_not_report_touching_edges():
+    active = {
+        "left": {"R": [1.0], "Z": [0.0], "dR": 0.2, "dZ": 0.2},
+        "right": {"R": [1.2], "Z": [0.0], "dR": 0.2, "dZ": 0.2},
+    }
+
+    assert build_machine.check_for_overlapping_elements(active, []) == []
+

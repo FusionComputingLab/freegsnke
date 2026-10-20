@@ -708,17 +708,21 @@ class Equilibrium:
 
         Parameters
         ----------
-        psinorm : np.array
-            Array of normalised psi values between (not including) 0 and 1.
+        psinorm : float or np.array
+            Normalised psi value(s) between (not including) 0 and 1. Can be a
+            scalar or an array of any shape.
 
         Returns
         -------
-        np.array
-            Safety factor q at values of normalised psi.
+        float or np.array
+            Safety factor q at values of normalised psi: a float for a single
+            value, otherwise an array with the same shape as `psinorm`.
         """
 
+        psinorm = np.asarray(psinorm, dtype=float)
+
         # print warning if needed
-        if 0 in psinorm or 1 in psinorm:
+        if np.any(psinorm == 0) or np.any(psinorm == 1):
             print(
                 "psinorm contains 0 or 1, which may cause numerical issues druing safety factor calculation."
             )
@@ -730,7 +734,7 @@ class Equilibrium:
         if len(q) == 1:
             return q.item()
 
-        return q
+        return q.reshape(psinorm.shape)
 
     def pprime(self, psinorm):
         """

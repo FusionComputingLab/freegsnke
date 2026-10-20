@@ -213,3 +213,81 @@ def test_alternative_xpoint_search_advances_after_edge_mask(monkeypatch):
     assert np.array_equal(selected_xpt, xpt[2:])
     assert np.isclose(psi_bndry, selected_xpt[0, 2])
     assert np.array_equal(mask, final_mask)
+
+
+def _tension_spline_profile():
+    knots = np.array([0.0, 0.25, 0.5, 0.75, 1.0])
+    return jtor.TensionSpline(
+        Ip=2e5,
+        fvac=2.0,
+        pp_knots=knots,
+        pp_values=np.array([1.0, 0.8, 0.5, 0.2, 0.0]),
+        pp_values_2=np.array([0.0, -0.5, 0.3, -0.2, 0.0]),
+        pp_sigma=2.0,
+        ffp_knots=knots,
+        ffp_values=np.array([0.5, 0.4, 0.3, 0.1, 0.0]),
+        ffp_values_2=np.array([0.0, 0.2, -0.1, 0.1, 0.0]),
+        ffp_sigma=1.5,
+    )
+
+
+def test_tension_spline_accepts_scalars_and_arrays():
+    """Scalars (as passed by scipy's quad) and arrays of any shape give the same values."""
+    profiles = _tension_spline_profile()
+    args = (
+        profiles.pp_knots,
+        profiles.pp_values,
+        profiles.pp_values_2,
+        profiles.pp_sigma,
+    )
+    x = np.array([0.05, 0.3, 0.61, 0.9])
+    expected = profiles.tension_spline(x, *args)
+
+    for xi, ei in zip(x, expected):
+        scalar = profiles.tension_spline(xi, *args)
+        assert isinstance(scalar, float)
+        assert np.isclose(scalar, ei, rtol=1e-12)
+        assert np.isclose(profiles.tension_spline(float(xi), *args), ei, rtol=1e-12)
+        zero_d = profiles.tension_spline(np.array(xi), *args)
+        assert np.isclose(zero_d, ei, rtol=1e-12)
+
+    assert profiles.tension_spline(x[:1], *args).shape == (1,)
+    grid = profiles.tension_spline(x.reshape(2, 2), *args)
+    assert grid.shape == (2, 2)
+    assert np.allclose(grid.reshape(-1), expected, rtol=1e-12)
+
+
+def test_tension_spline_reproduces_knot_values_in_any_position():
+    """Evaluating at the knots returns the knot values, wherever they sit in x."""
+    profiles = _tension_spline_profile()
+    knots, values = profiles.pp_knots, profiles.pp_values
+    args = (knots, values, profiles.pp_values_2, profiles.pp_sigma)
+
+    for order in (np.arange(5), np.arange(5)[::-1], np.array([2, 0, 4, 1, 3])):
+        result = profiles.tension_spline(knots[order], *args)
+        assert np.allclose(result, values[order], rtol=1e-12)
+
+    # an interior knot at the start or end of x must not be double counted
+    assert np.isclose(profiles.tension_spline(0.5, *args), values[2])
+    assert np.isclose(
+        profiles.tension_spline(np.array([0.5, 0.6]), *args)[0], values[2]
+    )
+    assert np.isclose(
+        profiles.tension_spline(np.array([0.4, 0.5]), *args)[1], values[2]
+    )
+
+
+def test_tension_spline_profile_fpol_and_pressure_accept_scalars():
+    """fpol and pressure integrate with quad, which evaluates the profile at scalars."""
+    profiles = _tension_spline_profile()
+    # normally set when the current density is first calculated
+    profiles.psi_axis = 1.0
+    profiles.psi_bndry = 0.0
+    profiles.L = 1.0
+
+    psinorm = np.array([0.1, 0.4, 0.8])
+    for method in (profiles.fpol, profiles.pressure):
+        from_array = method(psinorm)
+        assert np.all(np.isfinite(from_array))
+        for pn, expected in zip(psinorm, from_array):
+            assert np.isclose(method(float(pn)), expected, rtol=1e-12)

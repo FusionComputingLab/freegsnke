@@ -24,4 +24,6 @@ These example Jupyter notebooks are intended to be the **first port of call for 
 | Example 10 | Learn how to calculate growth rates associated with vertically unstable modes. | Anyone |
 | Example 11 | Learn how to use the evolutive solver alongside a virtual plasma control system (FreeGSNKE Pulse Design Tool). | Anyone |
 
+| Example 12 | Calculate an implicit odd GS response and verify it against signed nonlinear solves on a manufactured equilibrium. | Anyone |
+
 If a new example has been created, please add a new line to the table explaining its purpose!

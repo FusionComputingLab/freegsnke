@@ -5,19 +5,23 @@ Copyright 2025 UKAEA, UKRI-STFC, and The Authors, as per the COPYRIGHT and READM
 
 This file is part of FreeGSNKE.
 
-FreeGSNKE is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Lesser General Public License for more details.
-
 FreeGSNKE is free software: you can redistribute it and/or modify
 it under the terms of the GNU Lesser General Public License as published by
 the Free Software Foundation, either version 3 of the License, or
 (at your option) any later version.
 
+FreeGSNKE is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Lesser General Public License for more details.
+
 You should have received a copy of the GNU Lesser General Public License
-along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
+along with FreeGSNKE. If not, see <http://www.gnu.org/licenses/>.
 """
+
+from __future__ import annotations
+
+from typing import Callable
 
 import numpy as np
 from matplotlib.path import Path
@@ -46,11 +50,18 @@ class Jtor_universal:
     to know which implementation is being used.
     """
 
-    def __init__(self, refine_jtor=False):
-        """Sets default unrefined Jtor."""
+    def __init__(self, refine_jtor: bool = False) -> None:
+        """
+        Sets default unrefined Jtor.
+
+        Parameters
+        ----------
+        refine_jtor : bool, optional
+            If True, `Jtor` dispatches to the refined implementation.
+        """
         self._refine_jtor = refine_jtor
 
-    def Jtor(self, *args, **kwargs):
+    def Jtor(self, *args: object, **kwargs: object) -> np.ndarray:
         """
         Evaluate toroidal current density (Jtor), dispatching to either the
         refined or unrefined implementation.
@@ -61,12 +72,14 @@ class Jtor_universal:
 
         Parameters
         ----------
-        *args, **kwargs
-            Arguments passed directly to the selected Jtor implementation.
+        *args : object
+            Positional arguments passed directly to the selected Jtor implementation.
+        **kwargs : object
+            Keyword arguments passed directly to the selected Jtor implementation.
 
         Returns
         -------
-        ndarray
+        np.ndarray
             Toroidal current density evaluated on the plasma grid.
         """
         if self._refine_jtor:
@@ -74,7 +87,7 @@ class Jtor_universal:
         else:
             return self.Jtor_unrefined(*args, **kwargs)
 
-    def copy(self, obj=None):
+    def copy(self, obj: Jtor_universal | None = None) -> Jtor_universal:
         """
         Create a copy of the current Jtor_universal instance.
 
@@ -170,7 +183,7 @@ class Jtor_universal:
 
         return obj
 
-    def set_masks(self, eq):
+    def set_masks(self, eq: object) -> None:
         """
         Initialise grid geometry and limiter-related masks from an equilibrium object.
 
@@ -203,7 +216,9 @@ class Jtor_universal:
         self.mask_outside_limiter = self.limiter_handler.mask_outside_limiter
         self.limiter_mask_out = self.limiter_handler.limiter_mask_out
 
-    def select_refinement(self, eq, refine_jtor, nnx, nny):
+    def select_refinement(
+        self, eq: object, refine_jtor: bool, nnx: int | None, nny: int | None
+    ) -> None:
         """
         Initialise optional subgrid refinement for toroidal current density (jtor).
 
@@ -218,21 +233,19 @@ class Jtor_universal:
         refine_jtor : bool
             If True, enable subgrid refinement of the toroidal current density.
             If False, refinement is disabled.
-        nnx : int (even)
-            Refinement factor in the R-direction.
-        nny : int (even)
-            Refinement factor in the Z-direction.
-
-        Returns
-        -------
-        None
+        nnx : int (even) or None
+            Refinement factor in the R-direction (only used if `refine_jtor` is True).
+        nny : int (even) or None
+            Refinement factor in the Z-direction (only used if `refine_jtor` is True).
         """
         self._refine_jtor = refine_jtor
         if refine_jtor:
             self.jtor_refiner = jtor_refinement.Jtor_refiner(eq, nnx, nny)
             self.set_refinement_thresholds()
 
-    def set_refinement_thresholds(self, thresholds=(1.0, 1.0)):
+    def set_refinement_thresholds(
+        self, thresholds: tuple[float, float] = (1.0, 1.0)
+    ) -> None:
         """
         Set the criteria used to control jtor subgrid refinement.
 
@@ -244,23 +257,19 @@ class Jtor_universal:
         thresholds : tuple of float, optional
             (jtor_threshold, gradient_threshold), where each value controls
             the activation of refinement criteria.
-
-        Returns
-        -------
-        None
         """
         self.refinement_thresholds = thresholds
 
     def diverted_critical(
         self,
-        R,
-        Z,
-        psi,
-        psi_bndry=None,
-        mask_outside_limiter=None,
-        rel_tolerance_xpt=1e-10,
-        starting_dx=0.05,
-    ):
+        R: np.ndarray,
+        Z: np.ndarray,
+        psi: np.ndarray,
+        psi_bndry: float | None = None,
+        mask_outside_limiter: np.ndarray | None = None,
+        rel_tolerance_xpt: float = 1e-10,
+        starting_dx: float = 0.05,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, float]:
         """
         Compute LCFS, O-point, X-point, and core mask using a contour-based fallback algorithm.
 
@@ -269,15 +278,15 @@ class Jtor_universal:
 
         Parameters
         ----------
-        R : ndarray
+        R : np.ndarray
             Radial grid coordinates.
-        Z : ndarray
+        Z : np.ndarray
             Vertical grid coordinates.
-        psi : ndarray
+        psi : np.ndarray
             Poloidal flux on the computational grid.
         psi_bndry : float, optional
             Prescribed boundary flux value. If None, it is computed internally.
-        mask_outside_limiter : ndarray, optional
+        mask_outside_limiter : np.ndarray, optional
             Boolean mask identifying points outside the limiter.
         rel_tolerance_xpt : float, optional
             Relative tolerance controlling convergence of X-point search.
@@ -286,14 +295,19 @@ class Jtor_universal:
 
         Returns
         -------
-        opt : ndarray, shape (1, 3)
+        opt : np.ndarray, shape (1, 3)
             O-point coordinates and flux value [R, Z, psi].
-        xpt : ndarray, shape (1, 3)
+        xpt : np.ndarray, shape (1, 3)
             X-point coordinates and flux value [R, Z, psi].
-        diverted_core_mask : ndarray, shape (nx, ny)
+        diverted_core_mask : np.ndarray, shape (nx, ny)
             Boolean mask identifying plasma core region.
         psi_bndry : float
             Flux value at the last closed flux surface (LCFS).
+
+        Raises
+        ------
+        ValueError
+            If there is no local maximum of the flux inside the limiter region.
         """
 
         # prepare psi_map to use
@@ -391,14 +405,14 @@ class Jtor_universal:
 
     def diverted_critical_complete(
         self,
-        R,
-        Z,
-        psi,
-        psi_bndry=None,
-        mask_outside_limiter=None,
-        rel_tolerance_xpt=1e-4,
-        starting_dx=0.05,
-    ):
+        R: np.ndarray,
+        Z: np.ndarray,
+        psi: np.ndarray,
+        psi_bndry: float | None = None,
+        mask_outside_limiter: np.ndarray | None = None,
+        rel_tolerance_xpt: float = 1e-4,
+        starting_dx: float = 0.05,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, float]:
         """
         Robust LCFS, O-point, X-point, and core mask detection with fallback logic.
 
@@ -409,15 +423,15 @@ class Jtor_universal:
 
         Parameters
         ----------
-        R : ndarray
+        R : np.ndarray
             Radial grid coordinates.
-        Z : ndarray
+        Z : np.ndarray
             Vertical grid coordinates.
-        psi : ndarray
+        psi : np.ndarray
             Poloidal flux on the computational grid.
         psi_bndry : float, optional
             Prescribed boundary flux value. If None, it is computed internally.
-        mask_outside_limiter : ndarray, optional
+        mask_outside_limiter : np.ndarray, optional
             Boolean mask identifying points outside the limiter.
         rel_tolerance_xpt : float, optional
             Convergence tolerance for X-point search in fallback method.
@@ -426,11 +440,11 @@ class Jtor_universal:
 
         Returns
         -------
-        opt : ndarray, shape (1, 3)
+        opt : np.ndarray, shape (1, 3)
             O-point coordinates and flux value [R, Z, psi].
-        xpt : ndarray, shape (1, 3)
+        xpt : np.ndarray, shape (1, 3)
             X-point coordinates and flux value [R, Z, psi].
-        diverted_core_mask : ndarray
+        diverted_core_mask : np.ndarray
             Boolean mask of plasma core region.
         psi_bndry : float
             Flux value at the last closed flux surface (LCFS).
@@ -455,16 +469,24 @@ class Jtor_universal:
 
     def Jtor_build(
         self,
-        Jtor_part1,
-        Jtor_part2,
-        core_mask_limiter,
-        R,
-        Z,
-        psi,
-        psi_bndry,
-        mask_outside_limiter,
-        limiter_mask_out,
-    ):
+        Jtor_part1: Callable[..., tuple],
+        Jtor_part2: Callable[..., np.ndarray],
+        core_mask_limiter: Callable[..., tuple],
+        R: np.ndarray,
+        Z: np.ndarray,
+        psi: np.ndarray,
+        psi_bndry: float | None,
+        mask_outside_limiter: np.ndarray,
+        limiter_mask_out: np.ndarray,
+    ) -> tuple[
+        np.ndarray,
+        np.ndarray,
+        np.ndarray,
+        float,
+        np.ndarray | None,
+        np.ndarray,
+        bool,
+    ]:
         """
         Construct the toroidal current density (Jtor) using a modular profile pipeline.
 
@@ -481,40 +503,41 @@ class Jtor_universal:
         ----------
         Jtor_part1 : callable
             Function that computes geometric plasma descriptors:
-            returns (opt, xpt, diverted_core_mask).
+            returns (opt, xpt, diverted_core_mask, psi_bndry).
         Jtor_part2 : callable
             Function that evaluates the toroidal current density jtor.
         core_mask_limiter : callable
             Function that refines the core mask using limiter geometry.
-        R : ndarray
+        R : np.ndarray
             Radial grid coordinates.
-        Z : ndarray
+        Z : np.ndarray
             Vertical grid coordinates.
-        psi : ndarray
+        psi : np.ndarray
             Poloidal flux on the grid.
-        psi_bndry : float
-            Flux value at the last closed flux surface (LCFS).
-        mask_outside_limiter : ndarray
+        psi_bndry : float or None
+            Flux value at the last closed flux surface (LCFS), passed to `Jtor_part1`.
+        mask_outside_limiter : np.ndarray
             Boolean mask for points outside the limiter.
-        limiter_mask_out : ndarray
+        limiter_mask_out : np.ndarray
             Limiter boundary mask (including edge-adjacent region).
 
         Returns
         -------
-        jtor : ndarray
+        jtor : np.ndarray
             Toroidal current density on the grid.
-        opt : ndarray
+        opt : np.ndarray
             O-point coordinates and flux value.
-        xpt : ndarray
+        xpt : np.ndarray
             X-point coordinates and flux value.
         psi_bndry : float
             Updated LCFS flux value.
-        diverted_core_mask : ndarray
-            Core plasma mask from geometric reconstruction.
-        limiter_core_mask : ndarray
+        diverted_core_mask : np.ndarray or None
+            Core plasma mask from geometric reconstruction (None if no diverted
+            core was found, i.e. a limiter plasma).
+        limiter_core_mask : np.ndarray
             Core mask refined with limiter constraints.
-        flag_limiter : bool or int
-            Indicator of whether limiter correction was applied successfully.
+        flag_limiter : bool
+            True if the plasma is in a limiter (rather than diverted) configuration.
         """
 
         opt, xpt, diverted_core_mask, self.diverted_psi_bndry = Jtor_part1(
@@ -558,7 +581,13 @@ class Jtor_universal:
             flag_limiter,
         )
 
-    def Jtor_unrefined(self, R, Z, psi, psi_bndry=None):
+    def Jtor_unrefined(
+        self,
+        R: np.ndarray,
+        Z: np.ndarray,
+        psi: np.ndarray,
+        psi_bndry: float | None = None,
+    ) -> np.ndarray:
         """
         Compute the toroidal current density without subgrid refinement.
 
@@ -568,11 +597,11 @@ class Jtor_universal:
 
         Parameters
         ----------
-        R : ndarray
+        R : np.ndarray
             Radial grid coordinates.
-        Z : ndarray
+        Z : np.ndarray
             Vertical grid coordinates.
-        psi : ndarray
+        psi : np.ndarray
             Poloidal flux on the grid (Webers / 2π).
         psi_bndry : float, optional
             Flux value at the last closed flux surface (LCFS). If None,
@@ -580,7 +609,7 @@ class Jtor_universal:
 
         Returns
         -------
-        jtor : ndarray
+        jtor : np.ndarray
             Toroidal current density on the computational grid.
         """
         (
@@ -604,7 +633,14 @@ class Jtor_universal:
         )
         return self.jtor
 
-    def Jtor_refined(self, R, Z, psi, psi_bndry=None, thresholds=None):
+    def Jtor_refined(
+        self,
+        R: np.ndarray,
+        Z: np.ndarray,
+        psi: np.ndarray,
+        psi_bndry: float | None = None,
+        thresholds: tuple[float, float] | None = None,
+    ) -> np.ndarray:
         """
         Compute toroidal current density using subgrid refinement.
 
@@ -615,11 +651,11 @@ class Jtor_universal:
 
         Parameters
         ----------
-        R : ndarray
+        R : np.ndarray
             Radial grid coordinates.
-        Z : ndarray
+        Z : np.ndarray
             Vertical grid coordinates.
-        psi : ndarray
+        psi : np.ndarray
             Poloidal flux on the grid (typically ψ / 2π).
         psi_bndry : float, optional
             Flux value at the last closed flux surface (LCFS). If None,
@@ -630,7 +666,7 @@ class Jtor_universal:
 
         Returns
         -------
-        jtor : ndarray
+        jtor : np.ndarray
             Refined toroidal current density on the computational grid.
         """
 
@@ -686,7 +722,7 @@ class ConstrainBetapIp(jtor.ConstrainBetapIp, Jtor_universal):
 
     Jtor = Jtor_universal.Jtor
 
-    def __init__(self, eq, *args, **kwargs):
+    def __init__(self, eq: object, *args: object, **kwargs: object) -> None:
         """
         Initialise the constrained profile.
 
@@ -694,6 +730,10 @@ class ConstrainBetapIp(jtor.ConstrainBetapIp, Jtor_universal):
         ----------
         eq : FreeGSNKE Equilibrium object
             Equilibrium object defining grid geometry and limiter structure.
+        *args : object
+            Positional arguments passed to the parent profile constructor.
+        **kwargs : object
+            Keyword arguments passed to the parent profile constructor.
         """
         jtor.ConstrainBetapIp.__init__(self, *args, **kwargs)
         Jtor_universal.__init__(self)
@@ -704,7 +744,7 @@ class ConstrainBetapIp(jtor.ConstrainBetapIp, Jtor_universal):
 
         self.set_masks(eq=eq)
 
-    def copy(self):
+    def copy(self) -> ConstrainBetapIp:
         """
         Create a deep-ish copy of the profile object.
 
@@ -730,8 +770,14 @@ class ConstrainBetapIp(jtor.ConstrainBetapIp, Jtor_universal):
         return obj
 
     def Lao_parameters(
-        self, n_alpha, n_beta, alpha_logic=True, beta_logic=True, Ip_logic=True, nn=100
-    ):
+        self,
+        n_alpha: int,
+        n_beta: int,
+        alpha_logic: bool = True,
+        beta_logic: bool = True,
+        Ip_logic: bool = True,
+        nn: int = 100,
+    ) -> tuple[np.ndarray, np.ndarray]:
         """
         Fit Lao85 profile parameters to the current pprime and ffprime profiles.
 
@@ -756,9 +802,9 @@ class ConstrainBetapIp(jtor.ConstrainBetapIp, Jtor_universal):
 
         Returns
         -------
-        alpha : ndarray
+        alpha : np.ndarray
             Fitted alpha coefficients for the pprime expansion.
-        beta : ndarray
+        beta : np.ndarray
             Fitted beta coefficients for the ffprime expansion.
         """
 
@@ -788,7 +834,7 @@ class ConstrainPaxisIp(jtor.ConstrainPaxisIp, Jtor_universal):
 
     Jtor = Jtor_universal.Jtor
 
-    def __init__(self, eq, *args, **kwargs):
+    def __init__(self, eq: object, *args: object, **kwargs: object) -> None:
         """
         Initialise the constrained profile.
 
@@ -796,6 +842,10 @@ class ConstrainPaxisIp(jtor.ConstrainPaxisIp, Jtor_universal):
         ----------
         eq : FreeGSNKE Equilibrium object
             Equilibrium object defining grid geometry and limiter structure.
+        *args : object
+            Positional arguments passed to the parent profile constructor.
+        **kwargs : object
+            Keyword arguments passed to the parent profile constructor.
         """
         jtor.ConstrainPaxisIp.__init__(self, *args, **kwargs)
         Jtor_universal.__init__(self)
@@ -806,7 +856,7 @@ class ConstrainPaxisIp(jtor.ConstrainPaxisIp, Jtor_universal):
 
         self.set_masks(eq=eq)
 
-    def copy(self):
+    def copy(self) -> ConstrainPaxisIp:
         """
         Create a copy of the current profile instance.
 
@@ -833,8 +883,14 @@ class ConstrainPaxisIp(jtor.ConstrainPaxisIp, Jtor_universal):
         return obj
 
     def Lao_parameters(
-        self, n_alpha, n_beta, alpha_logic=True, beta_logic=True, Ip_logic=True, nn=100
-    ):
+        self,
+        n_alpha: int,
+        n_beta: int,
+        alpha_logic: bool = True,
+        beta_logic: bool = True,
+        Ip_logic: bool = True,
+        nn: int = 100,
+    ) -> tuple[np.ndarray, np.ndarray]:
         """
         Fit Lao85 profile coefficients from pprime and ffprime evaluations.
 
@@ -860,9 +916,9 @@ class ConstrainPaxisIp(jtor.ConstrainPaxisIp, Jtor_universal):
 
         Returns
         -------
-        alpha : ndarray
+        alpha : np.ndarray
             Fitted coefficients for the pprime expansion.
-        beta : ndarray
+        beta : np.ndarray
             Fitted coefficients for the ffprime expansion.
         """
 
@@ -892,7 +948,7 @@ class Fiesta_Topeol(jtor.Fiesta_Topeol, Jtor_universal):
 
     Jtor = Jtor_universal.Jtor
 
-    def __init__(self, eq, *args, **kwargs):
+    def __init__(self, eq: object, *args: object, **kwargs: object) -> None:
         """
         Initialise the Fiesta-Topeol constrained current profile.
 
@@ -900,6 +956,10 @@ class Fiesta_Topeol(jtor.Fiesta_Topeol, Jtor_universal):
         ----------
         eq : FreeGSNKE Equilibrium object
             Equilibrium object defining grid geometry and limiter structure.
+        *args : object
+            Positional arguments passed to the parent profile constructor.
+        **kwargs : object
+            Keyword arguments passed to the parent profile constructor.
         """
         jtor.Fiesta_Topeol.__init__(self, *args, **kwargs)
         Jtor_universal.__init__(self)
@@ -910,7 +970,7 @@ class Fiesta_Topeol(jtor.Fiesta_Topeol, Jtor_universal):
 
         self.set_masks(eq=eq)
 
-    def copy(self):
+    def copy(self) -> Fiesta_Topeol:
         """
         Create a copy of the Fiesta-Topeol profile instance.
 
@@ -935,8 +995,14 @@ class Fiesta_Topeol(jtor.Fiesta_Topeol, Jtor_universal):
         return obj
 
     def Lao_parameters(
-        self, n_alpha, n_beta, alpha_logic=True, beta_logic=True, Ip_logic=True, nn=100
-    ):
+        self,
+        n_alpha: int,
+        n_beta: int,
+        alpha_logic: bool = True,
+        beta_logic: bool = True,
+        Ip_logic: bool = True,
+        nn: int = 100,
+    ) -> tuple[np.ndarray, np.ndarray]:
         """
         Fit Lao85 profile coefficients from sampled pprime and ffprime data.
 
@@ -962,9 +1028,9 @@ class Fiesta_Topeol(jtor.Fiesta_Topeol, Jtor_universal):
 
         Returns
         -------
-        alpha : ndarray
+        alpha : np.ndarray
             Fitted coefficients for the pprime expansion.
-        beta : ndarray
+        beta : np.ndarray
             Fitted coefficients for the ffprime expansion.
         """
 
@@ -994,7 +1060,15 @@ class Lao85(jtor.Lao85, Jtor_universal):
 
     Jtor = Jtor_universal.Jtor
 
-    def __init__(self, eq, *args, refine_jtor=False, nnx=None, nny=None, **kwargs):
+    def __init__(
+        self,
+        eq: object,
+        *args: object,
+        refine_jtor: bool = False,
+        nnx: int | None = None,
+        nny: int | None = None,
+        **kwargs: object,
+    ) -> None:
         """
         Initialise the Lao85 current profile.
 
@@ -1002,18 +1076,22 @@ class Lao85(jtor.Lao85, Jtor_universal):
         ----------
         eq : FreeGSNKE Equilibrium object
             Equilibrium object defining grid geometry and limiter structure.
-        refine_jtor : bool
+        *args : object
+            Positional arguments passed to the parent profile constructor.
+        refine_jtor : bool, optional
             If True, enable subgrid refinement of the toroidal current density.
-        nnx : int
+        nnx : int or None, optional
             Refinement factor in the R-direction (must be even if used).
-        nny : int
+        nny : int or None, optional
             Refinement factor in the Z-direction (must be even if used).
+        **kwargs : object
+            Keyword arguments passed to the parent profile constructor.
         """
         jtor.Lao85.__init__(self, *args, **kwargs)
         self.set_masks(eq=eq)
         self.select_refinement(eq, refine_jtor, nnx, nny)
 
-    def copy(self):
+    def copy(self) -> Lao85:
         """
         Create a copy of the Lao85 profile instance.
 
@@ -1043,7 +1121,9 @@ class Lao85(jtor.Lao85, Jtor_universal):
 
         return obj
 
-    def Topeol_parameters(self, nn=100, max_it=100, tol=1e-5):
+    def Topeol_parameters(
+        self, nn: int = 100, max_it: int = 100, tol: float = 1e-5
+    ) -> np.ndarray:
         """
         Fit optimal Topeol profile parameters from target pprime and ffprime data.
 
@@ -1063,7 +1143,7 @@ class Lao85(jtor.Lao85, Jtor_universal):
 
         Returns
         -------
-        pars : ndarray, shape (3,)
+        pars : np.ndarray, shape (3,)
             Optimised parameters (alpha_m, alpha_n, beta_0).
         """
 
@@ -1090,7 +1170,7 @@ class TensionSpline(jtor.TensionSpline, Jtor_universal):
 
     Jtor = Jtor_universal.Jtor
 
-    def __init__(self, eq, *args, **kwargs):
+    def __init__(self, eq: object, *args: object, **kwargs: object) -> None:
         """
         Initialise the tension spline current profile.
 
@@ -1098,6 +1178,10 @@ class TensionSpline(jtor.TensionSpline, Jtor_universal):
         ----------
         eq : FreeGSNKE Equilibrium object
             Equilibrium object defining grid geometry and limiter structure.
+        *args : object
+            Positional arguments passed to the parent profile constructor.
+        **kwargs : object
+            Keyword arguments passed to the parent profile constructor.
         """
 
         jtor.TensionSpline.__init__(self, *args, **kwargs)
@@ -1116,7 +1200,7 @@ class TensionSpline(jtor.TensionSpline, Jtor_universal):
 
         self.set_masks(eq=eq)
 
-    def copy(self):
+    def copy(self) -> TensionSpline:
         """
         Create a copy of the TensionSpline profile instance.
 
@@ -1158,35 +1242,35 @@ class TensionSpline(jtor.TensionSpline, Jtor_universal):
 
     def assign_profile_parameter(
         self,
-        pp_knots,
-        pp_values,
-        pp_values_2,
-        pp_sigma,
-        ffp_knots,
-        ffp_values,
-        ffp_values_2,
-        ffp_sigma,
-    ):
+        pp_knots: np.ndarray,
+        pp_values: np.ndarray,
+        pp_values_2: np.ndarray,
+        pp_sigma: np.ndarray,
+        ffp_knots: np.ndarray,
+        ffp_values: np.ndarray,
+        ffp_values_2: np.ndarray,
+        ffp_sigma: np.ndarray,
+    ) -> None:
         """
         Assign new spline parameters to the profile object.
 
         Parameters
         ----------
-        pp_knots : ndarray
+        pp_knots : np.ndarray
             Knot locations for pprime spline.
-        pp_values : ndarray
+        pp_values : np.ndarray
             Spline values for pprime.
-        pp_values_2 : ndarray
+        pp_values_2 : np.ndarray
             Second derivative (or auxiliary) values for pprime spline.
-        pp_sigma : ndarray
+        pp_sigma : np.ndarray
             Regularisation / smoothing parameters for pprime spline.
-        ffp_knots : ndarray
+        ffp_knots : np.ndarray
             Knot locations for ffprime spline.
-        ffp_values : ndarray
+        ffp_values : np.ndarray
             Spline values for ffprime.
-        ffp_values_2 : ndarray
+        ffp_values_2 : np.ndarray
             Second derivative (or auxiliary) values for ffprime spline.
-        ffp_sigma : ndarray
+        ffp_sigma : np.ndarray
             Regularisation / smoothing parameters for ffprime spline.
         """
         self.pp_knots = pp_knots
@@ -1218,7 +1302,7 @@ class GeneralPprimeFFprime(jtor.GeneralPprimeFFprime, Jtor_universal):
 
     Jtor = Jtor_universal.Jtor
 
-    def __init__(self, eq, *args, **kwargs):
+    def __init__(self, eq: object, *args: object, **kwargs: object) -> None:
         """
         Initialise the general pprime/ffprime current profile.
 
@@ -1226,6 +1310,10 @@ class GeneralPprimeFFprime(jtor.GeneralPprimeFFprime, Jtor_universal):
         ----------
         eq : FreeGSNKE Equilibrium object
             Equilibrium object defining grid geometry and limiter structure.
+        *args : object
+            Positional arguments passed to the parent profile constructor.
+        **kwargs : object
+            Keyword arguments passed to the parent profile constructor.
         """
 
         jtor.GeneralPprimeFFprime.__init__(self, *args, **kwargs)
@@ -1234,7 +1322,7 @@ class GeneralPprimeFFprime(jtor.GeneralPprimeFFprime, Jtor_universal):
         self.profile_parameter = []
         self.set_masks(eq=eq)
 
-    def copy(self):
+    def copy(self) -> GeneralPprimeFFprime:
         """
         Create a copy of the GeneralPprimeFFprime profile instance.
 
@@ -1266,7 +1354,7 @@ class GeneralPprimeFFprime(jtor.GeneralPprimeFFprime, Jtor_universal):
 
     def assign_profile_parameter(
         self,
-    ):
+    ) -> None:
         """
         Reset profile parameter container.
 

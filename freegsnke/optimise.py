@@ -1,6 +1,7 @@
 """
-Routines for optimising equilibria
-These make use of the generic "optimiser" routines
+Routines for optimising equilibria.
+
+These make use of the generic "optimiser" routines.
 
 Copyright 2019 Ben Dudson, University of York. Email: benjamin.dudson@york.ac.uk
 
@@ -13,15 +14,17 @@ the Free Software Foundation, either version 3 of the License, or
 
 FreeGSNKE is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 GNU Lesser General Public License for more details.
 
 You should have received a copy of the GNU Lesser General Public License
-along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
-
+along with FreeGSNKE. If not, see <http://www.gnu.org/licenses/>.
 """
 
+from __future__ import annotations
+
 from math import sqrt
+from typing import Callable
 
 import matplotlib.pyplot as plt
 
@@ -31,21 +34,56 @@ from .plotting import plotEquilibrium
 # Measures which operate on Equilibrium objects
 
 
-def max_abs_coil_current(eq):
+def max_abs_coil_current(eq: object) -> float:
     """
-    Given an equilibrium, return the maximum absolute coil current
+    Return the maximum absolute coil current of an equilibrium.
+
+    Parameters
+    ----------
+    eq : object
+        Equilibrium object.
+
+    Returns
+    -------
+    float
+        Largest absolute coil current.
     """
     currents = eq.tokamak.getCurrents()  # dictionary
     return max(abs(current) for current in currents.values())
 
 
-def max_coil_force(eq):
+def max_coil_force(eq: object) -> float:
+    """
+    Return the maximum magnitude of the force on any coil.
+
+    Parameters
+    ----------
+    eq : object
+        Equilibrium object.
+
+    Returns
+    -------
+    float
+        Largest value of ``sqrt(force[0]**2 + force[1]**2)`` over the coils.
+    """
     forces = eq.tokamak.getForces()  # dictionary
     return max(sqrt(force[0] ** 2 + force[1] ** 2) for force in forces.values())
 
 
-def no_wall_intersection(eq):
-    """Prevent intersection of LCFS with walls by returning inf if intersections are found"""
+def no_wall_intersection(eq: object) -> float:
+    """
+    Penalise intersection of the LCFS with the walls.
+
+    Parameters
+    ----------
+    eq : object
+        Equilibrium object.
+
+    Returns
+    -------
+    float
+        ``inf`` if the equilibrium intersects the wall, otherwise 0.0.
+    """
     if eq.intersectsWall():
         return float("inf")
     return 0.0  # No intersection
@@ -54,16 +92,26 @@ def no_wall_intersection(eq):
 # Combine measures
 
 
-def weighted_sum(*args):
+def weighted_sum(
+    *args: Callable[[object], float] | tuple[Callable[[object], float], float],
+) -> Callable[[object], float]:
     """
-    Combine measures together
+    Combine measures together as a weighted sum.
 
-    Returns a function which takes a single argument (the equilibrium),
-    and passes it to a set of given functions. These functions are assumed
-    to return values, which are multiplied by weights, summed and returned.
+    The returned function takes a single argument (the equilibrium) and passes
+    it to each given function. The returned values are multiplied by their
+    weights and summed.
 
-    args should be either functions or pairs of functions and weights.
-    If no weights are supplied then a weight of 1.0 is assumed.
+    Parameters
+    ----------
+    *args : Callable or tuple[Callable, float]
+        Measure functions, or ``(function, weight)`` pairs. If no weight is
+        supplied a weight of 1.0 is assumed.
+
+    Returns
+    -------
+    Callable[[object], float]
+        Function mapping an equilibrium to the weighted sum of the measures.
     """
     args_with_weights = []
     for arg in args:
@@ -72,7 +120,20 @@ def weighted_sum(*args):
         else:
             args_with_weights.append(arg)
 
-    def combined_measure(eq):
+    def combined_measure(eq: object) -> float:
+        """
+        Evaluate the weighted sum of the measures for an equilibrium.
+
+        Parameters
+        ----------
+        eq : object
+            Equilibrium object.
+
+        Returns
+        -------
+        float
+            Weighted sum of the measures.
+        """
         return sum(func(eq) * weight for func, weight in args_with_weights)
 
     return combined_measure
@@ -82,50 +143,114 @@ def weighted_sum(*args):
 
 
 class CoilRadius:
-    """A control to modify the radius of a specified coil"""
+    """Control to modify the radius of a specified coil."""
 
-    def __init__(self, label, minimum=0.0, maximum=None):
+    def __init__(
+        self, label: str, minimum: float | None = 0.0, maximum: float | None = None
+    ) -> None:
         """
-        label  : string   The label of a coil to be modified
-        minimum : number, optional   The minimum allowed radius
-        maximum : number, optional   The maximum allowed radius
+        Store the coil label and bounds.
+
+        Parameters
+        ----------
+        label : str
+            Label of the coil to be modified.
+        minimum : float or None, optional
+            Minimum allowed radius.
+        maximum : float or None, optional
+            Maximum allowed radius.
         """
         self.label = label
         self.minimum = minimum
         self.maximum = maximum
 
-    def set(self, eq, R):
+    def set(self, eq: object, R: float) -> None:
+        """
+        Set the coil radius, clipped to the allowed bounds.
+
+        Parameters
+        ----------
+        eq : object
+            Equilibrium object, modified in place.
+        R : float
+            Requested coil radius.
+        """
         if self.minimum and (R < self.minimum):
             R = self.minimum
         if self.maximum and (R > self.maximum):
             R = self.maximum
         eq.tokamak[self.label].R = R
 
-    def get(self, eq):
+    def get(self, eq: object) -> float:
+        """
+        Get the coil radius.
+
+        Parameters
+        ----------
+        eq : object
+            Equilibrium object.
+
+        Returns
+        -------
+        float
+            Current radius of the coil.
+        """
         return eq.tokamak[self.label].R
 
 
 class CoilHeight:
-    """A control to modify the height of a specified coil"""
+    """Control to modify the height of a specified coil."""
 
-    def __init__(self, label, minimum=None, maximum=None):
+    def __init__(
+        self, label: str, minimum: float | None = None, maximum: float | None = None
+    ) -> None:
         """
-        label  : string   The label of a coil to be modified
-        minimum : number, optional   The minimum allowed height
-        maximum : number, optional   The maximum allowed height
+        Store the coil label and bounds.
+
+        Parameters
+        ----------
+        label : str
+            Label of the coil to be modified.
+        minimum : float or None, optional
+            Minimum allowed height.
+        maximum : float or None, optional
+            Maximum allowed height.
         """
         self.label = label
         self.minimum = minimum
         self.maximum = maximum
 
-    def set(self, eq, Z):
+    def set(self, eq: object, Z: float) -> None:
+        """
+        Set the coil height, clipped to the allowed bounds.
+
+        Parameters
+        ----------
+        eq : object
+            Equilibrium object, modified in place.
+        Z : float
+            Requested coil height.
+        """
         if self.minimum and (Z < self.minimum):
             Z = self.minimum
         if self.maximum and (Z > self.maximum):
             Z = self.maximum
         eq.tokamak[self.label].Z = Z
 
-    def get(self, eq):
+    def get(self, eq: object) -> float:
+        """
+        Get the coil height.
+
+        Parameters
+        ----------
+        eq : object
+            Equilibrium object.
+
+        Returns
+        -------
+        float
+            Current height of the coil.
+        """
         return eq.tokamak[self.label].Z
 
 
@@ -135,15 +260,34 @@ class CoilHeight:
 # Plot and save the best equilibrium each generation
 class PlotMonitor:
     """
-    Plot the best solution at the end of each generation,
-    saves the plot to a PNG file.
+    Plot the best solution at the end of each generation.
+
+    The plot is saved to a PDF file named ``generation_<n>.pdf``.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
+        """Create the figure and axis used for plotting."""
         self.fig = plt.figure()
         self.axis = self.fig.add_subplot(111)
 
-    def __call__(self, generation, best, population):
+    def __call__(
+        self,
+        generation: int,
+        best: tuple[float, object],
+        population: list[tuple[float, object]],
+    ) -> None:
+        """
+        Plot and save the best equilibrium of a generation.
+
+        Parameters
+        ----------
+        generation : int
+            Generation number.
+        best : tuple[float, object]
+            ``(score, equilibrium)`` of the best candidate.
+        population : list[tuple[float, object]]
+            ``(score, equilibrium)`` pairs of the whole population (unused).
+        """
         self.axis.clear()
         plotEquilibrium(best[1], axis=self.axis, show=False)
         # Update the canvas and pause
@@ -154,42 +298,66 @@ class PlotMonitor:
         plt.pause(0.5)
 
 
-def optimise(eq, controls, measure, maxgen=10, N=10, CR=0.3, F=1.0, monitor=None):
-    """Use Differential Evolution to optimise an Equilibrium
-    https://en.wikipedia.org/wiki/Differential_evolution
+def optimise(
+    eq: object,
+    controls: list[object],
+    measure: Callable[[object], float],
+    maxgen: int = 10,
+    N: int = 10,
+    CR: float = 0.3,
+    F: float = 1.0,
+    monitor: (
+        Callable[[int, tuple[float, object], list[tuple[float, object]]], None] | None
+    ) = None,
+) -> object:
+    """
+    Use Differential Evolution to optimise an Equilibrium.
 
-    eq   is an Equilibrium to be used as starting solution
-         These are deep copied, and passed as arguments
-         to controls and measure functions
+    See https://en.wikipedia.org/wiki/Differential_evolution
 
-    controls   A list of control objects. These objects must
-               have methods:
-         .set(eq, value) which modifies the given Equilibrium
-         .get(eq)  which returns the value from the Equilibrium
+    Parameters
+    ----------
+    eq : object
+        Equilibrium used as starting solution. It is deep-copied and passed to
+        `controls` and `measure`.
+    controls : list[object]
+        Control objects, each with methods ``set(eq, value)``, which modifies
+        the given Equilibrium, and ``get(eq)``, which returns the value from it.
+    measure : Callable[[object], float]
+        Returns a score for a given Equilibrium; the optimiser minimises it.
+    maxgen : int, optional
+        Maximum number of generations.
+    N : int, optional
+        Population size (must be >= 4).
+    CR : float, optional
+        Crossover probability, in [0, 1].
+    F : float, optional
+        Differential weight, in [0, 2].
+    monitor : Callable or None, optional
+        Called each generation as ``monitor(generation, best, population)``,
+        where `generation` is an int, `best` is a ``(score, equilibrium)``
+        tuple and `population` is a list of such tuples.
 
-    measure(eq) is a function which returns a score (value) for a
-                given Equilibrium. The optimiser tries to minimise this
-                value.
-
-    maxgen   is the maximum number of generations
-
-    N >= 4 is the population size
-    CR [0,1] is the crossover probability
-    F  [0,2] is the differential weight
-
-    monitor(generation, best, population)
-
-           A function to be called each generation with the best
-           Equilibrium and the whole population
-           generation = integer
-           best = (score, object)
-           population = [(score, object)]
-
-    Returns the Equilibrium with the lowest measure (score).
-
+    Returns
+    -------
+    object
+        The Equilibrium with the lowest score.
     """
 
-    def solve_and_measure(eq):
+    def solve_and_measure(eq: object) -> float:
+        """
+        Re-solve an equilibrium and evaluate the measure.
+
+        Parameters
+        ----------
+        eq : object
+            Equilibrium object, modified in place.
+
+        Returns
+        -------
+        float
+            Score from `measure`, or ``inf`` if the solve fails.
+        """
         # Need to update some internal caches
         eq._pgreen = eq.tokamak.createPsiGreens(eq.R, eq.Z)
         try:

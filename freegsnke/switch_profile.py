@@ -6,33 +6,35 @@ Copyright 2025 UKAEA, UKRI-STFC, and The Authors, as per the COPYRIGHT and READM
 
 This file is part of FreeGSNKE.
 
+FreeGSNKE is free software: you can redistribute it and/or modify
+it under the terms of the GNU Lesser General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
 FreeGSNKE is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 GNU Lesser General Public License for more details.
 
-FreeGSNKE is free software: you can redistribute it and/or modify
-it under the terms of the GNU Lesser General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
-  
 You should have received a copy of the GNU Lesser General Public License
-along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.   
+along with FreeGSNKE. If not, see <http://www.gnu.org/licenses/>.
 """
+
+from __future__ import annotations
 
 import numpy as np
 
 
 def Lao_parameters_finder(
-    pn_,
-    pprime_,
-    ffprime_,
-    n_alpha,
-    n_beta,
-    alpha_logic=True,
-    beta_logic=True,
-    Ip_logic=True,
-):
+    pn_: np.ndarray,
+    pprime_: np.ndarray,
+    ffprime_: np.ndarray,
+    n_alpha: int,
+    n_beta: int,
+    alpha_logic: bool = True,
+    beta_logic: bool = True,
+    Ip_logic: bool = True,
+) -> tuple[np.ndarray, np.ndarray]:
     """
     Fit Lao85 profile coefficients to prescribed pprime and ffprime profiles.
 
@@ -77,7 +79,9 @@ def Lao_parameters_finder(
     ``alpha_logic`` and ``beta_logic`` that were used during fitting.
 
     This routine normalises ``pprime_`` and ``ffprime_`` by their values
-    at ``pn_[0]`` before fitting.
+    at ``pn_[0]`` before fitting. The normalisation is done in place, so the
+    input arrays `pprime_` and `ffprime_` are modified (and must be float
+    arrays).
     """
 
     pprime0_ = pprime_[0]
@@ -106,7 +110,9 @@ def Lao_parameters_finder(
     return alpha, beta
 
 
-def Topeol_std(x, alpha_m, alpha_n, beta_0):
+def Topeol_std(
+    x: float | np.ndarray, alpha_m: float, alpha_n: float, beta_0: float
+) -> float | np.ndarray:
     """
     Evaluate the standard Topeol profile.
 
@@ -139,7 +145,14 @@ def Topeol_std(x, alpha_m, alpha_n, beta_0):
     return (1 - x**alpha_m) ** alpha_n
 
 
-def d2Ldb2(t, x, alpha_m, alpha_n, beta_0, Tstd=None):
+def d2Ldb2(
+    t: float | np.ndarray,
+    x: float | np.ndarray,
+    alpha_m: float,
+    alpha_n: float,
+    beta_0: float,
+    Tstd: float | np.ndarray | None = None,
+) -> float | np.ndarray:
     """
     Evaluate the second derivative of the loss function with respect to
     beta_0.
@@ -183,7 +196,14 @@ def d2Ldb2(t, x, alpha_m, alpha_n, beta_0, Tstd=None):
     return res
 
 
-def d2Ldbdn(t, x, alpha_m, alpha_n, beta_0, Tstd=None):
+def d2Ldbdn(
+    t: float | np.ndarray,
+    x: float | np.ndarray,
+    alpha_m: float,
+    alpha_n: float,
+    beta_0: float,
+    Tstd: float | np.ndarray | None = None,
+) -> float | np.ndarray:
     """
     Evaluate the mixed second derivative of the loss function with respect to
     beta_0 and alpha_n.
@@ -234,7 +254,14 @@ def d2Ldbdn(t, x, alpha_m, alpha_n, beta_0, Tstd=None):
     return res
 
 
-def d2Ldbdm(t, x, alpha_m, alpha_n, beta_0, Tstd=None):
+def d2Ldbdm(
+    t: float | np.ndarray,
+    x: float | np.ndarray,
+    alpha_m: float,
+    alpha_n: float,
+    beta_0: float,
+    Tstd: float | np.ndarray | None = None,
+) -> float | np.ndarray:
     """
     Evaluate the mixed second derivative of the loss function with respect to
     beta_0 and alpha_m.
@@ -287,7 +314,14 @@ def d2Ldbdm(t, x, alpha_m, alpha_n, beta_0, Tstd=None):
     return res
 
 
-def d2Ldm2(t, x, alpha_m, alpha_n, beta_0, Tstd=None):
+def d2Ldm2(
+    t: float | np.ndarray,
+    x: float | np.ndarray,
+    alpha_m: float,
+    alpha_n: float,
+    beta_0: float,
+    Tstd: float | np.ndarray | None = None,
+) -> float | np.ndarray:
     """
     Evaluate the second derivative of the loss function with respect to
     alpha_m.
@@ -341,7 +375,14 @@ def d2Ldm2(t, x, alpha_m, alpha_n, beta_0, Tstd=None):
     return res
 
 
-def d2Ldn2(t, x, alpha_m, alpha_n, beta_0, Tstd=None):
+def d2Ldn2(
+    t: float | np.ndarray,
+    x: float | np.ndarray,
+    alpha_m: float,
+    alpha_n: float,
+    beta_0: float,
+    Tstd: float | np.ndarray | None = None,
+) -> float | np.ndarray:
     """
     Evaluate the second derivative of the loss function with respect to
     alpha_n.
@@ -394,7 +435,14 @@ def d2Ldn2(t, x, alpha_m, alpha_n, beta_0, Tstd=None):
     return res
 
 
-def d2Ldmdn(t, x, alpha_m, alpha_n, beta_0, Tstd=None):
+def d2Ldmdn(
+    t: float | np.ndarray,
+    x: float | np.ndarray,
+    alpha_m: float,
+    alpha_n: float,
+    beta_0: float,
+    Tstd: float | np.ndarray | None = None,
+) -> float | np.ndarray:
     """
     Evaluate the mixed second derivative of the loss function with respect to
     alpha_m and alpha_n.
@@ -450,7 +498,14 @@ def d2Ldmdn(t, x, alpha_m, alpha_n, beta_0, Tstd=None):
     return res
 
 
-def dLdn(t, x, alpha_m, alpha_n, beta_0, Tstd=None):
+def dLdn(
+    t: float | np.ndarray,
+    x: float | np.ndarray,
+    alpha_m: float,
+    alpha_n: float,
+    beta_0: float,
+    Tstd: float | np.ndarray | None = None,
+) -> float | np.ndarray:
     """
     Evaluate the first derivative of the loss function with respect to
     alpha_n.
@@ -502,7 +557,14 @@ def dLdn(t, x, alpha_m, alpha_n, beta_0, Tstd=None):
     return res
 
 
-def dLdm(t, x, alpha_m, alpha_n, beta_0, Tstd=None):
+def dLdm(
+    t: float | np.ndarray,
+    x: float | np.ndarray,
+    alpha_m: float,
+    alpha_n: float,
+    beta_0: float,
+    Tstd: float | np.ndarray | None = None,
+) -> float | np.ndarray:
     """
     Evaluate the first derivative of the loss function with respect to
     alpha_m.
@@ -555,7 +617,14 @@ def dLdm(t, x, alpha_m, alpha_n, beta_0, Tstd=None):
     return res
 
 
-def dLdb(t, x, alpha_m, alpha_n, beta_0, Tstd=None):
+def dLdb(
+    t: float | np.ndarray,
+    x: float | np.ndarray,
+    alpha_m: float,
+    alpha_n: float,
+    beta_0: float,
+    Tstd: float | np.ndarray | None = None,
+) -> float | np.ndarray:
     """
     Evaluate the first derivative of the loss function with respect to
     beta_0.
@@ -593,9 +662,6 @@ def dLdb(t, x, alpha_m, alpha_n, beta_0, Tstd=None):
 
     The derivative reflects a simple quadratic residual structure in beta_0.
 
-    Warning
-    -------
-    None.
     """
     if Tstd is None:
         Tstd = Topeol_std(x, alpha_m, alpha_n, beta_0)
@@ -604,7 +670,15 @@ def dLdb(t, x, alpha_m, alpha_n, beta_0, Tstd=None):
     return res
 
 
-def dLdpars(tp, tf, x, alpha_m, alpha_n, beta_0, Tstd=None):
+def dLdpars(
+    tp: np.ndarray,
+    tf: np.ndarray,
+    x: np.ndarray,
+    alpha_m: float,
+    alpha_n: float,
+    beta_0: float,
+    Tstd: np.ndarray | None = None,
+) -> np.ndarray:
     """
     Compute the gradient of the total loss with respect to the model parameters.
 
@@ -614,11 +688,11 @@ def dLdpars(tp, tf, x, alpha_m, alpha_n, beta_0, Tstd=None):
 
     Parameters
     ----------
-    tp : float or ndarray
-        First target dataset (e.g. pressure-like contribution).
-    tf : float or ndarray
-        Second target dataset (e.g. flux-function-like contribution).
-    x : float or ndarray
+    tp : ndarray
+        First target dataset (e.g. pressure-like contribution), same length as `x`.
+    tf : ndarray
+        Second target dataset (e.g. flux-function-like contribution), same length as `x`.
+    x : ndarray
         Independent variable, typically a normalised coordinate in the interval [0, 1].
     alpha_m : float
         Inner exponent of the standard Topeol profile.
@@ -626,7 +700,7 @@ def dLdpars(tp, tf, x, alpha_m, alpha_n, beta_0, Tstd=None):
         Outer exponent of the standard Topeol profile.
     beta_0 : float
         Amplitude parameter of the fitted profile.
-    Tstd : float or ndarray, optional
+    Tstd : ndarray, optional
         Precomputed value of Topeol_std(x, alpha_m, alpha_n, beta_0).
         If not provided, it is evaluated internally.
 
@@ -665,7 +739,15 @@ def dLdpars(tp, tf, x, alpha_m, alpha_n, beta_0, Tstd=None):
     return dLpdpars + dLfdpars
 
 
-def d2Ldpars2(tp, tf, x, alpha_m, alpha_n, beta_0, Tstd=None):
+def d2Ldpars2(
+    tp: np.ndarray,
+    tf: np.ndarray,
+    x: np.ndarray,
+    alpha_m: float,
+    alpha_n: float,
+    beta_0: float,
+    Tstd: np.ndarray | None = None,
+) -> np.ndarray:
     """
     Compute the Hessian matrix of the total loss with respect to the model parameters.
 
@@ -675,11 +757,11 @@ def d2Ldpars2(tp, tf, x, alpha_m, alpha_n, beta_0, Tstd=None):
 
     Parameters
     ----------
-    tp : float or ndarray
-        First target dataset (e.g. pressure-like contribution).
-    tf : float or ndarray
-        Second target dataset (e.g. flux-function-like contribution).
-    x : float or ndarray
+    tp : ndarray
+        First target dataset (e.g. pressure-like contribution), same length as `x`.
+    tf : ndarray
+        Second target dataset (e.g. flux-function-like contribution), same length as `x`.
+    x : ndarray
         Independent variable, typically a normalised coordinate in the interval [0, 1].
     alpha_m : float
         Inner exponent of the standard Topeol profile.
@@ -687,7 +769,7 @@ def d2Ldpars2(tp, tf, x, alpha_m, alpha_n, beta_0, Tstd=None):
         Outer exponent of the standard Topeol profile.
     beta_0 : float
         Amplitude parameter of the fitted profile.
-    Tstd : float or ndarray, optional
+    Tstd : ndarray, optional
         Precomputed value of Topeol_std(x, alpha_m, alpha_n, beta_0).
         If not provided, it is evaluated internally.
 
@@ -743,7 +825,15 @@ def d2Ldpars2(tp, tf, x, alpha_m, alpha_n, beta_0, Tstd=None):
     return d2Lpdpars2 + d2Lfdpars2
 
 
-def Lpars(tp, tf, x, alpha_m, alpha_n, beta_0, Tstd=None):
+def Lpars(
+    tp: np.ndarray,
+    tf: np.ndarray,
+    x: np.ndarray,
+    alpha_m: float,
+    alpha_n: float,
+    beta_0: float,
+    Tstd: np.ndarray | None = None,
+) -> float | np.ndarray:
     """
     Compute the total loss for the parameterised Topeol model.
 
@@ -752,10 +842,10 @@ def Lpars(tp, tf, x, alpha_m, alpha_n, beta_0, Tstd=None):
 
     Parameters
     ----------
-    tp : float or ndarray
-        First target dataset (e.g. pressure-like contribution).
-    tf : float or ndarray
-        Second target dataset (e.g. flux-function-like contribution).
+    tp : ndarray
+        First target dataset (e.g. pressure-like contribution), same length as `x`.
+    tf : ndarray
+        Second target dataset (e.g. flux-function-like contribution), same length as `x`.
     x : float or ndarray
         Independent variable, typically a normalised coordinate in the interval [0, 1].
     alpha_m : float
@@ -793,7 +883,9 @@ def Lpars(tp, tf, x, alpha_m, alpha_n, beta_0, Tstd=None):
     return np.sum(Lp + Lf, axis=0)
 
 
-def Topeol_opt_init(tp, tf):
+def Topeol_opt_init(
+    tp: np.ndarray, tf: np.ndarray
+) -> tuple[np.ndarray, np.ndarray, float]:
     """
     Compute an initial guess for Topeol model scaling and amplitude split.
 
@@ -854,7 +946,9 @@ def Topeol_opt_init(tp, tf):
     return tpn, tfn, b0
 
 
-def Topeol_opt_stepper(tp, tf, x, pars):
+def Topeol_opt_stepper(
+    tp: np.ndarray, tf: np.ndarray, x: np.ndarray, pars: np.ndarray
+) -> np.ndarray:
     """
     Perform one optimisation step for the Topeol parameter fit.
 
@@ -870,7 +964,7 @@ def Topeol_opt_stepper(tp, tf, x, pars):
         Second target dataset (e.g. flux-function-like contribution).
     x : ndarray
         Independent variable, typically a normalised coordinate in the interval [0, 1].
-    pars : array-like, shape (3,)
+    pars : ndarray, shape (3,)
         Current parameter vector [alpha_m, alpha_n, beta_0].
 
     Returns
@@ -925,7 +1019,9 @@ def Topeol_opt_stepper(tp, tf, x, pars):
     return pars + dpars
 
 
-def Topeol_opt(tp, tf, x, max_it, tol):
+def Topeol_opt(
+    tp: np.ndarray, tf: np.ndarray, x: np.ndarray, max_it: int, tol: float
+) -> np.ndarray:
     """
     Optimise Topeol model parameters using an iterative stepper.
 
@@ -973,7 +1069,8 @@ def Topeol_opt(tp, tf, x, max_it, tol):
     -------
     - Convergence is not guaranteed.
     - The algorithm depends strongly on the quality of the initial guess.
-    - If max_it is reached, the returned parameters may not be optimal.
+    - If max_it is reached, a message is printed and the returned parameters
+      may not be optimal.
     """
 
     tpn, tfn, b0 = Topeol_opt_init(tp, tf)

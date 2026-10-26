@@ -126,9 +126,7 @@ def test_constrain_paxis_ip_matches_requested_pressure_for_nonunit_alpha_m():
 
 def test_profile_vectorised_integrals_match_adaptive_reference():
     """The shared quadrature remains accurate for a non-integer profile shape."""
-    profiles = jtor.ConstrainPaxisIp(
-        1.2e3, 2e5, 2.0, alpha_m=0.5, alpha_n=2.0
-    )
+    profiles = jtor.ConstrainPaxisIp(1.2e3, 2e5, 2.0, alpha_m=0.5, alpha_n=2.0)
     R, Z, psi = _nonunit_alpha_m_profile_grid()
     profiles.Jtor(R, Z, psi)
     psinorm = np.array([0.01, 0.25, 0.6, 0.9])
@@ -139,15 +137,12 @@ def test_profile_vectorised_integrals_match_adaptive_reference():
     )
     expected_fpol = np.sqrt(
         [
-            2.0 * quad(profiles.ffprime, pn, 1.0)[0] * psi_range
-            + profiles.fvac() ** 2
+            2.0 * quad(profiles.ffprime, pn, 1.0)[0] * psi_range + profiles.fvac() ** 2
             for pn in psinorm
         ]
     )
 
-    np.testing.assert_allclose(
-        profiles.pressure(psinorm), expected_pressure, rtol=1e-5
-    )
+    np.testing.assert_allclose(profiles.pressure(psinorm), expected_pressure, rtol=1e-5)
     np.testing.assert_allclose(profiles.fpol(psinorm), expected_fpol, rtol=1e-5)
 
 

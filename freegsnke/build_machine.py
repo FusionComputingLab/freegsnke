@@ -1,5 +1,5 @@
 """
-Functions that build tokamak objects in FreeGSNKE (from file or otherwise). 
+Functions that build tokamak objects in FreeGSNKE (from file or otherwise).
 
 Copyright 2025 UKAEA, UKRI-STFC, and The Authors, as per the COPYRIGHT and README files.
 
@@ -14,7 +14,7 @@ FreeGSNKE is free software: you can redistribute it and/or modify
 it under the terms of the GNU Lesser General Public License as published by
 the Free Software Foundation, either version 3 of the License, or
 (at your option) any later version.
-  
+
 You should have received a copy of the GNU Lesser General Public License
 along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 """
@@ -40,7 +40,6 @@ from .magnetic_probes import Probes
 from .multi_coil import MultiCoil
 from .passive_structure import PassiveStructure
 from .refine_passive import generate_refinement
-
 
 _OVERLAP_AREA_TOLERANCE = 1e-12
 
@@ -351,7 +350,7 @@ def build_tokamak_components(
         FreeGSNKE coil metadata, coil counts, and the probe object needed to
         initialise or update a :class:`freegsnke.machine_update.Machine`.
     """
-    
+
     # check data can be loaded correctly
     active_coils, passive_coils, limiter, wall = load_data_dicts(
         active_coils_data=active_coils_data,
@@ -365,15 +364,15 @@ def build_tokamak_components(
     )
 
     overlapping_elements = check_for_overlapping_elements(
-            active_data=active_coils,
-            passive_data=passive_coils,
-        )
+        active_data=active_coils,
+        passive_data=passive_coils,
+    )
     if overlapping_elements:
         overlap_list = "; ".join(
             f"{first} and {second}" for first, second in overlapping_elements
         )
         raise ValueError(f"Overlapping coil elements detected: {overlap_list}")
-    
+
     # build the actives into their circuits
     coil_circuits = build_actives(active_coils=active_coils)
     n_active_coils = len(coil_circuits)
@@ -1948,6 +1947,7 @@ def copy_tokamak(tokamak: Machine):
     new_tokamak.probes = tokamak.probes
 
     return new_tokamak
+
 
 if __name__ == "__main__":
     for coil_name in active_coils:

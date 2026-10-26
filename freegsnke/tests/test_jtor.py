@@ -23,6 +23,7 @@ along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 import numpy as np
+from scipy.integrate import quad
 
 from freegsnke import jtor
 from freegsnke.gradshafranov import mu0
@@ -121,6 +122,33 @@ def test_constrain_paxis_ip_matches_requested_pressure_for_nonunit_alpha_m():
     profiles.Jtor(R, Z, psi)
 
     assert np.isclose(profiles.pressure(np.asarray(0.0)), requested_paxis)
+
+
+def test_profile_vectorised_integrals_match_adaptive_reference():
+    """The shared quadrature remains accurate for a non-integer profile shape."""
+    profiles = jtor.ConstrainPaxisIp(
+        1.2e3, 2e5, 2.0, alpha_m=0.5, alpha_n=2.0
+    )
+    R, Z, psi = _nonunit_alpha_m_profile_grid()
+    profiles.Jtor(R, Z, psi)
+    psinorm = np.array([0.01, 0.25, 0.6, 0.9])
+    psi_range = profiles.psi_axis - profiles.psi_bndry
+
+    expected_pressure = np.array(
+        [quad(profiles.pprime, pn, 1.0)[0] * psi_range for pn in psinorm]
+    )
+    expected_fpol = np.sqrt(
+        [
+            2.0 * quad(profiles.ffprime, pn, 1.0)[0] * psi_range
+            + profiles.fvac() ** 2
+            for pn in psinorm
+        ]
+    )
+
+    np.testing.assert_allclose(
+        profiles.pressure(psinorm), expected_pressure, rtol=1e-5
+    )
+    np.testing.assert_allclose(profiles.fpol(psinorm), expected_fpol, rtol=1e-5)
 
 
 def test_fiesta_topeol_is_consistent_for_nonunit_alpha_m():
@@ -232,7 +260,7 @@ def _tension_spline_profile():
 
 
 def test_tension_spline_accepts_scalars_and_arrays():
-    """Scalars (as passed by scipy's quad) and arrays of any shape give the same values."""
+    """Scalars and arrays of any shape give the same tension-spline values."""
     profiles = _tension_spline_profile()
     args = (
         profiles.pp_knots,

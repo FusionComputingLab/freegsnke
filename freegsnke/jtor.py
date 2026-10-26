@@ -1588,12 +1588,12 @@ class TensionSpline(Profile):
 
     def tension_spline(
         self,
-        x: np.ndarray,
+        x: float | np.ndarray,
         xn: np.ndarray,
         yn: np.ndarray,
         zn: np.ndarray,
         sigma: float,
-    ) -> np.ndarray:
+    ) -> float | np.ndarray:
         """
         Evaluate the tension spline at locations in x using knot points xn,
         values at knot points yn, and second derivative values at knot points zn.

@@ -1,23 +1,27 @@
 """
-Implements the core Newton Krylov nonlinear solver used by both static GS solver and evolutive solver. 
+Implements the core Newton Krylov nonlinear solver used by both static GS solver and evolutive solver.
 
 Copyright 2025 UKAEA, UKRI-STFC, and The Authors, as per the COPYRIGHT and README files.
 
 This file is part of FreeGSNKE.
+
+FreeGSNKE is free software: you can redistribute it and/or modify
+it under the terms of the GNU Lesser General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
 
 FreeGSNKE is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 GNU Lesser General Public License for more details.
 
-FreeGSNKE is free software: you can redistribute it and/or modify
-it under the terms of the GNU Lesser General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
-  
 You should have received a copy of the GNU Lesser General Public License
-along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.   
+along with FreeGSNKE. If not, see <http://www.gnu.org/licenses/>.
 """
+
+from __future__ import annotations
+
+from typing import Callable
 
 import numpy as np
 
@@ -35,9 +39,13 @@ class nksolver:
     """
 
     def __init__(
-        self, problem_dimension, l2_reg=1e-6, collinearity_reg=1e-6, verbose=False
-    ):
-        """Instantiates the class.
+        self,
+        problem_dimension: int,
+        l2_reg: float = 1e-6,
+        collinearity_reg: float = 1e-6,
+        verbose: bool = False,
+    ) -> None:
+        """Instantiate the class.
 
         Parameters
         ----------
@@ -49,7 +57,8 @@ class nksolver:
             Tychonoff regularization coeff
         collinearity_reg : float
             Tychonoff regularization coeff which further penalizes collinear terms
-
+        verbose : bool
+            Verbosity flag (stored but currently unused).
         """
 
         self.problem_dimension = problem_dimension
@@ -61,35 +70,42 @@ class nksolver:
 
     def Arnoldi_unit(
         self,
-        x0,
-        dx,
-        R0,
+        x0: np.ndarray,
+        dx: np.ndarray,
+        R0: np.ndarray,
         # nR0,
-        F_function,
-        args,
-        build_next=True,
-    ):
-        """Explores direction dx and proposes new direction for next exploration.
+        F_function: Callable[..., np.ndarray],
+        args: list,
+        build_next: bool = True,
+    ) -> np.ndarray | None:
+        """Explore direction dx and propose a new direction for next exploration.
+
+        If evaluating `F_function` at ``x0 + dx`` raises, the step is repeatedly
+        shrunk by a factor 0.75 (together with the stored direction `Q`) until it
+        succeeds. Updates the residual-space bases and the Hessenberg matrix.
 
         Parameters
         ----------
-        x0 : 1d np.array, np.shape(x0) = self.problem_dimension
-            The expansion point x_0
-        dx : 1d np.array, np.shape(dx) = self.problem_dimension
-            The first direction to be explored. This will be sized appropriately.
-        R0 : 1d np.array, np.shape(R0) = self.problem_dimension
-            Residual of the root problem F_function at expansion point x_0
-        F_function : 1d np.array, np.shape(x0) = self.problem_dimension
-            Function representing the root problem at hand
+        x0 : np.ndarray
+            The expansion point x_0, 1d of length `problem_dimension`.
+        dx : np.ndarray
+            The direction to be explored (will be shrunk if needed), 1d of length
+            `problem_dimension`.
+        R0 : np.ndarray
+            Residual of the root problem `F_function` at expansion point x_0, 1d of
+            length `problem_dimension`.
+        F_function : Callable[..., np.ndarray]
+            Function representing the root problem at hand.
         args : list
-            Additional arguments for using function F
-            F = F(x, *args)
+            Additional arguments for using function F, F = F(x, *args).
+        build_next : bool
+            If True, build and return the next (orthonormal) direction to explore.
 
         Returns
         -------
-        new_candidate_step : 1d np.array, with same self.problem_dimension
-            The direction to be explored next
-
+        np.ndarray or None
+            The normalised direction to be explored next (1d of length
+            `problem_dimension`), or None if `build_next` is False.
         """
 
         # res_now = np.copy(R0)
@@ -163,8 +179,8 @@ class nksolver:
             # self.Omega = np.matmul(givrot, Omega)
             return next_candidate
 
-    def set_regularization(self, l2_reg, collinearity_reg):
-        """Sets the regularization coeffs
+    def set_regularization(self, l2_reg: float, collinearity_reg: float) -> None:
+        """Set the regularization coeffs.
 
         Parameters
         ----------
@@ -178,52 +194,56 @@ class nksolver:
 
     def Arnoldi_iteration(
         self,
-        x0,
-        dx,
-        R0,
-        F_function,
-        args,
-        step_size,
-        scaling_with_n,
-        target_relative_unexplained_residual,
-        max_n_directions,
-        clip,
+        x0: np.ndarray,
+        dx: np.ndarray,
+        R0: np.ndarray,
+        F_function: Callable[..., np.ndarray],
+        args: list,
+        step_size: float,
+        scaling_with_n: float,
+        target_relative_unexplained_residual: float,
+        max_n_directions: int,
+        clip: float,
         # l2_reg=1e-5,
         # collinearity_reg=1e-6,
-    ):
-        """Performs the iteration of the NK solution method:
+    ) -> None:
+        """Perform the iteration of the NK solution method.
+
         1) explores direction dx
         2) checks what fraction of the residual can be (linearly) canceled
         3) restarts if not satisfied
-        The best candidate step combining all explored directions is stored at self.dx
+
+        The best candidate step combining all explored directions is stored at
+        ``self.dx``, with coefficients in ``self.coeffs``.
 
         Parameters
         ----------
-        x0 : 1d np.array, np.shape(x0) = self.problem_dimension
-            The expansion point x_0
-        dx : 1d np.array, np.shape(dx) = self.problem_dimension
-            The first direction to be explored. This will be sized appropriately.
-        R0 : 1d np.array, np.shape(R0) = self.problem_dimension
-            Residual of the root problem F_function at expansion point x_0
-        F_function : 1d np.array, np.shape(x0) = self.problem_dimension
-            Function representing the root problem at hand
+        x0 : np.ndarray
+            The expansion point x_0, 1d of length `problem_dimension`.
+        dx : np.ndarray
+            The first direction to be explored (normalised in place, then sized
+            appropriately), 1d of length `problem_dimension`.
+        R0 : np.ndarray
+            Residual of the root problem `F_function` at expansion point x_0, 1d of
+            length `problem_dimension`.
+        F_function : Callable[..., np.ndarray]
+            Function representing the root problem at hand.
         args : list
-            Additional arguments for using function F
-            F = F(x, *args)
+            Additional arguments for using function F, F = F(x, *args).
         step_size : float
-            l2 norm of proposed step in units of the residual norm
+            l2 norm of proposed step in units of the residual norm.
         scaling_with_n : float
-            allows to further scale dx candidate steps as a function of the iteration number n_it, by a factor
-            (1 + self.n_it)**scaling_with_n
-        target_relative_explained_residual : float between 0 and 1
-            terminates iteration when such a fraction of the initial residual R0
-            can be (linearly) cancelled
+            Further scales dx candidate steps as a function of the iteration number
+            n_it, by a factor (1 + self.n_it)**scaling_with_n.
+        target_relative_unexplained_residual : float
+            Between 0 and 1. Terminates iteration when the unexplained fraction of
+            the initial residual R0 (after linear cancellation) drops below this.
         max_n_directions : int
-            terminates iteration even though condition on
-            explained residual is not met
+            Terminates iteration even though the condition on the explained residual
+            is not met.
         clip : float
-            maximum step size for each explored direction, in units
-            of exploratory step dx_i
+            Maximum step size for each explored direction, in units of the
+            exploratory step dx_i.
         """
         self.x0 = np.copy(x0)
         self.R0 = np.copy(R0)

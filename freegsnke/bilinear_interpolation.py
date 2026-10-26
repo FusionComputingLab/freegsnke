@@ -1,11 +1,10 @@
-"""Bilinear interpolation on uniformly spaced two-dimensional grids.
+"""
+Bilinear interpolation on uniformly spaced two-dimensional grids.
 
 Copyright 2024-2026 Nicola C. Amorisco
 Copyright 2025 Timothy Nunn
 
 Adapted from FreeGS4E.
-
-SPDX-License-Identifier: LGPL-3.0-or-later
 
 This file is part of FreeGSNKE.
 
@@ -16,12 +15,16 @@ the Free Software Foundation, either version 3 of the License, or
 
 FreeGSNKE is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 GNU Lesser General Public License for more details.
 
 You should have received a copy of the GNU Lesser General Public License
-along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
+along with FreeGSNKE. If not, see <http://www.gnu.org/licenses/>.
 """
+
+from __future__ import annotations
+
+from typing import Callable
 
 import numpy as np
 
@@ -29,30 +32,49 @@ try:
     from numba import njit
 except ImportError:
 
-    def njit(*args, **kwargs):
+    def njit(*args: object, **kwargs: object) -> Callable[[Callable], Callable]:
+        """
+        Return a no-op decorator used when numba is not installed.
+
+        Parameters
+        ----------
+        *args : object
+            Ignored positional arguments (as for ``numba.njit``).
+        **kwargs : object
+            Ignored keyword arguments (as for ``numba.njit``).
+
+        Returns
+        -------
+        Callable[[Callable], Callable]
+            A decorator that returns the decorated function unchanged.
+        """
         return lambda f: f
 
 
 @njit(cache=True, fastmath=True)
-def biliint(R, Z, psi, points):
-    """Simple bilinear interpolation of 2d map
+def biliint(
+    R: np.ndarray, Z: np.ndarray, psi: np.ndarray, points: np.ndarray
+) -> np.ndarray:
+    """
+    Bilinearly interpolate a function defined on a uniform 2D grid.
+
+    Points outside the grid are extrapolated using the nearest edge cell.
 
     Parameters
     ----------
-    R : np.array
-        R coordinates on 2d grid
-    Z : np.array
-        Z coordinates on 2d grid
-    psi : np.array
-        function values on 2d grid
-    points : np.array
-        coordinates where the interpolation is sought
-        shape (2, whatever)
+    R : np.ndarray
+        R coordinates on the 2d grid (meshgrid with ``indexing="ij"``), shape (nx, ny).
+    Z : np.ndarray
+        Z coordinates on the 2d grid, shape (nx, ny).
+    psi : np.ndarray
+        Function values on the 2d grid, shape (nx, ny).
+    points : np.ndarray
+        (R, Z) coordinates at which to interpolate, shape (2, ...).
 
     Returns
     -------
-    np.array
-        interpolated values, same shape as points: (1, whatever)
+    np.ndarray
+        Interpolated values, with the shape of ``points`` without its first axis.
     """
 
     nx, ny = np.shape(psi)

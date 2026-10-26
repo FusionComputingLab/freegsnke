@@ -12,34 +12,34 @@ the Free Software Foundation, either version 3 of the License, or
 
 FreeGSNKE is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 GNU Lesser General Public License for more details.
 
 You should have received a copy of the GNU Lesser General Public License
-along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
-
+along with FreeGSNKE. If not, see <http://www.gnu.org/licenses/>.
 """
 
+from __future__ import annotations
+
+import numpy as np
 from numpy import concatenate, sqrt
 from scipy.integrate import romb  # Romberg integration
 
 from .gradshafranov import Greens
 
 
-def fixedBoundary(eq, Jtor, psi):
+def fixedBoundary(eq: object, Jtor: np.ndarray, psi: np.ndarray) -> None:
     """
-    Set psi=0 on all boundaries
+    Set psi=0 on all boundaries.
 
-    Inputs
-    ------
-
-    eq    Equilibrium object (not used)
-    Jtor  2D array of toroidal current (not used)
-    psi   2D array of psi values (modified by call)
-
-    Returns
-    -------
-    None
+    Parameters
+    ----------
+    eq : object
+        Equilibrium object; not used.
+    Jtor : np.ndarray
+        Toroidal current density, shape (nx, ny) (not used).
+    psi : np.ndarray
+        Poloidal flux, shape (nx, ny). Boundary values are modified in place.
     """
     psi[0, :] = 0.0
     psi[:, 0] = 0.0
@@ -47,25 +47,21 @@ def fixedBoundary(eq, Jtor, psi):
     psi[:, -1] = 0.0
 
 
-def freeBoundary(eq, Jtor, psi):
+def freeBoundary(eq: object, Jtor: np.ndarray, psi: np.ndarray) -> None:
     """
-    Apply a free boundary condition using Green's functions
+    Apply a free boundary condition using Green's functions.
 
-    Note: This method is inefficient because it requires
-    an integral over the area of the domain for each point
-    on the boundary.
+    Note: this method is inefficient because it requires an integral over the
+    area of the domain for each point on the boundary.
 
-    Inputs
-    ------
-
-    eq    Equilibrium object (not used)
-    Jtor  2D array of toroidal current (not used)
-    psi   2D array of psi values (modified by call)
-
-    Returns
-    -------
-
-    None
+    Parameters
+    ----------
+    eq : object
+        Equilibrium object; provides the grid ``R`` and ``Z`` (shape (nx, ny)).
+    Jtor : np.ndarray
+        Toroidal current density, shape (nx, ny).
+    psi : np.ndarray
+        Poloidal flux, shape (nx, ny). Boundary values are modified in place.
     """
 
     # Get the (R,Z) coordinates from the Equilibrium object
@@ -99,21 +95,21 @@ def freeBoundary(eq, Jtor, psi):
         psi[x, y] = romb(romb(greenfunc * Jtor)) * dR * dZ
 
 
-def freeBoundaryHagenow(eq, Jtor, psi):
+def freeBoundaryHagenow(eq: object, Jtor: np.ndarray, psi: np.ndarray) -> None:
     """
-    Apply a free boundary using von Hagenow's method
+    Apply a free boundary condition using von Hagenow's method.
 
-    Inputs
-    ------
+    A fixed-boundary problem is solved first; the boundary values of psi are
+    then obtained from loop integrals of the normal derivative at the boundary.
 
-    eq    Equilibrium object (not used)
-    Jtor  2D array of toroidal current (not used)
-    psi   2D array of psi values (modified by call)
-
-    Returns
-    -------
-
-    None
+    Parameters
+    ----------
+    eq : object
+        Equilibrium object; provides ``R``, ``Z`` and the ``callSolver`` method.
+    Jtor : np.ndarray
+        Toroidal current density, shape (nx, ny).
+    psi : np.ndarray
+        Poloidal flux, shape (nx, ny). Boundary values are modified in place.
     """
 
     # Get the (R,Z) coordinates from the Equilibrium object

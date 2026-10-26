@@ -1,10 +1,12 @@
 """
 Classes representing different toroidal current density profiles
 in the plasma.
- 
-Modified substantially from the original FreeGS code.
 
 Copyright 2024 Nicola C. Amorisco, Adriano Agnello, George K. Holt, Ben Dudson.
+
+Modified substantially from the original FreeGS code.
+
+This file is part of FreeGSNKE.
 
 FreeGSNKE is free software: you can redistribute it and/or modify
 it under the terms of the GNU Lesser General Public License as published by
@@ -13,12 +15,14 @@ the Free Software Foundation, either version 3 of the License, or
 
 FreeGSNKE is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 GNU Lesser General Public License for more details.
 
 You should have received a copy of the GNU Lesser General Public License
-along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
+along with FreeGSNKE. If not, see <http://www.gnu.org/licenses/>.
 """
+
+from __future__ import annotations
 
 import numpy as np
 from numpy import clip, pi, reshape, sqrt, zeros
@@ -36,7 +40,13 @@ class Profile(object):
     Base class from which profiles classes can inherit.
     """
 
-    def Jtor(self, R, Z, psi, psi_bndry=None):
+    def Jtor(
+        self,
+        R: np.ndarray,
+        Z: np.ndarray,
+        psi: np.ndarray,
+        psi_bndry: float | None = None,
+    ) -> np.ndarray:
         """
         Calculate the toroidal current density on the computational grid.
 
@@ -53,12 +63,12 @@ class Profile(object):
             Vertical coordinates of the grid points.
         psi : np.ndarray
             Total poloidal field flux at each grid point [Webers/2pi].
-        psi_bndry : float, optional
+        psi_bndry : float or None, optional
             Value of the poloidal field flux at the plasma boundary.
 
         Returns
         -------
-        np.array
+        np.ndarray
             Toroidal current density on the computational grid [A/m^2].
         """
 
@@ -86,20 +96,25 @@ class Profile(object):
         self.flag_limiter = not uses_xpoint_boundary
         return self.Jtor_part2(R, Z, psi, opt[0][2], psi_bndry, core_mask)
 
-    def pressure(self, psinorm):
+    def pressure(self, psinorm: np.ndarray) -> np.ndarray:
         """
         Calculate the 1D pressure profile in the plasma (vs. the normalised
         poloidal flux) by integrating the pprime profile.
 
         Parameters
         ----------
-        psinorm : np.array
+        psinorm : np.ndarray
             Array of normalised psi values between 0 and 1.
 
         Returns
         -------
-        np.array
+        np.ndarray
             The computed pressure values at each normalised psi value.
+
+        Raises
+        ------
+        ValueError
+            If the input and output arrays have different lengths.
         """
 
         # to store psi and integral values
@@ -121,20 +136,25 @@ class Profile(object):
 
         return reshape(ovals, psinorm.shape)
 
-    def fpol(self, psinorm):
+    def fpol(self, psinorm: np.ndarray | float) -> np.ndarray | float:
         """
         Calculate the 1D toroidal magnetic profile in the plasma (vs. the normalised
         poloidal flux) by integrating the ffprime profile (ffprime = 0.5*d/dpsi(f^2)).
 
         Parameters
         ----------
-        psinorm : np.array
-            Array of normalised psi values between 0 and 1.
+        psinorm : np.ndarray or float
+            Array (or single value) of normalised psi values between 0 and 1.
 
         Returns
         -------
-        np.array
+        np.ndarray or float
             The computed F values at each normalised psi value.
+
+        Raises
+        ------
+        ValueError
+            If the input and output arrays have different lengths.
         """
 
         # if a single value
@@ -167,7 +187,14 @@ class Profile(object):
 
         return reshape(ovals, psinorm.shape)
 
-    def Jtor_part1(self, R, Z, psi, psi_bndry=None, mask_outside_limiter=None):
+    def Jtor_part1(
+        self,
+        R: np.ndarray,
+        Z: np.ndarray,
+        psi: np.ndarray,
+        psi_bndry: float | None = None,
+        mask_outside_limiter: np.ndarray | None = None,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray | None, float]:
         """
         First part of the Jtor calculation that identifies critical points in the
         poloidal flux (generic to all profile functions). The second stage (in
@@ -182,24 +209,31 @@ class Profile(object):
             Vertical coordinates of the grid points.
         psi : np.ndarray
             Total poloidal field flux at each grid point [Webers/2pi].
-        psi_bndry : float, optional
+        psi_bndry : float or None, optional
             Value of the poloidal field flux at the boundary of the plasma (last closed
             flux surface).
-        mask_outside_limiter : np.ndarray
+        mask_outside_limiter : np.ndarray or None, optional
             Mask of points outside the limiter, if any.
 
         Returns
         -------
-        np.array
+        opt : np.ndarray
             Each row represents an O-point of the form [R, Z, ψ(R,Z)] [m, m, Webers/2pi].
-        np.array
+        xpt : np.ndarray
             Each row represents an X-point of the form [R, Z, ψ(R,Z)] [m, m, Webers/2pi].
-        np.bool
+        diverted_core_mask : np.ndarray of bool or None
             An array, the same shape as the computational grid, indicating the locations
-            at which the core plasma resides (True) and where it does not (False).
-        float
+            at which the core plasma resides (True) and where it does not (False). None
+            if there are no X-points and no `psi_bndry` was given.
+        psi_bndry : float
             Value of the poloidal field flux at the boundary of the plasma (last closed
             flux surface).
+
+        Raises
+        ------
+        ValueError
+            If the ordering of the axis and boundary fluxes is inconsistent with the
+            sign of the plasma current (unsuitable ``psi_plasma`` guess).
         """
 
         # find O- and X-points of equilibrium
@@ -275,7 +309,15 @@ class ConstrainBetapIp(Profile):
     current.
     """
 
-    def __init__(self, betap, Ip, fvac, alpha_m=1.0, alpha_n=2.0, Raxis=1.0):
+    def __init__(
+        self,
+        betap: float,
+        Ip: float,
+        fvac: float,
+        alpha_m: float = 1.0,
+        alpha_n: float = 2.0,
+        Raxis: float = 1.0,
+    ) -> None:
         """
         Initialise the class.
 
@@ -287,12 +329,17 @@ class ConstrainBetapIp(Profile):
             Total plasma current [A].
         fvac : float
             Vacuum toroidal field strength (f = R*B_tor) [T].
-        alpha_m : float
+        alpha_m : float, optional
             Shape/peakedness parameter (non-negative).
-        alpha_n : float
+        alpha_n : float, optional
             Shape/peakedness parameter (non-negative).
-        Raxis : float
+        Raxis : float, optional
             Radial scaling parameter (non-negative).
+
+        Raises
+        ------
+        ValueError
+            If `alpha_m`, `alpha_n` or `Raxis` is negative.
         """
 
         # set parameters
@@ -312,7 +359,15 @@ class ConstrainBetapIp(Profile):
         # Compatibility flag for native current-density profiles.
         self.fast = True
 
-    def Jtor_part2(self, R, Z, psi, psi_axis, psi_bndry, mask):
+    def Jtor_part2(
+        self,
+        R: np.ndarray,
+        Z: np.ndarray,
+        psi: np.ndarray,
+        psi_axis: float,
+        psi_bndry: float | None,
+        mask: np.ndarray | None,
+    ) -> np.ndarray:
         """
         Second part of the calculation that will use the explicit
         parameterisation of the chosen profile function to calculate Jtor.
@@ -330,16 +385,21 @@ class ConstrainBetapIp(Profile):
             Total poloidal field flux at each grid point [Webers/2pi].
         psi_axis : float
             Value of the poloidal field flux at the magnetic axis of the plasma.
-        psi_bndry : float
+        psi_bndry : float or None
             Value of the poloidal field flux at the boundary of the plasma (last closed
-            flux surface).
-        mask : np.ndarray
-            Mask of points inside the last closed flux surface.
+            flux surface). If None, ``psi[0, 0]`` is used.
+        mask : np.ndarray or None
+            Mask of points inside the last closed flux surface (no masking if None).
 
         Returns
         -------
-        np.array
+        np.ndarray
             Toroidal current density on the computational grid [A/m^2].
+
+        Raises
+        ------
+        ValueError
+            If the core mask is empty.
         """
 
         # set flux on boundary
@@ -412,20 +472,25 @@ class ConstrainBetapIp(Profile):
 
         return Jtor
 
-    def pprime(self, pn):
+    def pprime(self, pn: np.ndarray) -> np.ndarray:
         """
         Calculate the 1D pprime (dp/dpsi) profile in the plasma (vs. the
         normalised poloidal flux).
 
         Parameters
         ----------
-        pn : np.array
+        pn : np.ndarray
             Array of normalised psi values between 0 and 1.
 
         Returns
         -------
-        np.array
+        np.ndarray
             The computed pprime values at each normalised psi value.
+
+        Raises
+        ------
+        ValueError
+            If Jtor has not yet been calculated for this profile (so it cannot be normalised).
         """
 
         shape = (1.0 - np.clip(pn, 0.0, 1.0) ** self.alpha_m) ** self.alpha_n
@@ -437,20 +502,25 @@ class ConstrainBetapIp(Profile):
 
         return self.L * self.Beta0 / self.Raxis * shape
 
-    def ffprime(self, pn):
+    def ffprime(self, pn: np.ndarray) -> np.ndarray:
         """
         Calculate the 1D ffprime (FdF/dpsi) profile in the plasma (vs. the
         normalised poloidal flux).
 
         Parameters
         ----------
-        pn : np.array
+        pn : np.ndarray
             Array of normalised psi values between 0 and 1.
 
         Returns
         -------
-        np.array
+        np.ndarray
             The computed ffprime values at each normalised psi value.
+
+        Raises
+        ------
+        ValueError
+            If Jtor has not yet been calculated for this profile (so it cannot be normalised).
         """
 
         shape = (1.0 - np.clip(pn, 0.0, 1.0) ** self.alpha_m) ** self.alpha_n
@@ -462,17 +532,14 @@ class ConstrainBetapIp(Profile):
 
         return mu0 * self.L * (1 - self.Beta0) * self.Raxis * shape
 
-    def fvac(self):
+    def fvac(self) -> float:
         """
-        Return the vaccum field parameter fvac = R*Btor.
-
-        Parameters
-        ----------
+        Return the vacuum field parameter fvac = R*Btor.
 
         Returns
         -------
         float
-            The vaccum field parameter fvac = R*Btor.
+            The vacuum field parameter fvac = R*Btor [T m].
         """
         return self._fvac
 
@@ -488,7 +555,15 @@ class ConstrainPaxisIp(Profile):
     current.
     """
 
-    def __init__(self, paxis, Ip, fvac, alpha_m=1.0, alpha_n=2.0, Raxis=1.0):
+    def __init__(
+        self,
+        paxis: float,
+        Ip: float,
+        fvac: float,
+        alpha_m: float = 1.0,
+        alpha_n: float = 2.0,
+        Raxis: float = 1.0,
+    ) -> None:
         """
         Initialise the class.
 
@@ -500,12 +575,17 @@ class ConstrainPaxisIp(Profile):
             Total plasma current [A].
         fvac : float
             Vacuum toroidal field strength (f = R*B_tor) [T].
-        alpha_m : float
+        alpha_m : float, optional
             Shape/peakedness parameter (non-negative).
-        alpha_n : float
+        alpha_n : float, optional
             Shape/peakedness parameter (non-negative).
-        Raxis : float
+        Raxis : float, optional
             Radial scaling parameter (non-negative).
+
+        Raises
+        ------
+        ValueError
+            If `alpha_m`, `alpha_n` or `Raxis` is negative.
         """
 
         # set parameters
@@ -525,7 +605,15 @@ class ConstrainPaxisIp(Profile):
         # Compatibility flag for native current-density profiles.
         self.fast = True
 
-    def Jtor_part2(self, R, Z, psi, psi_axis, psi_bndry, mask):
+    def Jtor_part2(
+        self,
+        R: np.ndarray,
+        Z: np.ndarray,
+        psi: np.ndarray,
+        psi_axis: float,
+        psi_bndry: float | None,
+        mask: np.ndarray | None,
+    ) -> np.ndarray:
         """
         Second part of the calculation that will use the explicit
         parameterisation of the chosen profile function to calculate Jtor.
@@ -543,15 +631,15 @@ class ConstrainPaxisIp(Profile):
             Total poloidal field flux at each grid point [Webers/2pi].
         psi_axis : float
             Value of the poloidal field flux at the magnetic axis of the plasma.
-        psi_bndry : float
+        psi_bndry : float or None
             Value of the poloidal field flux at the boundary of the plasma (last closed
-            flux surface).
-        mask : np.ndarray
-            Mask of points inside the last closed flux surface.
+            flux surface). If None, ``psi[0, 0]`` is used.
+        mask : np.ndarray or None
+            Mask of points inside the last closed flux surface (no masking if None).
 
         Returns
         -------
-        np.array
+        np.ndarray
             Toroidal current density on the computational grid [A/m^2].
         """
 
@@ -601,20 +689,25 @@ class ConstrainPaxisIp(Profile):
 
         return Jtor
 
-    def pprime(self, pn):
+    def pprime(self, pn: np.ndarray) -> np.ndarray:
         """
         Calculate the 1D pprime (dp/dpsi) profile in the plasma (vs. the
         normalised poloidal flux).
 
         Parameters
         ----------
-        pn : np.array
+        pn : np.ndarray
             Array of normalised psi values between 0 and 1.
 
         Returns
         -------
-        np.array
+        np.ndarray
             The computed pprime values at each normalised psi value.
+
+        Raises
+        ------
+        ValueError
+            If Jtor has not yet been calculated for this profile (so it cannot be normalised).
         """
 
         shape = (1.0 - np.clip(pn, 0.0, 1.0) ** self.alpha_m) ** self.alpha_n
@@ -629,20 +722,25 @@ class ConstrainPaxisIp(Profile):
             # )
         return self.L * self.Beta0 / self.Raxis * shape
 
-    def ffprime(self, pn):
+    def ffprime(self, pn: np.ndarray) -> np.ndarray:
         """
         Calculate the 1D ffprime (FdF/dpsi) profile in the plasma (vs. the
         normalised poloidal flux).
 
         Parameters
         ----------
-        pn : np.array
+        pn : np.ndarray
             Array of normalised psi values between 0 and 1.
 
         Returns
         -------
-        np.array
+        np.ndarray
             The computed ffprime values at each normalised psi value.
+
+        Raises
+        ------
+        ValueError
+            If Jtor has not yet been calculated for this profile (so it cannot be normalised).
         """
 
         shape = (1.0 - np.clip(pn, 0.0, 1.0) ** self.alpha_m) ** self.alpha_n
@@ -653,17 +751,14 @@ class ConstrainPaxisIp(Profile):
             )
         return mu0 * self.L * (1 - self.Beta0) * self.Raxis * shape
 
-    def fvac(self):
+    def fvac(self) -> float:
         """
-        Return the vaccum field parameter fvac = R*Btor.
-
-        Parameters
-        ----------
+        Return the vacuum field parameter fvac = R*Btor.
 
         Returns
         -------
         float
-            The vaccum field parameter fvac = R*Btor.
+            The vacuum field parameter fvac = R*Btor [T m].
         """
         return self._fvac
 
@@ -679,7 +774,15 @@ class Fiesta_Topeol(Profile):
 
     """
 
-    def __init__(self, Beta0, Ip, fvac, alpha_m=1.0, alpha_n=2.0, Raxis=1.0):
+    def __init__(
+        self,
+        Beta0: float,
+        Ip: float,
+        fvac: float,
+        alpha_m: float = 1.0,
+        alpha_n: float = 2.0,
+        Raxis: float = 1.0,
+    ) -> None:
         """
         Initialise the class.
 
@@ -691,12 +794,17 @@ class Fiesta_Topeol(Profile):
             Total plasma current [A].
         fvac : float
             Vacuum toroidal field strength (f = R*B_tor) [T].
-        alpha_m : float
+        alpha_m : float, optional
             Shape/peakedness parameter (non-negative).
-        alpha_n : float
+        alpha_n : float, optional
             Shape/peakedness parameter (non-negative).
-        Raxis : float
+        Raxis : float, optional
             Radial scaling parameter (non-negative).
+
+        Raises
+        ------
+        ValueError
+            If `alpha_m`, `alpha_n` or `Raxis` is negative.
         """
 
         # set parameters
@@ -716,7 +824,15 @@ class Fiesta_Topeol(Profile):
         # Compatibility flag for native current-density profiles.
         self.fast = True
 
-    def Jtor_part2(self, R, Z, psi, psi_axis, psi_bndry, mask):
+    def Jtor_part2(
+        self,
+        R: np.ndarray,
+        Z: np.ndarray,
+        psi: np.ndarray,
+        psi_axis: float,
+        psi_bndry: float | None,
+        mask: np.ndarray | None,
+    ) -> np.ndarray:
         """
         Second part of the calculation that will use the explicit
         parameterisation of the chosen profile function to calculate Jtor.
@@ -734,15 +850,15 @@ class Fiesta_Topeol(Profile):
             Total poloidal field flux at each grid point [Webers/2pi].
         psi_axis : float
             Value of the poloidal field flux at the magnetic axis of the plasma.
-        psi_bndry : float
+        psi_bndry : float or None
             Value of the poloidal field flux at the boundary of the plasma (last closed
-            flux surface).
-        mask : np.ndarray
-            Mask of points inside the last closed flux surface.
+            flux surface). If None, ``psi[0, 0]`` is used.
+        mask : np.ndarray or None
+            Mask of points inside the last closed flux surface (no masking if None).
 
         Returns
         -------
-        np.array
+        np.ndarray
             Toroidal current density on the computational grid [A/m^2].
         """
 
@@ -777,20 +893,25 @@ class Fiesta_Topeol(Profile):
 
         return self.jtor
 
-    def pprime(self, pn):
+    def pprime(self, pn: np.ndarray) -> np.ndarray:
         """
         Calculate the 1D pprime (dp/dpsi) profile in the plasma (vs. the
         normalised poloidal flux).
 
         Parameters
         ----------
-        pn : np.array
+        pn : np.ndarray
             Array of normalised psi values between 0 and 1.
 
         Returns
         -------
-        np.array
+        np.ndarray
             The computed pprime values at each normalised psi value.
+
+        Raises
+        ------
+        ValueError
+            If Jtor has not yet been calculated for this profile (so it cannot be normalised).
         """
 
         shape = (1.0 - np.clip(pn, 0.0, 1.0) ** self.alpha_m) ** self.alpha_n
@@ -801,20 +922,25 @@ class Fiesta_Topeol(Profile):
             )
         return self.L * self.Beta0 / self.Raxis * shape
 
-    def ffprime(self, pn):
+    def ffprime(self, pn: np.ndarray) -> np.ndarray:
         """
         Calculate the 1D ffprime (FdF/dpsi) profile in the plasma (vs. the
         normalised poloidal flux).
 
         Parameters
         ----------
-        pn : np.array
+        pn : np.ndarray
             Array of normalised psi values between 0 and 1.
 
         Returns
         -------
-        np.array
+        np.ndarray
             The computed ffprime values at each normalised psi value.
+
+        Raises
+        ------
+        ValueError
+            If Jtor has not yet been calculated for this profile (so it cannot be normalised).
         """
 
         shape = (1.0 - np.clip(pn, 0.0, 1.0) ** self.alpha_m) ** self.alpha_n
@@ -825,17 +951,14 @@ class Fiesta_Topeol(Profile):
             )
         return mu0 * self.L * (1 - self.Beta0) * self.Raxis * shape
 
-    def fvac(self):
+    def fvac(self) -> float:
         """
-        Return the vaccum field parameter fvac = R*Btor.
-
-        Parameters
-        ----------
+        Return the vacuum field parameter fvac = R*Btor.
 
         Returns
         -------
         float
-            The vaccum field parameter fvac = R*Btor.
+            The vacuum field parameter fvac = R*Btor [T m].
         """
         return self._fvac
 
@@ -852,15 +975,15 @@ class Lao85(Profile):
 
     def __init__(
         self,
-        Ip,
-        fvac,
-        alpha,
-        beta,
-        alpha_logic=True,
-        beta_logic=True,
-        Raxis=1,
-        Ip_logic=True,
-    ):
+        Ip: float,
+        fvac: float,
+        alpha: list[float] | np.ndarray,
+        beta: list[float] | np.ndarray,
+        alpha_logic: bool = True,
+        beta_logic: bool = True,
+        Raxis: float = 1,
+        Ip_logic: bool = True,
+    ) -> None:
         """
         Initialise the class.
 
@@ -870,17 +993,17 @@ class Lao85(Profile):
             Total plasma current [A].
         fvac : float
             Vacuum toroidal field strength (f = R*B_tor) [T].
-        alpha : list or np.array
+        alpha : list or np.ndarray
             Polynomial coefficients for pprime.
-        beta : list or np.array
+        beta : list or np.ndarray
             Polynomial coefficients for ffprime.
-        alpha_logic : bool
-            If True, include the n_{P+1} term to ensure pprime(1)=0 (see Jtor2).
-        beta_logic : bool
-            If True, include the n_{F+1} term to ensure ffprime(1)=0 (see Jtor2).
-        Raxis : float
+        alpha_logic : bool, optional
+            If True, include the n_{P+1} term to ensure pprime(1)=0 (see Jtor_part2).
+        beta_logic : bool, optional
+            If True, include the n_{F+1} term to ensure ffprime(1)=0 (see Jtor_part2).
+        Raxis : float, optional
             Radial scaling parameter (non-negative).
-        Ip_logic : bool
+        Ip_logic : bool, optional
             If True, entire profile is re-normalised to satisfy Ip identically.
         """
 
@@ -902,16 +1025,12 @@ class Lao85(Profile):
         # Compatibility flag for native current-density profiles.
         self.fast = True
 
-    def initialize_profile(self):
+    def initialize_profile(self) -> None:
         """
         Set up the attributes in the class ready for Jtor calculations.
 
-        Parameters
-        ----------
-
-        Returns
-        -------
-
+        Appends the extra polynomial terms (if `alpha_logic`/`beta_logic`) and
+        sets the exponent arrays ``alpha_exp`` and ``beta_exp``.
         """
 
         # set up the required exponents in the Lao profile
@@ -924,7 +1043,15 @@ class Lao85(Profile):
 
     def build_dJtorpsin1(
         self,
-    ):
+    ) -> None:
+        """
+        Calculate dJtor/dpsi_n at psi_n=1 and store it in ``self.dJtorpsin1``.
+
+        Notes
+        -----
+        Requires the attribute ``self.eqR`` (the R grid), which is not set by this
+        class itself.
+        """
         # calculate dJ/dpsi_n at psi_n=1
         pprime_term = (
             self.alpha[1:, np.newaxis, np.newaxis]
@@ -945,15 +1072,15 @@ class Lao85(Profile):
 
     def Jtor_part2(
         self,
-        R,
-        Z,
-        psi,
-        psi_axis,
-        psi_bndry,
-        mask,
-        torefine=False,
-        refineR=None,
-    ):
+        R: np.ndarray,
+        Z: np.ndarray,
+        psi: np.ndarray,
+        psi_axis: float,
+        psi_bndry: float | None,
+        mask: np.ndarray | None,
+        torefine: bool = False,
+        refineR: np.ndarray | None = None,
+    ) -> np.ndarray:
         """
         Second part of the calculation that will use the explicit
         parameterisation of the chosen profile function to calculate Jtor.
@@ -978,17 +1105,29 @@ class Lao85(Profile):
             Total poloidal field flux at each grid point [Webers/2pi].
         psi_axis : float
             Value of the poloidal field flux at the magnetic axis of the plasma.
-        psi_bndry : float
+        psi_bndry : float or None
             Value of the poloidal field flux at the boundary of the plasma (last closed
-            flux surface).
-        mask : np.ndarray
-            Mask of points inside the last closed flux surface.
-
+            flux surface). If None, ``psi[0, 0]`` is used.
+        mask : np.ndarray or None
+            Mask of points inside the last closed flux surface (no masking if None).
+        torefine : bool, optional
+            If True, evaluate Jtor at refined sub-grid points only: `psi` and
+            `refineR` hold the values at those points, and the unmasked,
+            unnormalised current density is returned.
+        refineR : np.ndarray or None, optional
+            R coordinates of the refined points (same shape as `psi`); used in
+            place of `R` when `torefine` is True.
 
         Returns
         -------
-        np.array
-            Toroidal current density on the computational grid [A/m^2].
+        np.ndarray
+            Toroidal current density on the computational grid [A/m^2] (or at the
+            refined points if `torefine` is True).
+
+        Raises
+        ------
+        ValueError
+            If the total plasma current of the (masked) profile is zero, so it cannot be renormalised.
         """
 
         # set flux on boundary
@@ -1082,20 +1221,25 @@ class Lao85(Profile):
 
         return self.jtor
 
-    def pprime(self, pn):
+    def pprime(self, pn: np.ndarray) -> np.ndarray:
         """
         Calculate the 1D pprime (dp/dpsi) profile in the plasma (vs. the
         normalised poloidal flux).
 
         Parameters
         ----------
-        pn : np.array
+        pn : np.ndarray
             Array of normalised psi values between 0 and 1.
 
         Returns
         -------
-        np.array
+        np.ndarray
             The computed pprime values at each normalised psi value.
+
+        Raises
+        ------
+        ValueError
+            If `Ip_logic` is True and Jtor has not yet been calculated for this profile (so it cannot be normalised).
         """
 
         pn_ = np.clip(np.array(pn), 0, 1)
@@ -1114,20 +1258,25 @@ class Lao85(Profile):
                 )
         return self.L * shape / self.Raxis
 
-    def ffprime(self, pn):
+    def ffprime(self, pn: np.ndarray) -> np.ndarray:
         """
         Calculate the 1D ffprime (FdF/dpsi) profile in the plasma (vs. the
         normalised poloidal flux).
 
         Parameters
         ----------
-        pn : np.array
+        pn : np.ndarray
             Array of normalised psi values between 0 and 1.
 
         Returns
         -------
-        np.array
+        np.ndarray
             The computed ffprime values at each normalised psi value.
+
+        Raises
+        ------
+        ValueError
+            If `Ip_logic` is True and Jtor has not yet been calculated for this profile (so it cannot be normalised).
         """
 
         pn_ = np.clip(np.array(pn), 0, 1)
@@ -1146,7 +1295,7 @@ class Lao85(Profile):
                 )
         return self.L * shape * self.Raxis
 
-    def pressure(self, pn):
+    def pressure(self, pn: np.ndarray) -> np.ndarray:
         """
         Calculate the 1D pressure profile in the plasma (vs. the normalised
         poloidal flux) without integrating the pprime profile (specifically
@@ -1154,12 +1303,12 @@ class Lao85(Profile):
 
         Parameters
         ----------
-        pn : np.array
+        pn : np.ndarray
             Array of normalised psi values between 0 and 1.
 
         Returns
         -------
-        np.array
+        np.ndarray
             The computed pressure values at each normalised psi value.
         """
 
@@ -1192,17 +1341,14 @@ class Lao85(Profile):
         pressure = self.L * norm_pressure * (self.psi_axis - self.psi_bndry)
         return pressure
 
-    def fvac(self):
+    def fvac(self) -> float:
         """
-        Return the vaccum field parameter fvac = R*Btor.
-
-        Parameters
-        ----------
+        Return the vacuum field parameter fvac = R*Btor.
 
         Returns
         -------
         float
-            The vaccum field parameter fvac = R*Btor.
+            The vacuum field parameter fvac = R*Btor [T m].
         """
         return self._fvac
 
@@ -1215,19 +1361,19 @@ class TensionSpline(Profile):
 
     def __init__(
         self,
-        Ip,
-        fvac,
-        pp_knots,
-        pp_values,
-        pp_values_2,
-        pp_sigma,
-        ffp_knots,
-        ffp_values,
-        ffp_values_2,
-        ffp_sigma,
-        Raxis=1,
-        Ip_logic=True,
-    ):
+        Ip: float,
+        fvac: float,
+        pp_knots: list[float] | np.ndarray,
+        pp_values: list[float] | np.ndarray,
+        pp_values_2: list[float] | np.ndarray,
+        pp_sigma: float,
+        ffp_knots: list[float] | np.ndarray,
+        ffp_values: list[float] | np.ndarray,
+        ffp_values_2: list[float] | np.ndarray,
+        ffp_sigma: float,
+        Raxis: float = 1,
+        Ip_logic: bool = True,
+    ) -> None:
         """
         Initialise the class.
 
@@ -1237,25 +1383,25 @@ class TensionSpline(Profile):
             Total plasma current [A].
         fvac : float
             Vacuum toroidal field strength (f = R*B_tor) [T].
-        pp_knots : list or np.array
+        pp_knots : list or np.ndarray
             Knot points of pprime profile.
-        pp_values : list or np.array
+        pp_values : list or np.ndarray
             Values of pprime at knot points.
-        pp_values_2 : list or np.array
+        pp_values_2 : list or np.ndarray
             Values of 2nd derivative of pprime at knot points.
         pp_sigma : float
-            Tension spline parameter for pprime (non-neative).
-        ffp_knots : list or np.array
+            Tension spline parameter for pprime (non-negative).
+        ffp_knots : list or np.ndarray
             Knot points of ffprime profile.
-        ffp_values : list or np.array
+        ffp_values : list or np.ndarray
             Values of ffprime at knot points.
-        ffp_values_2 : list or np.array
+        ffp_values_2 : list or np.ndarray
             Values of 2nd derivative of ffprime at knot points.
         ffp_sigma : float
-            Tension spline parameter for ffprime (non-neative).
-        Raxis : float
+            Tension spline parameter for ffprime (non-negative).
+        Raxis : float, optional
             Radial scaling parameter (non-negative).
-        Ip_logic : bool
+        Ip_logic : bool, optional
             If True, entire profile is re-normalised to satisfy Ip identically.
         """
 
@@ -1276,7 +1422,15 @@ class TensionSpline(Profile):
         # Compatibility flag for native current-density profiles.
         self.fast = True
 
-    def Jtor_part2(self, R, Z, psi, psi_axis, psi_bndry, mask):
+    def Jtor_part2(
+        self,
+        R: np.ndarray,
+        Z: np.ndarray,
+        psi: np.ndarray,
+        psi_axis: float,
+        psi_bndry: float | None,
+        mask: np.ndarray | None,
+    ) -> np.ndarray:
         """
         Second part of the calculation that will use the explicit
         parameterisation of the chosen profile function to calculate Jtor.
@@ -1305,16 +1459,21 @@ class TensionSpline(Profile):
             Total poloidal field flux at each grid point [Webers/2pi].
         psi_axis : float
             Value of the poloidal field flux at the magnetic axis of the plasma.
-        psi_bndry : float
+        psi_bndry : float or None
             Value of the poloidal field flux at the boundary of the plasma (last closed
-            flux surface).
-        mask : np.ndarray
-            Mask of points inside the last closed flux surface.
+            flux surface). If None, ``psi[0, 0]`` is used.
+        mask : np.ndarray or None
+            Mask of points inside the last closed flux surface (no masking if None).
 
         Returns
         -------
-        np.array
+        np.ndarray
             Toroidal current density on the computational grid [A/m^2].
+
+        Raises
+        ------
+        ValueError
+            If the total plasma current of the (masked) profile is zero, so it cannot be renormalised.
         """
 
         # set flux on boundary
@@ -1374,19 +1533,19 @@ class TensionSpline(Profile):
 
         return self.jtor
 
-    def pprime(self, pn):
+    def pprime(self, pn: np.ndarray) -> np.ndarray:
         """
         Calculate the 1D pprime (dp/dpsi) profile in the plasma (vs. the
         normalised poloidal flux).
 
         Parameters
         ----------
-        pn : np.array
+        pn : np.ndarray
             Array of normalised psi values between 0 and 1.
 
         Returns
         -------
-        np.array
+        np.ndarray
             The computed pprime values at each normalised psi value.
         """
 
@@ -1395,19 +1554,19 @@ class TensionSpline(Profile):
         )
         return self.L * shape / self.Raxis
 
-    def ffprime(self, pn):
+    def ffprime(self, pn: np.ndarray) -> np.ndarray:
         """
         Calculate the 1D ffprime (FdF/dpsi) profile in the plasma (vs. the
         normalised poloidal flux).
 
         Parameters
         ----------
-        pn : np.array
+        pn : np.ndarray
             Array of normalised psi values between 0 and 1.
 
         Returns
         -------
-        np.array
+        np.ndarray
             The computed ffprime values at each normalised psi value.
         """
 
@@ -1420,21 +1579,25 @@ class TensionSpline(Profile):
         )
         return self.L * shape * self.Raxis
 
-    def fvac(self):
+    def fvac(self) -> float:
         """
-        Return the vaccum field parameter fvac = R*Btor.
-
-        Parameters
-        ----------
+        Return the vacuum field parameter fvac = R*Btor.
 
         Returns
         -------
         float
-            The vaccum field parameter fvac = R*Btor.
+            The vacuum field parameter fvac = R*Btor [T m].
         """
         return self._fvac
 
-    def tension_spline(self, x, xn, yn, zn, sigma):
+    def tension_spline(
+        self,
+        x: np.ndarray,
+        xn: np.ndarray,
+        yn: np.ndarray,
+        zn: np.ndarray,
+        sigma: float,
+    ) -> np.ndarray:
         """
         Evaluate the tension spline at locations in x using knot points xn,
         values at knot points yn, and second derivative values at knot points zn.
@@ -1442,20 +1605,20 @@ class TensionSpline(Profile):
 
         Parameters
         ----------
-        x : np.array
+        x : np.ndarray
             Array of normalised psi values between 0 and 1.
-        xn : np.array
+        xn : np.ndarray
             Array of knot points between 0 and 1.
-        yn : np.array
+        yn : np.ndarray
             Values of the function at the knot points.
-        zn : np.array
+        zn : np.ndarray
             Values of the 2nd derivative of the function at the knot points.
         sigma : float
             Tension spline parameter (non-negative).
 
         Returns
         -------
-        np.array
+        np.ndarray
             The tension spline evaluated at the points in x.
         """
 
@@ -1512,17 +1675,17 @@ class GeneralPprimeFFprime(Profile):
 
     def __init__(
         self,
-        Ip,
-        fvac,
-        psi_n,
-        pprime_data=None,
-        ffprime_data=None,
-        p_data=None,
-        f_data=None,
-        Raxis=1,
-        Ip_logic=True,
-        interpolator="univariate_spline",
-    ):
+        Ip: float,
+        fvac: float,
+        psi_n: np.ndarray,
+        pprime_data: np.ndarray | None = None,
+        ffprime_data: np.ndarray | None = None,
+        p_data: np.ndarray | None = None,
+        f_data: np.ndarray | None = None,
+        Raxis: float = 1,
+        Ip_logic: bool = True,
+        interpolator: str = "univariate_spline",
+    ) -> None:
         """
         Initialise the class.
 
@@ -1532,22 +1695,22 @@ class GeneralPprimeFFprime(Profile):
             Total plasma current [A].
         fvac : float
             Vacuum toroidal field strength (f = R*B_tor) [T].
-        psi_n : np.array
+        psi_n : np.ndarray
             A 1D array of normalised poloidal flux values, corresponding to the data in pprime_data, ffprime_data,
             p_data, and f_data.
-        pprime_data : np.array
+        pprime_data : np.ndarray or None, optional
             A 1D array of dp/dpsi_n (p is pressure) values at each value of normalised flux in psi_n.
-        ffprime_data : np.array
+        ffprime_data : np.ndarray or None, optional
             A 1D array of fdf/dpsi_n (f is the toroidal magnetic field) values at each value of normalised flux in psi_n.
-        p_data : np.array
+        p_data : np.ndarray or None, optional
             A 1D array of p (p is pressure) values at each value of normalised flux in psi_n.
-        f_data : np.array
+        f_data : np.ndarray or None, optional
             A 1D array of f (f is the toroidal magnetic field) values at each value of normalised flux in psi_n.
-        Raxis : float
+        Raxis : float, optional
             Radial scaling parameter (non-negative).
-        Ip_logic : bool
+        Ip_logic : bool, optional
             If True, entire profile is re-normalised to satisfy Ip identically.
-        interpolator : str
+        interpolator : str, optional
             Defaults to using a "univariate_spline" or optionally a "cubic_spline", data points in both are interpolated exactly.
         """
 
@@ -1571,16 +1734,18 @@ class GeneralPprimeFFprime(Profile):
         # Compatibility flag for native current-density profiles.
         self.fast = True
 
-    def initialize_profile(self):
+    def initialize_profile(self) -> None:
         """
         Set up the attributes in the class ready for Jtor calculations.
 
-        Parameters
-        ----------
+        Builds the interpolating functions ``pprime_func``, ``p_func``,
+        ``ffprime_func`` and ``f_func`` from the supplied data.
 
-        Returns
-        -------
-
+        Raises
+        ------
+        ValueError
+            If neither `pprime_data` nor `p_data` is provided, or neither
+            `ffprime_data` nor `f_data` is provided.
         """
 
         # interpolate the p data
@@ -1641,15 +1806,15 @@ class GeneralPprimeFFprime(Profile):
 
     def Jtor_part2(
         self,
-        R,
-        Z,
-        psi,
-        psi_axis,
-        psi_bndry,
-        mask,
-        torefine=False,
-        refineR=None,
-    ):
+        R: np.ndarray,
+        Z: np.ndarray,
+        psi: np.ndarray,
+        psi_axis: float,
+        psi_bndry: float | None,
+        mask: np.ndarray | None,
+        torefine: bool = False,
+        refineR: np.ndarray | None = None,
+    ) -> np.ndarray:
         """
         Second part of the calculation that will use the interpolated profile
         functions to calculate Jtor.
@@ -1674,17 +1839,29 @@ class GeneralPprimeFFprime(Profile):
             Total poloidal field flux at each grid point [Webers/2pi].
         psi_axis : float
             Value of the poloidal field flux at the magnetic axis of the plasma.
-        psi_bndry : float
+        psi_bndry : float or None
             Value of the poloidal field flux at the boundary of the plasma (last closed
-            flux surface).
-        mask : np.ndarray
-            Mask of points inside the last closed flux surface.
-
+            flux surface). If None, ``psi[0, 0]`` is used.
+        mask : np.ndarray or None
+            Mask of points inside the last closed flux surface (no masking if None).
+        torefine : bool, optional
+            If True, evaluate Jtor at refined sub-grid points only: `psi` and
+            `refineR` hold the values at those points, and the unmasked,
+            unnormalised current density is returned.
+        refineR : np.ndarray or None, optional
+            R coordinates of the refined points (same shape as `psi`); used in
+            place of `R` when `torefine` is True.
 
         Returns
         -------
-        np.array
-            Toroidal current density on the computational grid [A/m^2].
+        np.ndarray
+            Toroidal current density on the computational grid [A/m^2] (or at the
+            refined points if `torefine` is True).
+
+        Raises
+        ------
+        ValueError
+            If the total plasma current of the (masked) profile is zero, so it cannot be renormalised.
         """
 
         # set flux on boundary
@@ -1738,20 +1915,25 @@ class GeneralPprimeFFprime(Profile):
 
         return self.jtor
 
-    def pprime(self, pn):
+    def pprime(self, pn: np.ndarray) -> np.ndarray:
         """
         Calculate the 1D pprime (dp/dpsi) profile in the plasma (vs. the
         normalised poloidal flux).
 
         Parameters
         ----------
-        pn : np.array
+        pn : np.ndarray
             Array of normalised psi values between 0 and 1.
 
         Returns
         -------
-        np.array
+        np.ndarray
             The computed pprime values at each normalised psi value.
+
+        Raises
+        ------
+        ValueError
+            If `Ip_logic` is True and Jtor has not yet been calculated for this profile (so it cannot be normalised).
         """
 
         pn_ = np.clip(np.array(pn), 0, 1)
@@ -1764,20 +1946,25 @@ class GeneralPprimeFFprime(Profile):
                 )
         return self.L * self.pprime_func(pn_) / self.Raxis
 
-    def ffprime(self, pn):
+    def ffprime(self, pn: np.ndarray) -> np.ndarray:
         """
         Calculate the 1D ffprime (FdF/dpsi) profile in the plasma (vs. the
         normalised poloidal flux).
 
         Parameters
         ----------
-        pn : np.array
+        pn : np.ndarray
             Array of normalised psi values between 0 and 1.
 
         Returns
         -------
-        np.array
+        np.ndarray
             The computed ffprime values at each normalised psi value.
+
+        Raises
+        ------
+        ValueError
+            If `Ip_logic` is True and Jtor has not yet been calculated for this profile (so it cannot be normalised).
         """
 
         pn_ = np.clip(np.array(pn), 0, 1)
@@ -1790,19 +1977,19 @@ class GeneralPprimeFFprime(Profile):
                 )
         return self.L * self.ffprime_func(pn_) * self.Raxis
 
-    def pressure(self, pn):
+    def pressure(self, pn: np.ndarray) -> np.ndarray:
         """
         Calculate the 1D pressure profile in the plasma (vs. the normalised
         poloidal flux).
 
         Parameters
         ----------
-        pn : np.array
+        pn : np.ndarray
             Array of normalised psi values between 0 and 1.
 
         Returns
         -------
-        np.array
+        np.ndarray
             The computed pressure values at each normalised psi value.
         """
 
@@ -1813,19 +2000,19 @@ class GeneralPprimeFFprime(Profile):
         else:
             return super(GeneralPprimeFFprime, self).pressure(pn_)
 
-    def fpol(self, pn):
+    def fpol(self, pn: np.ndarray) -> np.ndarray:
         """
         Calculate the 1D toroidal magnetic profile in the plasma (vs. the normalised
         poloidal flux).
 
         Parameters
         ----------
-        pn : np.array
+        pn : np.ndarray
             Array of normalised psi values between 0 and 1.
 
         Returns
         -------
-        np.array
+        np.ndarray
             The computed toroidal magnetic field values at each normalised psi value.
         """
 
@@ -1836,16 +2023,13 @@ class GeneralPprimeFFprime(Profile):
         else:
             return super(GeneralPprimeFFprime, self).fpol(pn_)
 
-    def fvac(self):
+    def fvac(self) -> float:
         """
-        Return the vaccum field parameter fvac = R*Btor.
-
-        Parameters
-        ----------
+        Return the vacuum field parameter fvac = R*Btor.
 
         Returns
         -------
         float
-            The vaccum field parameter fvac = R*Btor.
+            The vacuum field parameter fvac = R*Btor [T m].
         """
         return self._fvac

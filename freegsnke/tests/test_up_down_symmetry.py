@@ -30,7 +30,7 @@ def _passive_element(name, element, r, z):
     }
 
 
-def test_pairing_symmetrisation_and_current_transforms(max_pair_mismatch = 0.05):
+def test_pairing_symmetrisation_and_current_transforms():
     """Geometry assignment handles reordered children and transforms round-trip."""
     active = {
         "solenoid": _active_element([0.2, 0.2, 0.2, 0.2], [-0.8, -0.2, 0.19, 0.79]),
@@ -40,11 +40,17 @@ def test_pairing_symmetrisation_and_current_transforms(max_pair_mismatch = 0.05)
     passive = [
         _passive_element("case_upper_0", "case_upper", [1.0, 1.2, 1.2, 1.0], [0.4] * 4),
         _passive_element("case_upper_1", "case_upper", [1.0, 1.2, 1.2, 1.0], [0.8] * 4),
-        _passive_element("case_lower_0", "case_lower", [1.0, 1.2, 1.2, 1.0], [-0.82] * 4),
-        _passive_element("case_lower_1", "case_lower", [1.0, 1.2, 1.2, 1.0], [-0.42] * 4),
+        _passive_element(
+            "case_lower_0", "case_lower", [1.0, 1.2, 1.2, 1.0], [-0.82] * 4
+        ),
+        _passive_element(
+            "case_lower_1", "case_lower", [1.0, 1.2, 1.2, 1.0], [-0.42] * 4
+        ),
     ]
 
-    prepared = prepare_up_down_symmetric_machine(active, passive, max_pair_mismatch=0.05)
+    prepared = prepare_up_down_symmetric_machine(
+        active, passive, max_pair_mismatch=0.05
+    )
 
     assert prepared.original_active_names == ("solenoid", "p_upper", "p_lower")
     assert prepared.even_active_names == ("solenoid", "p")
@@ -227,24 +233,17 @@ def test_boundary_tolerates_roundoff_at_midplane_vertices():
 
 
 def test_unpaired_active_coil_raises():
-    """COMMENTS:
-        1-Successful
-    """
     active = {
         "solenoid": _active_element(
             [0.2, 0.2],
             [-0.8, 0.8],
         ),
-        "p_upper": {
-            "1": _active_element([1.0, 1.1], [0.7, 0.8])
-        },
+        "p_upper": {"1": _active_element([1.0, 1.1], [0.7, 0.8])},
         # Missing p_lower
     }
 
-    passive = []
-
-    with pytest.raises(ValueError, match="active"):
-        prepare_up_down_symmetric_machine(active, passive)
+    with pytest.raises(ValueError, match="Active"):
+        prepare_up_down_symmetric_machine(active)
 
 
 def test_unpaired_passive_element_raises():
@@ -265,31 +264,33 @@ def test_unpaired_passive_element_raises():
         # No matching lower element
     ]
 
-    with pytest.raises(ValueError, match="passive"):
+    with pytest.raises(ValueError, match="Passive"):
         prepare_up_down_symmetric_machine(active, passive)
 
 
 def test_fails_when_negative_tolerance():
-    """COMMENTS:
-        1-Successful
-    """
     active = {
-            "solenoid": _active_element([0.2, 0.2, 0.2, 0.2], [-0.8, -0.2, 0.19, 0.79]),
-            "p_upper": {"1": _active_element([1.0, 1.1], [0.7, 0.8])},
-            "p_lower": {"1": _active_element([1.0, 1.1], [-0.72, -0.82])},
-        }
+        "solenoid": _active_element(
+            [0.2, 0.2, 0.2, 0.2],
+            [-0.8, -0.2, 0.19, 0.79],
+        ),
+        "p_upper": {"1": _active_element([1.0, 1.1], [0.7, 0.8])},
+        "p_lower": {"1": _active_element([1.0, 1.1], [-0.72, -0.82])},
+    }
     passive = [
-            _passive_element("case_upper_0", "case_upper", [1.0, 1.2, 1.2, 1.0], [0.4] * 4),
-            _passive_element("case_upper_1", "case_upper", [1.0, 1.2, 1.2, 1.0], [0.8] * 4),
-            _passive_element("case_lower_0", "case_lower", [1.0, 1.2, 1.2, 1.0], [-0.82] * 4),
-            _passive_element("case_lower_1", "case_lower", [1.0, 1.2, 1.2, 1.0], [-0.42] * 4),
-        ]
-    
-    
-   
-    prepared = prepare_up_down_symmetric_machine(active, passive, max_pair_mismatch= - 0.05)
+        _passive_element("case_upper_0", "case_upper", [1.0, 1.2, 1.2, 1.0], [0.4] * 4),
+        _passive_element("case_upper_1", "case_upper", [1.0, 1.2, 1.2, 1.0], [0.8] * 4),
+        _passive_element(
+            "case_lower_0", "case_lower", [1.0, 1.2, 1.2, 1.0], [-0.82] * 4
+        ),
+        _passive_element(
+            "case_lower_1", "case_lower", [1.0, 1.2, 1.2, 1.0], [-0.42] * 4
+        ),
+    ]
 
-        
+    with pytest.raises(ValueError, match="non-negative"):
+        prepare_up_down_symmetric_machine(active, passive, max_pair_mismatch=-0.05)
+
 
 def test_passive_pairing_fails_when_geometry_mismatch_too_large():
     active = {
@@ -314,11 +315,13 @@ def test_passive_pairing_fails_when_geometry_mismatch_too_large():
         ),
     ]
 
-    prepare_up_down_symmetric_machine(
-                active,
-                passive,
-                max_pair_mismatch=0.05,
-            )
+    with pytest.raises(ValueError, match="Largest failures"):
+        prepare_up_down_symmetric_machine(
+            active,
+            passive,
+            max_pair_mismatch=0.05,
+        )
+
 
 def test_passive_pairing_with_multiple_identical_blocks_is_stable():
     passive = [
@@ -329,19 +332,14 @@ def test_passive_pairing_with_multiple_identical_blocks_is_stable():
     ]
 
     prepared = prepare_up_down_symmetric_machine({}, passive)
-   
+
     assert {(p.upper_name, p.lower_name) for p in prepared.passive_pairs} == {
         ("case_upper_0", "case_lower_0"),
         ("case_upper_1", "case_lower_1"),
     }
-   
-def test_identical_passive_elements():
-    """COMMENTS:
-        1- Should this fail? 
-        An ValueError is raised when _check_unique fails according to names only,
-        It is logical to fail also when uniqueness is not respected according to geometry
-    
-    """
+
+
+def test_identical_passive_elements_are_paired_one_to_one():
     passive = [
         _passive_element("case_upper_0", "case", [1.0, 1.2, 1.2, 1.0], [0.2] * 4),
         _passive_element("case_upper_1", "case", [1.0, 1.2, 1.2, 1.0], [0.2] * 4),
@@ -349,32 +347,34 @@ def test_identical_passive_elements():
         _passive_element("case_lower_1", "case", [1.0, 1.2, 1.2, 1.0], [-0.8] * 4),
     ]
     prepared = prepare_up_down_symmetric_machine({}, passive)
-    breakpoint()
-    assert {(p.upper_name, p.lower_name) for p in prepared.passive_pairs} == {
-        ("case_upper_0", "case_lower_0"),
-        ("case_upper_1", "case_lower_1"),
+
+    assert len(prepared.passive_pairs) == 2
+    assert {p.upper_name for p in prepared.passive_pairs} == {
+        "case_upper_0",
+        "case_upper_1",
     }
-   
+    assert {p.lower_name for p in prepared.passive_pairs} == {
+        "case_lower_0",
+        "case_lower_1",
+    }
+    np.testing.assert_allclose(
+        sorted(p.reflected_rms for p in prepared.passive_pairs), [0.0, 0.6]
+    )
+
+
 def test_identify_misspelled_active_pairs():
     active = {
-            "solenoid": _active_element(
-                [0.2, 0.2],
-                [-0.8, 0.8],
-            ),
-            "p_uper": {
-                "1": _active_element([1.0, 1.1], [0.7, 0.8])
-            },
-            "p_lwer": {
-                "1": _active_element([1.0, 1.1], [-0.7, -0.8])
-            },
-            "ps_uper": {
-                    "1": _active_element([1.2, 1.1], [0.8, 0.8])
-            }}
-    
-    passive = []
+        "solenoid": _active_element(
+            [0.2, 0.2],
+            [-0.8, 0.8],
+        ),
+        "p_uper": {"1": _active_element([1.0, 1.1], [0.7, 0.8])},
+        "p_lwer": {"1": _active_element([1.0, 1.1], [-0.7, -0.8])},
+        "ps_uper": {"1": _active_element([1.2, 1.1], [0.8, 0.8])},
+    }
 
     with pytest.raises(ValueError, match="active"):
-        prepare_up_down_symmetric_machine(active, passive)
+        prepare_up_down_symmetric_machine(active)
 
 
 def test_misspelled_passive_pairs():
@@ -383,28 +383,22 @@ def test_misspelled_passive_pairs():
         "p_upper": {"1": _active_element([1.0, 1.1], [0.7, 0.8])},
         "p_lower": {"1": _active_element([1.0, 1.1], [-0.72, -0.82])},
     }
-    # passive = [
-    #     _passive_element("case_upper_0", "case_upper", [1.0, 1.2, 1.2, 1.0], [0.4] * 4),
-    #     _passive_element("case_upper_1", "case_lower", [1.0, 1.2, 1.2, 1.0], [0.8] * 4),
-    #     _passive_element("case_lower_0", "case_upper", [1.0, 1.2, 1.2, 1.0], [-0.82] * 4),
-    #     _passive_element("case_lower_1", "case_lower", [1.0, 1.2, 1.2, 1.0], [-0.42] * 4),
-    # ]
     passive = [
-            _passive_element("case_upper_0", "case_upper", [1.0, 1.2, 1.2, 1.0], [0.4] * 4),
-            _passive_element("case_upper_1", "case_upper", [1.0, 1.2, 1.2, 1.0], [0.8] * 4),
-            _passive_element("case_upper_2", "case_lower", [1.0, 1.2, 1.2, 1.0], [-0.82] * 4),
-            _passive_element("case_lower_1", "case_lower", [1.0, 1.2, 1.2, 1.0], [-0.42] * 4),
-        ]
+        _passive_element("case_upper_0", "case_upper", [1.0, 1.2, 1.2, 1.0], [0.4] * 4),
+        _passive_element("case_upper_1", "case_upper", [1.0, 1.2, 1.2, 1.0], [0.8] * 4),
+        _passive_element(
+            "case_upper_2", "case_lower", [1.0, 1.2, 1.2, 1.0], [-0.82] * 4
+        ),
+        _passive_element(
+            "case_lower_1", "case_lower", [1.0, 1.2, 1.2, 1.0], [-0.42] * 4
+        ),
+    ]
 
-    prepared = prepare_up_down_symmetric_machine(active, passive, max_pair_mismatch=0.05)
+    prepared = prepare_up_down_symmetric_machine(
+        active, passive, max_pair_mismatch=0.05
+    )
 
-
-if __name__ == "__main__":
-    # test_identify_misspelled_passive_pairs()
-    # test_pairing_symmetrisation_and_current_transforms()
-    # test_fails_when_negative_tolerance()
-    # test_passive_pairing_fails_when_geometry_mismatch_too_large()
-    # test_unpaired_active_coil_raises()
-    # test_unpaired_passive_element_raises()
-    # test_passive_pairing_with_multiple_identical_blocks_is_stable()
-    # test_identical_passive_elements()
+    assert {(pair.upper_name, pair.lower_name) for pair in prepared.passive_pairs} == {
+        ("case_upper_0", "case_lower_1"),
+        ("case_upper_1", "case_upper_2"),
+    }

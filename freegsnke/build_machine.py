@@ -24,8 +24,8 @@ import pickle
 from copy import deepcopy
 
 import numpy as np
+from shapely.geometry import Polygon, box
 
-from . import polygons
 from .coil import Coil
 from .copying import copy_into
 from .machine import Circuit, Wall
@@ -42,147 +42,87 @@ from .passive_structure import PassiveStructure
 from .refine_passive import generate_refinement
 
 
-def _point_in_polygon(point, polygon):
-    """Return whether a point is strictly inside a polygon."""
-    x, y = point
-    inside = False
-    coordinate_scale = max(
-        abs(x),
-        abs(y),
-        *(abs(value) for vertex in polygon for value in vertex),
-    )
-    scale = max(
-        float(np.ptp([vertex[0] for vertex in polygon])),
-        float(np.ptp([vertex[1] for vertex in polygon])),
-    )
-    tolerance = (
-        np.finfo(float).eps
-        * max(scale**2, coordinate_scale * scale)
-        * 16
-    )
-
-    for index, start in enumerate(polygon):
-        end = polygon[(index + 1) % len(polygon)]
-        dx = end[0] - start[0]
-        dy = end[1] - start[1]
-        cross = (x - start[0]) * dy - (y - start[1]) * dx
-        dot = (x - start[0]) * (x - end[0]) + (y - start[1]) * (y - end[1])
-        if abs(cross) <= tolerance and dot <= tolerance:
-            return False
-
-        if (start[1] > y) != (end[1] > y):
-            crossing_x = start[0] + (y - start[1]) * dx / dy
-            if x < crossing_x:
-                inside = not inside
-
-    return inside
+_OVERLAP_AREA_TOLERANCE = 1e-12
 
 
-def _segments_cross_interior(start1, end1, start2, end2):
-    """Return whether two segments cross away from their endpoints."""
+def _element_polygons(element, label):
+    """Convert one active or passive machine-description entry to polygons."""
+    r_values = np.asarray(element["R"], dtype=float).reshape(-1)
+    z_values = np.asarray(element["Z"], dtype=float).reshape(-1)
+    if r_values.size != z_values.size:
+        raise ValueError(f"Element '{label}' must have matching R and Z values.")
+    if not np.isfinite(r_values).all() or not np.isfinite(z_values).all():
+        raise ValueError(f"Element '{label}' coordinates must be finite.")
 
-    def orientation(start, end, point):
-        return (end[0] - start[0]) * (point[1] - start[1]) - (
-            end[1] - start[1]
-        ) * (point[0] - start[0])
+    if "dR" in element or "dZ" in element:
+        if "dR" not in element or "dZ" not in element:
+            raise ValueError(f"Element '{label}' must define both dR and dZ.")
+        if r_values.size == 0:
+            raise ValueError(f"Element '{label}' has no windings.")
+        dR = float(element["dR"])
+        dZ = float(element["dZ"])
+        if not np.isfinite([dR, dZ]).all() or dR <= 0 or dZ <= 0:
+            raise ValueError(
+                f"Element '{label}' dimensions 'dR' and 'dZ' "
+                "must be finite and positive."
+            )
+        shapes = [
+            box(r - dR / 2, z - dZ / 2, r + dR / 2, z + dZ / 2)
+            for r, z in zip(r_values, z_values)
+        ]
+        return shapes
 
-    scale = max(
-        abs(end1[0] - start1[0]),
-        abs(end1[1] - start1[1]),
-        abs(end2[0] - start2[0]),
-        abs(end2[1] - start2[1]),
-    )
-    coordinate_scale = max(
-        abs(value)
-        for point in (start1, end1, start2, end2)
-        for value in point
-    )
-    tolerance = (
-        np.finfo(float).eps
-        * max(scale**2, coordinate_scale * scale)
-        * 16
-    )
-    first = orientation(start1, end1, start2)
-    second = orientation(start1, end1, end2)
-    third = orientation(start2, end2, start1)
-    fourth = orientation(start2, end2, end1)
-    return (
-        (first > tolerance and second < -tolerance)
-        or (first < -tolerance and second > tolerance)
-    ) and (
-        (third > tolerance and fourth < -tolerance)
-        or (third < -tolerance and fourth > tolerance)
-    )
-
-
-def _polygon_interior_points(polygon):
-    """Yield points safely inside a non-degenerate polygon."""
-    area = polygons.area(polygon)
-    if area == 0:
-        return
-
-    yield (
-        sum(vertex[0] for vertex in polygon) / len(polygon),
-        sum(vertex[1] for vertex in polygon) / len(polygon),
-    )
-
-    scale = max(
-        float(np.ptp([vertex[0] for vertex in polygon])),
-        float(np.ptp([vertex[1] for vertex in polygon])),
-    )
-    offset = scale * 1e-7
-    direction = 1.0 if area > 0 else -1.0
-    for index, start in enumerate(polygon):
-        end = polygon[(index + 1) % len(polygon)]
-        dx = end[0] - start[0]
-        dy = end[1] - start[1]
-        length = np.hypot(dx, dy)
-        if length == 0:
-            continue
-        yield (
-            (start[0] + end[0]) / 2 + direction * dy / length * offset,
-            (start[1] + end[1]) / 2 - direction * dx / length * offset,
+    if r_values.size < 3:
+        raise ValueError(
+            f"Passive polygon '{label}' must have at least three vertices."
         )
+    polygon = Polygon(list(zip(r_values, z_values)))
+    if not polygon.is_valid or polygon.area <= 0:
+        raise ValueError(f"Invalid passive-structure polygon '{label}'.")
+    return [polygon]
 
 
-def _polygons_overlap(first, second):
-    """Return whether two polygon interiors overlap."""
-    if polygons.area(first) == 0 or polygons.area(second) == 0:
-        return False
+def _active_element_shapes(active_data):
+    """Yield (label, polygon) pairs for active entries, including sub-coils."""
+    for name, coil_data in active_data.items():
+        if "R" in coil_data or "Z" in coil_data:
+            coils = [(name, coil_data)]
+        else:
+            coils = [
+                (f"{name}.{subname}", subcoil_data)
+                for subname, subcoil_data in coil_data.items()
+            ]
 
-    for index, start in enumerate(first):
-        end = first[(index + 1) % len(first)]
-        for other_index, other_start in enumerate(second):
-            other_end = second[(other_index + 1) % len(second)]
-            if _segments_cross_interior(start, end, other_start, other_end):
-                return True
-
-    for point in _polygon_interior_points(first):
-        if _point_in_polygon(point, first) and _point_in_polygon(point, second):
-            return True
-    for point in _polygon_interior_points(second):
-        if _point_in_polygon(point, second) and _point_in_polygon(point, first):
-            return True
-    return False
+        for coil_name, element in coils:
+            shapes = _element_polygons(element, coil_name)
+            for index, shape in enumerate(shapes):
+                label = coil_name if len(shapes) == 1 else f"{coil_name}[{index}]"
+                yield label, shape
 
 
-def _rectangle_from_center(r, z, dR, dZ):
-    """Build a polygon for an element specified by its centre and dimensions."""
-    half_width = float(dR) / 2
-    half_height = float(dZ) / 2
-    if not np.isfinite([r, z, half_width, half_height]).all():
-        raise ValueError("Element coordinates and dimensions must be finite.")
-    if half_width <= 0 or half_height <= 0:
-        raise ValueError("Element dimensions 'dR' and 'dZ' must be positive.")
-    return [
-        (r - half_width, z - half_height),
-        (r + half_width, z - half_height),
-        (r + half_width, z + half_height),
-        (r - half_width, z + half_height),
-    ]
+def _passive_element_shapes(passive_data):
+    """Yield (label, polygon) pairs for passive entries."""
+    for index, element in enumerate(passive_data):
+        label = element.get("name", f"passive_{index}")
+        for shape in _element_polygons(element, label):
+            yield label, shape
 
 
-def check_for_overlapping_elements(active_data, passive_data):
+def _polygons_overlap(first, second, area_tolerance=_OVERLAP_AREA_TOLERANCE):
+    """Return whether two polygons overlap by more than the area tolerance."""
+    return first.intersection(second).area > area_tolerance
+
+
+def _validate_area_tolerance(area_tolerance):
+    area_tolerance = float(area_tolerance)
+    if not np.isfinite(area_tolerance) or area_tolerance < 0:
+        raise ValueError("area_tolerance must be finite and non-negative.")
+    return area_tolerance
+
+
+def check_for_overlapping_elements(
+    active_data, passive_data, area_tolerance=_OVERLAP_AREA_TOLERANCE
+):
     """Find overlapping pairs among active and passive machine elements.
 
     Active ``R`` and ``Z`` arrays are winding centres, with ``dR`` and ``dZ``
@@ -197,77 +137,81 @@ def check_for_overlapping_elements(active_data, passive_data):
         a zero-based winding index in their label. Active-active pairs come
         first, followed by passive-passive and active-passive pairs.
     """
-    active_elements = []
-    for name, coil_data in active_data.items():
-        if "R" in coil_data or "Z" in coil_data:
-            coils = [(name, coil_data)]
-        else:
-            coils = [
-                (f"{name}.{subname}", subcoil_data)
-                for subname, subcoil_data in coil_data.items()
-            ]
-
-        for coil_name, element in coils:
-            r_values = np.asarray(element["R"], dtype=float).reshape(-1)
-            z_values = np.asarray(element["Z"], dtype=float).reshape(-1)
-            if r_values.size != z_values.size:
-                raise ValueError(
-                    f"Active element '{coil_name}' must have matching R and Z values."
-                )
-            if r_values.size == 0:
-                raise ValueError(f"Active element '{coil_name}' has no windings.")
-            for index, (r, z) in enumerate(zip(r_values, z_values)):
-                label = (
-                    coil_name
-                    if r_values.size == 1
-                    else f"{coil_name}[{index}]"
-                )
-                active_elements.append(
-                    (
-                        label,
-                        _rectangle_from_center(r, z, element["dR"], element["dZ"]),
-                    )
-                )
-
-    passive_elements = []
-    for index, element in enumerate(passive_data):
-        label = element.get("name", f"passive_{index}")
-        r_values = np.asarray(element["R"], dtype=float).reshape(-1)
-        z_values = np.asarray(element["Z"], dtype=float).reshape(-1)
-        if r_values.size != z_values.size:
-            raise ValueError(
-                f"Passive element '{label}' must have matching R and Z values."
-            )
-        if not np.isfinite(r_values).all() or not np.isfinite(z_values).all():
-            raise ValueError(f"Passive element '{label}' coordinates must be finite.")
-        if r_values.size == 1:
-            shape = _rectangle_from_center(
-                r_values[0], z_values[0], element["dR"], element["dZ"]
-            )
-        else:
-            if r_values.size < 3:
-                raise ValueError(
-                    f"Passive polygon '{label}' must have at least three vertices."
-                )
-            shape = list(zip(r_values, z_values))
-        passive_elements.append((label, shape))
+    area_tolerance = _validate_area_tolerance(area_tolerance)
+    active_elements = list(_active_element_shapes(active_data))
+    passive_elements = list(_passive_element_shapes(passive_data))
 
     overlaps = []
     for index, (first_name, first_shape) in enumerate(active_elements):
         for second_name, second_shape in active_elements[index + 1 :]:
-            if _polygons_overlap(first_shape, second_shape):
+            if _polygons_overlap(first_shape, second_shape, area_tolerance):
                 overlaps.append((first_name, second_name))
 
     for index, (first_name, first_shape) in enumerate(passive_elements):
         for second_name, second_shape in passive_elements[index + 1 :]:
-            if _polygons_overlap(first_shape, second_shape):
+            if _polygons_overlap(first_shape, second_shape, area_tolerance):
                 overlaps.append((first_name, second_name))
 
     for active_name, active_shape in active_elements:
         for passive_name, passive_shape in passive_elements:
-            if _polygons_overlap(active_shape, passive_shape):
+            if _polygons_overlap(active_shape, passive_shape, area_tolerance):
                 overlaps.append((active_name, passive_name))
 
+    return overlaps
+
+
+def check_for_overlapping_single_element(
+    element,
+    active_data,
+    passive_data,
+    exclude_name=None,
+    area_tolerance=_OVERLAP_AREA_TOLERANCE,
+):
+    """Return existing machine elements overlapping one active or passive entry.
+
+    ``element`` uses the same machine-description shape as one active coil
+    entry (with ``R``, ``Z``, ``dR``, and ``dZ``) or one passive entry (with
+    polygon ``R``/``Z`` coordinates, optionally with a ``name``). Elements
+    whose label matches ``exclude_name`` are ignored, which is useful when
+    validating a replacement geometry.
+
+    Returns
+    -------
+    list[tuple[str, str]]
+        Pairs of ``(candidate_label, existing_label)`` for each overlapping
+        winding or passive structure. Edge-only contact is not an overlap.
+    """
+    area_tolerance = _validate_area_tolerance(area_tolerance)
+    candidate_name = element.get("name", "candidate")
+    candidate_shapes = _element_polygons(element, candidate_name)
+    existing_shapes = [
+        *(
+            (name, shape)
+            for name, shape in _active_element_shapes(active_data)
+            if exclude_name is None
+            or (
+                name != exclude_name
+                and not name.startswith(f"{exclude_name}.")
+                and not name.startswith(f"{exclude_name}[")
+            )
+        ),
+        *(
+            (name, shape)
+            for name, shape in _passive_element_shapes(passive_data)
+            if name != exclude_name
+        ),
+    ]
+
+    overlaps = []
+    for candidate_index, candidate_shape in enumerate(candidate_shapes):
+        candidate_label = (
+            candidate_name
+            if len(candidate_shapes) == 1
+            else f"{candidate_name}[{candidate_index}]"
+        )
+        for existing_name, existing_shape in existing_shapes:
+            if _polygons_overlap(candidate_shape, existing_shape, area_tolerance):
+                overlaps.append((candidate_label, existing_name))
     return overlaps
 
 

@@ -568,3 +568,84 @@ def test_check_for_overlapping_elements_does_not_report_touching_edges():
 
     assert build_machine.check_for_overlapping_elements(active, []) == []
 
+
+def test_check_for_overlapping_single_element_checks_existing_machine():
+    active = {
+        "existing_coil": {
+            "R": [1.0],
+            "Z": [0.0],
+            "dR": 0.2,
+            "dZ": 0.2,
+        }
+    }
+    passive = [
+        {
+            "name": "existing_structure",
+            "R": [1.5, 1.7, 1.7, 1.5],
+            "Z": [-0.1, -0.1, 0.1, 0.1],
+        }
+    ]
+    candidate = {
+        "name": "new_structure",
+        "R": [0.95, 1.05, 1.05, 0.95],
+        "Z": [-0.05, -0.05, 0.05, 0.05],
+    }
+
+    assert build_machine.check_for_overlapping_single_element(
+        candidate, active, passive
+    ) == [("new_structure", "existing_coil")]
+
+
+def test_check_for_overlapping_single_element_excludes_replaced_element():
+    active = {
+        "coil": {"R": [1.0], "Z": [0.0], "dR": 0.2, "dZ": 0.2},
+        "other_coil": {"R": [1.05], "Z": [0.0], "dR": 0.2, "dZ": 0.2},
+    }
+    candidate = {
+        "name": "coil",
+        "R": [1.0],
+        "Z": [0.0],
+        "dR": 0.2,
+        "dZ": 0.2,
+    }
+
+    assert build_machine.check_for_overlapping_single_element(
+        candidate, active, [], exclude_name="coil"
+    ) == [("coil", "other_coil")]
+
+
+def test_check_for_overlapping_single_element_handles_concave_polygons():
+    active = {
+        "inside_concave_arm": {
+            "R": [0.5],
+            "Z": [1.5],
+            "dR": 0.4,
+            "dZ": 0.4,
+        },
+        "inside_concave_notch": {
+            "R": [1.5],
+            "Z": [1.5],
+            "dR": 0.4,
+            "dZ": 0.4,
+        },
+    }
+    candidate = {
+        "name": "concave_structure",
+        "R": [0.0, 2.0, 2.0, 1.0, 1.0, 0.0],
+        "Z": [0.0, 0.0, 1.0, 1.0, 2.0, 2.0],
+    }
+
+    assert build_machine.check_for_overlapping_single_element(
+        candidate, active, []
+    ) == [("concave_structure", "inside_concave_arm")]
+
+
+def test_check_for_overlapping_single_element_rejects_invalid_polygon():
+    candidate = {
+        "name": "invalid_structure",
+        "R": [0.0, 1.0, 0.0, 1.0],
+        "Z": [0.0, 1.0, 1.0, 0.0],
+    }
+
+    with pytest.raises(ValueError, match="Invalid passive-structure polygon"):
+        build_machine.check_for_overlapping_single_element(candidate, {}, [])

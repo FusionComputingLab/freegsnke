@@ -25,14 +25,16 @@ along with FreeGSNKE. If not, see <http://www.gnu.org/licenses/>.
 from __future__ import annotations
 
 import numpy as np
-from numpy import clip, pi, reshape, sqrt, zeros
-from scipy.integrate import quad, romb
+from numpy import pi, sqrt
 from scipy.interpolate import CubicSpline, UnivariateSpline
 from scipy.special import beta as spbeta
 from scipy.special import betainc as spbinc
 
 from . import critical
 from .gradshafranov import mu0
+
+# Gauss-Legendre nodes/weights (on [-1, 1]) used to integrate p' and FF' over psi_n
+_GAUSS_LEGENDRE_NODES, _GAUSS_LEGENDRE_WEIGHTS = np.polynomial.legendre.leggauss(128)
 
 
 class Profile(object):
@@ -96,45 +98,58 @@ class Profile(object):
         self.flag_limiter = not uses_xpoint_boundary
         return self.Jtor_part2(R, Z, psi, opt[0][2], psi_bndry, core_mask)
 
-    def pressure(self, psinorm: np.ndarray) -> np.ndarray:
+    @staticmethod
+    def _integrate_to_boundary(func, psinorm):
+        """
+        Integrate a function of the normalised flux from psinorm to 1 (all values at once).
+
+        Uses a vectorised Gauss-Legendre rule, so `func` is called once with an array.
+
+        Parameters
+        ----------
+        func : callable
+            Function of the normalised psi (accepting arrays), e.g. pprime or ffprime.
+        psinorm : float or np.array
+            Lower integration limit(s) (normalised psi), between 0 and 1.
+
+        Returns
+        -------
+        float or np.array
+            The integral of `func` over [psinorm, 1], in the shape of `psinorm`.
+        """
+
+        psinorm = np.asarray(psinorm, dtype=float)
+        lower = psinorm.reshape(-1, 1)
+        half_width = 0.5 * (1.0 - lower)
+        points = half_width * (_GAUSS_LEGENDRE_NODES[None, :] + 1.0) + lower
+        values = np.sum(
+            half_width * _GAUSS_LEGENDRE_WEIGHTS[None, :] * func(points), axis=1
+        )
+        if psinorm.ndim == 0:
+            return float(values[0])
+        return values.reshape(psinorm.shape)
+
+    def pressure(self, psinorm):
         """
         Calculate the 1D pressure profile in the plasma (vs. the normalised
         poloidal flux) by integrating the pprime profile.
 
         Parameters
         ----------
-        psinorm : np.ndarray
-            Array of normalised psi values between 0 and 1.
+        psinorm : float or np.array
+            Normalised psi value(s) between 0 and 1.
 
         Returns
         -------
-        np.ndarray
+        float or np.array
             The computed pressure values at each normalised psi value.
-
-        Raises
-        ------
-        ValueError
-            If the input and output arrays have different lengths.
         """
 
-        # to store psi and integral values
-        pvals = reshape(psinorm, -1)
-        ovals = reshape(zeros(psinorm.shape), -1)
-
-        if len(pvals) != len(ovals):
-            raise ValueError("Input and output arrays of different lengths")
-
-        for i in range(len(pvals)):
-            # integrate
-            val, _ = quad(self.pprime, pvals[i], 1.0)
-
-            # convert from integral in normalised psi to integral in psi
-            val *= self.psi_axis - self.psi_bndry
-            ovals[i] = val
-
-        # pressure at the edge is zero so no need for constant of integration
-
-        return reshape(ovals, psinorm.shape)
+        # integral in normalised psi, converted to an integral in psi
+        # (pressure at the edge is zero so no need for constant of integration)
+        return self._integrate_to_boundary(self.pprime, psinorm) * (
+            self.psi_axis - self.psi_bndry
+        )
 
     def fpol(self, psinorm: np.ndarray | float) -> np.ndarray | float:
         """
@@ -143,12 +158,12 @@ class Profile(object):
 
         Parameters
         ----------
-        psinorm : np.ndarray or float
-            Array (or single value) of normalised psi values between 0 and 1.
+        psinorm : float or np.array
+            Normalised psi value(s) between 0 and 1.
 
         Returns
         -------
-        np.ndarray or float
+        float or np.array
             The computed F values at each normalised psi value.
 
         Raises
@@ -157,35 +172,14 @@ class Profile(object):
             If the input and output arrays have different lengths.
         """
 
-        # if a single value
-        if not hasattr(psinorm, "__len__"):
-            # integrate
-            val, _ = quad(self.ffprime, psinorm, 1.0)
-            # convert from integral in normalised psi to integral in psi
-            val *= self.psi_axis - self.psi_bndry
+        # integral in normalised psi, converted to an integral in psi
+        val = self._integrate_to_boundary(self.ffprime, psinorm) * (
+            self.psi_axis - self.psi_bndry
+        )
 
-            # ffprime = 0.5*d/dpsi(f^2)
-            # apply boundary condition at psinorm=1 val = fvac**2
-            return sqrt(2.0 * val + self.fvac() ** 2)
-
-        # to store psi and integral values
-        pvals = reshape(psinorm, -1)
-        ovals = reshape(zeros(psinorm.shape), -1)
-
-        if len(pvals) != len(ovals):
-            raise ValueError("Input and output arrays of different lengths")
-        for i in range(len(pvals)):
-            # integrate
-            val, _ = quad(self.ffprime, pvals[i], 1.0)
-
-            # convert from integral in normalised psi to integral in psi
-            val *= self.psi_axis - self.psi_bndry
-
-            # ffprime = 0.5*d/dpsi(f^2)
-            # apply boundary condition at psinorm=1 val = fvac**2
-            ovals[i] = sqrt(2.0 * val + self.fvac() ** 2)
-
-        return reshape(ovals, psinorm.shape)
+        # ffprime = 0.5*d/dpsi(f^2)
+        # apply boundary condition at psinorm=1 val = fvac**2
+        return sqrt(2.0 * val + self.fvac() ** 2)
 
     def Jtor_part1(
         self,
@@ -239,6 +233,9 @@ class Profile(object):
         # find O- and X-points of equilibrium
         opt, xpt = critical.find_critical(R, Z, psi, self.mask_inside_limiter, self.Ip)
 
+        # flux on the magnetic axis (needed by fpol, pressure, and q, also without X-points)
+        self.psi_axis = opt[0][2]
+
         # find core plasma mask (using user-defined psi_bndry)
         if psi_bndry is not None:
             diverted_core_mask = critical.inside_mask(
@@ -247,7 +244,6 @@ class Profile(object):
         elif len(xpt) > 0:
             # find core plasma mask using psi_bndry from xpt
             psi_bndry = xpt[0][2]
-            self.psi_axis = opt[0][2]
             # check correct sorting between psi_axis and psi_bndry
             if (self.psi_axis - psi_bndry) * self.Ip < 0:
                 raise ValueError(
@@ -1592,12 +1588,12 @@ class TensionSpline(Profile):
 
     def tension_spline(
         self,
-        x: np.ndarray,
+        x: float | np.ndarray,
         xn: np.ndarray,
         yn: np.ndarray,
         zn: np.ndarray,
         sigma: float,
-    ) -> np.ndarray:
+    ) -> float | np.ndarray:
         """
         Evaluate the tension spline at locations in x using knot points xn,
         values at knot points yn, and second derivative values at knot points zn.
@@ -1605,9 +1601,9 @@ class TensionSpline(Profile):
 
         Parameters
         ----------
-        x : np.ndarray
-            Array of normalised psi values between 0 and 1.
-        xn : np.ndarray
+        x : float or np.array
+            Normalised psi value(s) between 0 and 1 (a scalar or an array of any shape).
+        xn : np.array
             Array of knot points between 0 and 1.
         yn : np.ndarray
             Values of the function at the knot points.
@@ -1618,14 +1614,15 @@ class TensionSpline(Profile):
 
         Returns
         -------
-        np.ndarray
-            The tension spline evaluated at the points in x.
+        float or np.array
+            The tension spline evaluated at the points in x (a float if x is a
+            scalar, otherwise an array with the same shape as x).
         """
 
-        # find shape of x
+        # accept scalars as well as arrays of any shape
+        x = np.asarray(x, dtype=float)
         size = x.shape
-        if len(size) > 1:
-            x = x.flatten()
+        x = x.reshape(-1)
 
         # fixed parameters
         x_diffs = xn[1:] - xn[0:-1]
@@ -1653,16 +1650,13 @@ class TensionSpline(Profile):
         # sum to find (alomst) final solution
         f = np.sum(sol, axis=1)
 
-        # check if any of the interpolation and knot points are the same (if so we have double counted)
-        for i in np.where(np.isin(x, xn))[0]:
-            if i not in [0, len(x) - 1]:
-                f[i] /= 2
+        # points on an interior knot lie in two adjacent intervals so are double counted
+        f[np.isin(x, xn[1:-1])] /= 2
 
-        # rehape final output if required
-        if len(size) > 1:
-            return f.reshape(size)
-        else:
-            return f
+        # restore the shape of the input (a plain float for a scalar input)
+        if len(size) == 0:
+            return float(f[0])
+        return f.reshape(size)
 
 
 class GeneralPprimeFFprime(Profile):

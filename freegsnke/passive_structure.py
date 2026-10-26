@@ -233,7 +233,7 @@ class PassiveStructure(coil.Coil):
         RZ_key = self.create_RZ_key(R, Z)
         try:
             self.greens[RZ_key]["psi"] = greens_psi
-        except:
+        except KeyError:
             self.greens[RZ_key] = {"psi": greens_psi}
 
     def build_control_br(self, R: np.ndarray, Z: np.ndarray) -> None:
@@ -270,7 +270,7 @@ class PassiveStructure(coil.Coil):
         RZ_key = self.create_RZ_key(R, Z)
         try:
             self.greens[RZ_key]["Br"] = greens_br
-        except:
+        except KeyError:
             self.greens[RZ_key] = {"Br": greens_br}
 
     def build_control_bz(self, R: np.ndarray, Z: np.ndarray) -> None:
@@ -307,7 +307,7 @@ class PassiveStructure(coil.Coil):
         RZ_key = self.create_RZ_key(R, Z)
         try:
             self.greens[RZ_key]["Bz"] = greens_bz
-        except:
+        except KeyError:
             self.greens[RZ_key] = {"Bz": greens_bz}
 
     def controlPsi(self, R: np.ndarray, Z: np.ndarray) -> np.ndarray:
@@ -333,7 +333,7 @@ class PassiveStructure(coil.Coil):
         RZ_key = self.create_RZ_key(R, Z)
         try:
             greens_ = self.greens[RZ_key]["psi"]
-        except:
+        except KeyError:
             self.build_control_psi(R, Z)
             greens_ = self.greens[RZ_key]["psi"]
         return greens_
@@ -361,7 +361,7 @@ class PassiveStructure(coil.Coil):
         RZ_key = self.create_RZ_key(R, Z)
         try:
             greens_ = self.greens[RZ_key]["Br"]
-        except:
+        except KeyError:
             self.build_control_br(R, Z)
             greens_ = self.greens[RZ_key]["Br"]
         return greens_
@@ -389,7 +389,7 @@ class PassiveStructure(coil.Coil):
         RZ_key = self.create_RZ_key(R, Z)
         try:
             greens_ = self.greens[RZ_key]["Bz"]
-        except:
+        except KeyError:
             self.build_control_bz(R, Z)
             greens_ = self.greens[RZ_key]["Bz"]
         return greens_

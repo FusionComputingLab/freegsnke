@@ -1447,7 +1447,7 @@ def build_actives(active_coils: dict) -> list[tuple[str, Circuit]]:
                         ),
                     ),
                 )
-            except:
+            except Exception:
                 print(
                     f"Could not build the coil {active_coils[name]}, check its format."
                 )
@@ -1488,7 +1488,7 @@ def build_actives(active_coils: dict) -> list[tuple[str, Circuit]]:
                     )
                 )
 
-            except:
+            except Exception:
                 print(
                     f"Could not build the coil {active_coils[name]}, check its format."
                 )
@@ -1543,7 +1543,7 @@ def build_passives(
         # include name if provided, else use default
         try:
             name = coil["name"]
-        except:
+        except KeyError:
             name = f"passive_{i}"
 
         # add entry to list
@@ -1555,11 +1555,11 @@ def build_passives(
             # how much do we refine the polygons?
             try:
                 min_refine_per_area = 1.0 * coil["min_refine_per_area"]
-            except:
+            except KeyError:
                 min_refine_per_area = 1.0 * default_min_refine_per_area
             try:
                 min_refine_per_length = 1.0 * coil["min_refine_per_length"]
-            except:
+            except KeyError:
                 min_refine_per_length = 1.0 * default_min_refine_per_length
 
             # build the passive structure Polygon
@@ -1667,7 +1667,7 @@ def build_active_coil_dict(active_coils: dict) -> dict:
                     [active_coils[name]["multiplier"]] * len(active_coils[name]["R"])
                 )
 
-            except:
+            except Exception:
                 print(
                     f"Could not build the coil {active_coils[name]}, check its format."
                 )
@@ -1714,7 +1714,7 @@ def build_active_coil_dict(active_coils: dict) -> dict:
                     list(active_coils[name].keys())[0]
                 ]["resistivity"] / (coils_dict[name]["dR"] * coils_dict[name]["dZ"])
 
-            except:
+            except Exception:
                 print(
                     f"Could not build the coil {active_coils[name]}, check its format."
                 )

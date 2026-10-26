@@ -1,5 +1,5 @@
 """
-Functions that build tokamak objects in FreeGSNKE (from file or otherwise). 
+Functions that build tokamak objects in FreeGSNKE (from file or otherwise).
 
 Copyright 2025 UKAEA, UKRI-STFC, and The Authors, as per the COPYRIGHT and README files.
 
@@ -14,7 +14,7 @@ FreeGSNKE is free software: you can redistribute it and/or modify
 it under the terms of the GNU Lesser General Public License as published by
 the Free Software Foundation, either version 3 of the License, or
 (at your option) any later version.
-  
+
 You should have received a copy of the GNU Lesser General Public License
 along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 """
@@ -24,6 +24,7 @@ import pickle
 from copy import deepcopy
 
 import numpy as np
+from shapely.geometry import Polygon, box
 
 from .coil import Coil
 from .copying import copy_into
@@ -39,6 +40,178 @@ from .magnetic_probes import Probes
 from .multi_coil import MultiCoil
 from .passive_structure import PassiveStructure
 from .refine_passive import generate_refinement
+
+_OVERLAP_AREA_TOLERANCE = 1e-12
+
+
+def _element_polygons(element, label):
+    """Convert one active or passive machine-description entry to polygons."""
+    r_values = np.asarray(element["R"], dtype=float).reshape(-1)
+    z_values = np.asarray(element["Z"], dtype=float).reshape(-1)
+    if r_values.size != z_values.size:
+        raise ValueError(f"Element '{label}' must have matching R and Z values.")
+    if not np.isfinite(r_values).all() or not np.isfinite(z_values).all():
+        raise ValueError(f"Element '{label}' coordinates must be finite.")
+
+    if "dR" in element or "dZ" in element:
+        if "dR" not in element or "dZ" not in element:
+            raise ValueError(f"Element '{label}' must define both dR and dZ.")
+        if r_values.size == 0:
+            raise ValueError(f"Element '{label}' has no windings.")
+        dR = float(element["dR"])
+        dZ = float(element["dZ"])
+        if not np.isfinite([dR, dZ]).all() or dR <= 0 or dZ <= 0:
+            raise ValueError(
+                f"Element '{label}' dimensions 'dR' and 'dZ' "
+                "must be finite and positive."
+            )
+        shapes = [
+            box(r - dR / 2, z - dZ / 2, r + dR / 2, z + dZ / 2)
+            for r, z in zip(r_values, z_values)
+        ]
+        return shapes
+
+    if r_values.size < 3:
+        raise ValueError(
+            f"Passive polygon '{label}' must have at least three vertices."
+        )
+    polygon = Polygon(list(zip(r_values, z_values)))
+    if not polygon.is_valid or polygon.area <= 0:
+        raise ValueError(f"Invalid passive-structure polygon '{label}'.")
+    return [polygon]
+
+
+def _active_element_shapes(active_data):
+    """Yield (label, polygon) pairs for active entries, including sub-coils."""
+    for name, coil_data in active_data.items():
+        if "R" in coil_data or "Z" in coil_data:
+            coils = [(name, coil_data)]
+        else:
+            coils = [
+                (f"{name}.{subname}", subcoil_data)
+                for subname, subcoil_data in coil_data.items()
+            ]
+
+        for coil_name, element in coils:
+            shapes = _element_polygons(element, coil_name)
+            for index, shape in enumerate(shapes):
+                label = coil_name if len(shapes) == 1 else f"{coil_name}[{index}]"
+                yield label, shape
+
+
+def _passive_element_shapes(passive_data):
+    """Yield (label, polygon) pairs for passive entries."""
+    for index, element in enumerate(passive_data):
+        label = element.get("name", f"passive_{index}")
+        for shape in _element_polygons(element, label):
+            yield label, shape
+
+
+def _polygons_overlap(first, second, area_tolerance=_OVERLAP_AREA_TOLERANCE):
+    """Return whether two polygons overlap by more than the area tolerance."""
+    return first.intersection(second).area > area_tolerance
+
+
+def _validate_area_tolerance(area_tolerance):
+    area_tolerance = float(area_tolerance)
+    if not np.isfinite(area_tolerance) or area_tolerance < 0:
+        raise ValueError("area_tolerance must be finite and non-negative.")
+    return area_tolerance
+
+
+def check_for_overlapping_elements(
+    active_data, passive_data, area_tolerance=_OVERLAP_AREA_TOLERANCE
+):
+    """Find overlapping pairs among active and passive machine elements.
+
+    Active ``R`` and ``Z`` arrays are winding centres, with ``dR`` and ``dZ``
+    defining each winding's rectangular cross-section. A passive entry with
+    scalar ``R`` and ``Z`` is treated as a rectangular filament; array-valued
+    coordinates define a polygon.
+
+    Returns
+    -------
+    list[tuple[str, str]]
+        Labels for each overlapping pair. Multi-winding active entries include
+        a zero-based winding index in their label. Active-active pairs come
+        first, followed by passive-passive and active-passive pairs.
+    """
+    area_tolerance = _validate_area_tolerance(area_tolerance)
+    active_elements = list(_active_element_shapes(active_data))
+    passive_elements = list(_passive_element_shapes(passive_data))
+
+    overlaps = []
+    for index, (first_name, first_shape) in enumerate(active_elements):
+        for second_name, second_shape in active_elements[index + 1 :]:
+            if _polygons_overlap(first_shape, second_shape, area_tolerance):
+                overlaps.append((first_name, second_name))
+
+    for index, (first_name, first_shape) in enumerate(passive_elements):
+        for second_name, second_shape in passive_elements[index + 1 :]:
+            if _polygons_overlap(first_shape, second_shape, area_tolerance):
+                overlaps.append((first_name, second_name))
+
+    for active_name, active_shape in active_elements:
+        for passive_name, passive_shape in passive_elements:
+            if _polygons_overlap(active_shape, passive_shape, area_tolerance):
+                overlaps.append((active_name, passive_name))
+
+    return overlaps
+
+
+def check_for_overlapping_single_element(
+    element,
+    active_data,
+    passive_data,
+    exclude_name=None,
+    area_tolerance=_OVERLAP_AREA_TOLERANCE,
+):
+    """Return existing machine elements overlapping one active or passive entry.
+
+    ``element`` uses the same machine-description shape as one active coil
+    entry (with ``R``, ``Z``, ``dR``, and ``dZ``) or one passive entry (with
+    polygon ``R``/``Z`` coordinates, optionally with a ``name``). Elements
+    whose label matches ``exclude_name`` are ignored, which is useful when
+    validating a replacement geometry.
+
+    Returns
+    -------
+    list[tuple[str, str]]
+        Pairs of ``(candidate_label, existing_label)`` for each overlapping
+        winding or passive structure. Edge-only contact is not an overlap.
+    """
+    area_tolerance = _validate_area_tolerance(area_tolerance)
+    candidate_name = element.get("name", "candidate")
+    candidate_shapes = _element_polygons(element, candidate_name)
+    existing_shapes = [
+        *(
+            (name, shape)
+            for name, shape in _active_element_shapes(active_data)
+            if exclude_name is None
+            or (
+                name != exclude_name
+                and not name.startswith(f"{exclude_name}.")
+                and not name.startswith(f"{exclude_name}[")
+            )
+        ),
+        *(
+            (name, shape)
+            for name, shape in _passive_element_shapes(passive_data)
+            if name != exclude_name
+        ),
+    ]
+
+    overlaps = []
+    for candidate_index, candidate_shape in enumerate(candidate_shapes):
+        candidate_label = (
+            candidate_name
+            if len(candidate_shapes) == 1
+            else f"{candidate_name}[{candidate_index}]"
+        )
+        for existing_name, existing_shape in existing_shapes:
+            if _polygons_overlap(candidate_shape, existing_shape, area_tolerance):
+                overlaps.append((candidate_label, existing_name))
+    return overlaps
 
 
 def tokamak(
@@ -189,6 +362,16 @@ def build_tokamak_components(
         limiter_path=limiter_path,
         wall_path=wall_path,
     )
+
+    overlapping_elements = check_for_overlapping_elements(
+        active_data=active_coils,
+        passive_data=passive_coils,
+    )
+    if overlapping_elements:
+        overlap_list = "; ".join(
+            f"{first} and {second}" for first, second in overlapping_elements
+        )
+        raise ValueError(f"Overlapping coil elements detected: {overlap_list}")
 
     # build the actives into their circuits
     coil_circuits = build_actives(active_coils=active_coils)

@@ -38,7 +38,7 @@ from .circuit_eq_metal import metal_currents
 from .gradshafranov import GreensBr, GreensdBrdz
 from .GSstaticsolver import NKGSsolver
 from .linear_solve import linear_solver
-from .Myy_builder import Myy_handler
+from .Myy_builder import make_Myy_handler
 from .simplified_solve import simplified_solver_J1
 
 _parallel_linearization_solver = None
@@ -134,6 +134,8 @@ class nl_solver:
         plasma_descriptor_function: Callable[[object], np.ndarray] | None = None,
         mode_selection: str = "coupling",
         n_linearization_workers: int = 1,
+        myy_type: str = "reduced",
+        cache_myy: bool = True,
     ) -> None:
         """
         Initialize the nonlinear solver.
@@ -229,6 +231,11 @@ class nl_solver:
             Number of worker processes used to build independent ``dIydI`` and
             ``dIydtheta`` columns during initial and later linearisations. A value
             of 1 retains the serial calculation.
+        myy_type: str, default="reduced"
+            Either "reduced" to define Myy over reduced domain in real space, or "fft" to define Myy
+            over the full domain in Fourier space.
+        cache_myy: bool, default=True
+            Controls whether the Myy matrix is cached at initialization or rebuilt for every product.
 
         Raises
         ------
@@ -312,7 +319,9 @@ class nl_solver:
         self.nIy = np.linalg.norm(self.Iy)
 
         # instantiate the Myy_handler object
-        self.handleMyy = Myy_handler(eq.limiter_handler)
+        self.handleMyy = make_Myy_handler(
+            myy_type, eq.limiter_handler, cache_myy=cache_myy
+        )
 
         # Extract relevant information on the type of profiles function used and on the actual value of associated parameters
         self.get_profiles_values(profiles)

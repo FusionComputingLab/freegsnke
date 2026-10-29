@@ -714,6 +714,40 @@ class Limiter_handler:
         hat_Iy = self.normalize_sum(hat_Iy)
         return hat_Iy
 
+    def up_project(self, vec: np.ndarray) -> np.ndarray:
+        """
+        Projects a (discretized current) vector defined on the reduced plasma domain onto the full plasma domain.
+
+        Parameters
+        ----------
+        vec : np.ndarray
+            Vector on the reduced plasma domain, of length len(self.mask_inside_limiter)
+
+        Returns
+        -------
+        np.ndarray
+            Vector on the full plasma domain, with size self.map2d.shape
+        """
+        new_vec = np.zeros_like(self.map2d)
+        new_vec[self.mask_inside_limiter] = vec
+        return new_vec
+
+    def down_project(self, vec: np.ndarray) -> np.ndarray:
+        """
+        Projects a (discretized current) vector defined on the full plasma domain onto the reduced plasma domain.
+
+        Parameters
+        ----------
+        vec : np.ndarray
+            Vector on the full plasma domain, with size self.map2d.shape
+
+        Returns
+        -------
+        np.ndarray
+            Vector on the reduced plasma domain, of length len(self.mask_inside_limiter)
+        """
+        return vec[self.mask_inside_limiter]
+
     def rebuild_map2d(
         self, reduced_vector: np.ndarray, map_dummy: np.ndarray, idxs_mask: np.ndarray
     ) -> np.ndarray:

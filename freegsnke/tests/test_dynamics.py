@@ -52,9 +52,6 @@ def create_machine():
         alpha_n=1.2,
     )
 
-    from freegsnke import GSstaticsolver
-
-    NK = GSstaticsolver.NKGSsolver(eq)
     currents = np.array(
         [
             40000,
@@ -74,6 +71,27 @@ def create_machine():
     keys = list(eq.tokamak.getCurrents().keys())
     for i in np.arange(12):
         eq.tokamak.set_coil_current(keys[i], currents[i])
+
+    return tokamak, eq, profiles
+
+
+@pytest.fixture()
+def create_solver(create_machine, request):
+
+    tokamak, eq, profiles = create_machine
+    if not hasattr(request, "param") or request.param == "default":
+        request.param = {
+            "solver_type": "LUsparse",
+            "myy_type": "reduced",
+            "cache_myy": True,
+        }
+
+    from freegsnke import GSstaticsolver
+
+    NK = GSstaticsolver.NKGSsolver(
+        eq,
+        solver_type=request.param["solver_type"],
+    )
     NK.solve(eq, profiles, target_relative_tolerance=1e-8)
 
     # Initialize the evolution object
@@ -93,12 +111,27 @@ def create_machine():
         # modes. Plasma-coupling metrics may calibrate finite-difference steps but
         # must not change which modes are retained.
         mode_selection="timescale",
+        myy_type=request.param["myy_type"],
+        cache_myy=request.param["cache_myy"],
     )
-    return tokamak, eq, profiles, stepping
+    return stepping
 
 
-def test_linearised_growth_rate(create_machine):
-    tokamak, eq, profiles, stepping = create_machine
+@pytest.mark.parametrize(
+    "create_solver",
+    [
+        {"solver_type": "LUsparse", "myy_type": "reduced", "cache_myy": True},
+        pytest.param(
+            {"solver_type": "DST", "myy_type": "reduced", "cache_myy": True},
+            marks=pytest.mark.xfail,
+        ),
+    ],
+    indirect=True,
+)
+def test_linearised_growth_rate(create_machine, create_solver):
+
+    tokamak, eq, profiles = create_machine
+    stepping = create_solver
     selected_passive_modes = stepping.evol_metal_curr.selected_modes_mask[
         stepping.n_active_coils :
     ]
@@ -107,6 +140,7 @@ def test_linearised_growth_rate(create_machine):
         np.arange(50),
     )
     true_GR = 0.05900
+
     # check that
     assert (
         abs((stepping.linearised_sol.instability_timescale[0] - true_GR) / true_GR)
@@ -114,8 +148,20 @@ def test_linearised_growth_rate(create_machine):
     ), f"Growth rate deviates { abs((stepping.linearised_sol.growth_rates[0]-true_GR)/true_GR)}% from baseline"
 
 
-def test_linearised_stepper(create_machine):
-    tokamak, eq, profiles, stepping = create_machine
+@pytest.mark.parametrize(
+    "create_solver",
+    [
+        {"solver_type": "LUsparse", "myy_type": "reduced", "cache_myy": True},
+        {"solver_type": "LUsparse", "myy_type": "fft", "cache_myy": True},
+        {"solver_type": "LUsparse", "myy_type": "reduced", "cache_myy": False},
+    ],
+    indirect=True,
+)
+def test_linearised_stepper(create_machine, create_solver):
+
+    tokamak, eq, profiles = create_machine
+    stepping = create_solver
+
     U_active = (stepping.vessel_currents_vec * stepping.evol_metal_curr.coil_resist)[
         : stepping.evol_metal_curr.n_active_coils
     ]
@@ -206,8 +252,18 @@ def test_linearised_stepper(create_machine):
     ), "X-point location deviates more than 1/2 of pixel size."
 
 
-def test_non_linear_stepper(create_machine):
-    tokamak, eq, profiles, stepping = create_machine
+@pytest.mark.parametrize(
+    "create_solver",
+    [
+        "default",
+    ],
+    indirect=True,
+)
+def test_non_linear_stepper(create_machine, create_solver):
+
+    tokamak, eq, profiles = create_machine
+    stepping = create_solver
+
     U_active = (stepping.vessel_currents_vec * stepping.evol_metal_curr.coil_resist)[
         : stepping.evol_metal_curr.n_active_coils
     ]
@@ -296,9 +352,10 @@ def test_non_linear_stepper(create_machine):
     ), "X-point location deviates more than 1/2 of pixel size."
 
 
-def test_reinitialisation_preserves_dRZdI(create_machine):
+def test_reinitialisation_preserves_dRZdI(create_machine, create_solver):
     # Regression test for #116: no modes removed
-    tokamak, eq, profiles, stepping = create_machine
+    tokamak, eq, profiles = create_machine
+    stepping = create_solver
     saved_drzdi = np.copy(stepping.dRZdI)
 
     assert (
@@ -310,9 +367,12 @@ def test_reinitialisation_preserves_dRZdI(create_machine):
     np.testing.assert_array_equal(stepping.dRZdI, saved_drzdi)
 
 
-def test_reinitialisation_preserves_dRZdI_after_mode_removal(create_machine):
+def test_reinitialisation_preserves_dRZdI_after_mode_removal(
+    create_machine, create_solver
+):
     # Regression test for #116: mode removal
-    tokamak, eq, profiles, stepping = create_machine
+    tokamak, eq, profiles = create_machine
+    stepping = create_solver
     solver = nonlinear_solve.nl_solver(
         profiles=profiles,
         eq=eq,

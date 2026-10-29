@@ -32,8 +32,6 @@ from .gs_solver import GSDSTSolver, GSLUSolver
 from .inverse import Inverse_optimizer, _solve_regularized_lstsq
 from .multigrid import createMultigridSolver
 
-# TODO: missing type hints after merge
-
 
 class NKGSsolver:
     """
@@ -80,11 +78,11 @@ class NKGSsolver:
         l2_reg: float = 1e-6,
         collinearity_reg: float = 1e-6,
         seed: int = 42,
-        gs_operator_order: int = 4,
-        cache_greens=True,
-        solver_type="LUsparse",
-        mg_kwargs=None,
-        max_batch_size=2_000_000_000,
+        gs_operator_order: int | None = None,
+        cache_greens: bool = True,
+        solver_type: str = "LUsparse",
+        mg_kwargs: dict | None = None,
+        max_batch_size: int | float = 2_000_000_000,
     ) -> None:
         """
         Initialise the Grad–Shafranov nonlinear solver.
@@ -121,16 +119,16 @@ class NKGSsolver:
             Determines whether the Greens function should be pre-calculated and
             stored, or re-calculated every time the boundary flux is computed
             (reducing memory usage by up to an order of magnitude).
-        solver_type: str (default='LUsparse')
+        solver_type: str, optional (default='LUsparse')
             The type of linear solver to use for the GS equation. Supported
             options are 'LUsparse', 'DST', 'multigrid'. 'LUsparse' supports
             order 2,4. The 'DST' solver is faster, but only supports order 2.
             Use of 'multigrid' is discouraged and is planned to be deprecated.
-        mg_kwargs
+        mg_kwargs: dict|None, optional (default = None)
             dict with optional keyword arguments to pass to
             `freegsnke.multigrid.createMultigridSolver` during multigrid solver
             initialization. Ignored whenever `solver_type` != 'multigrid'.
-        max_batch_size : int, float (default=2_000_000_000)
+        max_batch_size : int|float, optional (default=2_000_000_000)
             Sets a maximum size (number of entries) for the batches of the Greens function when calculating the
             boundary flux, allowing for further reduction in memory footprint. Only applicable when
             `cache_greens=False`, ignored otherwise. Float type values supported for convenience (to allow for
@@ -225,12 +223,18 @@ class NKGSsolver:
         # random generator used for NK search direction exploration
         self.rng = np.random.default_rng(seed=seed)
 
-    def _build_full_boundary_greens(self):
+    def _build_full_boundary_greens(self) -> np.ndarray:
         """
         Calculates the Greens function giving the responses of boundary nodes to internal nodes:
         Jtor(R',Z') → ψ_boundary(R,Z)
 
         Fills the array sequentially to optimize memory usage.
+
+        Returns
+        -------
+        np.ndarray
+            3D array of shape (n_boundary_points, nx, ny) mapping source plasma
+            current density to boundary flux.
         """
 
         bndry_indices = self.bndry_indices
@@ -273,7 +277,7 @@ class NKGSsolver:
 
         return greenfunc
 
-    def _calculate_boundary_flux(self):
+    def _calculate_boundary_flux(self) -> np.ndarray:
         """
         Compute boundary flux via Green's function convolution: psi_bnd = ∫ G(R,Z; R',Z') Jtor(R',Z') dR'dZ'
 
@@ -283,7 +287,8 @@ class NKGSsolver:
 
         Returns
         -------
-            Boundary flux vector as a flattened array
+        np.ndarray
+            Flux at the boundary grid points (ordered as `bndry_indices`)
         """
 
         # Implemented using tensor contraction:
@@ -411,7 +416,9 @@ class NKGSsolver:
         """
         return self.greenfunc @ jtor[self.plasma_source_mask]
 
-    def configureLinearSolver(self, solver_type, order, mg_kwargs):
+    def configureLinearSolver(
+        self, solver_type: str, order: int | None, mg_kwargs: dict | None
+    ) -> None:
         """
         Creates and assigns the linear solver `self.linear_GS_solver` using the arguments provided.
 
@@ -422,10 +429,10 @@ class NKGSsolver:
         solver_type: str
             The type of linear solver to use for the GS equation. Supported options are 'LUsparse',
             'DST', 'multigrid'.
-        order : int
+        order : int|None
             Order of differential operators used in calculations.
-            Must be either 2 or 4.
-        mg_kwargs
+            Must be either 2 or 4, or None to use the selected solver's default.
+        mg_kwargs: dict|None
             dict with kwargs to pass to `freegsnke.multigrid.createMultigridSolver` during multigrid solver
             initialization. Ignored whenever `solver_type` != 'multigrid'.
         """

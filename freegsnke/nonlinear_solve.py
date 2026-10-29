@@ -43,8 +43,6 @@ from .simplified_solve import simplified_solver_J1
 
 _parallel_linearization_solver = None
 
-# TODO: missing type hints after merge
-
 
 def _build_dIydI_column_worker(arguments: tuple) -> tuple:
     """
@@ -136,8 +134,8 @@ class nl_solver:
         plasma_descriptor_function: Callable[[object], np.ndarray] | None = None,
         mode_selection: str = "coupling",
         n_linearization_workers: int = 1,
-        myy_type="reduced",
-        cache_myy=True,
+        myy_type: str = "reduced",
+        cache_myy: bool = True,
     ) -> None:
         """
         Initialize the nonlinear solver.

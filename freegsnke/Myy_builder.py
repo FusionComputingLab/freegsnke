@@ -30,13 +30,17 @@ import numpy as np
 from .gradshafranov import Greens
 from .parallel import threaded_take
 
-# TODO: missing type hints after merge
-
 
 def make_Myy_handler(
-    domain_type, limiter_handler, layer_size=None, tolerance=None, cache_myy=None
+    domain_type: str,
+    limiter_handler: int,
+    layer_size: int | None = None,
+    tolerance: int | None = None,
+    cache_myy: bool | None = None,
 ):
-    """Returns an Myy_handler object of appropriate type given the domain_type specified.
+    """
+    Returns an Myy_handler object of appropriate type given the domain_type specified. Note that
+    if `domain_type`=="fft" all optional arguments are ignored.
 
     Parameters
     ----------
@@ -56,6 +60,11 @@ def make_Myy_handler(
         the mask defined by the plasma region, broadened by tolerance pixels,
         is fully contained in the domain of the current myy matrix,
         By default 3
+    cache_myy : bool, optional
+        Determines whether the mutual inductance matrix should be pre-calculated and
+        stored, or re-calculated every time a product with Myy is computed
+        (reducing memory usage by up to an order of magnitude).
+        True by default.
 
     """
 
@@ -80,11 +89,27 @@ def make_Myy_handler(
 
 
 class Myy_handler(abc.ABC):
-    """Abstract base class for objects handling all operations which involve the Myy matrix,
+    """
+    Abstract base class for objects handling all operations which involve the Myy matrix,
     i.e. the mututal inductance matrix of all domain grid points.
     """
 
-    def make_1D(self, R, Z):
+    def make_1D(self, R: np.ndarray, Z: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """
+        Utility function to obtain a 1D vector representation of R and Z
+
+        Parameters
+        ----------
+        R : np.ndarray
+            2D array with the R values of the grid
+        Z : np.ndarray
+            2D array with the Z values of the grid
+
+        Returns
+        -------
+        tuple[np.ndarray, np.ndarray}
+            1D vector of R-values and 1D vector of Z-values
+        """
 
         dz = Z[0, 1] - Z[0, 0]
         nZ = Z.shape[1]
@@ -94,8 +119,9 @@ class Myy_handler(abc.ABC):
         return R_1D, Z_1D
 
     @abc.abstractmethod
-    def grid_greens(self, R_1D, Z_1D):
-        """Calculates and stores the Green's function values in the corresponding Myy domain.
+    def grid_greens(self, R_1D: np.ndarray, Z_1D: np.ndarray) -> np.ndarray:
+        """
+        Calculates and stores the Green's function values in the corresponding Myy domain.
 
         Parameters
         ----------
@@ -103,24 +129,30 @@ class Myy_handler(abc.ABC):
             Array of dim=1 representing the R values of the grid in the appropriate Myy domain.
         Z_1D : np.ndarray
             Array of dim=1 representing the Z values of the grid in the appropriate Myy domain.
+
+        Returns
+        -------
+        np.ndarray
+            Array containing the Greens's function in the appropriate representation.
         """
         pass
 
     @abc.abstractmethod
-    def check_Myy(self, hatIy):
+    def check_Myy(self, hatIy: np.ndarray) -> int | bool:
         """As defined in Reduced_Myy_handler. Definition enforced for compatibility with
         non_linear_solver"""
         pass
 
     @abc.abstractmethod
-    def force_build_Myy(self, hatIy):
+    def force_build_Myy(self, hatIy: np.ndarray) -> None:
         """As defined in Reduced_Myy_handler. Definition enforced for compatibility with
         non_linear_solver"""
         pass
 
     @abc.abstractmethod
-    def dot(self, hatIy):
-        """Performs the product with a vector defined on the reduced plasma domain, i.e. inside the
+    def dot(self, hatIy: np.ndarray) -> np.ndarray:
+        """
+        Performs the product with a vector defined on the reduced plasma domain, i.e. inside the
         limiter, independently of the domain of Myy. Returns a vector on the input domain.
 
         Parameters
@@ -131,9 +163,16 @@ class Myy_handler(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def _myy_dot(self, vector):
-        """Performs the dot product Myy@vector for a vector already projected to the domain
-        in which Myy is defined. Returns a vector on the input domain."""
+    def _myy_dot(self, vector: np.ndarray) -> np.ndarray:
+        """
+        Performs the dot product Myy@vector for a vector already projected to the domain
+        in which Myy is defined. Returns a vector on the input domain.
+
+        Returns
+        -------
+        np.ndarray
+            1d vector on the input domain.
+        """
         pass
 
 
@@ -205,13 +244,12 @@ class Reduced_Myy_handler(Myy_handler):
 
         Parameters
         ----------
-        R : np.ndarray
-            Like eq.R, but on the rectangular reduced domain, i.e.
-            ``self.reduce_rect_domain(limiter_handler.eqR)``. Only ``R[:, 0]``
-            is used.
-        Z : np.ndarray
-            Like eq.Z, but on the rectangular reduced domain. Uniform spacing
-            along the second axis is assumed.
+        R_1D : np.ndarray
+            Like eq.R, but on the rectangular reduced domain and only in 1D, i.e.
+            ``self.reduce_rect_domain(limiter_handler.eqR)[:, 0]``
+        Z_1D : np.ndarray
+            Like eq.Z, but on the rectangular reduced domain and only in 1D,
+            uniform spacing is assumed.
 
         Returns
         -------
@@ -378,8 +416,9 @@ class Reduced_Myy_handler(Myy_handler):
 
         return result_red
 
-    def _myy_dot(self, vector):
-        """Performs the dot product Myy@vector for a vector already projected onto the reduced
+    def _myy_dot(self, vector: np.ndarray) -> np.ndarray:
+        """
+        Performs the dot product Myy@vector for a vector already projected onto the reduced
         rectangular domain in which Myy is defined.
 
         If myy is cached, np.dot is called directly. Otherwise, the product is batch-computed using
@@ -391,7 +430,6 @@ class Reduced_Myy_handler(Myy_handler):
         ----------
         vector: np.ndarray
             1d vector projected onto the reduced rectangular domain of Myy
-
         """
 
         if self.cache_myy:
@@ -459,7 +497,7 @@ class FFT_Myy_handler(Myy_handler):
     space, which reduces the size scaling from quartic to cubic.
     """
 
-    def __init__(self, limiter_handler):
+    def __init__(self, limiter_handler: object) -> None:
         """Instantiates the object
 
         Parameters
@@ -475,10 +513,11 @@ class FFT_Myy_handler(Myy_handler):
 
         self.gg = self.grid_greens(R_1D, Z_1D)  # in Fourier space, (nR, nR, L_fft)
 
-    def grid_greens(self, R_1D, Z_1D):
-        """Calculates the Green's function values on the Fourier space of the full geometric
-        domain defined by the limiter. Uses that the green functions are invariant for vertical
-        translations.
+    def grid_greens(self, R_1D: np.ndarray, Z_1D: np.ndarray) -> np.ndarray:
+        """
+        Calculates the Green's function values on the Fourier space of the full geometric
+        domain defined by the limiter. Relies on the fact that Green's functions are invariant
+        for vertical translations.
 
         Parameters
         ----------
@@ -540,30 +579,37 @@ class FFT_Myy_handler(Myy_handler):
 
         return gg_fft  # (nR, nR, L_fft)
 
-    def check_Myy(self, hatIy):
+    def check_Myy(self, hatIy: np.ndarray) -> bool:
         """Dummy, always returns False. Defined only for compatibility with non_linear_solver"""
         return False
 
-    def force_build_Myy(self, hatIy):
+    def force_build_Myy(self, hatIy: np.ndarray) -> None:
         """Ignored. Defined only for compatibility with non_linear_solver"""
         pass
 
-    def dot(self, hatIy):
-        """Performs the product with a vector defined on the reduced domain, i.e. inside the limiter.
+    def dot(self, hatIy: np.ndarray) -> np.ndarray:
+        """
+        Performs the product with a vector defined on the reduced domain, i.e. inside the limiter.
         Returns a vector on the input domain.
 
         Parameters
         ----------
         hatIy: np.ndarray
             1d vector on reduced plasma domain, e.g. inside the limiter
+
+        Returns
+        -------
+        np.ndarray
+            Resulting 1d vector on the same domain.
         """
         up_hatIy = self.up_project(hatIy)
         Myy_hatIy = self._myy_dot(up_hatIy)
         reduced_prod = self.down_project(Myy_hatIy)
         return reduced_prod
 
-    def _myy_dot(self, vector):
-        """Performs the dot product Myy@vector for a vector that has already been up-projected onto
+    def _myy_dot(self, vector: np.ndarray) -> np.ndarray:
+        """
+        Performs the dot product Myy@vector for a vector that has already been up-projected onto
         the full grid domain (where Myy is defined), but NOT yet transformed into Fourier space.
 
         Returns a vector on the input domain.
@@ -572,6 +618,11 @@ class FFT_Myy_handler(Myy_handler):
         ----------
         vector: np.ndarray
             1d vector on the full domain, in real space
+
+        Returns
+        -------
+        np.ndarray
+            Resulting 1d vector on the same domain.
         """
 
         nR, nZ = self.gg.shape[1], self.gg.shape[2]

@@ -1,56 +1,63 @@
 """
-Functions that build tokamak objects in FreeGSNKE (from file or otherwise). 
+Functions that build tokamak objects in FreeGSNKE (from file or otherwise).
 
 Copyright 2025 UKAEA, UKRI-STFC, and The Authors, as per the COPYRIGHT and README files.
 
 This file is part of FreeGSNKE.
+
+FreeGSNKE is free software: you can redistribute it and/or modify
+it under the terms of the GNU Lesser General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
 
 FreeGSNKE is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 GNU Lesser General Public License for more details.
 
-FreeGSNKE is free software: you can redistribute it and/or modify
-it under the terms of the GNU Lesser General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
-  
 You should have received a copy of the GNU Lesser General Public License
-along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
+along with FreeGSNKE. If not, see <http://www.gnu.org/licenses/>.
 """
+
+from __future__ import annotations
 
 import os
 import pickle
 from copy import deepcopy
 
 import numpy as np
-from freegs4e.coil import Coil
-from freegs4e.machine import Circuit, Wall
-from freegs4e.multi_coil import MultiCoil
 
+from .coil import Coil
 from .copying import copy_into
-from .machine_config import build_tokamak_R_and_M
+from .machine import Circuit, Wall
+from .machine_config import (
+    append_tokamak_R_and_M_entries,
+    build_tokamak_R_and_M,
+    insert_tokamak_R_and_M_entries,
+    remove_tokamak_R_and_M_entry,
+)
 from .machine_update import Machine
 from .magnetic_probes import Probes
+from .multi_coil import MultiCoil
 from .passive_structure import PassiveStructure
 from .refine_passive import generate_refinement
 
 
 def tokamak(
-    active_coils_data=None,
-    passive_coils_data=None,
-    limiter_data=None,
-    wall_data=None,
-    magnetic_probe_data=None,
-    active_coils_path=None,
-    passive_coils_path=None,
-    limiter_path=None,
-    wall_path=None,
-    magnetic_probe_path=None,
-    refine_mode="G",
-):
+    active_coils_data: dict | None = None,
+    passive_coils_data: list | None = None,
+    limiter_data: list | None = None,
+    wall_data: list | None = None,
+    magnetic_probe_data: dict | None = None,
+    active_coils_path: str | None = None,
+    passive_coils_path: str | None = None,
+    limiter_path: str | None = None,
+    wall_path: str | None = None,
+    magnetic_probe_path: str | None = None,
+    refine_mode: str = "G",
+) -> Machine:
     """
-    Load the standarised input data required to build the tokamak machine.
+    Build a tokamak machine from the standardised input data.
 
     These dictionaries/lists/arrays can either be provided directly or loaded from pickle files.
 
@@ -61,12 +68,12 @@ def tokamak(
     ----------
     active_coils_data : dict, optional
         Dictionary containing the active coil data.
-    passive_coils_data : dict, optional
-        Dictionary containing the passive structure data.
-    limiter_data : dict, optional
-        Dictionary containing the limiter data.
-    wall_data : dict, optional
-        Dictionary containing the wall data.
+    passive_coils_data : list, optional
+        List containing the passive structure data.
+    limiter_data : list, optional
+        List of limiter boundary points (dicts with "R" and "Z").
+    wall_data : list, optional
+        List of wall boundary points (dicts with "R" and "Z").
     magnetic_probe_data : dict, optional
         Dictionary containing the magnetic probes data.
     active_coils_path : str, optional
@@ -85,8 +92,8 @@ def tokamak(
 
     Returns
     -------
-    tokamak : class
-        Returns an object containing the tokamak machine decsription.
+    Machine
+        Object containing the tokamak machine description.
     """
 
     components = build_tokamak_components(
@@ -117,18 +124,18 @@ def tokamak(
 
 
 def build_tokamak_components(
-    active_coils_data=None,
-    passive_coils_data=None,
-    limiter_data=None,
-    wall_data=None,
-    magnetic_probe_data=None,
-    active_coils_path=None,
-    passive_coils_path=None,
-    limiter_path=None,
-    wall_path=None,
-    magnetic_probe_path=None,
-    refine_mode="G",
-):
+    active_coils_data: dict | None = None,
+    passive_coils_data: list | None = None,
+    limiter_data: list | None = None,
+    wall_data: list | None = None,
+    magnetic_probe_data: dict | None = None,
+    active_coils_path: str | None = None,
+    passive_coils_path: str | None = None,
+    limiter_path: str | None = None,
+    wall_path: str | None = None,
+    magnetic_probe_path: str | None = None,
+    refine_mode: str = "G",
+) -> dict:
     """
     Build the reusable pieces of a FreeGSNKE machine description.
 
@@ -168,7 +175,7 @@ def build_tokamak_components(
     Returns
     -------
     dict
-        Dictionary containing FreeGS4E coil circuits, wall and limiter objects,
+        Dictionary containing FreeGSNKE coil circuits, wall and limiter objects,
         FreeGSNKE coil metadata, coil counts, and the probe object needed to
         initialise or update a :class:`freegsnke.machine_update.Machine`.
     """
@@ -240,8 +247,11 @@ def build_tokamak_components(
 
 
 def apply_tokamak_components(
-    tokamak, components, preserve_currents=True, rebuild_R_and_M=True
-):
+    tokamak: Machine,
+    components: dict,
+    preserve_currents: bool = True,
+    rebuild_R_and_M: bool = True,
+) -> Machine:
     """
     Apply a built machine description to an existing tokamak object.
 
@@ -259,7 +269,7 @@ def apply_tokamak_components(
 
     Returns
     -------
-    tokamak : Machine
+    Machine
         The same object, updated in place.
 
     Notes
@@ -322,7 +332,9 @@ def apply_tokamak_components(
     return tokamak
 
 
-def build_active_coil_component(coil_name, active_coil_data):
+def build_active_coil_component(
+    coil_name: str, active_coil_data: dict
+) -> tuple[tuple[str, object], dict]:
     """
     Build one active coil/circuit and its FreeGSNKE metadata.
 
@@ -370,7 +382,12 @@ def build_active_coil_component(coil_name, active_coil_data):
     return (built_label, built_coil), coils_dict[coil_name]
 
 
-def update_active_coil(tokamak, coil_name, active_coil_data, preserve_current=True):
+def update_active_coil(
+    tokamak: Machine,
+    coil_name: str,
+    active_coil_data: dict,
+    preserve_current: bool = True,
+) -> Machine:
     """
     Update one active coil/circuit on an existing tokamak object.
 
@@ -463,7 +480,530 @@ def update_active_coil(tokamak, coil_name, active_coil_data, preserve_current=Tr
     return tokamak
 
 
-def _reuse_unchanged_coil_components(tokamak, components, changed_coils):
+def build_passive_structure_component(
+    name: str, passive_data: dict, refine_mode: str = "G"
+) -> tuple[tuple[str, object], dict]:
+    """
+    Build one passive structure and its FreeGSNKE metadata.
+
+    This helper accepts one item of the passive-coils machine-description
+    list (a ``"name"`` key is not required; ``name`` always takes precedence).
+    It reuses :func:`build_passives` so a single passive structure is built
+    exactly as it would be within a full machine build.
+
+    Parameters
+    ----------
+    name : str
+        Label for the passive structure.
+    passive_data : dict
+        Machine-description entry for this passive structure.
+    refine_mode : str, optional
+        Refinement mode for extended (polygonal) passive structures. Defaults
+        to ``"G"``.
+
+    Returns
+    -------
+    tuple
+        ``((name, coil_or_passive_structure), coil_metadata)`` where the first
+        item is suitable for insertion into ``tokamak.coils`` and the second is
+        the corresponding ``tokamak.coils_dict[name]`` entry.
+
+    Raises
+    ------
+    ValueError
+        If the supplied data cannot be converted into exactly one passive
+        structure with the requested label.
+    """
+
+    passive_entry = deepcopy(passive_data)
+    passive_entry["name"] = name
+
+    coil_circuits, coils_dict, _ = build_passives(
+        passive_coils=[passive_entry],
+        coil_circuits=[],
+        coils_dict={},
+        coil_names=[],
+        refine_mode=refine_mode,
+    )
+
+    if len(coil_circuits) != 1 or name not in coils_dict:
+        raise ValueError(
+            f"Could not build passive structure '{name}'. Check the supplied data format."
+        )
+
+    return coil_circuits[0], coils_dict[name]
+
+
+def _index_passive_coils(passive_coils: list[dict]) -> dict[str, tuple[int, dict]]:
+    """
+    Map passive-structure label to its ``(index, raw entry)`` within a
+    passive-coils list, using the same default naming as
+    :func:`build_passives` (``coil.get("name", f"passive_{i}")``).
+
+    Parameters
+    ----------
+    passive_coils : list of dict
+        Raw passive-coils machine-description list.
+
+    Returns
+    -------
+    dict
+        Mapping of resolved label to ``(index, entry)`` in ``passive_coils``.
+    """
+
+    by_name = {}
+    for i, entry in enumerate(passive_coils):
+        name = entry.get("name", f"passive_{i}")
+        by_name[name] = (i, entry)
+    return by_name
+
+
+def update_passive_structure(
+    tokamak: Machine,
+    name: str,
+    passive_data: dict,
+    preserve_current: bool = True,
+    refine_mode: str = "G",
+) -> Machine:
+    """
+    Update one passive structure on an existing tokamak object, in place.
+
+    Only the named passive-structure object, its ``coils_dict`` metadata, and
+    the resistance/inductance matrix entries it affects are recalculated.
+    Active coils, other passive structures, limiter/wall objects, and magnetic
+    probe descriptions are left in place. This does not change the set or
+    ordering of passive structures; use :func:`add_passive_structure` or
+    :func:`remove_passive_structure` for that.
+
+    Parameters
+    ----------
+    tokamak : Machine
+        Existing tokamak object to update in place.
+    name : str
+        Existing passive-structure label to replace.
+    passive_data : dict
+        Machine-description entry for ``name`` (same format as one item of the
+        passive-coils list).
+    preserve_current : bool, optional
+        If True, the old current on ``name`` is copied onto the replacement
+        passive structure. Defaults to True.
+    refine_mode : str, optional
+        Refinement mode for extended (polygonal) passive structures. Defaults
+        to ``"G"``.
+
+    Returns
+    -------
+    Machine
+        The same tokamak object, updated in place.
+
+    Raises
+    ------
+    ValueError
+        If ``name`` is not an existing passive-structure label.
+
+    Notes
+    -----
+    This updates only machine-level state. If the machine is attached to an
+    equilibrium, use
+    :meth:`freegsnke.equilibrium_update.Equilibrium.update_passive_structure`
+    so that equilibrium-level Greens functions are refreshed as well. Existing
+    nonlinear solver objects should be reinstantiated after a geometry change
+    because they cache machine-dependent matrices and mode decompositions.
+    """
+
+    if not hasattr(tokamak, "coil_order") or name not in tokamak.coil_order:
+        raise ValueError(f"Tokamak does not contain passive structure label '{name}'.")
+    if tokamak.coils_dict.get(name, {}).get("active", False):
+        raise ValueError(f"Coil label '{name}' is not a passive structure.")
+
+    machine_description_data = getattr(tokamak, "_machine_description_data", None)
+    old_passive_coils = list(
+        (machine_description_data or {}).get("passive_coils", []) or []
+    )
+    old_by_name = _index_passive_coils(old_passive_coils)
+
+    new_entry = deepcopy(passive_data)
+    new_entry["name"] = name
+
+    if name in old_by_name and _machine_description_values_equal(
+        old_by_name[name][1], new_entry
+    ):
+        tokamak._last_machine_update_changed_coils = []
+        tokamak._last_machine_update_topology_changed = False
+        build_tokamak_R_and_M(tokamak, changed_coils=[])
+        return tokamak
+
+    old_current = tokamak[name].current
+    coil_index = tokamak.coil_order[name]
+    built_component, coil_metadata = build_passive_structure_component(
+        name, passive_data, refine_mode=refine_mode
+    )
+
+    tokamak.coils[coil_index] = built_component
+    tokamak.coils_dict[name] = coil_metadata
+
+    if name in old_by_name:
+        old_passive_coils[old_by_name[name][0]] = new_entry
+    else:
+        old_passive_coils.append(new_entry)
+
+    if machine_description_data is None:
+        machine_description_data = {}
+    machine_description_data["passive_coils"] = old_passive_coils
+    tokamak._machine_description_data = machine_description_data
+
+    if hasattr(tokamak, "probes"):
+        tokamak.probes.coils_dict = tokamak.coils_dict
+        if hasattr(tokamak.probes, "coil_names"):
+            tokamak.probes.coil_names = list(tokamak.coils_dict.keys())
+
+    if preserve_current:
+        tokamak.set_coil_current(name, old_current)
+    elif hasattr(tokamak, "current_vec"):
+        tokamak.current_vec[coil_index] = tokamak[name].current
+
+    tokamak._last_machine_update_changed_coils = [name]
+    tokamak._last_machine_update_topology_changed = False
+    build_tokamak_R_and_M(tokamak, changed_coils=[name])
+    return tokamak
+
+
+def add_passive_structure(
+    tokamak: Machine,
+    passive_data: dict,
+    name: str | None = None,
+    refine_mode: str = "G",
+) -> Machine:
+    """
+    Add one new passive structure to an existing tokamak object, in place.
+
+    Only the resistance/inductance matrix row/column for the new passive
+    structure are calculated; entries for existing coils are reused.
+
+    Parameters
+    ----------
+    tokamak : Machine
+        Existing tokamak object to update in place.
+    passive_data : dict
+        Machine-description entry for the new passive structure (same format
+        as one item of the passive-coils list).
+    name : str, optional
+        Label for the new passive structure. If omitted, ``passive_data["name"]``
+        is used, and if that is also absent a default of the form
+        ``f"passive_{tokamak.n_passive_coils}"`` is used.
+    refine_mode : str, optional
+        Refinement mode for extended (polygonal) passive structures. Defaults
+        to ``"G"``.
+
+    Returns
+    -------
+    Machine
+        The same tokamak object, updated in place.
+
+    Raises
+    ------
+    ValueError
+        If a coil/passive-structure with the resolved label already exists.
+
+    Notes
+    -----
+    This updates only machine-level state. If the machine is attached to an
+    equilibrium, use
+    :meth:`freegsnke.equilibrium_update.Equilibrium.add_passive_structure` so
+    that equilibrium-level Greens functions are extended as well. Existing
+    nonlinear solver objects should be reinstantiated after a geometry change
+    because they cache machine-dependent matrices and mode decompositions,
+    whose dimensionality will itself have changed.
+    """
+
+    if name is None:
+        name = passive_data.get("name", f"passive_{tokamak.n_passive_coils}")
+
+    if hasattr(tokamak, "coil_order") and name in tokamak.coil_order:
+        raise ValueError(f"Tokamak already contains a coil label '{name}'.")
+
+    built_component, coil_metadata = build_passive_structure_component(
+        name, passive_data, refine_mode=refine_mode
+    )
+
+    tokamak.coils.append(built_component)
+    tokamak.coils_dict[name] = coil_metadata
+    tokamak.coils_list.append(name)
+    tokamak.n_passive_coils += 1
+    tokamak.n_coils += 1
+
+    tokamak.coil_names = list(tokamak.getCurrents().keys())
+    tokamak.coil_order = {}
+    for i, coil in enumerate(tokamak.coil_names):
+        tokamak.coil_order[coil] = i
+
+    tokamak.getCurrentsVec()
+    tokamak.current_dummy_vec = np.zeros(tokamak.n_coils)
+
+    machine_description_data = getattr(tokamak, "_machine_description_data", None)
+    if machine_description_data is None:
+        machine_description_data = {}
+    old_passive_coils = list(machine_description_data.get("passive_coils", []) or [])
+    new_entry = deepcopy(passive_data)
+    new_entry["name"] = name
+    old_passive_coils.append(new_entry)
+    machine_description_data["passive_coils"] = old_passive_coils
+    tokamak._machine_description_data = machine_description_data
+
+    if hasattr(tokamak, "probes"):
+        tokamak.probes.coils_dict = tokamak.coils_dict
+        if hasattr(tokamak.probes, "coil_names"):
+            tokamak.probes.coil_names = list(tokamak.coils_dict.keys())
+
+    tokamak._last_machine_update_changed_coils = [name]
+    tokamak._last_machine_update_topology_changed = True
+    append_tokamak_R_and_M_entries(tokamak, [name])
+    return tokamak
+
+
+def remove_passive_structure(tokamak: Machine, name: str) -> Machine:
+    """
+    Remove one passive structure from an existing tokamak object, in place.
+
+    Only the resistance/inductance matrix row/column for the removed passive
+    structure are dropped; entries for the remaining coils are reused.
+
+    Parameters
+    ----------
+    tokamak : Machine
+        Existing tokamak object to update in place.
+    name : str
+        Existing passive-structure label to remove.
+
+    Returns
+    -------
+    Machine
+        The same tokamak object, updated in place.
+
+    Raises
+    ------
+    ValueError
+        If ``name`` is not an existing passive-structure label.
+
+    Notes
+    -----
+    This updates only machine-level state. If the machine is attached to an
+    equilibrium, use
+    :meth:`freegsnke.equilibrium_update.Equilibrium.remove_passive_structure`
+    so that equilibrium-level Greens functions are shrunk as well. Existing
+    nonlinear solver objects should be reinstantiated after a geometry change
+    because they cache machine-dependent matrices and mode decompositions,
+    whose dimensionality will itself have changed.
+    """
+
+    if not hasattr(tokamak, "coil_order") or name not in tokamak.coil_order:
+        raise ValueError(f"Tokamak does not contain passive structure label '{name}'.")
+    if tokamak.coils_dict.get(name, {}).get("active", False):
+        raise ValueError(f"Coil label '{name}' is not a passive structure.")
+
+    index = tokamak.coil_order[name]
+
+    del tokamak.coils[index]
+    del tokamak.coils_dict[name]
+    del tokamak.coils_list[index]
+    tokamak.n_passive_coils -= 1
+    tokamak.n_coils -= 1
+
+    tokamak.coil_names = list(tokamak.getCurrents().keys())
+    tokamak.coil_order = {}
+    for i, coil in enumerate(tokamak.coil_names):
+        tokamak.coil_order[coil] = i
+
+    tokamak.getCurrentsVec()
+    tokamak.current_dummy_vec = np.zeros(tokamak.n_coils)
+
+    machine_description_data = getattr(tokamak, "_machine_description_data", None)
+    if machine_description_data is not None:
+        old_passive_coils = list(
+            machine_description_data.get("passive_coils", []) or []
+        )
+        by_name = _index_passive_coils(old_passive_coils)
+        if name in by_name:
+            del old_passive_coils[by_name[name][0]]
+        machine_description_data["passive_coils"] = old_passive_coils
+        tokamak._machine_description_data = machine_description_data
+
+    if hasattr(tokamak, "probes"):
+        tokamak.probes.coils_dict = tokamak.coils_dict
+        if hasattr(tokamak.probes, "coil_names"):
+            tokamak.probes.coil_names = list(tokamak.coils_dict.keys())
+
+    tokamak._last_machine_update_changed_coils = [name]
+    tokamak._last_machine_update_topology_changed = True
+    remove_tokamak_R_and_M_entry(tokamak, index)
+    return tokamak
+
+
+def add_active_coil(
+    tokamak: Machine, coil_name: str, active_coil_data: dict
+) -> Machine:
+    """
+    Add one new active coil/circuit to an existing tokamak object, in place.
+
+    The new coil is inserted immediately before any passive structures, so
+    that the active/passive partition of ``tokamak.coils_list`` (everything
+    before ``tokamak.n_active_coils`` is active, everything after is passive)
+    stays contiguous. Only the new coil's resistance/inductance matrix
+    row/column are calculated; entries for existing coils are reused.
+
+    Parameters
+    ----------
+    tokamak : Machine
+        Existing tokamak object to update in place.
+    coil_name : str
+        Label for the new active coil/circuit.
+    active_coil_data : dict
+        Machine-description entry for the new active coil/circuit (same
+        format as one entry of the active-coils dictionary).
+
+    Returns
+    -------
+    Machine
+        The same tokamak object, updated in place.
+
+    Raises
+    ------
+    ValueError
+        If a coil/passive-structure with the given label already exists.
+
+    Notes
+    -----
+    This updates only machine-level state. If the machine is attached to an
+    equilibrium, use
+    :meth:`freegsnke.equilibrium_update.Equilibrium.add_active_coil` so that
+    equilibrium-level Greens functions are extended as well. Existing
+    nonlinear solver objects should be reinstantiated after a geometry change
+    because they cache machine-dependent matrices and mode decompositions,
+    whose dimensionality will itself have changed.
+    """
+
+    if hasattr(tokamak, "coil_order") and coil_name in tokamak.coil_order:
+        raise ValueError(f"Tokamak already contains a coil label '{coil_name}'.")
+
+    built_component, coil_metadata = build_active_coil_component(
+        coil_name, active_coil_data
+    )
+
+    insert_index = tokamak.n_active_coils
+    tokamak.coils.insert(insert_index, built_component)
+    tokamak.coils_dict[coil_name] = coil_metadata
+    tokamak.coils_list.insert(insert_index, coil_name)
+    tokamak.n_active_coils += 1
+    tokamak.n_coils += 1
+
+    tokamak.coil_names = list(tokamak.getCurrents().keys())
+    tokamak.coil_order = {}
+    for i, coil in enumerate(tokamak.coil_names):
+        tokamak.coil_order[coil] = i
+
+    tokamak.getCurrentsVec()
+    tokamak.current_dummy_vec = np.zeros(tokamak.n_coils)
+
+    machine_description_data = getattr(tokamak, "_machine_description_data", None)
+    if machine_description_data is None:
+        machine_description_data = {}
+    active_coils_data_dict = dict(
+        machine_description_data.get("active_coils", {}) or {}
+    )
+    active_coils_data_dict[coil_name] = deepcopy(active_coil_data)
+    machine_description_data["active_coils"] = active_coils_data_dict
+    tokamak._machine_description_data = machine_description_data
+
+    if hasattr(tokamak, "probes"):
+        tokamak.probes.coils_dict = tokamak.coils_dict
+        if hasattr(tokamak.probes, "coil_names"):
+            tokamak.probes.coil_names = list(tokamak.coils_dict.keys())
+
+    tokamak._last_machine_update_changed_coils = [coil_name]
+    tokamak._last_machine_update_topology_changed = True
+    insert_tokamak_R_and_M_entries(tokamak, insert_index, [coil_name])
+    return tokamak
+
+
+def remove_active_coil(tokamak: Machine, coil_name: str) -> Machine:
+    """
+    Remove one active coil/circuit from an existing tokamak object, in place.
+
+    Only the removed coil's resistance/inductance matrix row/column are
+    dropped; entries for the remaining coils are reused.
+
+    Parameters
+    ----------
+    tokamak : Machine
+        Existing tokamak object to update in place.
+    coil_name : str
+        Existing active coil/circuit label to remove.
+
+    Returns
+    -------
+    Machine
+        The same tokamak object, updated in place.
+
+    Raises
+    ------
+    ValueError
+        If ``coil_name`` is not an existing active coil/circuit label.
+
+    Notes
+    -----
+    This updates only machine-level state. If the machine is attached to an
+    equilibrium, use
+    :meth:`freegsnke.equilibrium_update.Equilibrium.remove_active_coil` so
+    that equilibrium-level Greens functions are shrunk as well. Existing
+    nonlinear solver objects should be reinstantiated after a geometry change
+    because they cache machine-dependent matrices and mode decompositions,
+    whose dimensionality will itself have changed.
+    """
+
+    if not hasattr(tokamak, "coil_order") or coil_name not in tokamak.coil_order:
+        raise ValueError(f"Tokamak does not contain active coil label '{coil_name}'.")
+    if not tokamak.coils_dict.get(coil_name, {}).get("active", False):
+        raise ValueError(f"Coil label '{coil_name}' is not an active coil/circuit.")
+
+    index = tokamak.coil_order[coil_name]
+
+    del tokamak.coils[index]
+    del tokamak.coils_dict[coil_name]
+    del tokamak.coils_list[index]
+    tokamak.n_active_coils -= 1
+    tokamak.n_coils -= 1
+
+    tokamak.coil_names = list(tokamak.getCurrents().keys())
+    tokamak.coil_order = {}
+    for i, coil in enumerate(tokamak.coil_names):
+        tokamak.coil_order[coil] = i
+
+    tokamak.getCurrentsVec()
+    tokamak.current_dummy_vec = np.zeros(tokamak.n_coils)
+
+    machine_description_data = getattr(tokamak, "_machine_description_data", None)
+    if machine_description_data is not None:
+        active_coils_data_dict = dict(
+            machine_description_data.get("active_coils", {}) or {}
+        )
+        active_coils_data_dict.pop(coil_name, None)
+        machine_description_data["active_coils"] = active_coils_data_dict
+        tokamak._machine_description_data = machine_description_data
+
+    if hasattr(tokamak, "probes"):
+        tokamak.probes.coils_dict = tokamak.coils_dict
+        if hasattr(tokamak.probes, "coil_names"):
+            tokamak.probes.coil_names = list(tokamak.coils_dict.keys())
+
+    tokamak._last_machine_update_changed_coils = [coil_name]
+    tokamak._last_machine_update_topology_changed = True
+    remove_tokamak_R_and_M_entry(tokamak, index)
+    return tokamak
+
+
+def _reuse_unchanged_coil_components(
+    tokamak: Machine, components: dict, changed_coils: list[str]
+) -> None:
     """
     Reuse coil objects and metadata for labels whose input description is unchanged.
 
@@ -485,10 +1025,6 @@ def _reuse_unchanged_coil_components(tokamak, components, changed_coils):
         Labels that should be treated as changed and therefore left untouched
         (i.e. not reused from ``tokamak``).
 
-    Returns
-    -------
-    None
-        ``components`` is modified in place.
     """
 
     changed = set(changed_coils)
@@ -502,13 +1038,13 @@ def _reuse_unchanged_coil_components(tokamak, components, changed_coils):
 
 
 def _changed_coil_labels(
-    old_coils_dict,
-    old_coils_list,
-    new_coils_dict,
-    new_coils_list,
-    old_machine_description_data,
-    new_machine_description_data,
-):
+    old_coils_dict: dict | None,
+    old_coils_list: list[str] | None,
+    new_coils_dict: dict,
+    new_coils_list: list[str],
+    old_machine_description_data: dict | None,
+    new_machine_description_data: dict,
+) -> tuple[list[str], bool]:
     """
     Determine which coil labels changed between two machine descriptions.
 
@@ -577,7 +1113,9 @@ def _changed_coil_labels(
     return changed, False
 
 
-def _changed_coil_labels_from_metadata(old_coils_dict, old_coils_list, new_coils_dict):
+def _changed_coil_labels_from_metadata(
+    old_coils_dict: dict, old_coils_list: list[str], new_coils_dict: dict
+) -> list[str]:
     """
     Fallback changed-label detection based on built coil metadata.
 
@@ -609,7 +1147,7 @@ def _changed_coil_labels_from_metadata(old_coils_dict, old_coils_list, new_coils
     return changed
 
 
-def _machine_description_values_equal(old_value, new_value):
+def _machine_description_values_equal(old_value: object, new_value: object) -> bool:
     """
     Recursively compare machine-description values, including numpy arrays.
 
@@ -620,9 +1158,9 @@ def _machine_description_values_equal(old_value, new_value):
 
     Parameters
     ----------
-    old_value : any
+    old_value : object
         Value from the existing/old machine description.
-    new_value : any
+    new_value : object
         Value from the newly built machine description.
 
     Returns
@@ -660,27 +1198,27 @@ def _machine_description_values_equal(old_value, new_value):
 
 
 def update_tokamak(
-    tokamak,
-    active_coils_data=None,
-    passive_coils_data=None,
-    limiter_data=None,
-    wall_data=None,
-    magnetic_probe_data=None,
-    active_coils_path=None,
-    passive_coils_path=None,
-    limiter_path=None,
-    wall_path=None,
-    magnetic_probe_path=None,
-    refine_mode="G",
-    preserve_currents=True,
-):
+    tokamak: Machine,
+    active_coils_data: dict | None = None,
+    passive_coils_data: list | None = None,
+    limiter_data: list | None = None,
+    wall_data: list | None = None,
+    magnetic_probe_data: dict | None = None,
+    active_coils_path: str | None = None,
+    passive_coils_path: str | None = None,
+    limiter_path: str | None = None,
+    wall_path: str | None = None,
+    magnetic_probe_path: str | None = None,
+    refine_mode: str = "G",
+    preserve_currents: bool = True,
+) -> Machine:
     """
     Update an existing tokamak from direct data dictionaries or pickle paths.
 
     This is the functional equivalent of
     :meth:`freegsnke.machine_update.Machine.set_machine_description`. It accepts
     the same machine-description inputs as :func:`tokamak`, rebuilds the
-    FreeGS4E coil/circuit objects and FreeGSNKE coil metadata, and recalculates
+    coil/circuit objects and coil metadata, and recalculates
     the resistance and inductance matrices on the existing machine object.
 
     Parameters
@@ -743,30 +1281,33 @@ def update_tokamak(
 
 
 def load_data_dicts(
-    active_coils_data=None,
-    passive_coils_data=None,
-    limiter_data=None,
-    wall_data=None,
-    active_coils_path=None,
-    passive_coils_path=None,
-    limiter_path=None,
-    wall_path=None,
-):
+    active_coils_data: dict | None = None,
+    passive_coils_data: list | None = None,
+    limiter_data: list | None = None,
+    wall_data: list | None = None,
+    active_coils_path: str | None = None,
+    passive_coils_path: str | None = None,
+    limiter_path: str | None = None,
+    wall_path: str | None = None,
+) -> tuple[dict, list, list, list]:
     """
-    Load the standarised input data required to build the tokamak machine.
+    Load the standardised input data required to build the tokamak machine.
 
-    These dictionaries/lists/arrays can either be provided directly or loaded from pickle files.
+    These dictionaries/lists can either be provided directly or loaded from
+    pickle files. For each item, at most one of the data and the path may be
+    given. Active coils and the limiter are required; the passives default to
+    an empty list and the wall defaults to the limiter.
 
     Parameters
     ----------
     active_coils_data : dict, optional
         Dictionary containing the active coil data.
-    passive_coils_data : dict, optional
-        Dictionary containing the passive structure data.
-    limiter_data : dict, optional
-        Dictionary containing the limiter data.
-    wall_data : dict, optional
-        Dictionary containing the wall data.
+    passive_coils_data : list, optional
+        List containing the passive structure data.
+    limiter_data : list, optional
+        List of limiter boundary points (dicts with "R" and "Z").
+    wall_data : list, optional
+        List of wall boundary points (dicts with "R" and "Z").
     active_coils_path : str, optional
         Path to the pickle file containing the active coil data.
     passive_coils_path : str, optional
@@ -780,12 +1321,18 @@ def load_data_dicts(
     -------
     active_coils_data : dict
         Dictionary containing active coil data.
-    passive_coils_data : dict
-        Dictionary containing passive structure data.
-    limiter_data : dict
-        Dictionary containing the limiter data.
-    wall_data : dict
-        Dictionary containing the wall data.
+    passive_coils_data : list
+        List containing passive structure data.
+    limiter_data : list
+        List of limiter boundary points.
+    wall_data : list
+        List of wall boundary points.
+
+    Raises
+    ------
+    ValueError
+        If both the data and the path are given for any item, or if neither
+        is given for the (required) active coils or limiter.
     """
 
     # actives required
@@ -853,22 +1400,20 @@ def load_data_dicts(
     return active_coils_data, passive_coils_data, limiter_data, wall_data
 
 
-def build_actives(
-    active_coils,
-):
+def build_actives(active_coils: dict) -> list[tuple[str, Circuit]]:
     """
-    Build the coils (and any circuits) in FreeGSNKE using the MultiCoil and Circuit
-    functionality from FreeGS4E.
+    Build active coils and circuits using the native MultiCoil and Circuit classes.
 
     Parameters
     ----------
-    active_coils : dict, optional
+    active_coils : dict
         Dictionary containing the active coil data.
 
     Returns
     -------
-    coils : list
-        List of coils and circuits to be ingested by FreeGSNKE/FreeGS4E.
+    coils : list of tuple
+        List of ``(name, Circuit)`` pairs to be ingested by FreeGSNKE.
+        Entries that cannot be built are skipped after printing a message.
     """
 
     # store list of all coils built
@@ -952,37 +1497,39 @@ def build_actives(
 
 
 def build_passives(
-    passive_coils,
-    coil_circuits,
-    coils_dict,
-    coil_names,
-    refine_mode,
-):
+    passive_coils: list[dict],
+    coil_circuits: list[tuple[str, object]],
+    coils_dict: dict,
+    coil_names: list[str],
+    refine_mode: str,
+) -> tuple[list[tuple[str, object]], dict, list[str]]:
     """
     Build the passive structures in FreeGSNKE using the PassiveStructure function.
 
     Parameters
     ----------
-    passive_coils : dict
-        Dictionary containing data for passive coils.
-    coil_circuits : list
-        List of coil circuit objects.
+    passive_coils : list of dict
+        Passive structure descriptions. Entries with more than one vertex are
+        built as polygons (:class:`PassiveStructure`), otherwise as single
+        filaments (:class:`Coil`).
+    coil_circuits : list of tuple
+        List of ``(name, coil)`` pairs; passives are appended in place.
     coils_dict : dict
-        Dictionary of coil data.
-    coil_names : list
-        List of circuit/coil names and passive structures.
-    refine_mode : str, optional
-        Choose the refinement mode for extended passive structures (input as polygons), by default
-        'G' for 'grid' (use 'LH' for alternative mode using a Latin Hypercube implementation).
+        Dictionary of coil metadata; passive entries are added in place.
+    coil_names : list of str
+        List of circuit/coil names; passive names are appended in place.
+    refine_mode : str
+        Refinement mode for extended passive structures (input as polygons):
+        "G" for grid, "LH" for a Latin Hypercube implementation.
 
     Returns
     -------
-    coil_circuits : list
-        List of coil circuit objects.
+    coil_circuits : list of tuple
+        List of ``(name, coil)`` pairs including the passives.
     coils_dict : dict
-        Dictionary of coil data.
-    coil_names : list
-        List of circuit/coil names and passive structures.
+        Dictionary of coil metadata including the passives.
+    coil_names : list of str
+        List of circuit/coil names including the passives.
     """
 
     # parameters to set the refinement of extended passive structures
@@ -1078,14 +1625,14 @@ def build_passives(
     return coil_circuits, coils_dict, coil_names
 
 
-def build_active_coil_dict(active_coils):
+def build_active_coil_dict(active_coils: dict) -> dict:
     """
     Create vectorised version of the active coil properties in a dictionary for use
     throughout FreeGSNKE.
 
     Parameters
     ----------
-    active_coils : dict, optional
+    active_coils : dict
         Dictionary containing the active coil data.
 
     Returns
@@ -1175,7 +1722,7 @@ def build_active_coil_dict(active_coils):
     return coils_dict
 
 
-def copy_tokamak(tokamak: Machine):
+def copy_tokamak(tokamak: Machine) -> Machine:
     """
     Create a copy of a tokamak Machine object with controlled deep/shallow copying.
 

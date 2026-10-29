@@ -1,53 +1,79 @@
 """
-Defines the FreeGSNKE equilibrium Object, which inherits from the FreeGS4E equilibrium object.
+Defines the FreeGSNKE equilibrium object, extending the native base equilibrium.
 
 Copyright 2025 UKAEA, UKRI-STFC, and The Authors, as per the COPYRIGHT and README files.
 
 This file is part of FreeGSNKE.
-
-FreeGSNKE is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Lesser General Public License for more details.
 
 FreeGSNKE is free software: you can redistribute it and/or modify
 it under the terms of the GNU Lesser General Public License as published by
 the Free Software Foundation, either version 3 of the License, or
 (at your option) any later version.
 
+FreeGSNKE is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Lesser General Public License for more details.
+
 You should have received a copy of the GNU Lesser General Public License
-along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
+along with FreeGSNKE. If not, see <http://www.gnu.org/licenses/>.
 """
+
+from __future__ import annotations
 
 import os
 import pickle
 
-import freegs4e.equilibrium
 import matplotlib.pyplot as plt
 import numpy as np
-from freegs4e import critical
 from scipy import interpolate
 
-from . import limiter_func
+from . import critical, equilibrium, limiter_func
 from .build_machine import copy_tokamak
 from .copying import copy_into
 
 
-class Equilibrium(freegs4e.equilibrium.Equilibrium):
-    """FreeGS4E equilibrium class with optional initialization."""
+class Equilibrium(equilibrium.Equilibrium):
+    """FreeGSNKE equilibrium object, extending the native equilibrium.
 
-    def __init__(self, *args, **kwargs):
-        """Instantiates the object."""
+    Adds limiter handling, a self-checking plasma-flux interpolator, in-place
+    machine-description updates, lightweight auxiliary copies, and optional
+    initialisation of the plasma flux from a file given by the
+    ``EQUILIBRIUM_PATH`` environment variable.
+
+    Notes
+    -----
+    Code that replaces ``plasma_psi`` should use :meth:`set_plasma_psi` so the
+    interpolator used by :meth:`psi_func` (and hence ``psiRZ``, ``Br``, ``Bz``
+    and related diagnostics) stays consistent with the flux array.
+    """
+
+    def __init__(self, *args: object, **kwargs: object) -> None:
+        """Initialise the equilibrium.
+
+        Parameters
+        ----------
+        *args, **kwargs
+            Passed to ``freegsnke.equilibrium.Equilibrium.__init__``, e.g.
+            ``tokamak``, ``Rmin``, ``Rmax``, ``Zmin``, ``Zmax``, ``nx``,
+            ``ny``, ``boundary``, ``psi``, ``current``.
+
+        Notes
+        -----
+        If the ``EQUILIBRIUM_PATH`` environment variable is set, the initial
+        plasma flux is loaded from that file via
+        :meth:`initialize_from_equilibrium`. The equilibrium is marked as not
+        solved (``self.solved = False``) and the limiter handler and
+        inside/outside-limiter masks are built from ``tokamak.limiter``.
+        """
         super().__init__(*args, **kwargs)
 
         self.equilibrium_path = os.environ.get("EQUILIBRIUM_PATH", None)
         if self.equilibrium_path is not None:
             self.initialize_from_equilibrium()
 
-        # redefine interpolating function
-        self.psi_func_interp = interpolate.RectBivariateSpline(
-            self.R[:, 0], self.Z[0, :], self.plasma_psi
-        )
+        # Retain the checked interpolator after base-class initialisation.
+        self._refresh_plasma_psi_interpolator()
 
         self.nxh = len(self.R) // 2
         self.nyh = len(self.Z[0]) // 2
@@ -65,26 +91,74 @@ class Equilibrium(freegs4e.equilibrium.Equilibrium):
             float
         )
 
-    def _updatePlasmaPsi(self, plasma_psi):
-        """Update plasma flux while retaining the checked FreeGSNKE interpolator."""
+    def _updatePlasmaPsi(self, plasma_psi: np.ndarray) -> None:
+        """Update plasma flux while retaining the checked FreeGSNKE interpolator.
+
+        The base-class implementation stores the spline as an instance attribute
+        ``psi_func``, which would hide this class's :meth:`psi_func` method.
+        The spline is moved to ``psi_func_interp`` instead.
+
+        Parameters
+        ----------
+        plasma_psi : np.ndarray
+            Plasma poloidal flux on the (R, Z) grid, shape ``(nx, ny)``
+            [Webers/2pi].
+
+        Notes
+        -----
+        Modifies ``plasma_psi``, ``psi_func_interp``, ``psi_axis``,
+        ``psi_bndry``, ``mask`` and ``mask_func`` in place.
+
+        The base class recomputes the critical points and boundary flux
+        without limiter handling. Use :meth:`set_plasma_psi` to
+        replace the flux without touching the topology.
+        """
         super()._updatePlasmaPsi(plasma_psi)
         self.psi_func_interp = self.__dict__.pop("psi_func")
 
+    def _refresh_plasma_psi_interpolator(self) -> None:
+        """Rebuild the plasma-flux spline without recalculating plasma topology.
+
+        Sets ``self.psi_func_interp`` to a ``RectBivariateSpline`` of the
+        current ``self.plasma_psi``.
+        """
+        self.psi_func_interp = interpolate.RectBivariateSpline(
+            self.R[:, 0], self.Z[0, :], self.plasma_psi
+        )
+
+    def set_plasma_psi(self, plasma_psi: np.ndarray) -> None:
+        """Install plasma flux and synchronise its interpolation cache.
+
+        Unlike ``_updatePlasmaPsi``, this lightweight update does not
+        recalculate critical points, masks, or boundary flux. Solvers should use
+        it when committing a flux map before updating topology through their
+        existing profile-aware path.
+
+        Parameters
+        ----------
+        plasma_psi : array_like
+            Plasma poloidal flux on the (R, Z) grid, shape ``(nx, ny)``
+            [Webers/2pi]. A copy is stored, so later changes to the caller's
+            array do not affect the equilibrium.
+        """
+        self.plasma_psi = np.array(plasma_psi, copy=True)
+        self._refresh_plasma_psi_interpolator()
+
     def update_machine_description(
         self,
-        active_coils_data=None,
-        passive_coils_data=None,
-        limiter_data=None,
-        wall_data=None,
-        magnetic_probe_data=None,
-        active_coils_path=None,
-        passive_coils_path=None,
-        limiter_path=None,
-        wall_path=None,
-        magnetic_probe_path=None,
-        refine_mode="G",
-        preserve_currents=True,
-    ):
+        active_coils_data: dict | None = None,
+        passive_coils_data: list | None = None,
+        limiter_data: list | None = None,
+        wall_data: list | None = None,
+        magnetic_probe_data: dict | None = None,
+        active_coils_path: str | None = None,
+        passive_coils_path: str | None = None,
+        limiter_path: str | None = None,
+        wall_path: str | None = None,
+        magnetic_probe_path: str | None = None,
+        refine_mode: str = "G",
+        preserve_currents: bool = True,
+    ) -> Equilibrium:
         """
         Update the equilibrium's tokamak directly and refresh machine-dependent caches.
 
@@ -151,7 +225,9 @@ class Equilibrium(freegs4e.equilibrium.Equilibrium):
         self.refresh_machine_dependent_state()
         return self
 
-    def update_active_coil(self, coil_name, active_coil_data, preserve_current=True):
+    def update_active_coil(
+        self, coil_name: str, active_coil_data: dict, preserve_current: bool = True
+    ) -> Equilibrium:
         """
         Update one active coil/circuit and refresh equilibrium-level coil caches.
 
@@ -187,7 +263,227 @@ class Equilibrium(freegs4e.equilibrium.Equilibrium):
         self.refresh_machine_dependent_state(refresh_limiter=False)
         return self
 
-    def refresh_machine_dependent_state(self, refresh_limiter=True):
+    def add_active_coil(self, coil_name: str, active_coil_data: dict) -> Equilibrium:
+        """
+        Add one new active coil/circuit and extend equilibrium-level coil caches.
+
+        Parameters
+        ----------
+        coil_name : str
+            Label for the new active coil/circuit.
+        active_coil_data : dict
+            Machine-description entry for the new active coil/circuit.
+
+        Returns
+        -------
+        Equilibrium
+            This equilibrium object, updated in place.
+
+        Notes
+        -----
+        Only the Greens functions for the new coil are calculated; existing
+        coil Greens functions and the limiter handler are reused. Existing
+        solver objects should still be reinstantiated after a geometry change
+        because they cache machine-dependent matrices and mode data, whose
+        dimensionality will itself have changed.
+        """
+
+        self.tokamak.add_active_coil(
+            coil_name=coil_name, active_coil_data=active_coil_data
+        )
+        insert_index = self.tokamak.coil_order[coil_name]
+        coil = self.tokamak[coil_name]
+
+        self._pgreen = dict(self._pgreen)
+        self._pgreen[coil_name] = coil.createPsiGreens(self.R, self.Z)
+        new_vgreen_row = coil.createPsiGreensVec(self.R, self.Z)[np.newaxis, ...]
+        self._vgreen = np.concatenate(
+            [self._vgreen[:insert_index], new_vgreen_row, self._vgreen[insert_index:]],
+            axis=0,
+        )
+
+        self.tokamak_psi = self.tokamak.calcPsiFromGreens(pgreen=self._pgreen)
+        return self
+
+    def remove_active_coil(self, coil_name: str) -> Equilibrium:
+        """
+        Remove one active coil/circuit and shrink equilibrium-level coil caches.
+
+        Parameters
+        ----------
+        coil_name : str
+            Existing active coil/circuit label to remove.
+
+        Returns
+        -------
+        Equilibrium
+            This equilibrium object, updated in place.
+
+        Raises
+        ------
+        ValueError
+            If the tokamak does not contain an active coil with that label.
+
+        Notes
+        -----
+        Greens functions for the remaining coils and the limiter handler are
+        reused. Existing solver objects should still be reinstantiated after a
+        geometry change because they cache machine-dependent matrices and mode
+        data, whose dimensionality will itself have changed.
+        """
+
+        if coil_name not in self.tokamak.coil_order:
+            raise ValueError(
+                f"Tokamak does not contain active coil label '{coil_name}'."
+            )
+        index = self.tokamak.coil_order[coil_name]
+
+        self.tokamak.remove_active_coil(coil_name)
+
+        self._pgreen = {k: v for k, v in self._pgreen.items() if k != coil_name}
+        self._vgreen = np.delete(self._vgreen, index, axis=0)
+
+        self.tokamak_psi = self.tokamak.calcPsiFromGreens(pgreen=self._pgreen)
+        return self
+
+    def update_passive_structure(
+        self,
+        name: str,
+        passive_data: dict,
+        preserve_current: bool = True,
+        refine_mode: str = "G",
+    ) -> Equilibrium:
+        """
+        Update one passive structure and refresh equilibrium-level coil caches.
+
+        Parameters
+        ----------
+        name : str
+            Existing passive-structure label to replace.
+        passive_data : dict
+            Machine-description entry for ``name``.
+        preserve_current : bool, optional
+            If True, the old current on ``name`` is copied onto the
+            replacement passive structure. Defaults to True.
+        refine_mode : str, optional
+            Refinement mode for extended (polygonal) passive structures.
+            Defaults to ``"G"``.
+
+        Returns
+        -------
+        Equilibrium
+            This equilibrium object, updated in place.
+
+        Notes
+        -----
+        This method refreshes only the Greens functions affected by the
+        updated passive structure. Limiter masks are reused because the
+        limiter geometry is not modified by a passive-structure update.
+        Existing solver objects should still be reinstantiated after a
+        geometry change because they cache machine-dependent matrices and
+        mode data.
+        """
+
+        self.tokamak.update_passive_structure(
+            name=name,
+            passive_data=passive_data,
+            preserve_current=preserve_current,
+            refine_mode=refine_mode,
+        )
+        self.refresh_machine_dependent_state(refresh_limiter=False)
+        return self
+
+    def add_passive_structure(
+        self, passive_data: dict, name: str | None = None, refine_mode: str = "G"
+    ) -> Equilibrium:
+        """
+        Add one new passive structure and extend equilibrium-level coil caches.
+
+        Parameters
+        ----------
+        passive_data : dict
+            Machine-description entry for the new passive structure.
+        name : str, optional
+            Label for the new passive structure. If omitted, ``passive_data["name"]``
+            is used, and if that is also absent a default of the form
+            ``f"passive_{self.tokamak.n_passive_coils}"`` is used.
+        refine_mode : str, optional
+            Refinement mode for extended (polygonal) passive structures.
+            Defaults to ``"G"``.
+
+        Returns
+        -------
+        Equilibrium
+            This equilibrium object, updated in place.
+
+        Notes
+        -----
+        Only the Greens functions for the new passive structure are
+        calculated; existing coil Greens functions and the limiter handler are
+        reused. Existing solver objects should still be reinstantiated after a
+        geometry change because they cache machine-dependent matrices and mode
+        data, whose dimensionality will itself have changed.
+        """
+
+        self.tokamak.add_passive_structure(
+            passive_data=passive_data, name=name, refine_mode=refine_mode
+        )
+        added_name = self.tokamak.coils_list[-1]
+        coil = self.tokamak[added_name]
+
+        self._pgreen = dict(self._pgreen)
+        self._pgreen[added_name] = coil.createPsiGreens(self.R, self.Z)
+        new_vgreen_row = coil.createPsiGreensVec(self.R, self.Z)[np.newaxis, ...]
+        self._vgreen = np.concatenate([self._vgreen, new_vgreen_row], axis=0)
+
+        self.tokamak_psi = self.tokamak.calcPsiFromGreens(pgreen=self._pgreen)
+        return self
+
+    def remove_passive_structure(self, name: str) -> Equilibrium:
+        """
+        Remove one passive structure and shrink equilibrium-level coil caches.
+
+        Parameters
+        ----------
+        name : str
+            Existing passive-structure label to remove.
+
+        Returns
+        -------
+        Equilibrium
+            This equilibrium object, updated in place.
+
+        Raises
+        ------
+        ValueError
+            If the tokamak does not contain a passive structure with that
+            label.
+
+        Notes
+        -----
+        Greens functions for the remaining coils and the limiter handler are
+        reused. Existing solver objects should still be reinstantiated after a
+        geometry change because they cache machine-dependent matrices and mode
+        data, whose dimensionality will itself have changed.
+        """
+
+        if name not in self.tokamak.coil_order:
+            raise ValueError(
+                f"Tokamak does not contain passive structure label '{name}'."
+            )
+        index = self.tokamak.coil_order[name]
+
+        self.tokamak.remove_passive_structure(name)
+
+        self._pgreen = {k: v for k, v in self._pgreen.items() if k != name}
+        self._vgreen = np.delete(self._vgreen, index, axis=0)
+
+        self.tokamak_psi = self.tokamak.calcPsiFromGreens(pgreen=self._pgreen)
+        return self
+
+    def refresh_machine_dependent_state(
+        self, refresh_limiter: bool = True
+    ) -> Equilibrium:
         """
         Refresh cached data derived from the current tokamak description.
 
@@ -252,7 +548,7 @@ class Equilibrium(freegs4e.equilibrium.Equilibrium):
 
         return self
 
-    def create_auxiliary_equilibrium(self):
+    def create_auxiliary_equilibrium(self) -> Equilibrium:
         """Creates the auxiliary equilibrium object.
 
         The auxiliary object returned from this method is essentially
@@ -260,13 +556,22 @@ class Equilibrium(freegs4e.equilibrium.Equilibrium):
         setup and so won't contain all attributes on self (especially custom
         attributes). It is NOT _guaranteed_ to be the same as a deepcopy, or even
         a shallow copy.
+
+        Returns
+        -------
+        Equilibrium
+            New equilibrium object, created without calling ``__init__``.
+            Grids, fluxes, masks, Greens functions and critical-point data
+            are copied; the tokamak is copied with ``copy_tokamak``; the
+            limiter handler and the plasma-flux interpolator are shared with
+            ``self``.
         """
         # __new__ stops __init__ being called.
         # This is necessary because the __init__ method does expensive
         # calculations which we can just copy the results of
         equilibrium = Equilibrium.__new__(Equilibrium)
 
-        # attributes that FreeGS4e sets
+        # Attributes set by the base equilibrium class.
         equilibrium.tokamak = copy_tokamak(self.tokamak)
         equilibrium.Rmin = self.Rmin
         equilibrium.Rmax = self.Rmax
@@ -278,8 +583,7 @@ class Equilibrium(freegs4e.equilibrium.Equilibrium):
         equilibrium.dZ = self.dZ
         equilibrium._applyBoundary = self._applyBoundary
         equilibrium._current = self._current
-        equilibrium.order = self.order
-        equilibrium._solver = self._solver
+        self._copy_solver_state_to(equilibrium)
 
         # attributes the FreeGSNKE sets
         equilibrium.solved = self.solved
@@ -329,20 +633,50 @@ class Equilibrium(freegs4e.equilibrium.Equilibrium):
 
     def plot(
         self,
-        axis=None,
-        xpoints=True,
-        opoints=True,
-        wall=True,
-        limiter=True,
-        legend=False,
-        show=True,
-    ):
+        axis: plt.Axes | None = None,
+        xpoints: bool = True,
+        opoints: bool = True,
+        wall: bool = True,
+        limiter: bool = True,
+        legend: bool = False,
+        show: bool = True,
+    ) -> plt.Axes:
         """Plot a solved FreeGSNKE equilibrium.
 
-        This overrides the FreeGS4E plotting wrapper so limited equilibria
+        This overrides the base plotting wrapper so limited equilibria
         without a relevant X-point in the solution domain can still be plotted.
         In that case the LCFS is drawn from ``psi_bndry`` and no primary
         X-point separatrix is requested.
+
+        Parameters
+        ----------
+        axis : matplotlib.axes.Axes, optional
+            Axes to draw on. If None, a new figure and axes are created.
+        xpoints : bool, optional
+            If True, plot the X-points (only when a relevant X-point exists).
+            Defaults to True.
+        opoints : bool, optional
+            If True, plot the O-points. Defaults to True.
+        wall : bool, optional
+            If True, plot the wall (when the tokamak has one). Defaults to True.
+        limiter : bool, optional
+            If True, plot the limiter (when the tokamak has one). Defaults to
+            True.
+        legend : bool, optional
+            If True, add a legend. Defaults to False.
+        show : bool, optional
+            If True, call ``plt.show()`` after plotting. Defaults to True.
+
+        Returns
+        -------
+        matplotlib.axes.Axes
+            The axes the equilibrium was drawn on.
+
+        Raises
+        ------
+        RuntimeError
+            If the equilibrium has not been solved (no ``_profiles`` with
+            critical-point data).
         """
         try:
             psi = self.psi()
@@ -443,13 +777,28 @@ class Equilibrium(freegs4e.equilibrium.Equilibrium):
 
         return axis
 
-    def adjust_psi_plasma(
-        self,
-    ):
+    def adjust_psi_plasma(self) -> None:
         """Operates an initial rescaling of the psi_plasma guess so to ensure a viable O-point
         and at least an X-point within the domain.
 
         Only use after appropriate coil currents have been set as desired!
+
+        The guess is first scaled up (by factors of 1.5) until an O-point is
+        found inside the limiter, then made more compact by exponentiation
+        until an X-point appears, and finally scaled up (by factors of 1.15)
+        to enlarge the diverted core.
+
+        Notes
+        -----
+        Modifies ``tokamak_psi``, ``plasma_psi``, ``psi_func_interp``,
+        ``gmod`` and ``gexp`` in place.
+
+        Failures are reported by printing, not by raising. If no O-point can
+        be generated, or exponentiation removes the O-point, the method
+        returns early and leaves ``plasma_psi`` at its last scaled value
+        without refreshing the interpolator. If exponentiation completes
+        without producing an X-point, the last exponentiated trial is still
+        installed.
         """
         self.tokamak_psi = self.tokamak.calcPsiFromGreens(pgreen=self._pgreen)
 
@@ -557,9 +906,11 @@ class Equilibrium(freegs4e.equilibrium.Equilibrium):
                 # except:
                 #     diverted_flag = True
 
-        self.plasma_psi = n_plasma_psi.copy()
+        self.set_plasma_psi(n_plasma_psi)
 
-    def psi_func(self, R, Z, *args, **kwargs):
+    def psi_func(
+        self, R: np.ndarray, Z: np.ndarray, *args: object, **kwargs: object
+    ) -> np.ndarray:
         """Scipy interpolation of plasma_psi function.
         Replaces the original FreeGS interpolation.
         It now includes a check which leads to the update of the interpolation when needed.
@@ -570,11 +921,20 @@ class Equilibrium(freegs4e.equilibrium.Equilibrium):
             R coordinates where the interpolation is needed
         Z : ndarray
             Z coordinates where the interpolation is needed
+        *args, **kwargs
+            Passed to ``scipy.interpolate.RectBivariateSpline.__call__``
+            (e.g. ``dx``, ``dy``, ``grid``).
 
         Returns
         -------
         ndarray
             Interpolated values of plasma_psi
+
+        Notes
+        -----
+        The staleness check compares the spline and ``plasma_psi`` only at the
+        grid centre, so it can miss changes made elsewhere. Use
+        :meth:`set_plasma_psi` to replace the flux.
         """
         check = (
             np.abs(
@@ -587,14 +947,11 @@ class Equilibrium(freegs4e.equilibrium.Equilibrium):
             print(
                 "Dicrepancy between psi_func and plasma_psi detected. psi_func has been re-set."
             )
-            # redefine interpolating function
-            self.psi_func_interp = interpolate.RectBivariateSpline(
-                self.R[:, 0], self.Z[0, :], self.plasma_psi
-            )
+            self._refresh_plasma_psi_interpolator()
 
         return self.psi_func_interp(R, Z, *args, **kwargs)
 
-    def initialize_from_equilibrium(self):
+    def initialize_from_equilibrium(self) -> None:
         """
         This function loads a pickle file containing an initial guess for the plasma
         flux (and the corners of the grid points it is located on).
@@ -602,12 +959,16 @@ class Equilibrium(freegs4e.equilibrium.Equilibrium):
         Interpolation is carried out and mapped to the computational grid specified in the
         eq class.
 
-        Parameters
-        ----------
+        The file is read from ``self.equilibrium_path`` (set from the
+        ``EQUILIBRIUM_PATH`` environment variable) and must contain a dict
+        with keys ``"Rmin"``, ``"Rmax"``, ``"Zmin"``, ``"Zmax"`` and
+        ``"psi_plasma"`` (a 2D array on a uniform grid spanning those limits).
+        Sets ``plasma_psi`` and ``psi_func_interp`` in place.
 
-        Returns
-        -------
-
+        Raises
+        ------
+        ValueError
+            If the pickle data is missing any of the required keys.
         """
 
         # load the data from the pickle file
@@ -634,7 +995,7 @@ class Equilibrium(freegs4e.equilibrium.Equilibrium):
         )
 
         # extract the values on the grid given in the eq object (this is the initial guess)
-        self.plasma_psi = plasma_psi_func(self.R, self.Z, grid=False)
+        self.set_plasma_psi(plasma_psi_func(self.R, self.Z, grid=False))
 
         print(
             "Initial guess for plasma flux initialised using file provided at EQUILIBRIUM_PATH."

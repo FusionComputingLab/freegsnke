@@ -1,31 +1,36 @@
 """
-Defines the plasma_current Object, which handles the lumped parameter models
+Defines the plasma_current Object, which handles the lumped parameter model
 used as an effective circuit equation for the plasma.
 
 Copyright 2025 UKAEA, UKRI-STFC, and The Authors, as per the COPYRIGHT and README files.
 
 This file is part of FreeGSNKE.
 
-FreeGSNKE is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Lesser General Public License for more details.
-
 FreeGSNKE is free software: you can redistribute it and/or modify
 it under the terms of the GNU Lesser General Public License as published by
 the Free Software Foundation, either version 3 of the License, or
 (at your option) any later version.
 
+FreeGSNKE is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Lesser General Public License for more details.
+
 You should have received a copy of the GNU Lesser General Public License
-along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
+along with FreeGSNKE. If not, see <http://www.gnu.org/licenses/>.
 """
+
+from __future__ import annotations
 
 import abc
 
 import numexpr as ne
 import numpy as np
-from freegs4e.gradshafranov import Greens
-from freegs4e.parallel import threaded_take
+
+from .gradshafranov import Greens
+from .parallel import threaded_take
+
+# TODO: missing type hints after merge
 
 
 def make_Myy_handler(
@@ -132,31 +137,39 @@ class Myy_handler(abc.ABC):
         pass
 
 
+# TODO: after merge: rename reduced to adaptive? Might be clearer
 class Reduced_Myy_handler(Myy_handler):
-    """Object handling all operations which involve the Myy matrix,
-    i.e. the mututal inductance matrix of all domain grid points.
-    To reduce memory usage, the domain on which myy is built and stored
-    is set adaptively, so to cover the plasma. This object handles this
-    adaptive aspect.
+    """
+    Handles all operations involving the Myy matrix.
+
+    Myy is the mutual inductance matrix of the domain grid points. To reduce
+    memory usage, the domain on which Myy is built and stored is set
+    adaptively, so as to cover the plasma. This object handles that adaptivity.
     """
 
-    def __init__(self, limiter_handler, layer_size=5, tolerance=3, cache_myy=True):
-        """Instantiates the object
+    def __init__(
+        self,
+        limiter_handler: object,
+        layer_size: int = 5,
+        tolerance: int = 3,
+        cache_myy=True,
+    ) -> None:
+        """
+        Instantiate the object.
 
         Parameters
         ----------
-        limiter_handler : FreeGSNKE limiter object, i.e. eq.limiter_handler
-            Sets the properties of the domain grid and those of the limiter
+        limiter_handler : object
+            FreeGSNKE limiter handler (i.e. ``eq.limiter_handler``). Sets the
+            properties of the domain grid and those of the limiter.
         layer_size : int, optional
-            Used when recalculating myy.
-            A layer of layer_size pixels is added to envelop the mask defined by the
-            plasma. This 'broadened' mask defines the pixels included in the myy matrix
-            By default 5
+            Used when recalculating Myy. A layer of `layer_size` pixels is added
+            to envelop the mask defined by the plasma. This 'broadened' mask
+            defines the pixels included in the Myy matrix.
         tolerance : int, optional
-            Used to check if myy needs recalculating. Myy is not recalculated if
-            the mask defined by the plasma region, broadened by tolerance pixels,
-            is fully contained in the domain of the current myy matrix,
-            By default 3
+            Used to check if Myy needs recalculating. Myy is not recalculated if
+            the mask defined by the plasma region, broadened by `tolerance`
+            pixels, is fully contained in the domain of the current Myy matrix.
         """
 
         limiter_handler.build_reduced_rect_domain()
@@ -183,23 +196,29 @@ class Reduced_Myy_handler(Myy_handler):
         self.cache_myy = cache_myy
 
     def grid_greens(self, R_1D, Z_1D):
-        """Calculates the Green's function values on the minimal rectangular region that fully
-        encompasses the limiter. Uses that the green functions are invariant for vertical
-        translations.
+        """
+        Calculate the Green's function values on the reduced rectangular domain.
+
+        The values are computed on the minimal rectangular region that fully
+        encompasses the limiter, using that the Green's functions are invariant
+        under vertical translations.
 
         Parameters
         ----------
-        R_1D : np.ndarray
-            Like eq.R, but on the rectangular reduced domain and only in 1D
-            i.e. self.make_1D(self.reduce_rect_domain(limiter_handler.eqR),...)
+        R : np.ndarray
+            Like eq.R, but on the rectangular reduced domain, i.e.
+            ``self.reduce_rect_domain(limiter_handler.eqR)``. Only ``R[:, 0]``
+            is used.
         Z : np.ndarray
-            Like eq.Z, but on the rectangular reduced domain and only in 1D
+            Like eq.Z, but on the rectangular reduced domain. Uniform spacing
+            along the second axis is assumed.
 
         Returns
         -------
-        ggreens: np.ndarray
-            Array of shape (nR,nR,nZ) containing the values of the Green's function in the reduced
-            rectangular domain.
+        np.ndarray
+            Array of shape (nR, nR, nZ) with entry ``[i, j, k]`` equal to
+            2 pi times the Green's function between ``(R[i, 0], k dz)`` and
+            ``(R[j, 0], 0)``.
         """
 
         ggreens = Greens(
@@ -212,17 +231,25 @@ class Reduced_Myy_handler(Myy_handler):
 
         return ggreens
 
-    def build_mask_from_hatIy(self, hatIy, layer_size):
-        """Builds the mask that will be used by build_myy_from_mask
-        based on the hatIy map. The mask is broadened by a number of pixels
-        equal to layer mask. The limiter mask is taken into account.
+    def build_mask_from_hatIy(self, hatIy: np.ndarray, layer_size: int) -> np.ndarray:
+        """
+        Build the mask used by `build_Myy_from_mask` from a hatIy map.
+
+        The mask is broadened by `layer_size` pixels, and the limiter mask is
+        taken into account.
 
         Parameters
         ----------
         hatIy : np.ndarray
-            1d vector on reduced plasma domain, e.g. inside the limiter
-        layer_size : int, optional
-            _description_, by default 3
+            1d vector on the reduced plasma domain, e.g. inside the limiter.
+        layer_size : int
+            Number of pixels by which the mask is broadened.
+
+        Returns
+        -------
+        np.ndarray
+            Boolean mask on the reduced rectangular domain, of the same shape
+            as ``self.mask_inside_limiter_red``.
         """
         hatIy_mask = hatIy > 0
         hatIy_rect_red = self.rebuild_map2d(
@@ -232,18 +259,20 @@ class Reduced_Myy_handler(Myy_handler):
         hatIy_broad_rect_red *= self.mask_inside_limiter_red
         return hatIy_broad_rect_red
 
-    def build_Myy_from_mask(self, mask):
-        """Build the Myy matrix only including domain points in the input mask
+    def build_Myy_from_mask(self, mask: np.ndarray) -> None:
+        """
+        Build the Myy matrix only including domain points in the input mask.
+
+        Sets ``myy_mask_red``, ``outside_myy_mask``, ``idxs_myy_mask_red`` and
+        ``myy``.
 
         Parameters
         ----------
         mask : np.ndarray
-            mask of the domain points to include.
-            Map is defined on the reduced rectangular domain grid,
-            i.e. the smallest rectangular domain around limiter mask
-            (same size as self.mask_inside_limiter_red)
+            Mask of the domain points to include. Defined on the reduced
+            rectangular domain grid, i.e. the smallest rectangular domain around
+            the limiter mask (same size as ``self.mask_inside_limiter_red``).
         """
-
         self.myy_mask_red = mask
         self.outside_myy_mask = np.logical_not(mask)
 
@@ -272,13 +301,16 @@ class Reduced_Myy_handler(Myy_handler):
                 # same as self.myy[i] = self.gg.reshape(-1)[idcs] but faster
                 np.take(self.gg, idcs, out=self.myy[i], mode="wrap")
 
-    def force_build_Myy(self, hatIy):
-        """Builds the Myy matrix only including domain points in the input vector (not necessarily a mask)
+    def force_build_Myy(self, hatIy: np.ndarray) -> None:
+        """
+        Build the Myy matrix only including domain points in the input vector.
+
+        The vector is broadened by ``layer_size`` pixels and need not be a mask.
 
         Parameters
-         ----------
-         hatIy : np.ndarray
-             1d vector on reduced plasma domain, e.g. inside the limiter
+        ----------
+        hatIy : np.ndarray
+            1d vector on the reduced plasma domain, e.g. inside the limiter.
         """
 
         hatIy_broad_rect_red = self.build_mask_from_hatIy(
@@ -286,35 +318,49 @@ class Reduced_Myy_handler(Myy_handler):
         )
         self.build_Myy_from_mask(hatIy_broad_rect_red)
 
-    def check_Myy(self, hatIy):
-        """Rebuilds myy when the input hatIy, broadened by a number of pixels
-        set by tolerance, is not fully inside the current myy_mask
-        Note 1. tolerance should be smaller than 'layer_size' in build_mask_from_hatIy
-        Note 2. tolerance should be larger than the number of pixels by which the plasma
-        is expected to 'move' every timestep of the evolution.
+    def check_Myy(self, hatIy: np.ndarray) -> int:
+        """
+        Check whether Myy needs rebuilding for the input hatIy.
+
+        hatIy, broadened by ``tolerance`` pixels, is compared with the current
+        Myy mask. Note 1: tolerance should be smaller than ``layer_size`` in
+        `build_mask_from_hatIy`. Note 2: tolerance should be larger than the
+        number of pixels by which the plasma is expected to move every
+        timestep of the evolution.
 
         Parameters
         ----------
         hatIy : np.ndarray
-            1d vector on reduced plasma domain, e.g. inside the limiter
-        tolerance : int
-            number of pixels by which hatIy should be 'inside self.myy_mask_red'
+            1d vector on the reduced plasma domain, e.g. inside the limiter.
+
+        Returns
+        -------
+        int
+            Number of broadened-hatIy pixels lying outside the current Myy
+            mask. Nonzero means Myy should be rebuilt.
         """
+
         hatIy_broad_rect_red = self.build_mask_from_hatIy(
             hatIy, layer_size=self.tolerance
         )
         flag = np.sum(hatIy_broad_rect_red[self.outside_myy_mask])
         return flag
 
-    def dot(self, hatIy):
-        """Performs the product with a vector defined on the reduced domain, i.e. inside the limiter.
-        Returns a vector on the input domain.
+    def dot(self, hatIy: np.ndarray) -> np.ndarray:
+        """
+        Multiply Myy by a vector defined on the reduced plasma domain.
 
         Parameters
         ----------
         hatIy : np.ndarray
-            1d vector on reduced plasma domain, e.g. inside the limiter
+            1d vector on the reduced plasma domain, e.g. inside the limiter.
+
+        Returns
+        -------
+        np.ndarray
+            Resulting 1d vector on the same domain.
         """
+
         # first bring hatIy from the reduced domain to the current myy domain
         hatIy_rect_red = self.rebuild_map2d(
             hatIy, self.mask_inside_limiter_red, self.idxs_mask_red

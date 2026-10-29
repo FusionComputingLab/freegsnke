@@ -5,12 +5,39 @@
 
 # FreeGSNKE: Free-boundary Grad-Shafranov Newton-Krylov Evolve
 
+<div align="center">
+
+[![Tests](https://github.com/FusionComputingLab/freegsnke/actions/workflows/tests.yml/badge.svg)](https://github.com/FusionComputingLab/freegsnke/actions/workflows/tests.yml)
+[![PyPI version](https://img.shields.io/pypi/v/freegsnke.svg)](https://pypi.org/project/freegsnke/)
+[![Python versions](https://img.shields.io/pypi/pyversions/freegsnke.svg)](https://pypi.org/project/freegsnke/)
+[![License: LGPL v3](https://img.shields.io/badge/License-LGPLv3-blue.svg)](https://www.gnu.org/licenses/lgpl-3.0)
+[![Docs](https://img.shields.io/badge/docs-latest-brightgreen.svg)](https://docs.freegsnke.com)
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+
+</div>
 
 FreeGSNKE (pronounced "free-gee-snake") is a **Python**-based code for **simulating the evolution of free-boundary tokamak plasma equilibria**.
 
-Based on the well-established [FreeGS](https://github.com/bendudson/freegs) code, it utilises [FreeGS4E](https://github.com/FusionComputingLab/freegs4e) (a fork of FreeGS) to solve different types of free-boundary Grad-Shafranov equilibrium problem and contains a number of new capabilities over FreeGS. 
-
 **NOTE:**  We recommended reading this page in its entirety before attempting to install or run FreeGSNKE!
+
+## Table of contents
+
+- [Capabilities](#capabilities)
+- [Coordinate and flux conventions](#coordinate-and-flux-conventions)
+- [Feature roadmap](#feature-roadmap)
+- [Getting started](#getting-started)
+- [Installation](#installation)
+  - [Installing with pip](#installing-with-pip)
+  - [Installing with UDA](#installing-with-uda)
+  - [Installing from source](#installing-from-source)
+  - [Extras (for contributing)](#extras-for-contributing)
+- [Contributing](#contributing)
+  - [Issues](#issues)
+  - [Pull requests](#pull-requests)
+- [References](#references)
+- [Funding](#funding)
+- [License](#license)
+- [History](#history)
 
 ## Capabilities
 FreeGSNKE is capable of solving both **static** (time-<u>in</u>dependent) and **evolutive** (time-dependent) **free-boundary equilibrium problems**. For **fixed-boundary** problems we recommend using FreeGS.
@@ -42,24 +69,11 @@ In the left panel above we show an example of a dynamic equilibrium calculated u
 
 ## Coordinate and flux conventions
 
-FreeGSNKE inherits its magnetic sign and flux conventions from FreeGS4E. Internally, the poloidal flux function `psi` is stored in Webers per radian (`Wb/rad`, equivalently `Webers/2pi`) and the Grad-Shafranov operator is written as:
-
-```text
-Delta* psi = - mu0 R J_phi
-```
-
-The poloidal magnetic field components are obtained from:
-
-```text
-B_R = -(1/R) dpsi/dZ
-B_Z =  (1/R) dpsi/dR
-```
-
-or, equivalently, `B_p = grad(psi) x grad(phi)` in the usual right-handed cylindrical coordinate system `(R, phi, Z)`. The toroidal field function is `F = R B_phi`, and the plasma current `Ip` is the integral of `J_phi` over the poloidal cross-section.
+FreeGSNKE uses the magnetic sign and flux conventions inherited from FreeGS. Internally, the poloidal flux function `psi` is stored in Webers per radian (`Wb/rad`, equivalently `Webers/2pi`) and `B_p = grad(psi) x grad(phi)` in the usual right-handed cylindrical coordinate system `(R, phi, Z)`. The toroidal field function is `F = R B_phi`, and the plasma current `Ip` is the integral of `J_phi` over the poloidal cross-section.
 
 Using the Sauter-Medvedev COCOS sign flags, these internal equations correspond to a **COCOS-7-like convention**: `exp_Bp = 0`, `sigma_Bp = -1`, `sigma_RpZ = +1`, and `sigma_rhotp = +1`.
 
-The low-level `cocos` argument in the current FreeGS4E G-EQDSK parser is only a partial conversion helper: `cocos < 10` leaves `psi` in `Wb/rad`, while `cocos > 10` divides `psi`, `simagx`, and `sibdry` by `2pi`. It does not apply the full set of sign changes required to transform arbitrary COCOS conventions. In practical terms, when importing or exporting equilibria from external tools, check both the `2pi` flux scaling and the signs of `psi`, `Ip`, `B_phi`, `F`, and `q`. The higher-level FreeGS4E equilibrium import path should also be validated for your use case before relying on it in production workflows.
+The low-level `cocos` argument in the current FreeGSNKE G-EQDSK parser is only a partial conversion helper: `cocos < 10` leaves `psi` in `Wb/rad`, while `cocos > 10` divides `psi`, `simagx`, and `sibdry` by `2pi`. It does not apply the full set of sign changes required to transform arbitrary COCOS conventions. In practical terms, when importing or exporting equilibria from external tools, check both the `2pi` flux scaling and the signs of `psi`, `Ip`, `B_phi`, `F`, and `q`. The higher-level FreeGSNKE equilibrium import path should also be validated for your use case before relying on it in production workflows.
 
 ## Feature roadmap
 FreeGSNKE is constantly evolving and so we hope to provide users with more advanced features over time:
@@ -76,7 +90,7 @@ FreeGSNKE is constantly evolving and so we hope to provide users with more advan
 
 ## Getting started
 
-**Get familiar with FreeGS(NKE)**: given FreeGSNKE relies on some core FreeGS functionality, it is strongly recommended to first familiarise yourself with how it works by taking a look at the documentation [here](https://freegs.readthedocs.io/en/latest/).
+**Get familiar with FreeGSNKE**: start with the FreeGSNKE user guide and examples below. The original [FreeGS documentation](https://freegs.readthedocs.io/en/latest/) provides useful background, but does not define the FreeGSNKE APIs, algorithms or complete physics.
 
 **After installation (see below), check out the FreeGSNKE user guide**: the FreeGSNKE docs are hosted at [docs.freegsnke.com](https://docs.freegsnke.com/), and the [user guide](https://docs.freegsnke.com/user_guide/) contains several examples to get started. You can also build the documentation yourself by following the instructions in the `docs/README.md` file. The user guide is built from Jupyter notebooks in the `examples/` directory, where you can also find more demos beyond those included in the user guide.
 
@@ -91,10 +105,9 @@ FreeGSNKE is constantly evolving and so we hope to provide users with more advan
 
 FreeGSNKE can be installed using pip or built from source.
 
-FreeGSNKE supports Python 3.10 through 3.14. Its runtime requirements are kept
-within the dependency envelope supported by FreeGS4E. Compatibility changes to
-Python or shared scientific dependencies are tested against both repositories
-as one coordinated stack.
+FreeGSNKE supports Python 3.10 through 3.14. Python and scientific dependency
+compatibility are tested with the numerical solvers and evolution machinery
+together in this repository.
 
 ### Installing with pip
 
@@ -109,7 +122,7 @@ The recommended way to install FreeGSNKE is inside a virtual environment, for ex
 2. Create a new conda environment with:
 
    ```shell
-   conda create -n freegsnke python=3.10
+   conda create -n freegsnke python=3.10 pip
    ```
 3. Activate the new environment with:
 
@@ -120,97 +133,94 @@ The recommended way to install FreeGSNKE is inside a virtual environment, for ex
 #### Stage two: install FreeGSNKE
 
    ```shell
-   pip install "freegsnke[freegs4e]"
+   pip install freegsnke
    ```
 
-The extra `freegs4e` dependency installs [FreeGS4E](https://github.com/FusionComputingLab/freegs4e) automatically (and is required for FreeGSNKE to run). 
+The Grad-Shafranov solver and its supporting numerical modules are included in this installation.
 
-If you are planning to develop FreeGSNKE, see the below section on [contributing](#contributing) code.
+If you are planning to develop FreeGSNKE, see the [installing from source](#installing-from-source) section below instead.
 
-### Installing FreeGSNKE with UDA
+### Installing with UDA
 
 FreeGSNKE also interfaces with [UDA](https://github.com/ukaea/UDA), for example, to simulate past MAST-U shots. See examples 6a, 6b and 6c for more information. If you require this functionality and have the necessary privileges, follow these steps to install the required packages:
 
-1. Log into your account at https://git.ccfe.ac.uk/ and follow the instructions [here](https://docs.gitlab.com/user/ssh/) to set up an SSH key to communicate with the CCFE GitLab instance.
+1. Log into your account at https://gitlab.ukaea.uk/ and follow the instructions [here](https://docs.gitlab.com/user/ssh/) to set up an SSH key to communicate with the CCFE GitLab instance.
 2. Establish a connection to the UKAEA VPN.
-3. When installing FreeGSNKE, specify the `uda` extra: `pip install freegsnke[uda]`.
-4. Finally, install the uda-mast package: `pip install "uda-mast @ git+ssh://git@git.ccfe.ac.uk/MAST-U/mastcodes.git@1.3.10#subdirectory=uda/python"`.
+3. Set up your envirnoment as in Stage 1 above, then specify the `uda` extra in place of Stage 2:
+   ```shell
+   pip install freegsnke[uda]
+   ```
+4. Finally, install the uda-mast package in your environment: 
+   ```shell
+   pip install "uda-mast @ git+ssh://git@gitlab.ukaea.uk/MAST-U/mastcodes.git@1.3.10#subdirectory=uda/python"
+   ```
 
-### Building from source
+### Installing from source
 
-See the section on [contributing code](#contributing-code) for instructions on how to build from source.
+To install FreeGSNKE from source, set up your environment as in Stage 1 above. 
 
-## Contributing
-
-We welcome contributions including **bug fixes** or **new feature** requests for FreeGSNKE. To do this, the first step is to consider opening an issue on the project's homepage.
-
-**If the issue is a bug**:
-- Make sure you're using the latest version of the code as the bug might have been squashed in later releases.
-- Search the open and closed issues to see if an issue describing the bug already exists.
-- If the bug still persists, open a new issue and include the following:
-    - a brief overview of the problem.
-    - an explanation of the expected behaviour and the observed behaviour.
-    - if possible, a minimum working example for reproducibility.
-    - if possible, provide details of the culprit and a suggested fix.
-
-**If the issue is a new feature request**:
-- Give a brief overview of the desired feature.
-- Explain why it would be useful (extra consideration will be given to features that will benefit the broader community).
-- If possible, suggest how the new feature could be implemented.
-
-### Contributing code
-
-To make code contributions, please do so via a **merge request**. This will require working on your own branch, making the desired changes, and then submitting a merge request. The request will then be considered by the repository maintainers. 
-
-To work on your code in development mode, first clone the repository:
+Then, clone the repository:
 
 ```
 git clone https://github.com/FusionComputingLab/freegsnke
 ```
 
-From your FreeGSNKE root directory, run:
+Inside your environment, run the following from the FreeGSNKE root directory:
 
 ```shell
-pip install -e ".[freegs4e,dev]"
+pip install -e ".[dev]"
 ```
 
 This will install FreeGSNKE in editable mode, including the optional development dependencies.
 
-If you are also planning to co-develop [FreeGS4E](https://github.com/FusionComputingLab/freegs4e), you will need to install it in editable mode as well. This can be done by cloning the FreeGS4E repository, installing using the development instructions, and then installing FreeGSNKE in editable mode with:
-```shell
-pip install -e ".[dev]"
-```
-Notice that the `freegs4e` extra has been omitted from the FreeGSNKE installation command in this case.
+Backend development takes place directly in the native `freegsnke` modules.
 
-Please also install the pre-commit hooks ([Black](https://github.com/psf/black) and [isort](https://pycqa.github.io/isort/)) for code formatting. The [pre-commit](https://pre-commit.com/) library is included in `requirements-dev.txt` and will be installed automatically using the `dev` extra included in the commands above. To install the pre-commit hooks, run the following in the root FreeGSNKE directory after installation:
+If you are planning to make code contributions, see the [pull requests](#pull-requests) section below.
+
+### Extras (for contributing)
+
+If contributing code (see below), please also install the [pre-commit](https://pre-commit.com/) hooks by running the following in the root FreeGSNKE directory after (from source) installation:
 ```shell
 pre-commit install
 ```
-Several tests have been built using [pytest](https://docs.pytest.org/en) and are run as part of the CI/CD pipelines, but you can run these locally before submitting a merge request if you wish. These must pass in order for the merge request to be approved, so please fix any errors that pop up if you see them. 
 
-Run the tests from the root `freegsnke/` directory because several test fixtures load files from `machine_configs/` using repository-relative paths. To run the full test suite, use:
+The hooks include formatting the code with [black](https://github.com/psf/black) and sorting imports with [isort](https://github.com/pycqa/isort).
 
+Before opening a PR, also strip the outputs from any notebooks in `examples/` that you've added or modified — CI rejects PRs where they're still present (see below), but they are **not** cleared automatically on every commit, so you're free to keep outputs in your local, unpushed notebooks while developing. To strip them, run (for example):
 ```shell
-python -m pytest -v
+nbstripout examples/"your_notebook.ipynb"
 ```
+[nbstripout](https://github.com/kynan/nbstripout) is installed as part of the `dev` extra above.
 
-If you only want to run a specific test module while working on a change, use (for example):
+## Contributing
 
-```shell
-python -m pytest -v freegsnke/tests/test_static_solver.py
-python -m pytest -v freegsnke/tests/test_inverse_static_solver.py
-```
+We welcome contributions including **issues**, **questions**, **bug fixes**, and **new features** for FreeGSNKE. To do any of these, the first step is to consider opening an issue on the project's homepage.
 
-You can also filter down to a single test with `-k` or a node id if you want faster feedback during development.
+### Issues
+**When opening an issue, please do the following**:
+- Double check that you have been using the latest version of the code as your issue/question/bug/feature might have been addressed in later releases.
+- Search the open/closed issues to see if your issue has already been suggested/addressed.
+- If the issue still persists, open a new issue and include the following information:
+    - a brief overview\justification of the issue/question/bug/feature.
+    - an explanation of the expected behaviour and the observed behaviour.
+    - if possible, a minimum working example for reproducibility.
+    - if possible, provide details of the culprit and a suggested fix.
+    - if possible, provide screenshots/diagrams (these are very helpful!).
 
-If your bug fix or feature addition includes a change to how FreeGSNKE fundamentally works or requires a change to the API, be sure to document this appropriately in the user documentation, API documentation, and by writing/changing the notebook examples where appropriate. Also be sure to fully justify why such changes are needed.
+### Pull requests
+**When opening a pull request (PR), please do the following**:
+- Open the PR with a clear title and description of what changed and why.
+- If the PR addresses an open issue, reference it in the description (e.g. `Closes #123`).
+- Make sure the [pre-commit](https://pre-commit.com/) hooks pass in the CI. These will run automatically when you commit if you have installed the pre-commit hooks (see above). 
+- Make sure the full test [pytest](https://docs.pytest.org/en) suite passes locally (`python -m pytest -v`); CI re-runs it against Python 3.10, 3.12, and 3.14. Specific tests can be run with, e.g. `python -m pytest -v freegsnke/tests/test_static_solver.py`. 
+- Keep docstring coverage above the 95% threshold enforced in CI by [interrogate](https://interrogate.readthedocs.io/).
+- Clear the outputs of any Jupyter notebooks you've added or modified in `examples/` (e.g. with `nbstripout`, see above) — CI checks the notebooks on the PR branch and rejects it if any still have outputs, but nothing strips them for you locally.
+- Update the user documentation, API documentation, and notebook examples if the PR changes FreeGSNKE's behaviour or public API.
+- Note that the notebook execution checks only run once a maintainer applies the `ready-for-final-tests` label, so don't expect them to appear immediately when you open the PR.
 
-Any Jupyter notebooks tracked by the repository should **not** include cell outputs so that we can keep the size of the repository reasonable. Please clear these manually in the notebook itself before submitting merge requests. The following command does just this:
+If your bug fix or feature addition includes a change to how FreeGSNKE fundamentally works or requires a change to the API, be sure to document this appropriately in the user documentation, API documentation, and by writing/changing in the notebook examples (or perhaps a new one) where appropriate. Also be sure to fully justify why such changes are needed.
 
-```bash
-jupyter nbconvert --clear-output --inplace notebook.ipynb
-```
-
+Thank you for contributing!
 
 ## References
 
@@ -237,9 +247,11 @@ Here are a list of FreeGSNKE papers that describe or use the code:
 - K. Pentland et al, "Validation of the static forward Grad-Shafranov equilibrium solvers in FreeGSNKE and Fiesta using EFIT++ reconstructions from MAST-U", Physica Scripta, **100**, 025608 (2025). DOI: [10.1088/1402-4896/ada192](https://iopscience.iop.org/article/10.1088/1402-4896/ada192).
 - K. Pentland et al, "Multiple solutions to the static forward free-boundary Grad-Shafranov problem on MAST-U", Nuclear Fusion (2025). DOI: [10.1088/1741-4326/adf3cc](https://iopscience.iop.org/article/10.1088/1741-4326/adf3cc). 
 - P. Cavestany et al, "Real-time applicability of emulated virtual circuits for tokamak plasma shape control", 2025 IEEE Conference on Control Technology and Applications (2025). DOI: [10.1109/CCTA53793.2025.11151371](https://ieeexplore.ieee.org/document/11151371).
-- K. Pentland et al, "The FreeGSNKE Pulse Design Tool (FPDT): a computational framework for evolutive plasma scenario and control design", arXiv (2026). arXiv:[2603.28513](https://arxiv.org/abs/2603.28513).
+- K. Pentland et al, "The FreeGSNKE Pulse Design Tool (FPDT): a computational framework for evolutive plasma scenario and control design", Plasma Physics and Controlled Fusion (2026). DOI:[10.1088/1361-6587/ae8b29](https://iopscience.iop.org/article/10.1088/1361-6587/ae8b29).
 - A. Ross et al, "Real-time virtual circuits for plasma shape control via neural network emulators", arXiv (2026). arXiv:[2605.14939](https://arxiv.org/abs/2605.14939).
 - K. Pentland et al, "Real-time virtual circuits for plasma shape control via neural network surrogates: dynamic validation in closed-loop simulations", arXiv (2026). arXiv:[2604.00781](https://arxiv.org/abs/2604.00781).
+- M. Marshall et al, "Real-time virtual circuits for plasma shape control via neural network surrogates: integration and testing in the MAST-U PCS", arXiv (2026). arXiv:[2608.26216](https://arxiv.org/abs/2608.26216).
+- N. C. Amorisco et al, "Real-time virtual circuits for plasma shape control via neural network surrogates: experimental demonstration on MAST Upgrade", arXiv (2026). arXiv:[2608.28468](https://arxiv.org/abs/2608.28468).
 
 If you would like your FreeGSNKE-related paper to be added, please let us know!
 
@@ -250,6 +262,12 @@ This work was funded under the Fusion Computing Lab collaboration between the ST
 
 ## License
 
-FreeGSNKE is distributed under the GNU Lesser General Public License v3.0. See the [LICENSE](LICENSE) file or the [GNU website](https://www.gnu.org/licenses/lgpl-3.0.en.html) for more details.
+FreeGSNKE is distributed under the GNU Lesser General Public License v3.0. See the [LICENSE](LICENSE) and [COPYRIGHT](COPYRIGHT) files or the [GNU website](https://www.gnu.org/licenses/lgpl-3.0.en.html) for more details.
 
 The authors are also willing to discuss alternative licensing arrangements if required.
+
+## History
+
+FreeGSNKE spun out of the original [FreeGS](https://github.com/freegs-plasma/freegs) project. Originally, [FreeGS4E](https://github.com/FusionComputingLab/freegs4e) was set up as a form of FreeGS to provide the reusable magnetostatic machinery backend for FreeGSNKE, while FreeGSNKE owned the higher-level algorithms and physics to solve forward static and evolutive free-boundary Grad-Shafranov problems. The FreeGS4E repository is now archived, and the FreeGSNKE repository has been updated to own what was previously FreeGS4E.
+
+The FreeGSNKE team would like to acknowledge [Ben Dudson](https://github.com/bendudson) and other FreeGS authors for their contributions to the original FreeGS codebase, especially for making the tool free and open-source. We would also like to thank Ben for his support during development of the FreeGSNKE codebase.

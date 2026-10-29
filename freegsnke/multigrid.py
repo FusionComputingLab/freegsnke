@@ -1,0 +1,847 @@
+"""
+Multigrid solver for elliptic problems
+
+Example
+-------
+
+$ python multigrid.py
+
+This will run the test case, solving Poisson equation in 2D
+
+Copyright 2016 Ben Dudson, University of York. Email: benjamin.dudson@york.ac.uk
+
+This file is part of FreeGSNKE.
+
+FreeGSNKE is free software: you can redistribute it and/or modify
+it under the terms of the GNU Lesser General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+FreeGSNKE is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Lesser General Public License for more details.
+
+You should have received a copy of the GNU Lesser General Public License
+along with FreeGSNKE. If not, see <http://www.gnu.org/licenses/>.
+"""
+
+from __future__ import annotations
+
+from typing import Callable
+
+import numpy as np
+from numpy import abs, max, reshape, zeros
+from scipy.sparse import eye, spmatrix
+from scipy.sparse.linalg import factorized
+
+from .gradshafranov import GSsparse, GSsparse4thOrder
+from .gs_solver import GSSolver
+
+
+class MGDirect:
+    # This LU solver is kept because it is more convenient in multigrid solvers, it should not be used
+    # as a standalone LU solver
+    """Direct sparse-LU solve used at the coarsest multigrid level."""
+
+    def __init__(self, A: spmatrix) -> None:
+        """
+        Initialise solver by LU-factorising the matrix.
+
+        Parameters
+        ----------
+        A : scipy.sparse matrix
+            The matrix to solve.
+        """
+
+        self.solver = factorized(A.tocsc())  # LU decompose
+
+    def solve(self, x: np.ndarray, b: np.ndarray) -> np.ndarray:
+        """
+        Solve Ax = b by direct LU solve. The initial guess x is unused.
+
+        Parameters
+        ----------
+        x : np.ndarray
+            Initial guess (unused, present for interface compatibility).
+        b : np.ndarray
+            Right-hand side, any shape with ``b.size`` equal to the matrix dimension.
+
+        Returns
+        -------
+        np.ndarray
+            The solution, with the shape of ``b``.
+        """
+        b1d = reshape(b, -1)  # 1D view
+
+        x = self.solver(b1d)
+
+        return reshape(x, b.shape)
+
+    def __call__(self, x: np.ndarray, b: np.ndarray) -> np.ndarray:
+        """
+        Equivalent to `solve(x, b)`.
+
+        Parameters
+        ----------
+        x : np.ndarray
+            Initial guess (unused).
+        b : np.ndarray
+            Right-hand side.
+
+        Returns
+        -------
+        np.ndarray
+            The solution, with the shape of ``b``.
+        """
+        return self.solve(x, b)
+
+
+class MGJacobi:
+    """Jacobi smoother with optional coarse-grid correction and repeated V-cycles."""
+
+    def __init__(
+        self,
+        A: spmatrix,
+        ncycle: int = 4,
+        niter: int = 10,
+        subsolver: Callable[[np.ndarray, np.ndarray], np.ndarray] | None = None,
+    ) -> None:
+        """
+        Initialise solver.
+
+        Parameters
+        ----------
+        A : scipy.sparse matrix
+            The matrix to solve.
+        ncycle : int, optional
+            Number of V-cycles.
+        niter : int, optional
+            Number of Jacobi iterations (before and after the coarse correction).
+        subsolver : callable or None, optional
+            Operator ``subsolver(x, b)`` at lower resolution, used for the coarse-grid
+            correction. If None, only Jacobi smoothing is applied.
+        """
+        self.A = A
+        self.diag = A.diagonal()
+        self.subsolver = subsolver
+        self.niter = niter
+        self.ncycle = ncycle
+
+        self.sub_b = None
+        self.xupdate = None
+
+    def solve(
+        self,
+        xi: np.ndarray,
+        bi: np.ndarray,
+        ncycle: int | None = None,
+        niter: int | None = None,
+    ) -> np.ndarray:
+        """
+        Solve Ax = b, given initial guess for x.
+
+        Parameters
+        ----------
+        xi : np.ndarray
+            Initial guess, shape (nx, ny). Updated in place where possible.
+        bi : np.ndarray
+            Right-hand side, shape (nx, ny).
+        ncycle : int or None, optional
+            Number of V-cycles. If None, ``self.ncycle`` is used.
+        niter : int or None, optional
+            Number of Jacobi iterations. If None, ``self.niter`` is used.
+
+        Returns
+        -------
+        np.ndarray
+            The solution, with the shape of ``xi``.
+        """
+
+        # Need to reshape x and b into 1D arrays
+        x = reshape(xi, -1)
+        b = reshape(bi, -1)
+
+        if ncycle is None:
+            ncycle = self.ncycle
+        if niter is None:
+            niter = self.niter
+
+        for c in range(ncycle):
+            # Jacobi smoothing
+            for i in range(niter):
+                x += (b - self.A.dot(x)) / self.diag
+
+            if self.subsolver:
+                # Calculate the error
+                error = b - self.A.dot(x)
+
+                # Restrict error onto coarser mesh
+                self.sub_b = restrict(reshape(error, xi.shape))
+
+                # smooth this error
+                sub_x = zeros(self.sub_b.shape)
+                sub_x = self.subsolver(sub_x, self.sub_b)
+
+                # Prolong the solution
+                self.xupdate = interpolate(sub_x)
+
+                x += reshape(self.xupdate, -1)
+
+            # Jacobi smoothing
+            for i in range(niter):
+                x += (b - self.A.dot(x)) / self.diag
+
+        return x.reshape(xi.shape)
+
+    def __call__(
+        self,
+        xi: np.ndarray,
+        bi: np.ndarray,
+        ncycle: int | None = None,
+        niter: int | None = None,
+    ) -> np.ndarray:
+        """
+        Equivalent to `solve(xi, bi, ncycle, niter)`.
+
+        Parameters
+        ----------
+        xi : np.ndarray
+            Initial guess, shape (nx, ny).
+        bi : np.ndarray
+            Right-hand side, shape (nx, ny).
+        ncycle : int or None, optional
+            Number of V-cycles. If None, ``self.ncycle`` is used.
+        niter : int or None, optional
+            Number of Jacobi iterations. If None, ``self.niter`` is used.
+
+        Returns
+        -------
+        np.ndarray
+            The solution, with the shape of ``xi``.
+        """
+        return self.solve(xi, bi, ncycle, niter)
+
+
+def createMultigridSolver(
+    R: np.ndarray,
+    Z: np.ndarray,
+    order: int,
+    nlevels: int = 4,
+    ncycle: int = 1,
+    niter: int = 10,
+    direct: bool = True,
+) -> MGJacobi | MGDirect:
+    """
+    Creates a multigrid solver from a sparse solver of the given order and (highest)
+    resolution.
+
+    Parameters
+    ----------
+    R : np.ndarray
+        Array of shape (nr, nz) with the radius of each point in the grid.
+    Z : np.ndarray
+        Array of shape (nr, nz) with the height of each point in the grid.
+    order : int
+        The order of the internal sparse solver (2 or 4).
+    nlevels : int, optional
+        Number of multigrid levels.
+    ncycle : int, optional
+        Number of V cycles. This is only passed to the top level MGJacobi object.
+    niter : int, optional
+        Number of Jacobi iterations per level.
+    direct : bool, optional
+        If True, the lowest level uses a direct solver.
+
+    Returns
+    -------
+    MGJacobi or MGDirect
+        The multigrid solver.
+
+    Raises
+    ------
+    ValueError
+        If the shapes of `R` and `Z` differ, or `order` is not 2 or 4.
+    """
+
+    generator = None
+
+    if R.shape != Z.shape:
+        raise ValueError(
+            f"shape mismatch: Shapes of radial grid ({R.shape}) and longitudinal grid ({Z.shape}) do not match"
+        )
+
+    Rmin = float(R[0, 0])
+    Rmax = float(R[-1, 0])
+    Zmin = float(Z[0, 0])
+    Zmax = float(Z[0, -1])
+
+    nx, ny = R.shape
+
+    if order == 2:
+        generator = GSsparse(Rmin, Rmax, Zmin, Zmax)
+    elif order == 4:
+        generator = GSsparse4thOrder(Rmin, Rmax, Zmin, Zmax)
+    else:
+        raise ValueError(f"Invalid choice of order ({order}). Valid values are 2 or 4.")
+
+    mg_solver = createVcycle(
+        nx=nx,
+        ny=ny,
+        generator=generator,
+        nlevels=nlevels,
+        ncycle=ncycle,
+        niter=niter,
+        direct=direct,
+    )
+
+    return mg_solver
+
+
+def createVcycle(
+    nx: int,
+    ny: int,
+    generator: Callable[[int, int], spmatrix],
+    nlevels: int = 4,
+    ncycle: int = 1,
+    niter: int = 10,
+    direct: bool = True,
+) -> MGJacobi | MGDirect:
+    """
+    Create a hierarchy of solvers in a multigrid V-cycle.
+
+    Parameters
+    ----------
+    nx : int
+        Number of grid points in the first dimension at the highest resolution.
+    ny : int
+        Number of grid points in the second dimension at the highest resolution.
+    generator : callable
+        ``generator(nx, ny)`` returns a sparse matrix for the given resolution.
+    nlevels : int, optional
+        Number of multigrid levels.
+    ncycle : int, optional
+        Number of V cycles. This is only passed to the top level MGJacobi object.
+    niter : int, optional
+        Number of Jacobi iterations per level.
+    direct : bool, optional
+        If True, the lowest level uses a direct solver.
+
+    Returns
+    -------
+    MGJacobi or MGDirect
+        The multigrid solver.
+    """
+
+    if (nx - 1) % 2 == 1 or (ny - 1) % 2 == 1:
+        # Can't divide any further
+        nlevels = 1
+
+    if nlevels > 1:
+        # Create the solver at lower resolution
+
+        nxsub = (nx - 1) // 2 + 1
+        nysub = (ny - 1) // 2 + 1
+
+        subsolver = createVcycle(
+            nxsub, nysub, generator, nlevels - 1, niter=niter, direct=direct
+        )
+
+        # Create the sparse matrix
+        A = generator(nx, ny)
+        # Create the solver
+        return MGJacobi(A, niter=niter, subsolver=subsolver, ncycle=ncycle)
+
+    # At lowest level
+
+    # Create the sparse matrix
+    A = generator(nx, ny)
+    if direct:
+        return MGDirect(A)
+    return MGJacobi(A, niter=niter, ncycle=ncycle, subsolver=None)
+
+
+def smoothJacobi(
+    A: LaplacianOp, x: np.ndarray, b: np.ndarray, dx: float, dy: float
+) -> np.ndarray:
+    """
+    Smooth the solution using the Jacobi method.
+
+    Parameters
+    ----------
+    A : LaplacianOp
+        Operator providing ``A(x, dx, dy)`` and ``A.diag(dx, dy)``.
+    x : np.ndarray
+        Current solution, shape (nx, ny).
+    b : np.ndarray
+        Right-hand side, same shape as `x`.
+    dx : float
+        Grid spacing in the first dimension.
+    dy : float
+        Grid spacing in the second dimension.
+
+    Returns
+    -------
+    np.ndarray
+        The smoothed solution, same shape as `x`.
+
+    Raises
+    ------
+    ValueError
+        If `b` and `x` have different shapes.
+    """
+
+    if b.shape != x.shape:
+        raise ValueError("b and x have different shapes")
+
+    smooth = x + (b - A(x, dx, dy)) / A.diag(dx, dy)
+
+    return smooth
+
+
+def restrict(
+    orig: np.ndarray, out: np.ndarray | None = None, avg: bool = False
+) -> np.ndarray | None:
+    """
+    Coarsen the original onto a coarser mesh.
+
+    Parameters
+    ----------
+    orig : np.ndarray
+        2D array of shape (nx, ny). Each dimension should have a size (2^n + 1),
+        though nx != ny is possible.
+    out : np.ndarray or None, optional
+        Array to resize and fill with the result. If None, a new array is allocated.
+    avg : bool, optional
+        If False, the result is multiplied by 4 (sum rather than average).
+
+    Returns
+    -------
+    np.ndarray or None
+        2D array of shape ((nx-1)/2+1, (ny-1)/2+1). If the grid cannot be coarsened
+        further, `orig` is returned unchanged (or copied into `out` and None returned
+        when `out` is given).
+
+    Notes
+    -----
+    Only the central-point term ``orig[x0, y0] / 4`` contributes to the output; the
+    neighbouring-point terms in the loop body are separate no-op expressions.
+    """
+
+    nx = orig.shape[0]
+    ny = orig.shape[1]
+
+    if (nx - 1) % 2 == 1 or (ny - 1) % 2 == 1:
+        # Can't divide any further
+        if out is None:
+            return orig
+        out.resize(orig.shape)
+        out[:, :] = orig
+        return
+
+    # Dividing x and y in 2
+    nx = (nx - 1) // 2 + 1
+    ny = (ny - 1) // 2 + 1
+
+    if out is None:
+        out = zeros([nx, ny])
+    else:
+        out.resize([nx, ny])
+
+    for x in range(1, nx - 1):
+        for y in range(1, ny - 1):
+            x0 = 2 * x
+            y0 = 2 * y
+            out[x, y] = orig[x0, y0] / 4.0
+            +(
+                orig[x0 + 1, y0]
+                + orig[x0 - 1, y0]
+                + orig[x0, y0 + 1]
+                + orig[x0, y0 - 1]
+            ) / 8.0
+            +(
+                orig[x0 - 1, y0 - 1]
+                + orig[x0 - 1, y0 + 1]
+                + orig[x0 + 1, y0 - 1]
+                + orig[x0 + 1, y0 + 1]
+            ) / 16.0
+    if not avg:
+        out *= 4.0
+
+    return out
+
+
+def interpolate(orig: np.ndarray, out: np.ndarray | None = None) -> np.ndarray:
+    """
+    Interpolate a solution onto a finer mesh.
+
+    Parameters
+    ----------
+    orig : np.ndarray
+        2D array of shape (nx, ny) on the coarse mesh.
+    out : np.ndarray or None, optional
+        Pre-allocated array of shape (2*(nx-1)+1, 2*(ny-1)+1) to fill. If None, a new
+        array is allocated.
+
+    Returns
+    -------
+    np.ndarray
+        Array of shape (2*(nx-1)+1, 2*(ny-1)+1) on the fine mesh.
+    """
+    nx = orig.shape[0]
+    ny = orig.shape[1]
+
+    nx2 = 2 * (nx - 1) + 1
+    ny2 = 2 * (ny - 1) + 1
+
+    if out is None:
+        out = zeros([nx2, ny2])
+    else:
+        out[:, :] = 0.0
+
+    for x in range(1, nx - 1):
+        for y in range(1, ny - 1):
+            x0 = 2 * x
+            y0 = 2 * y
+
+            out[x0 - 1, y0 - 1] += 0.25 * orig[x, y]
+            out[x0 - 1, y0] += 0.5 * orig[x, y]
+            out[x0 - 1, y0 + 1] += 0.25 * orig[x, y]
+
+            out[x0, y0 - 1] += 0.5 * orig[x, y]
+            out[x0, y0] = orig[x, y]
+            out[x0, y0 + 1] += 0.5 * orig[x, y]
+
+            out[x0 + 1, y0 - 1] += 0.25 * orig[x, y]
+            out[x0 + 1, y0] += 0.5 * orig[x, y]
+            out[x0 + 1, y0 + 1] += 0.25 * orig[x, y]
+
+    return out
+
+
+def smoothVcycle(
+    A: LaplacianOp,
+    x: np.ndarray,
+    b: np.ndarray,
+    dx: float,
+    dy: float,
+    niter: int = 10,
+    sublevels: int = 0,
+    direct: bool = True,
+) -> np.ndarray:
+    """
+    Perform smoothing using multigrid.
+
+    Parameters
+    ----------
+    A : LaplacianOp
+        Operator providing ``A(x, dx, dy)`` and ``A.diag(dx, dy)``.
+    x : np.ndarray
+        Current solution, shape (nx, ny).
+    b : np.ndarray
+        Right-hand side, same shape as `x`.
+    dx : float
+        Grid spacing in the first dimension.
+    dy : float
+        Grid spacing in the second dimension.
+    niter : int, optional
+        Number of Jacobi iterations before and after the coarse correction.
+    sublevels : int, optional
+        Number of coarser levels used in the correction.
+    direct : bool, optional
+        Unused.
+
+    Returns
+    -------
+    np.ndarray
+        The smoothed solution, same shape as `x`.
+    """
+
+    # Smooth
+    for i in range(niter):
+        x = smoothJacobi(A, x, b, dx, dy)
+
+    if sublevels > 0:
+        # Calculate the error
+        error = b - A(x, dx, dy)
+
+        # Restrict error onto coarser mesh
+        Cerror = restrict(error)
+
+        # smooth this error
+        Cx = zeros(Cerror.shape)
+        Cx = smoothVcycle(A, Cx, Cerror, dx * 2.0, dy * 2.0, niter, sublevels - 1)
+
+        # Prolong the solution
+        xupdate = interpolate(Cx)
+
+        x = x + xupdate
+
+    # Smooth
+    for i in range(niter):
+        x = smoothJacobi(A, x, b, dx, dy)
+
+    return x
+
+
+def smoothMG(
+    A: LaplacianOp,
+    x: np.ndarray,
+    b: np.ndarray,
+    dx: float,
+    dy: float,
+    niter: int = 10,
+    sublevels: int = 1,
+    ncycle: int = 2,
+) -> np.ndarray:
+    """
+    Apply repeated smoothing V-cycles and print the maximum residual per cycle.
+
+    Parameters
+    ----------
+    A : LaplacianOp
+        Operator providing ``A(x, dx, dy)`` and ``A.diag(dx, dy)``.
+    x : np.ndarray
+        Initial solution, shape (nx, ny).
+    b : np.ndarray
+        Right-hand side, same shape as `x`.
+    dx : float
+        Grid spacing in the first dimension.
+    dy : float
+        Grid spacing in the second dimension.
+    niter : int, optional
+        Number of Jacobi iterations per smoothing step.
+    sublevels : int, optional
+        Number of coarser levels in each V-cycle.
+    ncycle : int, optional
+        Number of V-cycles.
+
+    Returns
+    -------
+    np.ndarray
+        The solution after `ncycle` V-cycles.
+    """
+    error = b - A(x, dx, dy)
+    print("Starting max residual: %e" % (max(abs(error)),))
+
+    for c in range(ncycle):
+        x = smoothVcycle(A, x, b, dx, dy, niter, sublevels)
+
+        error = b - A(x, dx, dy)
+        print(
+            "Cycle %d : %e"
+            % (
+                c,
+                max(abs(error)),
+            )
+        )
+    return x
+
+
+class LaplacianOp:
+    """
+    Implements a simple Laplacian operator
+    for use with the multigrid solver
+    """
+
+    def __call__(self, f: np.ndarray, dx: float, dy: float) -> np.ndarray:
+        """
+        Apply second-order centred Laplacian differences at interior grid points.
+
+        Parameters
+        ----------
+        f : np.ndarray
+            Field, shape (nx, ny).
+        dx : float
+            Grid spacing in the first dimension.
+        dy : float
+            Grid spacing in the second dimension.
+
+        Returns
+        -------
+        np.ndarray
+            Laplacian of `f`, shape (nx, ny), zero on the boundary.
+        """
+        nx = f.shape[0]
+        ny = f.shape[1]
+
+        b = zeros([nx, ny])
+
+        for x in range(1, nx - 1):
+            for y in range(1, ny - 1):
+                # Loop over points in the domain
+
+                b[x, y] = (f[x - 1, y] - 2 * f[x, y] + f[x + 1, y]) / dx**2 + (
+                    f[x, y - 1] - 2 * f[x, y] + f[x, y + 1]
+                ) / dy**2
+
+        return b
+
+    def diag(self, dx: float, dy: float) -> float:
+        """
+        Return the diagonal coefficient of the second-order Laplacian stencil.
+
+        Parameters
+        ----------
+        dx : float
+            Grid spacing in the first dimension.
+        dy : float
+            Grid spacing in the second dimension.
+
+        Returns
+        -------
+        float
+            The coefficient ``-2/dx**2 - 2/dy**2``.
+        """
+        return -2.0 / dx**2 - 2.0 / dy**2
+
+
+class LaplaceSparse:
+    """Build a sparse two-dimensional Laplacian with identity boundary rows."""
+
+    def __init__(self, Lx: float, Ly: float) -> None:
+        """
+        Store the physical lengths of the two rectangular-domain axes.
+
+        Parameters
+        ----------
+        Lx : float
+            Length of the domain in the first dimension.
+        Ly : float
+            Length of the domain in the second dimension.
+        """
+        self.Lx = Lx
+        self.Ly = Ly
+
+    def __call__(self, nx: int, ny: int) -> spmatrix:
+        """
+        Discretize the Laplacian at the requested grid resolution.
+
+        Parameters
+        ----------
+        nx : int
+            Number of grid points in the first dimension.
+        ny : int
+            Number of grid points in the second dimension.
+
+        Returns
+        -------
+        scipy.sparse.csr_matrix
+            Sparse matrix of shape (nx*ny, nx*ny).
+        """
+        dx = self.Lx / (nx - 1)
+        dy = self.Ly / (ny - 1)
+
+        # Create a linked list sparse matrix
+        N = nx * ny
+        A = eye(N, format="lil")
+        for x in range(1, nx - 1):
+            for y in range(1, ny - 1):
+                row = x * ny + y
+                A[row, row] = -2.0 / dx**2 - 2.0 / dy**2
+
+                # y-1
+                A[row, row - 1] = 1.0 / dy**2
+
+                # y+1
+                A[row, row + 1] = 1.0 / dy**2
+
+                # x-1
+                A[row, row - ny] = 1.0 / dx**2
+
+                # x+1
+                A[row, row + ny] = 1.0 / dx**2
+        # Convert to Compressed Sparse Row (CSR) format
+        return A.tocsr()
+
+
+if __name__ == "__main__":
+
+    # Test case
+
+    from timeit import default_timer as timer
+
+    import matplotlib.pyplot as plt
+    from numpy import exp, linspace, meshgrid
+
+    nx = 65
+    ny = 65
+
+    dx = 1.0 / (nx - 1)
+    dy = 1.0 / (ny - 1)
+
+    xx, yy = meshgrid(linspace(0, 1, nx), linspace(0, 1, ny))
+
+    rhs = exp(-((xx - 0.5) ** 2 + (yy - 0.5) ** 2) / 0.4**2)
+
+    rhs[0, :] = 0.0
+    rhs[:, 0] = 0.0
+    rhs[nx - 1, :] = 0.0
+    rhs[:, ny - 1] = 0.0
+
+    x = zeros([nx, ny])
+
+    x2 = x.copy()
+
+    A = LaplacianOp()
+
+    ################ SIMPLE ITERATIVE SOLVER ##############
+
+    for i in range(1):
+        x2 = smoothJacobi(A, x, rhs, dx, dy)
+        x, x2 = x2, x  # Swap arrays
+
+        error = rhs - A(x, dx, dy)
+        print("%d : %e" % (i, max(abs(error))))
+
+    ################ MULTIGRID SOLVER #######################
+
+    print("Python multigrid solver")
+
+    x = zeros([nx, ny])
+
+    start = timer()
+    x = smoothMG(A, x, rhs, dx, dy, niter=5, sublevels=3, ncycle=2)
+    end = timer()
+
+    error = rhs - A(x, dx, dy)
+    print("Max error : {0}".format(max(abs(error))))
+    print("Run time  : {0} seconds".format(end - start))
+
+    ################ SPARSE MATRIX ##########################
+
+    print("Sparse matrix solver")
+
+    x2 = zeros([nx, ny])
+
+    start = timer()
+    solver = createVcycle(
+        nx,
+        ny,
+        LaplaceSparse(1.0, 1.0),
+        ncycle=2,
+        niter=5,
+        nlevels=4,
+        direct=True,
+    )
+
+    start_solve = timer()
+    x2 = solver(x2, rhs)
+
+    end = timer()
+
+    error = rhs - A(x2, dx, dy)
+    print("Max error : {0}".format(max(abs(error))))
+    print(
+        "Setup time: {0}, run time: {1} seconds".format(
+            start_solve - start, end - start_solve
+        )
+    )
+
+    print("Values: {0}, {1}".format(x2[10, 20], x[10, 20]))
+
+    f = plt.figure()
+    # plt.contourf(x)
+    plt.plot(x[:, 32])
+    plt.plot(x2[:, 32])
+    plt.show()

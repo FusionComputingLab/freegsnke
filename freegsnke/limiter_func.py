@@ -1,23 +1,25 @@
 """
-Defines the functionality related to the implementation of the limiter in FreeGSNKE. 
+Defines the functionality related to the implementation of the limiter in FreeGSNKE.
 
 Copyright 2025 UKAEA, UKRI-STFC, and The Authors, as per the COPYRIGHT and README files.
 
 This file is part of FreeGSNKE.
+
+FreeGSNKE is free software: you can redistribute it and/or modify
+it under the terms of the GNU Lesser General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
 
 FreeGSNKE is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 GNU Lesser General Public License for more details.
 
-FreeGSNKE is free software: you can redistribute it and/or modify
-it under the terms of the GNU Lesser General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
-  
 You should have received a copy of the GNU Lesser General Public License
-along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.   
+along with FreeGSNKE. If not, see <http://www.gnu.org/licenses/>.
 """
+
+from __future__ import annotations
 
 import numpy as np
 from matplotlib.path import Path
@@ -40,10 +42,11 @@ class Limiter_handler:
     The limiter is treated as a closed boundary defining the valid plasma domain.
     """
 
-    def __init__(self, eq, limiter):
-        """Object to handle additional calculations due to the limiter.
+    def __init__(self, eq: object, limiter: object) -> None:
+        """
+        Object to handle additional calculations due to the limiter.
+
         This is primarily used by the profile functions.
-        Each profile function has its own instance of a Limiter_handler.
 
         Parameters
         ----------
@@ -82,20 +85,33 @@ class Limiter_handler:
         self._idx_grid_points = None
 
     @property
-    def idx_grid_points(self):
-        """Grid indices for contour fallback, built only when first required."""
+    def idx_grid_points(self) -> np.ndarray:
+        """
+        Grid indices for contour fallback, built only when first required.
+
+        Returns
+        -------
+        np.ndarray
+            Array of shape (nx*ny, 2) of (R, Z) grid indices.
+        """
         if self._idx_grid_points is None:
             self._idx_grid_points = np.column_stack(
                 (self.eqRidx.reshape(-1), self.eqZidx.reshape(-1))
             )
         return self._idx_grid_points
 
-    def validate_limiter_inside_domain(self):
-        """Raise a clear error if the limiter is not inside the solution domain.
+    def validate_limiter_inside_domain(self) -> None:
+        """
+        Raise a clear error if the limiter is not inside the solution domain.
 
         Limiter boundary interpolation assumes that every limiter segment lies
         strictly inside the rectangular solver grid, so that each refined
         boundary point belongs to a valid interpolation cell.
+
+        Raises
+        ------
+        ValueError
+            If any limiter vertex lies on or outside the edge of the solver grid.
         """
         limiter_R = np.asarray(self.limiter.R)
         limiter_Z = np.asarray(self.limiter.Z)
@@ -117,14 +133,20 @@ class Limiter_handler:
                 f"R=[{Rmin:.6g}, {Rmax:.6g}], Z=[{Zmin:.6g}, {Zmax:.6g}]."
             )
 
-    def extract_index_mask(self, mask):
-        """Extracts the indices of the R and Z coordinates of the grid points in the reduced plasma domain
-           i.e. inside the limiter
+    def extract_index_mask(self, mask: np.ndarray) -> np.ndarray:
+        """
+        Extract the grid indices of the points selected by a mask (e.g. inside the limiter).
 
         Parameters
         ----------
         mask : np.ndarray of bool
-            Specifies the mask of the relevant region
+            Specifies the mask of the relevant region, shape (nx, ny).
+
+        Returns
+        -------
+        np.ndarray
+            Integer array of shape (2, n_points) with the R and Z indices of the
+            points where `mask` is True.
         """
 
         nx, ny = np.shape(mask)
@@ -132,9 +154,11 @@ class Limiter_handler:
 
         return idxs_mask
 
-    def extract_plasma_pts(self, R, Z, mask):
-        """Extracts R and Z coordinates of the grid points in the reduced plasma domain
-           i.e. inside the limiter
+    def extract_plasma_pts(
+        self, R: np.ndarray, Z: np.ndarray, mask: np.ndarray
+    ) -> np.ndarray:
+        """
+        Extract R and Z coordinates of the grid points selected by a mask (e.g. inside the limiter).
 
         Parameters
         ----------
@@ -144,6 +168,11 @@ class Limiter_handler:
             Z coordinates on the domain grid, e.g. eq.Z
         mask : np.ndarray of bool
             Specifies the mask of the relevant region
+
+        Returns
+        -------
+        np.ndarray
+            Array of shape (n_points, 2) of (R, Z) coordinates of the masked points.
         """
         plasma_pts = np.concatenate(
             (
@@ -155,21 +184,33 @@ class Limiter_handler:
 
         return plasma_pts
 
-    def reduce_rect_domain(self, map):
-        """Reduce map from the whole domain to the smallest rectangular domain around limiter mask
+    def reduce_rect_domain(self, map: np.ndarray) -> np.ndarray:
+        """
+        Reduce map from the whole domain to the smallest rectangular domain around limiter mask.
+
+        Requires ``build_reduced_rect_domain`` to have been called (sets ``Rrange``, ``Zrange``).
 
         Parameters
         ----------
         map : np.ndarray
             Same dimensions as eq.R
+
+        Returns
+        -------
+        np.ndarray
+            The sub-array of `map` covering the reduced rectangular domain.
         """
 
         return map[self.Rrange[0] : self.Rrange[1], self.Zrange[0] : self.Zrange[1]]
 
     def build_reduced_rect_domain(
         self,
-    ):
-        """Build smallest rectangular domain around limiter mask"""
+    ) -> None:
+        """
+        Build smallest rectangular domain around limiter mask.
+
+        Sets ``Rrange``, ``Zrange`` (index ranges) and ``mask_inside_limiter_red``.
+        """
 
         self.Rrange = (min(self.idxs_mask[0]), max(self.idxs_mask[0]) + 1)
         self.Zrange = (min(self.idxs_mask[1]), max(self.idxs_mask[1]) + 1)
@@ -180,20 +221,14 @@ class Limiter_handler:
 
     def build_mask_inside_limiter(
         self,
-    ):
-        """Uses the coordinates of points along the edge of the limiter region
+    ) -> None:
+        """
+        Use the coordinates of points along the edge of the limiter region
         to generate the mask of contained domain points.
 
-        Parameters
-        ----------
-        eq : FreeGSNKE Equilibrium object
-            Specifies the domain properties
-        limiter : freegs4e.machine.Wall object
-            Specifies the limiter contour points
-        Returns
-        -------
-        mask_inside_limiter : np.array
-            Mask over the full domain of grid points inside the limiter region.
+        Sets ``mask_inside_limiter`` (boolean mask over the full domain of grid
+        points inside the limiter region) and ``path`` (the limiter
+        ``matplotlib.path.Path``).
         """
         verts = np.concatenate(
             (
@@ -213,18 +248,21 @@ class Limiter_handler:
         self.mask_inside_limiter = mask_inside_limiter
         self.path = path
 
-    def broaden_mask(self, mask, layer_size=3):
-        """Creates a mask that is wider than the input mask, by a width=`layer_size`
+    def broaden_mask(self, mask: np.ndarray, layer_size: int = 3) -> np.ndarray:
+        """
+        Create a mask that is wider than the input mask, by a width=`layer_size`.
 
         Parameters
         ----------
+        mask : np.ndarray of bool
+            Mask to broaden, shape (nx, ny).
         layer_size : int, optional
             Width of the layer, by default 3
 
         Returns
         -------
-        layer_mask : np.ndarray
-            Broader mask
+        layer_mask : np.ndarray of bool
+            Broader mask, same shape as `mask`.
         """
         nx, ny = np.shape(mask)
 
@@ -241,17 +279,20 @@ class Limiter_handler:
         layer_mask = (layer_mask > 0).astype(bool)
         return layer_mask
 
-    def make_layer_mask(self, mask, layer_size=3):
-        """Creates a mask for the points just outside the input mask, with a width=`layer_size`
+    def make_layer_mask(self, mask: np.ndarray, layer_size: int = 3) -> np.ndarray:
+        """
+        Create a mask for the points just outside the input mask, with a width=`layer_size`.
 
         Parameters
         ----------
+        mask : np.ndarray of bool
+            Input mask, shape (nx, ny).
         layer_size : int, optional
             Width of the layer outside the limiter, by default 3
 
         Returns
         -------
-        layer_mask : np.ndarray
+        layer_mask : np.ndarray of bool
             Mask of the points outside the mask within a distance of `layer_size`
         """
 
@@ -259,16 +300,22 @@ class Limiter_handler:
         layer_mask = layer_mask * np.logical_not(mask)
         return layer_mask.astype(bool)
 
-    def limiter_points(self, refine=16):
-        """Based on the limiter vertices, it builds the refined list of points on the boundary
-        of the region where the plasma is allowed. These refined boundary points are those on which the flux
-        function is interpolated to find the value of psi_boundary in the case of a limiter plasma.
+    def limiter_points(self, refine: int = 16) -> None:
+        """
+        Build the refined list of points on the limiter boundary from the limiter vertices.
+
+        These refined boundary points (the intersections of the limiter segments with
+        the solver grid lines, plus the vertices) are those on which the flux
+        function is interpolated to find the value of psi_boundary in the case of a
+        limiter plasma. Sets ``fine_point``, ``grid_per_limiter_fine_point``,
+        ``mask_limiter_cells``, ``limiter_mask_out``, ``offending_mask`` and the
+        ``fine_point_per_cell*`` dictionaries.
 
         Parameters
         ----------
         refine : int, optional
-            the upsampling ratio with respect to the solver's grid, by default 6.
-
+            Upsampling ratio with respect to the solver's grid. Currently unused
+            (the fine points are the grid-line intersections), by default 16.
         """
         verts = np.concatenate(
             (
@@ -404,27 +451,35 @@ class Limiter_handler:
             self.fine_point_per_cell_Z[key] = np.array(self.fine_point_per_cell_Z[key])
         self.fine_point = fine_points
 
-    def interp_on_limiter_points_cell(self, id_R, id_Z, psi):
-        """Calculates a bilinear interpolation of the flux function psi in the solver's grid
-        cell [eq.R[id_R], eq.R[id_R + 1]] x [eq.Z[id_Z], eq.Z[id_Z + 1]]. The interpolation is returned directly for
-        the refined points on the limiter boundary that fall in that grid cell, as assigned
-        through the self.fine_point_per_cell objects.
+    def interp_on_limiter_points_cell(
+        self, id_R: int, id_Z: int, psi: np.ndarray
+    ) -> tuple[np.ndarray | list, list]:
+        """
+        Bilinearly interpolate the flux function psi in one grid cell.
 
+        The cell is [eq.R[id_R], eq.R[id_R + 1]] x [eq.Z[id_Z], eq.Z[id_Z + 1]]. The
+        interpolation is returned directly for the refined points on the limiter
+        boundary that fall in that grid cell, as assigned through the
+        self.fine_point_per_cell objects.
 
         Parameters
         ----------
         id_R : int
-            index of the R coordinate for the relevant grid cell
+            Index of the R coordinate for the relevant grid cell.
         id_Z : int
-            index of the Z coordinate for the relevant grid cell
-        psi : np.array on the solver's grid
-            Vaules of the total flux function ofn the solver's grid.
+            Index of the Z coordinate for the relevant grid cell.
+        psi : np.ndarray
+            Values of the total flux function on the solver's grid, shape (nx, ny).
 
         Returns
         -------
-        vals : np.array
-            Collection of floating point interpolated values of the flux function
-            at the self.fine_point_per_cell[id_R, id_Z] locations.
+        vals : np.ndarray or list
+            Interpolated values of the flux function at the
+            self.fine_point_per_cell[id_R, id_Z] locations (empty list if the cell
+            contains no limiter points).
+        idxs : list
+            Indices into ``self.fine_point`` of the corresponding points (empty list
+            if the cell contains no limiter points).
         """
         if (id_R, id_Z) in self.fine_point_per_cell_Z.keys():
             ker = psi[id_R : id_R + 2, id_Z : id_Z + 2][np.newaxis, :, :]
@@ -438,31 +493,35 @@ class Limiter_handler:
             idxs = []
         return vals, idxs
 
-    def interp_on_limiter_points(self, id_R, id_Z, psi):
-        """Uses interp_on_limiter_points_cell to interpolate the flux function psi
+    def interp_on_limiter_points(
+        self, id_R: int, id_Z: int, psi: np.ndarray
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """
+        Interpolate psi on the limiter boundary points of the 9 cells around a cell.
+
+        Uses interp_on_limiter_points_cell to interpolate the flux function psi
         on the refined limiter boundary points relevant to the 9 cells
         {id_R-1, id_R, id_R+1} X {id_Z-1, id_Z, id_Z+1}. Interpolated values on the
         boundary points relevant to the cells above are collated and returned.
-        This is called by self.core_mask_limiter with id_R, id_Z corresponding to the
-        grid cell outside the limiter (but in the diverted core) with the
-        highest psi value (referred to as id_psi_max_out in self.core_mask_limiter)
-
+        Not currently called by ``core_mask_limiter`` (the corresponding code there
+        is commented out).
 
         Parameters
         ----------
         id_R : int
-            index of the R coordinate for the relevant grid cell
-        id_Z : _type_
-            index of the Z coordinate for the relevant grid cell
-        psi : _type_
-            Vaules of the total flux function ofn the solver's grid.
+            Index of the R coordinate for the central grid cell.
+        id_Z : int
+            Index of the Z coordinate for the central grid cell.
+        psi : np.ndarray
+            Values of the total flux function on the solver's grid, shape (nx, ny).
 
         Returns
         -------
-        vals : np.array
-            Collection of floating point interpolated values of the flux function
-            at the self.fine_point_per_cell locations relevant to all of the 9 cells
-            {id_R-1, id_R, id_R+1} X {id_Z-1, id_Z, id_Z+1}
+        vals : np.ndarray
+            Interpolated values of the flux function at the self.fine_point_per_cell
+            locations relevant to all of the 9 cells.
+        idxs : np.ndarray
+            Indices into ``self.fine_point`` of the corresponding points.
         """
         vals = []
         idxs = []
@@ -476,7 +535,7 @@ class Limiter_handler:
         # vals = np.concatenate(vals)
         return vals, idxs
 
-    def psi_on_limiter_boundary(self, psi):
+    def psi_on_limiter_boundary(self, psi: np.ndarray) -> np.ndarray:
         """Interpolate the flux function on all refined limiter boundary points.
 
         Parameters
@@ -502,48 +561,48 @@ class Limiter_handler:
 
     def core_mask_limiter(
         self,
-        psi,
-        psi_bndry,
-        core_mask,
-        limiter_mask_out,
-        current_sign=1.0,
+        psi: np.ndarray,
+        psi_bndry: float,
+        core_mask: np.ndarray,
+        limiter_mask_out: np.ndarray,
+        current_sign: float = 1.0,
         #   limiter_mask_in,
         #   linear_coeff=.5
-    ):
-        """Checks if plasma is in a limiter configuration rather than a diverted configuration.
+    ) -> tuple[float, np.ndarray, bool]:
+        """
+        Check if the plasma is in a limiter configuration rather than a diverted one.
+
         This is obtained by checking whether the core mask deriving from the assumption of a diverted configuration
         implies an overlap with the limiter. If so, an interpolation of psi on the limiter boundary points
         is called to determine the value of psi_boundary and to recalculate the core_mask accordingly.
 
         Parameters
         ----------
-        psi : np.array
+        psi : np.ndarray
             The flux function, including both plasma and metal components.
             np.shape(psi) = (eq.nx, eq.ny)
         psi_bndry : float
             The value of the flux function at the boundary.
             This is xpt[0][2] for a diverted configuration, where xpt is the output of critical.find_critical
-        core_mask : np.array
+        core_mask : np.ndarray
             The mask identifying the plasma region under the assumption of a diverted configuration.
-            This is the result of FreeGS4E's critical.core_mask
+            This is the result of FreeGSNKE's critical.core_mask
             Same size as psi.
-        limiter_mask_out : np.array
+        limiter_mask_out : np.ndarray
             The mask identifying the border of the limiter, including points just inside it, the 'last' accessible to the plasma.
-            Same size as psi.
+            Same size as psi. Currently unused.
         current_sign : float, optional
             Sign of the plasma current, used to orient flux comparisons.
-
-
 
         Returns
         -------
         psi_bndry : float
             The value of the flux function at the boundary.
-        core_mask : np.array
-            The core mask after correction
+        core_mask : np.ndarray
+            The core mask after correction (float array if no correction was
+            applied, as the input is cast to float).
         flag_limiter : bool
             Flag to identify if the plasma is in a diverted or limiter configuration.
-
         """
         core_mask = core_mask.astype(float)
         # identify the grid points just left-below of points on the limiter that need checking
@@ -600,57 +659,56 @@ class Limiter_handler:
 
         return psi_bndry, core_mask, self.flag_limiter
 
-    def Iy_from_jtor(self, jtor):
-        """Generates 1d vector of plasma current values at the grid points of the reduced plasma domain.
+    def Iy_from_jtor(self, jtor: np.ndarray) -> np.ndarray:
+        """
+        Generate 1d vector of plasma current values at the grid points of the reduced plasma domain.
 
         Parameters
         ----------
         jtor : np.ndarray
-            Plasma current distribution on full domain. np.shape(jtor) = np.shape(eq.R)
+            Plasma current density on full domain. np.shape(jtor) = np.shape(eq.R)
 
         Returns
         -------
         Iy : np.ndarray
-            Reduced 1d plasma current vector
+            Reduced 1d plasma current vector (jtor * dR * dZ inside the limiter).
         """
         Iy = jtor[self.mask_inside_limiter] * self.dRdZ
         return Iy
 
-    def normalize_sum(self, Iy, epsilon=1e-6):
-        """Normalises any vector by the linear sum of its elements.
+    def normalize_sum(self, Iy: np.ndarray, epsilon: float = 1e-6) -> np.ndarray:
+        """
+        Normalise any vector by the linear sum of its elements.
 
         Parameters
         ----------
-        jtor : np.ndarray
-            Plasma current distribution on full domain. np.shape(jtor) = np.shape(eq.R)
+        Iy : np.ndarray
+            Vector to normalise.
         epsilon : float, optional
-            avoid divergences, by default 1e-6
+            Added to the sum to avoid divergences, by default 1e-6
 
         Returns
         -------
-        _type_
-            _description_
+        np.ndarray
+            ``Iy / (sum(Iy) + epsilon)``.
         """
         hat_Iy = Iy / (np.sum(Iy) + epsilon)
         return hat_Iy
 
-    def hat_Iy_from_jtor(self, jtor):
-        """Generates 1d vector on reduced plasma domain for the normalised vector
+    def hat_Iy_from_jtor(self, jtor: np.ndarray) -> np.ndarray:
+        """
+        Generate 1d vector on reduced plasma domain for the normalised vector
         $$ Jtor*dR*dZ/I_p $$.
-
 
         Parameters
         ----------
         jtor : np.ndarray
-            Plasma current distribution on full domain. np.shape(jtor) = np.shape(eq.R)
-        epsilon : float, optional
-            avoid divergences, by default 1e-6
+            Plasma current density on full domain. np.shape(jtor) = np.shape(eq.R)
 
         Returns
         -------
         hat_Iy : np.ndarray
-            Reduced 1d plasma current vector, normalized to total plasma current
-
+            Reduced 1d plasma current vector, normalized to its (regularised) sum
         """
         hat_Iy = jtor[self.mask_inside_limiter]
         hat_Iy = self.normalize_sum(hat_Iy)
@@ -666,9 +724,12 @@ class Limiter_handler:
         """Projects a (discretized current) vector defined on the full plasma domain onto the reduced plasma domain."""
         return vec[self.mask_inside_limiter]
 
-    def rebuild_map2d(self, reduced_vector, map_dummy, idxs_mask):
-        """Rebuilds 2d map on full domain corresponding to 1d vector
-        reduced_vector on smaller plasma domain
+    def rebuild_map2d(
+        self, reduced_vector: np.ndarray, map_dummy: np.ndarray, idxs_mask: np.ndarray
+    ) -> np.ndarray:
+        """
+        Rebuild 2d map on full domain corresponding to 1d vector
+        reduced_vector on smaller plasma domain.
 
         Parameters
         ----------
@@ -682,7 +743,7 @@ class Limiter_handler:
 
         Returns
         -------
-        self.map2d : np.ndarray
+        map2d : np.ndarray
             2d map on domain as map_dummy. Values on gridpoints outside the
             reduced plasma domain are set to zero.
         """

@@ -10,6 +10,7 @@ __pycache__
 examples/test*
 examples/*.py
 examples/*.geqdsk
+examples/*.nc
 examples/*.mat
 examples/Geof*
 examples/*.pdf
@@ -56,3 +57,21 @@ examples/control_pickles/*
 freegsnke/control_loop/control_test_files/*
 .github/copilot-instructions.md
 AGENTS.md
+
+# Local Beads state
+.beads/
+.beads.gate.lock
+
+# Local AI-agent instructions and configuration
+AGENTS.override.md
+CLAUDE.md
+GEMINI.md
+.agents/
+.codex/
+.claude/
+.cursor/
+.cursorrules
+.aider*
+.continue/
+.roo/
+.windsurf/

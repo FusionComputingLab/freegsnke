@@ -1,30 +1,33 @@
 """
-Defines a few properties of the plasma current equation (i.e. the lumped parameter model 
-used as an effective circuit equation for the plasma). 
+Defines a few properties of the plasma current equation (i.e. the lumped parameter model
+used as an effective circuit equation for the plasma).
 
 Copyright 2025 UKAEA, UKRI-STFC, and The Authors, as per the COPYRIGHT and README files.
 
 This file is part of FreeGSNKE.
+
+FreeGSNKE is free software: you can redistribute it and/or modify
+it under the terms of the GNU Lesser General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
 
 FreeGSNKE is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 GNU Lesser General Public License for more details.
 
-FreeGSNKE is free software: you can redistribute it and/or modify
-it under the terms of the GNU Lesser General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
-  
 You should have received a copy of the GNU Lesser General Public License
-along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>. 
+along with FreeGSNKE. If not, see <http://www.gnu.org/licenses/>.
 """
 
+from __future__ import annotations
+
 import numpy as np
-from freegs4e.gradshafranov import Greens
+
+from .gradshafranov import Greens
 
 
-def Myy(plasma_pts):
+def Myy(plasma_pts: np.ndarray) -> np.ndarray:
     """
     Compute the mutual inductance matrix between plasma grid points.
 
@@ -63,7 +66,7 @@ def Myy(plasma_pts):
     return 2 * np.pi * greenm
 
 
-def grid_greens(R, Z):
+def grid_greens(R: np.ndarray, Z: np.ndarray) -> np.ndarray:
     """
     Compute the Green's function matrix for a structured (R, Z) grid.
 
@@ -80,9 +83,9 @@ def grid_greens(R, Z):
 
     Returns
     -------
-    ggreens : ndarray
-        Green's function evaluated on the expanded grid, scaled by 2π.
-        Shape depends on broadcasting of the underlying `Greens` function.
+    ggreens : ndarray, shape (N, N, M)
+        Green's function evaluated on the expanded grid, scaled by 2π. Entry
+        ``[i, j, k]`` couples ``(R[i, 0], z_k)`` to ``(R[j, 0], 0)``.
 
     Notes
     -----

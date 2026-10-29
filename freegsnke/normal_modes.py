@@ -5,39 +5,60 @@ Copyright 2025 UKAEA, UKRI-STFC, and The Authors, as per the COPYRIGHT and READM
 
 This file is part of FreeGSNKE.
 
+FreeGSNKE is free software: you can redistribute it and/or modify
+it under the terms of the GNU Lesser General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
 FreeGSNKE is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 GNU Lesser General Public License for more details.
 
-FreeGSNKE is free software: you can redistribute it and/or modify
-it under the terms of the GNU Lesser General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
-  
 You should have received a copy of the GNU Lesser General Public License
-along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.   
+along with FreeGSNKE. If not, see <http://www.gnu.org/licenses/>.
 """
+
+from __future__ import annotations
 
 import numpy as np
 
 
 class mode_decomposition:
-    """Sets up the vessel mode decomposition to be used by the dynamic solver(s)"""
+    """Sets up the vessel mode decomposition used by the dynamic solver(s)."""
 
-    def __init__(self, coil_resist, coil_self_ind, n_coils, n_active_coils):
-        """Instantiates the class.
-        Matrix data calculated here is used to reformulate the system of circuit eqs,
-        primarily in circuit_eq_metal.py
+    def __init__(
+        self,
+        coil_resist: np.ndarray,
+        coil_self_ind: np.ndarray,
+        n_coils: int,
+        n_active_coils: int,
+    ) -> None:
+        """
+        Instantiate the class.
+
+        Matrix data calculated here is used to reformulate the system of circuit
+        equations, primarily in circuit_eq_metal.py.
 
         Parameters
         ----------
-        coil_resist : np.array
+        coil_resist : np.ndarray
             1d array of resistance values for all machine conducting elements,
-            including both active coils and passive structures.
-        coil_self_ind : np.array
-            2d matrix of mutual inductances between all pairs of machine conducting elements,
-            including both active coils and passive structures
+            including both active coils and passive structures, shape (n_coils,).
+        coil_self_ind : np.ndarray
+            2d matrix of mutual inductances between all pairs of machine
+            conducting elements, including both active coils and passive
+            structures, shape (n_coils, n_coils).
+        n_coils : int
+            Total number of conducting elements (active coils and passive
+            structures).
+        n_active_coils : int
+            Number of active coils; these are ordered first.
+
+        Raises
+        ------
+        ValueError
+            If `coil_resist` or `coil_self_ind` are not compatible with `n_coils`.
         """
 
         # check number of coils is compatible with data provided
@@ -112,7 +133,7 @@ class mode_decomposition:
             self.Pmatrix.T @ self.Pmatrix, self.Pmatrix.T
         )
 
-    def normal_modes_greens(self, eq_vgreen):
+    def normal_modes_greens(self, eq_vgreen: np.ndarray) -> np.ndarray:
         """
         Calculate the Green functions of the vessel normal modes.
 
@@ -132,9 +153,14 @@ class mode_decomposition:
 
         Parameters
         ----------
-        eq_vgreen : np.array
-            the vectorised green functions of each coil.
-            Can be found at eq._vgreen. np.shape(eq_vgreen)=(n_coils, nx, ny)
+        eq_vgreen : np.ndarray
+            The vectorised Green functions of each coil, found at
+            ``eq._vgreen``, with shape (n_coils, nx, ny).
+
+        Returns
+        -------
+        np.ndarray
+            Green functions of the normal modes, shape (n_coils, nx, ny).
         """
 
         #        grid_shape = eq_vgreen.shape[1:]

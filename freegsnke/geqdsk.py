@@ -1,0 +1,592 @@
+"""
+Handles reading and writing of Equilibrium objects
+
+Writing is relatively straightforward, but reading requires inferring
+the currents in the PF coils
+
+Copyright 2016 Ben Dudson, University of York. Email: benjamin.dudson@york.ac.uk
+
+This file is part of FreeGSNKE.
+
+FreeGSNKE is free software: you can redistribute it and/or modify
+it under the terms of the GNU Lesser General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+FreeGSNKE is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Lesser General Public License for more details.
+
+You should have received a copy of the GNU Lesser General Public License
+along with FreeGSNKE. If not, see <http://www.gnu.org/licenses/>.
+"""
+
+from __future__ import annotations
+
+import math
+from typing import Callable, TextIO
+
+import numpy as np
+from numpy import clip, linspace, ravel, reshape, zeros
+from scipy import interpolate
+from scipy.integrate import romb
+
+from . import _geqdsk, control, critical, jtor, picard
+from .equilibrium import Equilibrium
+from .gradshafranov import mu0
+from .machine import Wall
+
+
+def write(
+    eq: Equilibrium,
+    fh: TextIO,
+    label: str | None = None,
+    oxpoints: tuple | None = None,
+    fileformat: Callable[..., None] = _geqdsk.write,
+) -> None:
+    """
+    Write a GEQDSK equilibrium file, given an Equilibrium object.
+
+    Parameters
+    ----------
+    eq : Equilibrium
+        Equilibrium object.
+    fh : TextIO
+        Open, writable text file handle.
+    label : str, optional
+        Text label to put in the file.
+    oxpoints : tuple, optional
+        O- and X-points ``(opoint, xpoint)`` as returned by
+        ``critical.find_critical``. If not given, they are calculated using
+        ``critical.find_critical``.
+    fileformat : Callable[..., None], optional
+        Low-level writer, called as ``fileformat(data, fh, label=label)``.
+        Defaults to the GEQDSK writer.
+    """
+    # Get poloidal flux
+    psi = eq.psi()
+    # psi = psi - np.amin(psi)
+    # Get size of the grid
+    nx, ny = psi.shape
+
+    if oxpoints:
+        opoint, xpoint = oxpoints
+    else:
+        # Find the O- and X-points
+        opoint, xpoint = critical.find_critical(eq.R, eq.Z, psi)
+
+    rmin = eq.Rmin
+    rmax = eq.Rmax
+    zmin = eq.Zmin
+    zmax = eq.Zmax
+
+    fvac = eq.fvac()  # Vacuum f = R*Bt
+    R0 = 1.0  # Reference location
+
+    data = {
+        "nx": nx,
+        "ny": ny,
+        "rdim": rmax - rmin,  # Horizontal dimension in meter of computational box
+        "zdim": zmax - zmin,  # Vertical dimension in meter of computational box
+        "rcentr": R0,  # R in meter of vacuum toroidal magnetic field BCENTR
+        "bcentr": fvac / R0,  # Vacuum magnetic field at rcentr
+        "rleft": rmin,  # Minimum R in meter of rectangular computational box
+        "zmid": 0.5 * (zmin + zmax),
+    }  # Z of center of computational box in meter
+
+    data["rmagx"], data["zmagx"], data["simagx"] = opoint[0]  # magnetic axis
+
+    # Remove Psi magi axis to set it to zero at mag x
+    data["sibdry"] = xpoint[0][2] - data["simagx"]  # Psi at boundary
+
+    data["cpasma"] = eq.plasmaCurrent()  # Plasma current [A]
+
+    psinorm = linspace(0.0, 1.0, nx, endpoint=True)
+
+    data["fpol"] = eq.fpol(psinorm)
+    data["pres"] = eq.pressure(psinorm)
+    data["ffprime"] = eq.ffprime(psinorm)
+    data["pprime"] = eq.pprime(psinorm)
+
+    # Added the pprime and ffprime data into geqdsk.write
+    data["fprim"] = eq.ffprime(psinorm)
+    data["pprim"] = eq.pprime(psinorm)
+    data["psi"] = psi - data["simagx"]
+    data["simagx"] = 0.0
+
+    qpsi = zeros([nx])
+    qpsi[1:] = eq.q(psinorm[1:])  # Exclude axis
+    qpsi[0] = qpsi[1]
+    data["qpsi"] = qpsi
+
+    # rlim, zlim contain the wall, if there is one.
+
+    if eq.tokamak.wall:
+        data["rlim"] = eq.tokamak.wall.R
+        data["zlim"] = eq.tokamak.wall.Z
+
+    # rbdry, zbdry contain the boundary of the plasma
+
+    isoflux = np.array(
+        eq.separatrix(
+            ntheta=101,
+        ),
+    )
+
+    ind = np.argmin(isoflux[:, 1])
+    data["rbdry"] = np.roll(isoflux[:, 0][::-1], -ind)
+    data["rbdry"] = np.append(data["rbdry"], data["rbdry"][0])
+
+    data["zbdry"] = np.roll(isoflux[:, 1][::-1], -ind)
+    data["zbdry"] = np.append(data["zbdry"], data["zbdry"][0])
+
+    # Call fileformat to write the data
+    fileformat(data, fh, label=label)
+
+
+def isPow2(val: int) -> bool:
+    """
+    Check whether an integer is a power of 2.
+
+    Parameters
+    ----------
+    val : int
+        Integer to test.
+
+    Returns
+    -------
+    bool
+        True if `val` is a power of 2.
+    """
+    return val & (val - 1) == 0
+
+
+def ceilPow2(val: float) -> int:
+    """
+    Find a power of two greater than or equal to `val`.
+
+    Parameters
+    ----------
+    val : float
+        Positive value.
+
+    Returns
+    -------
+    int
+        Smallest power of two that is >= `val`.
+    """
+    return 2 ** math.ceil(math.log2(val))
+
+
+def read(
+    fh: TextIO,
+    machine: object,
+    rtol: float = 1e-3,
+    ntheta: int = 8,
+    show: bool = False,
+    axis: object | None = None,
+    pause: float = 0.0001,
+    cocos: int = 1,
+    domain: tuple[float, float, float, float] | None = None,
+    blend: float = 0.0,
+    fit_sol: bool = False,
+    maxits: int | None = 50,
+) -> Equilibrium:
+    """
+    Read a G-EQDSK format file and build an Equilibrium from it.
+
+    A nonlinear solve is performed, using Picard iteration.
+
+    Parameters
+    ----------
+    fh : TextIO
+        Open, readable text file handle.
+    machine : object
+        Machine object defining coil locations.
+    rtol : float, optional
+        Relative error in the nonlinear solve.
+    ntheta : int, optional
+        Number of points in poloidal angle on the separatrix, used to
+        constrain the plasma shape.
+    show : bool, optional
+        Set to True to show the solution in a new figure.
+    axis : object, optional
+        Matplotlib Axes for plotting. Implies ``show=True``.
+    pause : float, optional
+        Delay between output plots. If negative, waits for the window to be
+        closed.
+    cocos : int, optional
+        COordinate COnventions. Not fully handled yet, only whether psi is
+        divided by 2pi or not: if > 10 then psi is divided by 2pi.
+    domain : tuple[float, float, float, float], optional
+        The (R, Z) domain to solve for, ``(Rmin, Rmax, Zmin, Zmax)``.
+    blend : float, optional
+        Weighting (between 0 and 1) of the previous poloidal flux at each
+        step of the Picard iteration. The default (0.0) uses no blending.
+        Blending slows convergence, but can stabilise some oscillating
+        unstable solutions.
+    fit_sol : bool, optional
+        If False (default) then only the poloidal flux inside the separatrix
+        is used to constrain the coil currents. This is particularly for
+        reading SCENE input, which is not valid outside the separatrix. If
+        True, the whole domain is used in the fitting, which is useful if the
+        locations of strike points need to be constrained.
+    maxits : int or None, optional
+        Maximum number of Picard iterations. None means no limit; if the
+        limit is exceeded then a RuntimeError is raised.
+
+    Returns
+    -------
+    Equilibrium
+        The equilibrium. In addition, ``eq.control`` is the control system
+        (set only if an X-point is found) and ``eq._profiles`` the profiles
+        object.
+
+    Raises
+    ------
+    ValueError
+        If both `fit_sol` and `domain` are given.
+    """
+
+    if show:
+        import matplotlib.pyplot as plt
+
+    if fit_sol and domain:
+        raise ValueError("Sorry, fit_sol cannot be used with the domain keyword")
+
+    if axis is not None:
+        show = True
+
+    # Read the data as a Dictionary
+    data = _geqdsk.read(fh, cocos=cocos)
+
+    # If data contains a limiter, set the machine wall
+    if "rlim" in data:
+        if len(data["rlim"]) > 3:
+            machine.wall = Wall(data["rlim"], data["zlim"])
+        else:
+            print("Fewer than 3 points given for limiter/wall. Ignoring.")
+
+    nx = data["nx"]
+    ny = data["ny"]
+    psi = data["psi"]
+
+    if not (isPow2(nx - 1) and isPow2(ny - 1)):
+        print(
+            "Warning: Input grid size %d x %d has sizes which are not 2^n+1" % (nx, ny)
+        )
+
+        rin = linspace(0, 1, nx)
+        zin = linspace(0, 1, ny)
+        psi_interp = interpolate.RectBivariateSpline(rin, zin, psi, kx=1, ky=1)
+
+        # Ensure that newnx, newny is 2^n + 1
+        nx = ceilPow2(nx - 1) + 1
+        ny = ceilPow2(ny - 1) + 1
+        print("   => Resizing to %d x %d" % (nx, ny))
+
+        rnew = linspace(0, 1, nx)
+        znew = linspace(0, 1, ny)
+
+        # Interpolate onto new grid
+        psi = psi_interp(rnew, znew)
+
+    # Range of psi normalises psi derivatives
+    psi_bndry = data["sibdry"]
+    psi_axis = data["simagx"]
+    psirange = data["sibdry"] - data["simagx"]
+
+    psinorm = linspace(0.0, 1.0, data["nx"], endpoint=True)
+
+    # Create spline fits to pressure, f, pprime and ffprime.
+    # G-EQDSK stores pprime = dp/dpsi and ffprime = F dF/dpsi directly,
+    # so use those arrays rather than reconstructing them from p and F.
+    p_spl = interpolate.InterpolatedUnivariateSpline(psinorm, data["pres"])
+    pprime_spl = interpolate.InterpolatedUnivariateSpline(psinorm, data["pprime"])
+
+    f_spl = interpolate.InterpolatedUnivariateSpline(psinorm, data["fpol"])
+    ffprime_spl = interpolate.InterpolatedUnivariateSpline(psinorm, data["ffprime"])
+
+    q_spl = interpolate.InterpolatedUnivariateSpline(psinorm, data["qpsi"])
+
+    # functions to return p, pprime, f and ffprime
+    def p_func(psinorm: float | np.ndarray) -> float | np.ndarray:
+        """
+        Evaluate the pressure spline at normalised poloidal flux.
+
+        Parameters
+        ----------
+        psinorm : float or np.ndarray
+            Normalised poloidal flux (0 at the axis, 1 at the boundary).
+
+        Returns
+        -------
+        float or np.ndarray
+            Values of pressure, with the same shape as `psinorm`.
+        """
+        if hasattr(psinorm, "shape"):
+            return reshape(p_spl(ravel(psinorm)), psinorm.shape)
+        return p_spl(psinorm)
+
+    def f_func(psinorm: float | np.ndarray) -> float | np.ndarray:
+        """
+        Evaluate the f = R*Bt spline at normalised poloidal flux.
+
+        Parameters
+        ----------
+        psinorm : float or np.ndarray
+            Normalised poloidal flux (0 at the axis, 1 at the boundary).
+
+        Returns
+        -------
+        float or np.ndarray
+            Values of f = R*Bt, with the same shape as `psinorm`.
+        """
+        if hasattr(psinorm, "shape"):
+            return reshape(f_spl(ravel(psinorm)), psinorm.shape)
+        return f_spl(psinorm)
+
+    def pprime_func(psinorm: float | np.ndarray) -> float | np.ndarray:
+        """
+        Evaluate the dp/dpsi spline at normalised poloidal flux.
+
+        Parameters
+        ----------
+        psinorm : float or np.ndarray
+            Normalised poloidal flux (0 at the axis, 1 at the boundary).
+
+        Returns
+        -------
+        float or np.ndarray
+            Values of dp/dpsi, with the same shape as `psinorm`.
+        """
+        if hasattr(psinorm, "shape"):
+            return reshape(pprime_spl(ravel(psinorm)), psinorm.shape)
+        return pprime_spl(psinorm)
+
+    def ffprime_func(psinorm: float | np.ndarray) -> float | np.ndarray:
+        """
+        Evaluate the f df/dpsi spline at normalised poloidal flux.
+
+        Parameters
+        ----------
+        psinorm : float or np.ndarray
+            Normalised poloidal flux (0 at the axis, 1 at the boundary).
+
+        Returns
+        -------
+        float or np.ndarray
+            Values of f df/dpsi, with the same shape as `psinorm`.
+        """
+        if hasattr(psinorm, "shape"):
+            return reshape(ffprime_spl(ravel(psinorm)), psinorm.shape)
+        return ffprime_spl(psinorm)
+
+    def q_func(psinorm: float | np.ndarray) -> float | np.ndarray:
+        """
+        Evaluate the safety factor q spline at normalised poloidal flux.
+
+        Parameters
+        ----------
+        psinorm : float or np.ndarray
+            Normalised poloidal flux (0 at the axis, 1 at the boundary).
+
+        Returns
+        -------
+        float or np.ndarray
+            Values of safety factor q, with the same shape as `psinorm`.
+        """
+        if hasattr(psinorm, "shape"):
+            return reshape(q_spl(ravel(psinorm)), psinorm.shape)
+        return q_spl(psinorm)
+
+    # Create a profile object to calculate toroidal current density Jtor.
+    # G-EQDSK supplies p, F and their derivatives on a normalised psi grid;
+    # the derivatives used here are with respect to the physical poloidal flux.
+    # Keep Ip_logic disabled so the imported pprime and ffprime profiles are
+    # used directly rather than renormalised after the first Jtor evaluation.
+    profiles = jtor.GeneralPprimeFFprime(
+        data["cpasma"],
+        data["rcentr"] * data["bcentr"],
+        psinorm,
+        pprime_data=pprime_func(psinorm),
+        ffprime_data=ffprime_func(psinorm),
+        p_data=p_func(psinorm),
+        f_data=f_func(psinorm),
+        Ip_logic=False,
+    )
+
+    # Calculate normalised psi.
+    # 0 = magnetic axis
+    # 1 = plasma boundary
+    psi_norm = clip((psi - psi_axis) / (psi_bndry - psi_axis), 0.0, 1.1)
+
+    # Create an Equilibrium object
+    eq = Equilibrium(
+        tokamak=machine,
+        Rmin=data["rleft"],
+        Rmax=data["rleft"] + data["rdim"],
+        Zmin=data["zmid"] - 0.5 * data["zdim"],
+        Zmax=data["zmid"] + 0.5 * data["zdim"],
+        nx=nx,
+        ny=ny,  # Number of grid points
+    )
+    # Grid spacing
+    dR = eq.R[1, 0] - eq.R[0, 0]
+    dZ = eq.Z[0, 1] - eq.Z[0, 0]
+
+    # Create masking function: 1 inside plasma, 0 outside
+    opoint, xpoint = critical.find_critical(eq.R, eq.Z, psi)
+    mask = critical.core_mask(eq.R, eq.Z, psi, opoint, xpoint, psi_bndry)
+
+    # Toroidal current
+    Jtor = eq.R * pprime_func(psi_norm) + ffprime_func(psi_norm) / (eq.R * mu0)
+    Jtor *= mask
+
+    # Quick calculation of total toroidal current
+    print("CURRENT: ", romb(romb(Jtor)) * dR * dZ)
+
+    if domain:
+        # Change the (R,Z) domain, increasing the resolution if needed
+        # to keep the resolution as good or better than the input
+        Rmin, Rmax, Zmin, Zmax = domain
+        # Calculate approximate grid size needed to keep current resolution
+        fnewnx = (Rmax - Rmin) / dR + 1.0
+        if fnewnx > nx:
+            newnx = int(ceilPow2(fnewnx - 1)) + 1
+        fnewny = (Zmax - Zmin) / dZ + 1.0
+        if fnewny > ny:
+            newny = int(ceilPow2(fnewny - 1)) + 1
+
+        if (newnx != nx) or (newny != ny):
+            print("Changing resolution: {} x {}".format(newnx, newny))
+
+        # Create an interpolation function for Jtor and the input psi
+        Jtor_func = interpolate.RectBivariateSpline(eq.R[:, 0], eq.Z[0, :], Jtor)
+        psi_func = interpolate.RectBivariateSpline(eq.R[:, 0], eq.Z[0, :], psi)
+
+        # Create a new Equilibrium object
+        # (replacing previous 'eq')
+        eq = Equilibrium(
+            tokamak=machine,
+            Rmin=Rmin,
+            Rmax=Rmax,
+            Zmin=Zmin,
+            Zmax=Zmax,
+            nx=nx,
+            ny=ny,
+        )
+
+        # Interpolate Jtor and psi onto new grid
+        Jtor = Jtor_func(eq.R, eq.Z, grid=False)
+        psi = psi_func(eq.R, eq.Z, grid=False)
+
+        # Update the mask function by calculating normalised psi
+        # on the new grid
+        psi_norm = clip((psi - psi_axis) / (psi_bndry - psi_axis), 0.0, 1.0)
+
+        # Create masking function: 1 inside plasma, 0 outside
+        opoint, xpoint = critical.find_critical(eq.R, eq.Z, psi)
+        mask = critical.core_mask(eq.R, eq.Z, psi, opoint, xpoint, psi_bndry)
+
+    # Note: Here we have
+    #   eq : Equilibrium object
+    #   Jtor : 2D array (nx,ny) Toroidal current density
+    #   psi  : 2D array (nx,ny) Input poloidal flux
+    #   psi_norm : 2D array (nx,ny) Normalised input poloidal flux
+    #   mask : 2D array (nx,ny) 1 inside plasma, 0 outside
+
+    # Perform a linear solve to calculate psi
+    # using known Jtor
+    eq.solve(profiles, Jtor=Jtor)  # TODO: removal of solver from eq?
+
+    print(
+        "Plasma current: {0} Amps, input: {1} Amps".format(
+            eq.plasmaCurrent(), data["cpasma"]
+        )
+    )
+
+    # Identify points to constrain: X-points, O-points and separatrix shape
+
+    if show:
+        if axis is None:
+            fig = plt.figure()
+            axis = fig.add_subplot(111)
+        axis.set_aspect("equal")
+        axis.set_xlabel("Major radius [m]")
+        axis.set_ylabel("Height [m]")
+
+        # Note: psi can be offset by a constant in the input
+        axis.contour(eq.R, eq.Z, psi, 50, colors="k")
+
+        # Find all the O- and X-points
+        opoint, xpoint = critical.find_critical(eq.R, eq.Z, psi)
+
+        # Put red dots on X-points
+        for r, z, _ in xpoint:
+            axis.plot(r, z, "ro")
+
+        # Draw separatrix if there is an X-point
+        if len(xpoint) > 0:
+            axis.contour(eq.R, eq.Z, psi, levels=[xpoint[0][2]], colors="r")
+
+    # Find best fit for coil currents
+    # First create a control system (see control.py)
+    if fit_sol:
+        controlsystem = control.ConstrainPsi2D(psi)  # Fit entire domain
+    else:
+        controlsystem = control.ConstrainPsi2D(
+            psi, weights=mask
+        )  # Remove SOL from fitting
+    # Run control system to find coil currents
+    controlsystem(eq)
+
+    if show:
+        axis.contour(eq.R, eq.Z, eq.psi(), 50, colors="r")
+        plt.pause(1)
+
+    # Print the coil currents
+    machine.printCurrents()
+
+    ####################################################################
+    # Refine the equilibrium to ensure consistency
+    # Solve using Picard iteration
+    #
+
+    controlsystem = control.ConstrainPsiNorm2D(psi_norm, weights=mask)
+    picard.solve(
+        eq,  # The equilibrium to adjust
+        profiles,  # The toroidal current profile function
+        controlsystem,
+        show=show,
+        axis=axis,
+        pause=pause,
+        rtol=rtol,
+        blend=blend,
+        maxits=maxits,
+    )
+
+    print(
+        "Plasma current: {0} Amps, input: {1} Amps".format(
+            eq.plasmaCurrent(), data["cpasma"]
+        )
+    )
+    print("Plasma pressure on axis: {0} Pascals".format(eq.pressure(0.0)))
+    machine.printCurrents()
+
+    # Attempt to find O- and X-points
+    psi = eq.psi()
+    opoint, xpoint = critical.find_critical(eq.R, eq.Z, psi)
+
+    if len(xpoint) > 0:
+        # Use x-point and o-point constraints because the size of the grid may be changed
+        # in which case the 2D psi constraints would fail
+
+        # Find the separatrix
+        isoflux = critical.find_separatrix(eq, ntheta=ntheta, axis=axis)
+
+        # Save the control system to eq
+        eq.control = control.constrain(xpoints=xpoint, isoflux=isoflux, gamma=1e-14)
+
+    return eq

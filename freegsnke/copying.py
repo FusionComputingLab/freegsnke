@@ -72,7 +72,7 @@ def copy_into(
     """
 
     if not hasattr(obj, attr) and not strict:
-        logger.info(f"{obj.__class__} has no attribute {attr} but not in strict mode")
+        logger.debug(f"{obj.__class__} has no attribute {attr} but not in strict mode")
         # return without an error because we are not strict
         return
 
@@ -97,7 +97,7 @@ def copy_into(
                     f"Cannot copy {attribute_value.__class__} without deepcopying"
                 )
 
-            logger.info(
+            logger.debug(
                 f"Deepcopying {attribute_value.__class__} because it is mutable but not a numpy array"
                 "of non-objects"
             )

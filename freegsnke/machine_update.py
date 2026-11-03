@@ -168,3 +168,189 @@ class Machine(freegs4e.machine.Machine):
             active_coil_data=active_coil_data,
             preserve_current=preserve_current,
         )
+
+    def add_active_coil(self, coil_name, active_coil_data):
+        """
+        Add one new active coil/circuit in place from direct machine-description data.
+
+        Parameters
+        ----------
+        coil_name : str
+            Label for the new active coil/circuit.
+        active_coil_data : dict
+            Machine-description entry for the new active coil/circuit.
+
+        Returns
+        -------
+        Machine
+            This machine object, updated in place.
+
+        Notes
+        -----
+        Only the new coil's R/M entries are calculated; existing entries are
+        reused. The new coil is inserted immediately before any passive
+        structures, so ``coils_list[:n_active_coils]`` stays exactly the
+        active coils. If this machine is already attached to an equilibrium,
+        use :meth:`freegsnke.equilibrium_update.Equilibrium.add_active_coil`
+        instead so equilibrium Greens functions are extended. Existing
+        nonlinear solver objects should be reinstantiated after a geometry
+        change because they cache machine-dependent matrices and mode
+        decompositions, whose dimensionality will itself have changed.
+        """
+
+        from .build_machine import add_active_coil
+
+        return add_active_coil(
+            self,
+            coil_name=coil_name,
+            active_coil_data=active_coil_data,
+        )
+
+    def remove_active_coil(self, coil_name):
+        """
+        Remove one active coil/circuit in place.
+
+        Parameters
+        ----------
+        coil_name : str
+            Existing active coil/circuit label to remove.
+
+        Returns
+        -------
+        Machine
+            This machine object, updated in place.
+
+        Notes
+        -----
+        Only the removed coil's R/M entries are dropped; existing entries are
+        reused. If this machine is already attached to an equilibrium, use
+        :meth:`freegsnke.equilibrium_update.Equilibrium.remove_active_coil`
+        instead so equilibrium Greens functions are shrunk. Existing
+        nonlinear solver objects should be reinstantiated after a geometry
+        change because they cache machine-dependent matrices and mode
+        decompositions, whose dimensionality will itself have changed.
+        """
+
+        from .build_machine import remove_active_coil
+
+        return remove_active_coil(self, coil_name=coil_name)
+
+    def update_passive_structure(
+        self, name, passive_data, preserve_current=True, refine_mode="G"
+    ):
+        """
+        Update one passive structure in place from direct machine-description data.
+
+        Parameters
+        ----------
+        name : str
+            Existing passive-structure label to replace.
+        passive_data : dict
+            Machine-description entry for ``name``. This is the same data
+            structure stored (per-item) in the passive-coils pickle or direct
+            passive-coils list.
+        preserve_current : bool, optional
+            If True, the old current on ``name`` is copied onto the
+            replacement passive structure. Defaults to True.
+        refine_mode : str, optional
+            Refinement mode for extended (polygonal) passive structures.
+            Defaults to ``"G"``.
+
+        Returns
+        -------
+        Machine
+            This machine object, updated in place.
+
+        Notes
+        -----
+        Only the named passive structure and the R/M entries that depend on it
+        are recalculated. If this machine is already attached to an
+        equilibrium, use
+        :meth:`freegsnke.equilibrium_update.Equilibrium.update_passive_structure`
+        instead so equilibrium Greens functions are refreshed. Existing
+        nonlinear solver objects should be reinstantiated after a geometry
+        change because they cache machine-dependent matrices and mode
+        decompositions.
+        """
+
+        from .build_machine import update_passive_structure
+
+        return update_passive_structure(
+            self,
+            name=name,
+            passive_data=passive_data,
+            preserve_current=preserve_current,
+            refine_mode=refine_mode,
+        )
+
+    def add_passive_structure(self, passive_data, name=None, refine_mode="G"):
+        """
+        Add one new passive structure in place from direct machine-description data.
+
+        Parameters
+        ----------
+        passive_data : dict
+            Machine-description entry for the new passive structure.
+        name : str, optional
+            Label for the new passive structure. If omitted, ``passive_data["name"]``
+            is used, and if that is also absent a default of the form
+            ``f"passive_{self.n_passive_coils}"`` is used.
+        refine_mode : str, optional
+            Refinement mode for extended (polygonal) passive structures.
+            Defaults to ``"G"``.
+
+        Returns
+        -------
+        Machine
+            This machine object, updated in place.
+
+        Notes
+        -----
+        Only the new passive structure's R/M entries are calculated; existing
+        entries are reused. If this machine is already attached to an
+        equilibrium, use
+        :meth:`freegsnke.equilibrium_update.Equilibrium.add_passive_structure`
+        instead so equilibrium Greens functions are extended. Existing
+        nonlinear solver objects should be reinstantiated after a geometry
+        change because they cache machine-dependent matrices and mode
+        decompositions, whose dimensionality will itself have changed.
+        """
+
+        from .build_machine import add_passive_structure
+
+        return add_passive_structure(
+            self,
+            passive_data=passive_data,
+            name=name,
+            refine_mode=refine_mode,
+        )
+
+    def remove_passive_structure(self, name):
+        """
+        Remove one passive structure in place.
+
+        Parameters
+        ----------
+        name : str
+            Existing passive-structure label to remove.
+
+        Returns
+        -------
+        Machine
+            This machine object, updated in place.
+
+        Notes
+        -----
+        Only the removed passive structure's R/M entries are dropped; existing
+        entries are reused. If this machine is already attached to an
+        equilibrium, use
+        :meth:`freegsnke.equilibrium_update.Equilibrium.remove_passive_structure`
+        instead so equilibrium Greens functions are shrunk. Existing nonlinear
+        solver objects should be reinstantiated after a geometry change
+        because they cache machine-dependent matrices and mode decompositions,
+        whose dimensionality will itself have changed.
+        """
+
+        from .build_machine import remove_passive_structure
+
+        return remove_passive_structure(self, name=name)

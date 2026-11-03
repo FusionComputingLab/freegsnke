@@ -23,8 +23,22 @@ import numpy as np
 from matplotlib.path import Path
 from scipy.stats.qmc import LatinHypercube
 
-# Latin hypercube sampling engine (fixed seed for reproducibility)
-engine = LatinHypercube(d=2, seed=42)
+LH_SEED = 42
+
+
+def _new_engine():
+    """
+    Fresh, fixed-seed Latin hypercube sampling engine.
+
+    A new engine is created per call (rather than sharing one persistent,
+    stateful module-level engine) so that sampling is reproducible: a shared
+    engine advances its internal state with every draw, so a build would
+    get different quasi-random samples depending on how many other
+    structures/builds had already consumed samples from it earlier in the
+    same process - i.e. rebuilding the exact same machine description twice
+    in one process would not give the same resistance/inductance matrices.
+    """
+    return LatinHypercube(d=2, seed=LH_SEED)
 
 
 def generate_refinement(R, Z, n_refine, refine_mode):
@@ -93,6 +107,7 @@ def generate_refinement_LH(R, Z, n_refine):
     area, path, vmin, vmax, dv, meanR, meanZ = find_area(R, Z, n_refine)
     Len = np.linalg.norm(dv)
 
+    engine = _new_engine()
     rand_fil = np.zeros((0, 2))
     it = 0
     while len(rand_fil) < n_refine and it < 100:
@@ -211,6 +226,7 @@ def find_area(R, Z, n_refine):
     dv = vmax - vmin
     area = dv[0] * dv[1]
 
+    engine = _new_engine()
     accepted = 0
     mult = 10
     while accepted < 10 * n_refine and mult < 1e6:

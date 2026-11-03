@@ -26,6 +26,7 @@ import numpy as np
 from freegs4e.gradshafranov import Greens
 
 from . import nk_solver_H as nk_solver
+from .inverse import _solve_regularized_lstsq
 
 
 class NKGSsolver:
@@ -1263,14 +1264,15 @@ class NKGSsolver:
         Once A is constructed, the Newton step is computed by solving the
         Tikhonov-regularised least-squares problem:
 
-            min || A ΔI + b0 ||² + ||R ΔI||²
+            min || A ΔI + b0 ||² + ΔIᵀ R ΔI
 
         where:
             b0 = current constraint residual
             R  = regularisation matrix
 
-        If current or flux limits are active, a quadratic optimisation
-        routine is used instead of the closed-form normal equations.
+        Without inequality limits, this is solved as an augmented
+        least-squares system. If current or flux limits are active, a
+        constrained quadratic optimisation routine is used instead.
 
         Parameters
         ----------
@@ -1297,7 +1299,8 @@ class NKGSsolver:
 
         relative_psit_size : float, optional (default=1e-3)
             Target relative change in tokamak flux used to scale the
-            finite-difference perturbations δI.
+            finite-difference perturbations δI. A zero component in the
+            preliminary current step is replaced by a response-based fallback.
             Ensures perturbations are neither too small (noise-dominated)
             nor too large (nonlinear).
 
@@ -1368,14 +1371,42 @@ class NKGSsolver:
         b0 = np.copy(constrain.b)
 
         # ------------------------------------------------------------
-        # scale perturbation size so induced tokamak flux change
-        # is approximately relative_psit_size
+        # Scale the preliminary perturbation, then replace any exactly zero
+        # components with a response-based finite-difference step.
         # ------------------------------------------------------------
+        if not np.isfinite(relative_psit_size) or relative_psit_size <= 0:
+            raise ValueError("relative_psit_size must be finite and greater than zero.")
+        if not np.all(np.isfinite(delta_current)):
+            raise ValueError(
+                "Cannot build full inverse Jacobian from a non-finite preliminary "
+                "current step."
+            )
+
+        control_vgreen = eq._vgreen[constrain.control_mask]
         rel_delta_psit = self.get_rel_delta_psit(
-            delta_current, profiles, eq._vgreen[constrain.control_mask]
+            delta_current, profiles, control_vgreen
         )
-        adj_factor = min(1, relative_psit_size / rel_delta_psit)
-        delta_current *= adj_factor
+        if not np.isfinite(rel_delta_psit):
+            raise ValueError(
+                "Cannot build full inverse Jacobian from a non-finite flux response."
+            )
+        if rel_delta_psit > 0:
+            delta_current *= min(1, relative_psit_size / rel_delta_psit)
+
+        zero_components = np.flatnonzero(delta_current == 0)
+        target_column_response = relative_psit_size / np.sqrt(constrain.n_control_coils)
+        for i in zero_components:
+            unit_current = np.copy(self.dummy_current)
+            unit_current[i] = 1.0
+            response_per_amp = self.get_rel_delta_psit(
+                unit_current, profiles, control_vgreen
+            )
+            if not np.isfinite(response_per_amp) or response_per_amp <= 0:
+                raise ValueError(
+                    "Cannot build full inverse Jacobian: control coil "
+                    f"{i} has zero or non-finite core flux response."
+                )
+            delta_current[i] = target_column_response / response_per_amp
 
         # ============================================================
         # Build Jacobian via finite differences
@@ -1406,14 +1437,10 @@ class NKGSsolver:
                 suppress=True,
             )
 
-            # recompute constraint residual for perturbed equilibrium
-            constrain.optimize_currents(
-                eq=eq,
-                profiles=profiles,
-                full_currents_vec=currents,
-                trial_plasma_psi=self.eq2.plasma_psi,
-                l2_reg=1e-12,
-            )
+            # Rebuild only the perturbed residual. Solving for a current update
+            # here is unnecessary and may invoke the constrained CVXPY route.
+            constrain.build_plasma_vals(trial_plasma_psi=self.eq2.plasma_psi)
+            constrain.build_lsq(currents)
 
             # finite-difference derivative column
             self.dbdI[:, i] = (constrain.b - b0) / delta_current[i]
@@ -1436,13 +1463,13 @@ class NKGSsolver:
             or constrain.psi_norm_limits is not None
         ):
             Newton_delta_current, loss = constrain.optimize_currents_quadratic(
-                eq, profiles, currents, reg_matrix, A=self.dbdI, b=-b0
+                eq, profiles, full_current_vec, reg_matrix, A=self.dbdI, b=-b0
             )
 
-        # otherwise solve normal equations directly
+        # otherwise solve the augmented regularised least-squares system
         else:
-            Newton_delta_current = np.linalg.solve(
-                self.dbdI.T @ self.dbdI + reg_matrix, self.dbdI.T @ -b0
+            Newton_delta_current = _solve_regularized_lstsq(
+                self.dbdI, -b0, np.diag(reg_matrix)
             )
             loss = np.linalg.norm(b0 + np.dot(self.dbdI, Newton_delta_current))
 

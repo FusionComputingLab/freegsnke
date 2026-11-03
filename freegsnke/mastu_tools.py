@@ -30,7 +30,6 @@ from typing import Callable
 
 import matplotlib.pyplot as plt
 import numpy as np
-import pyuda
 import scipy as sp
 import shapely as sh
 from numpy import abs, argmax, clip, linspace, pi
@@ -38,6 +37,18 @@ from numpy.polynomial import Polynomial
 from scipy.interpolate import interp1d
 
 from . import critical
+
+try:
+    import pyuda
+    from mast import MastClient as _MastClient
+    from mast.geom import GeomClient as _GeomClient
+except ImportError as err:
+    raise ImportError(
+        "freegsnke.mastu_tools requires the optional 'pyuda' and 'uda-mast' "
+        "packages. Install FreeGSNKE with the 'uda' extra and then install "
+        "'uda-mast' as described in FreeGSNKE's 'Installing with UDA' README "
+        "section."
+    ) from err
 
 # --------------------------------
 # EXTRACTING EFIT++ DATA

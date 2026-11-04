@@ -44,8 +44,9 @@ def make_Myy_handler(
 
     Parameters
     ----------
-    domain_type: str
-        Type of domain to define Myy over. Supported values: "reduced", "fft".
+    domain_type: {"reduced", "fft"}
+        Type of domain to define Myy over, `reduced` means Myy is defined of over the reduced plasma
+        domain, `fft` means it is defined over frequency space (not limited to the plasma).
     limiter_handler : FreeGSNKE limiter object, i.e. eq.limiter_handler
         Sets the properties of the domain grid and those of the limiter
     layer_size : int, optional
@@ -145,6 +146,12 @@ class Myy_handler(abc.ABC):
 
     @abc.abstractmethod
     def force_build_Myy(self, hatIy: np.ndarray) -> None:
+        """As defined in Reduced_Myy_handler. Definition enforced for compatibility with
+        non_linear_solver"""
+        pass
+
+    @abc.abstractmethod
+    def update_caching_behavior(self, cache: bool | None) -> None:
         """As defined in Reduced_Myy_handler. Definition enforced for compatibility with
         non_linear_solver"""
         pass
@@ -317,6 +324,7 @@ class Reduced_Myy_handler(Myy_handler):
         nmask = np.sum(mask)
 
         self.idxs_myy_mask_red = self.extract_index_mask(mask)
+        self.myy = None  # ensures garbage collection before recalculation
 
         if self.cache_myy:
             dz_idxs = self.idxs_myy_mask_red[1]
@@ -383,6 +391,19 @@ class Reduced_Myy_handler(Myy_handler):
         )
         flag = np.sum(hatIy_broad_rect_red[self.outside_myy_mask])
         return flag
+
+    def update_caching_behavior(self, cache: bool | None) -> None:
+        """
+        Changes the caching behavior to the value of the `cache` parameter.
+
+        Parameters
+        ----------
+        cache: bool | None
+            Tells whether Myy should be cached, or recomputed for every Myy product.
+            None means to preserve whatever cachaing behavior was preset.
+        """
+        if cache is not None:
+            self.cache_myy = cache
 
     def dot(self, hatIy: np.ndarray) -> np.ndarray:
         """
@@ -451,7 +472,7 @@ class Reduced_Myy_handler(Myy_handler):
             d1, d2, d3 = self.gg.shape
             d23 = d2 * d3
 
-            num_slices = 20  # TODO: perhaps instead of fixing the number of slices, fix the block size?
+            num_slices = 32
             step = (nmask - 1) // num_slices + 1
 
             idcs = np.empty((step, nmask), dtype=np.int64)
@@ -470,11 +491,10 @@ class Reduced_Myy_handler(Myy_handler):
                 idxs3b = dz_idxs[np.newaxis]
 
                 # idcs is flattened version of (idxs1,idxs2,idxs3)
-                # TODO: check why there are casting issues with abs()
                 ne.evaluate(
                     "idxs1*d23 + idxs2*d3 + abs(idxs3a-idxs3b)",
                     out=idcs[: end - start],
-                    casting="unsafe",
+                    casting="unsafe",  # unsafe needed due to int to float conversion in numexpr abs()
                 )
 
                 # same as self.myy_buff[:end-start] = self.gg.reshape(-1)[idcs_slice] but faster
@@ -534,8 +554,6 @@ class FFT_Myy_handler(Myy_handler):
             space. (L_fft = (2*nZ - 1) // 2 + 1)
         """
 
-        # TODO: worth evaluating whether L_fft is ever different from nZ
-
         nR = len(R_1D)
         nZ = len(Z_1D)
 
@@ -584,6 +602,10 @@ class FFT_Myy_handler(Myy_handler):
         return False
 
     def force_build_Myy(self, hatIy: np.ndarray) -> None:
+        """Ignored. Defined only for compatibility with non_linear_solver"""
+        pass
+
+    def update_caching_behavior(self, cache: bool | None) -> None:
         """Ignored. Defined only for compatibility with non_linear_solver"""
         pass
 

@@ -2802,6 +2802,7 @@ class nl_solver:
         force_core_mask_linearization: bool = False,
         verbose: bool = False,
         plasma_descriptor_function: Callable[[object], np.ndarray] | None = None,
+        cache_myy: bool | None = None,
     ) -> None:
         """
         Initialize the dynamics solver from a given equilibrium and plasma profiles.
@@ -2839,6 +2840,11 @@ class nl_solver:
         plasma_descriptor_function : Callable[[object], np.ndarray] or None, optional
             Function returning the 1D array of plasma descriptors of an equilibrium.
             Defaults to ``self.plasma_descriptor_function``.
+        cache_myy: bool, default=None
+            Used to change the caching behavior of Myy: if `True`, will (re)compute the Myy matrix and make it
+            so that it is calculated and cached only when its value changes. If `False`, the Myy matrix will be
+            discarded (if it had been cached previously) and will be recalculated every time a product with Myy
+            is computed. If None, no action is taken and whatever behavior was preset is preserved.
 
         Notes
         -----
@@ -2926,6 +2932,8 @@ class nl_solver:
         )
 
         # set Myy matrix in place through the handling object
+
+        self.handleMyy.update_caching_behavior(cache_myy)
         self.handleMyy.force_build_Myy(self.hatIy)
 
         # transfer linearization to linear solver:
@@ -3726,6 +3734,13 @@ class nl_solver:
         if no_GS and not linear_only:
             raise ValueError(
                 "The flag 'no_GS' can only be True when 'linear_only=True'."
+            )
+
+        if not linear_only and not self.handleMyy.cache_myy:
+            warnings.warn(
+                "Non-linear solves without cached Myy are discouraged: a heavy performance cost is expected.\t"
+                "Consider setting `cache_myy=True` when creating the nonlinear solver or when calling `initialize_from_ICs`, "
+                "or alternatively, set `linear_only=True` when creating the nlstepper."
             )
 
         # evaluate whether relinearisation criterion met or not

@@ -1,9 +1,16 @@
 """Tests for machine-description up-down symmetrisation."""
 
+import pickle
+from pathlib import Path
+
 import numpy as np
+import os
 import pytest
 
+from freegsnke.build_machine import build_tokamak_components
 from freegsnke.up_down_symmetry import prepare_up_down_symmetric_machine
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def _active_element(r, z):
@@ -402,3 +409,78 @@ def test_misspelled_passive_pairs():
         ("case_upper_0", "case_lower_1"),
         ("case_upper_1", "case_upper_2"),
     }
+
+
+def test_sparc_machine_can_be_symmetrised_and_built():
+    machine_config_dir = os.path.join(REPO_ROOT, "machine_configs", "SPARC")
+   
+    machine_data = {}
+    for component in ("active_coils", "passive_coils", "limiter", "wall"):
+        path = os.path.join(machine_config_dir , f"SPARC_{component}.pickle")
+        print(path)
+        with open(path, "rb") as machine_file:
+            machine_data[component] = pickle.load(machine_file)
+
+    passive_pairs = [
+        (f"vacuum_vessel_{index}", f"vacuum_vessel_{index + 1}")
+        for index in range(0, 16, 2)
+    ]
+
+    passive_pairs.append(("VSC_coil_cover0", "VSC_coil_cover1"))
+    prepared = prepare_up_down_symmetric_machine(
+        machine_data["active_coils"],
+        machine_data["passive_coils"],
+        machine_data["limiter"],
+        machine_data["wall"],
+        passive_pairs=passive_pairs,
+        exclude_odd_active=True,
+    )
+
+
+    assert len(prepared.passive_pairs) == len(passive_pairs)
+    assert prepared.excluded_odd_active_names == ("VS1",)
+
+    for pair in prepared.passive_pairs:
+        upper, lower = (
+            next(
+                element
+                for element in prepared.passive_coils_data
+                if element["name"] == name
+            )
+            for name in (pair.upper_name, pair.lower_name)
+        )
+        upper_points = np.column_stack((upper["R"], upper["Z"]))
+        reflected_lower = np.column_stack((lower["R"], -np.asarray(lower["Z"])))
+        nearest_distances = np.min(
+            np.linalg.norm(
+                upper_points[:, np.newaxis] - reflected_lower[np.newaxis, :],
+                axis=-1,
+            ),
+            axis=1,
+        )
+        np.testing.assert_allclose(nearest_distances, 0.0, atol=1e-14)
+
+    for boundary in (prepared.limiter_data, prepared.wall_data):
+        points = np.asarray([[entry["R"], entry["Z"]] for entry in boundary])
+        reflected = points.copy()
+        reflected[:, 1] *= -1
+        nearest_distances = np.min(
+            np.linalg.norm(
+                points[:, np.newaxis] - reflected[np.newaxis, :],
+                axis=-1,
+            ),
+            axis=1,
+        )
+        np.testing.assert_allclose(nearest_distances, 0.0, atol=1e-14)
+
+    components = build_tokamak_components(
+        active_coils_data=prepared.even_active_coils_data,
+        passive_coils_data=prepared.passive_coils_data,
+        limiter_data=prepared.limiter_data,
+        wall_data=prepared.wall_data,
+    )
+    assert components["n_active_coils"] == len(prepared.even_active_names)
+    assert components["n_passive_coils"] == len(prepared.passive_coils_data)
+    assert components["n_coils"] == (
+        components["n_active_coils"] + components["n_passive_coils"]
+    )

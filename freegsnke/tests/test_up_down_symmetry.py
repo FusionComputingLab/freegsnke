@@ -1,9 +1,16 @@
 """Tests for machine-description up-down symmetrisation."""
 
+import pickle
+from pathlib import Path
+
 import numpy as np
+import os
 import pytest
 
+from freegsnke.build_machine import build_tokamak_components
 from freegsnke.up_down_symmetry import prepare_up_down_symmetric_machine
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def _active_element(r, z):
@@ -230,3 +237,250 @@ def test_boundary_tolerates_roundoff_at_midplane_vertices():
         points[:, np.newaxis] - reflected[np.newaxis, :], axis=-1
     )
     np.testing.assert_allclose(np.min(distances, axis=1), 0.0, atol=1e-14)
+
+
+def test_unpaired_active_coil_raises():
+    active = {
+        "solenoid": _active_element(
+            [0.2, 0.2],
+            [-0.8, 0.8],
+        ),
+        "p_upper": {"1": _active_element([1.0, 1.1], [0.7, 0.8])},
+        # Missing p_lower
+    }
+
+    with pytest.raises(ValueError, match="Active"):
+        prepare_up_down_symmetric_machine(active)
+
+
+def test_unpaired_passive_element_raises():
+    active = {
+        "solenoid": _active_element(
+            [0.2, 0.2],
+            [-0.8, 0.8],
+        ),
+    }
+
+    passive = [
+        _passive_element(
+            "case_upper_0",
+            "case_upper",
+            [1.0, 1.2, 1.2, 1.0],
+            [0.4] * 4,
+        ),
+        # No matching lower element
+    ]
+
+    with pytest.raises(ValueError, match="Passive"):
+        prepare_up_down_symmetric_machine(active, passive)
+
+
+def test_fails_when_negative_tolerance():
+    active = {
+        "solenoid": _active_element(
+            [0.2, 0.2, 0.2, 0.2],
+            [-0.8, -0.2, 0.19, 0.79],
+        ),
+        "p_upper": {"1": _active_element([1.0, 1.1], [0.7, 0.8])},
+        "p_lower": {"1": _active_element([1.0, 1.1], [-0.72, -0.82])},
+    }
+    passive = [
+        _passive_element("case_upper_0", "case_upper", [1.0, 1.2, 1.2, 1.0], [0.4] * 4),
+        _passive_element("case_upper_1", "case_upper", [1.0, 1.2, 1.2, 1.0], [0.8] * 4),
+        _passive_element(
+            "case_lower_0", "case_lower", [1.0, 1.2, 1.2, 1.0], [-0.82] * 4
+        ),
+        _passive_element(
+            "case_lower_1", "case_lower", [1.0, 1.2, 1.2, 1.0], [-0.42] * 4
+        ),
+    ]
+
+    with pytest.raises(ValueError, match="non-negative"):
+        prepare_up_down_symmetric_machine(active, passive, max_pair_mismatch=-0.05)
+
+
+def test_passive_pairing_fails_when_geometry_mismatch_too_large():
+    active = {
+        "solenoid": _active_element(
+            [0.2, 0.2],
+            [-0.8, 0.8],
+        ),
+    }
+
+    passive = [
+        _passive_element(
+            "case_upper_0",
+            "case_upper",
+            [1.0, 1.2, 1.2, 1.0],
+            [0.4] * 4,
+        ),
+        _passive_element(
+            "case_lower_0",
+            "case_lower",
+            [1.0, 1.3, 1.2, 1.0],  # deliberately wrong R
+            [-0.4] * 4,
+        ),
+    ]
+
+    with pytest.raises(ValueError, match="Largest failures"):
+        prepare_up_down_symmetric_machine(
+            active,
+            passive,
+            max_pair_mismatch=0.05,
+        )
+
+
+def test_passive_pairing_with_multiple_identical_blocks_is_stable():
+    passive = [
+        _passive_element("case_upper_0", "case", [1.0, 1.2, 1.2, 1.0], [0.2] * 4),
+        _passive_element("case_upper_1", "case", [1.0, 1.2, 1.2, 1.0], [0.6] * 4),
+        _passive_element("case_lower_0", "case", [1.0, 1.2, 1.2, 1.0], [-0.2] * 4),
+        _passive_element("case_lower_1", "case", [1.0, 1.2, 1.2, 1.0], [-0.6] * 4),
+    ]
+
+    prepared = prepare_up_down_symmetric_machine({}, passive)
+
+    assert {(p.upper_name, p.lower_name) for p in prepared.passive_pairs} == {
+        ("case_upper_0", "case_lower_0"),
+        ("case_upper_1", "case_lower_1"),
+    }
+
+
+def test_identical_passive_elements_are_paired_one_to_one():
+    passive = [
+        _passive_element("case_upper_0", "case", [1.0, 1.2, 1.2, 1.0], [0.2] * 4),
+        _passive_element("case_upper_1", "case", [1.0, 1.2, 1.2, 1.0], [0.2] * 4),
+        _passive_element("case_lower_0", "case", [1.0, 1.2, 1.2, 1.0], [-0.2] * 4),
+        _passive_element("case_lower_1", "case", [1.0, 1.2, 1.2, 1.0], [-0.8] * 4),
+    ]
+    prepared = prepare_up_down_symmetric_machine({}, passive)
+
+    assert len(prepared.passive_pairs) == 2
+    assert {p.upper_name for p in prepared.passive_pairs} == {
+        "case_upper_0",
+        "case_upper_1",
+    }
+    assert {p.lower_name for p in prepared.passive_pairs} == {
+        "case_lower_0",
+        "case_lower_1",
+    }
+    np.testing.assert_allclose(
+        sorted(p.reflected_rms for p in prepared.passive_pairs), [0.0, 0.6]
+    )
+
+
+def test_identify_misspelled_active_pairs():
+    active = {
+        "solenoid": _active_element(
+            [0.2, 0.2],
+            [-0.8, 0.8],
+        ),
+        "p_uper": {"1": _active_element([1.0, 1.1], [0.7, 0.8])},
+        "p_lwer": {"1": _active_element([1.0, 1.1], [-0.7, -0.8])},
+        "ps_uper": {"1": _active_element([1.2, 1.1], [0.8, 0.8])},
+    }
+
+    with pytest.raises(ValueError, match="active"):
+        prepare_up_down_symmetric_machine(active)
+
+
+def test_misspelled_passive_pairs():
+    active = {
+        "solenoid": _active_element([0.2, 0.2, 0.2, 0.2], [-0.8, -0.2, 0.19, 0.79]),
+        "p_upper": {"1": _active_element([1.0, 1.1], [0.7, 0.8])},
+        "p_lower": {"1": _active_element([1.0, 1.1], [-0.72, -0.82])},
+    }
+    passive = [
+        _passive_element("case_upper_0", "case_upper", [1.0, 1.2, 1.2, 1.0], [0.4] * 4),
+        _passive_element("case_upper_1", "case_upper", [1.0, 1.2, 1.2, 1.0], [0.8] * 4),
+        _passive_element(
+            "case_upper_2", "case_lower", [1.0, 1.2, 1.2, 1.0], [-0.82] * 4
+        ),
+        _passive_element(
+            "case_lower_1", "case_lower", [1.0, 1.2, 1.2, 1.0], [-0.42] * 4
+        ),
+    ]
+
+    prepared = prepare_up_down_symmetric_machine(
+        active, passive, max_pair_mismatch=0.05
+    )
+
+    assert {(pair.upper_name, pair.lower_name) for pair in prepared.passive_pairs} == {
+        ("case_upper_0", "case_lower_1"),
+        ("case_upper_1", "case_upper_2"),
+    }
+
+
+def test_sparc_machine_can_be_symmetrised_and_built():
+    machine_config_dir = os.path.join(REPO_ROOT, "machine_configs", "SPARC")
+   
+    machine_data = {}
+    for component in ("active_coils", "passive_coils", "limiter", "wall"):
+        path = os.path.join(machine_config_dir , f"SPARC_{component}.pickle")
+        print(path)
+        with open(path, "rb") as machine_file:
+            machine_data[component] = pickle.load(machine_file)
+
+    passive_pairs = [
+        (f"vacuum_vessel_{index}", f"vacuum_vessel_{index + 1}")
+        for index in range(0, 16, 2)
+    ]
+
+    passive_pairs.append(("VSC_coil_cover0", "VSC_coil_cover1"))
+    prepared = prepare_up_down_symmetric_machine(
+        machine_data["active_coils"],
+        machine_data["passive_coils"],
+        machine_data["limiter"],
+        machine_data["wall"],
+        passive_pairs=passive_pairs,
+        exclude_odd_active=True,
+    )
+
+
+    assert len(prepared.passive_pairs) == len(passive_pairs)
+    assert prepared.excluded_odd_active_names == ("VS1",)
+
+    for pair in prepared.passive_pairs:
+        upper, lower = (
+            next(
+                element
+                for element in prepared.passive_coils_data
+                if element["name"] == name
+            )
+            for name in (pair.upper_name, pair.lower_name)
+        )
+        upper_points = np.column_stack((upper["R"], upper["Z"]))
+        reflected_lower = np.column_stack((lower["R"], -np.asarray(lower["Z"])))
+        nearest_distances = np.min(
+            np.linalg.norm(
+                upper_points[:, np.newaxis] - reflected_lower[np.newaxis, :],
+                axis=-1,
+            ),
+            axis=1,
+        )
+        np.testing.assert_allclose(nearest_distances, 0.0, atol=1e-14)
+
+    for boundary in (prepared.limiter_data, prepared.wall_data):
+        points = np.asarray([[entry["R"], entry["Z"]] for entry in boundary])
+        reflected = points.copy()
+        reflected[:, 1] *= -1
+        nearest_distances = np.min(
+            np.linalg.norm(
+                points[:, np.newaxis] - reflected[np.newaxis, :],
+                axis=-1,
+            ),
+            axis=1,
+        )
+        np.testing.assert_allclose(nearest_distances, 0.0, atol=1e-14)
+
+    components = build_tokamak_components(
+        active_coils_data=prepared.even_active_coils_data,
+        passive_coils_data=prepared.passive_coils_data,
+        limiter_data=prepared.limiter_data,
+        wall_data=prepared.wall_data,
+    )
+    assert components["n_active_coils"] == len(prepared.even_active_names)
+    assert components["n_passive_coils"] == len(prepared.passive_coils_data)
+    assert components["n_coils"] == (
+        components["n_active_coils"] + components["n_passive_coils"]
+    )

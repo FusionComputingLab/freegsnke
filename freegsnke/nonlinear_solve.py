@@ -302,6 +302,11 @@ class nl_solver:
 
         # storing the static solver
         self.NK = GSStaticSolver
+        if self.NK.greenfunc is None:
+            warnings.warn(
+                "The GSStaticSolver provided seems to have been initialized with `cache_greens=False`. "
+                "Evolutive solves without cached greens are discouraged: a heavy performance cost is expected."
+            )
         self.NK.forward_solve(
             eq,
             profiles,

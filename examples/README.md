@@ -24,5 +24,6 @@ These example Jupyter notebooks are intended to be the **first port of call for 
 | Example 09 | Learn how to use and build virtual circuits for plasma shape control. | Anyone |
 | Example 10 | Learn how to calculate growth rates associated with vertically unstable modes. | Anyone |
 | Example 11 | Learn how to use the evolutive solver alongside a virtual plasma control system (FreeGSNKE Pulse Design Tool). | Anyone |
+| Example 12 | Learn how to use optional performance features in static solves | Anyone |
 
 If a new example has been created, please add a new line to the table explaining its purpose!

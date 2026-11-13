@@ -21,6 +21,9 @@ These example Jupyter notebooks are intended to be the **first port of call for 
 | Example 07a | Static inverse solve in the "Anamak" toy tokamak. | Anyone |
 | Example 07b | Static inverse solve in a SPARC-like tokamak. | Anyone |
 | Example 07c | Static inverse solve in an ITER-like tokamak. | Anyone |
+| Example 07d | Static forward solve in an EAST-like tokamak. | Anyone |
+| Example 07e | Static inverse solve in a KSTAR-like tokamak. | Anyone |
+| Example 07f | Static inverse solve in a DIII-D-like tokamak. | Anyone |
 | Example 09 | Learn how to use and build virtual circuits for plasma shape control. | Anyone |
 | Example 10 | Learn how to calculate growth rates associated with vertically unstable modes. | Anyone |
 | Example 11 | Learn how to use the evolutive solver alongside a virtual plasma control system (FreeGSNKE Pulse Design Tool). | Anyone |

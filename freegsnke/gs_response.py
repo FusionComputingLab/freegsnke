@@ -1,4 +1,4 @@
-"""Implicit odd susceptibility of a symmetric, smoothly tapered equilibrium."""
+"""Static odd susceptibility with a local source derivative at an even equilibrium."""
 
 import numpy as np
 from scipy.sparse.linalg import LinearOperator, gmres
@@ -14,11 +14,17 @@ def solve_odd_response(
     The returned plasma_response and current_response are per forcing ampere.
     Inputs must describe the SAME frozen equilibrium, mesh and coil geometry.
 
-    Valid only for an even base, odd forcing, an equivariant G and the smooth
-    odd source derivative. Scalar critical-flux/normalization terms project out
-    here; this is NOT their omission from a general Jacobian. A finite-current
-    sharp interface or double-null switching needs separate treatment/checks.
+    This is a restricted static response, not the general equilibrium Jacobian.
+    Requires an even base, even C, odd forcing and reflection-equivariant G.
+    The FULL odd-sector source variation must be local: delta_j = C*delta_psi
+    for total flux. Establish this reduction for the chosen profile model;
+    the routine does not differentiate normalization or critical-flux data.
+    Scalar variations vanish only for reflection-invariant, differentiable
+    quantities at the symmetric base. Other nonlocal/interface terms cannot
+    simply be omitted. Sharp current interfaces and critical-point switching
+    require separate treatment. A unique response requires an invertible tangent.
     Caller must verify the full equilibrium residual and operator symmetry.
+    Growth rates additionally require a conductor/circuit dynamics model.
     """
     # C is the local source derivative at one frozen equilibrium. The caller
     # supplies its profile physics; this solver only couples C to the inverse G.

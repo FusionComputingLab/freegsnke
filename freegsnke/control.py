@@ -12,8 +12,6 @@ Copyright 2026 Nicola C. Amorisco
 
 Derived from FreeGS through FreeGS4E.
 
-SPDX-License-Identifier: LGPL-3.0-or-later
-
 This file is part of FreeGSNKE.
 
 FreeGSNKE is free software: you can redistribute it and/or modify
@@ -23,14 +21,17 @@ the Free Software Foundation, either version 3 of the License, or
 
 FreeGSNKE is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 GNU Lesser General Public License for more details.
 
 You should have received a copy of the GNU Lesser General Public License
-along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
+along with FreeGSNKE. If not, see <http://www.gnu.org/licenses/>.
 """
 
+from __future__ import annotations
+
 import numpy as np
+from matplotlib.axes import Axes
 from numpy import array, dot, eye, transpose
 from numpy.linalg import inv
 from scipy import optimize
@@ -63,23 +64,52 @@ class constrain(object):
 
     psivals - A list of (R,Z,psi) values
 
-    At least one constraint must be included
-
-    gamma - A scalar, minimises the magnitude of the coil currents
+    At least one constraint must be included. The coil currents are found by
+    Tikhonov-regularised least squares, with `gamma` penalising the magnitude
+    of the current changes.
     """
 
-    def __init__(self, xpoints=[], gamma=1e-12, isoflux=[], psivals=[]):
+    def __init__(
+        self,
+        xpoints: list[tuple[float, float]] = [],
+        gamma: float = 1e-12,
+        isoflux: list[tuple[float, float, float, float]] = [],
+        psivals: list[tuple[float, float, float]] = [],
+    ) -> None:
         """
-        Create an instance, specifying the constraints to apply
+        Create an instance, specifying the constraints to apply.
+
+        Parameters
+        ----------
+        xpoints : list[tuple[float, float]], optional
+            X-point ``(R, Z)`` locations.
+        gamma : float, optional
+            Tikhonov regularisation scalar, which minimises the magnitude of the
+            coil currents.
+        isoflux : list[tuple[float, float, float, float]], optional
+            Tuples ``(R1, Z1, R2, Z2)`` of points constrained to have the same
+            flux.
+        psivals : list[tuple[float, float, float]], optional
+            ``(R, Z, psi)`` values to impose.
         """
         self.xpoints = xpoints
         self.gamma = gamma
         self.isoflux = isoflux
         self.psivals = psivals
 
-    def __call__(self, eq):
+    def __call__(self, eq: object) -> None:
         """
-        Apply constraints to Equilibrium eq
+        Apply the constraints to an Equilibrium, modifying its coil currents.
+
+        Parameters
+        ----------
+        eq : object
+            Equilibrium object, modified in place.
+
+        Raises
+        ------
+        ValueError
+            If no constraints were given.
         """
 
         tokamak = eq.getMachine()
@@ -153,13 +183,21 @@ class constrain(object):
         # Ensure that the last constraint used is set in the Equilibrium
         eq._constraints = self
 
-    def plot(self, axis=None, show=True):
+    def plot(self, axis: Axes | None = None, show: bool = True) -> Axes:
         """
-        Plots constraints used for coil current control
+        Plot the constraints used for coil current control.
 
-        axis     - Specify the axis on which to plot
-        show     - Call matplotlib.pyplot.show() before returning
+        Parameters
+        ----------
+        axis : matplotlib.axes.Axes or None, optional
+            Axis on which to plot; a new one is created if None.
+        show : bool, optional
+            Call ``matplotlib.pyplot.show()`` before returning.
 
+        Returns
+        -------
+        matplotlib.axes.Axes
+            The axis containing the plotted constraints.
         """
         from .plotting import plotConstraints
 
@@ -174,16 +212,20 @@ class ConstrainPsi2D(object):
     Ignores constant offset differences between psi array
     """
 
-    def __init__(self, target_psi, weights=None):
+    def __init__(
+        self, target_psi: np.ndarray, weights: float | np.ndarray | None = None
+    ) -> None:
         """
-        target_psi : 2D (R,Z) array
-            Must be the same size as the equilibrium psi
+        Store the target psi and the weights.
 
-        weights : float or 2D array of same size as target_psi
-            Relative importance of each (R,Z) point in the fitting
-            By default every point is equally weighted
-            Set points to zero to ignore them in fitting.
-
+        Parameters
+        ----------
+        target_psi : np.ndarray
+            2D (R, Z) array; must be the same size as the equilibrium psi.
+        weights : float or np.ndarray or None, optional
+            Relative importance of each (R, Z) point in the fitting, a float or
+            a 2D array of the same size as `target_psi`. By default every point
+            is equally weighted. Set points to zero to ignore them in fitting.
         """
         if weights is None:
             weights = np.full(target_psi.shape, 1.0)
@@ -193,9 +235,14 @@ class ConstrainPsi2D(object):
 
         self.weights = weights
 
-    def __call__(self, eq):
+    def __call__(self, eq: object) -> None:
         """
-        Apply constraints to Equilibrium eq
+        Fit the coil currents to the target psi, modifying the Equilibrium.
+
+        Parameters
+        ----------
+        eq : object
+            Equilibrium object, modified in place.
         """
 
         tokamak = eq.getMachine()
@@ -210,10 +257,24 @@ class ConstrainPsi2D(object):
         # Ensure that the last constraint used is set in the Equilibrium
         eq._constraints = self
 
-    def psi_difference(self, currents, eq):
+    def psi_difference(self, currents: np.ndarray, eq: object) -> np.ndarray:
         """
-        Difference between psi from equilibrium with the given currents
-        and the target psi
+        Compute the weighted difference between psi and the target psi.
+
+        Sets the control currents of the equilibrium to `currents` and
+        removes the constant offset from its psi before comparing.
+
+        Parameters
+        ----------
+        currents : np.ndarray
+            Control currents to apply to the equilibrium.
+        eq : object
+            Equilibrium object, modified in place.
+
+        Returns
+        -------
+        np.ndarray
+            Flattened weighted difference between psi and the target.
         """
         eq.getMachine().setControlCurrents(currents)
         psi = eq.psi()
@@ -229,23 +290,32 @@ class ConstrainPsiNorm2D(object):
     between normalised psi[R,Z] and a target normalised psi.
     """
 
-    def __init__(self, target_psinorm, weights=1.0):
+    def __init__(
+        self, target_psinorm: np.ndarray, weights: float | np.ndarray = 1.0
+    ) -> None:
         """
-        target_psinorm : 2D (R,Z) array
-            Must be the same size as the equilibrium psi
+        Store the target normalised psi and the weights.
 
-        weights : float or 2D array of same size as target_psinorm
-            Relative importance of each (R,Z) point in the fitting
-            By default every point is equally weighted
-            Set points to zero to ignore them in fitting.
-
+        Parameters
+        ----------
+        target_psinorm : np.ndarray
+            2D (R, Z) array; must be the same size as the equilibrium psi.
+        weights : float or np.ndarray, optional
+            Relative importance of each (R, Z) point in the fitting, a float or
+            a 2D array of the same size as `target_psinorm`. By default every
+            point is equally weighted. Set points to zero to ignore them.
         """
         self.target_psinorm = target_psinorm
         self.weights = weights
 
-    def __call__(self, eq):
+    def __call__(self, eq: object) -> None:
         """
-        Apply constraints to Equilibrium eq
+        Fit the coil currents to the target psinorm, modifying the Equilibrium.
+
+        Parameters
+        ----------
+        eq : object
+            Equilibrium object, modified in place.
         """
 
         tokamak = eq.getMachine()
@@ -260,10 +330,30 @@ class ConstrainPsiNorm2D(object):
         # Ensure that the last constraint used is set in the Equilibrium
         eq._constraints = self
 
-    def psinorm_difference(self, currents, eq):
+    def psinorm_difference(self, currents: np.ndarray, eq: object) -> np.ndarray:
         """
-        Difference between normalised psi from equilibrium with the given currents
-        and the target psinorm
+        Compute the weighted difference between normalised psi and the target.
+
+        Sets the control currents of the equilibrium to `currents`. Normalised
+        psi is 0 at the magnetic axis and 1 at the plasma boundary (first
+        X-point).
+
+        Parameters
+        ----------
+        currents : np.ndarray
+            Control currents to apply to the equilibrium.
+        eq : object
+            Equilibrium object, modified in place.
+
+        Returns
+        -------
+        np.ndarray
+            Flattened weighted difference between psi_norm and the target.
+
+        Raises
+        ------
+        ValueError
+            If no O-points or no X-points are found.
         """
         eq.getMachine().setControlCurrents(currents)
         psi = eq.psi()

@@ -19,16 +19,20 @@ the Free Software Foundation, either version 3 of the License, or
 
 FreeGSNKE is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 GNU Lesser General Public License for more details.
 
 You should have received a copy of the GNU Lesser General Public License
-along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
-
+along with FreeGSNKE. If not, see <http://www.gnu.org/licenses/>.
 """
 
+from __future__ import annotations
+
+from typing import Callable
+
+import numpy as np
 from numpy import abs, max, reshape, zeros
-from scipy.sparse import eye
+from scipy.sparse import eye, spmatrix
 from scipy.sparse.linalg import factorized
 
 from .gradshafranov import GSsparse, GSsparse4thOrder
@@ -40,19 +44,33 @@ class MGDirect:
     # as a standalone LU solver
     """Direct sparse-LU solve used at the coarsest multigrid level."""
 
-    def __init__(self, A):
+    def __init__(self, A: spmatrix) -> None:
         """
-        Initialise solver
+        Initialise solver by LU-factorising the matrix.
 
-        A   - The matrix to solve
+        Parameters
+        ----------
+        A : scipy.sparse matrix
+            The matrix to solve.
         """
 
         self.solver = factorized(A.tocsc())  # LU decompose
 
-    def solve(self, x, b):
+    def solve(self, x: np.ndarray, b: np.ndarray) -> np.ndarray:
         """
         Solve Ax = b by direct LU solve. The initial guess x is unused.
-        Returns the solution with the shape of b.
+
+        Parameters
+        ----------
+        x : np.ndarray
+            Initial guess (unused, present for interface compatibility).
+        b : np.ndarray
+            Right-hand side, any shape with ``b.size`` equal to the matrix dimension.
+
+        Returns
+        -------
+        np.ndarray
+            The solution, with the shape of ``b``.
         """
         b1d = reshape(b, -1)  # 1D view
 
@@ -60,23 +78,49 @@ class MGDirect:
 
         return reshape(x, b.shape)
 
-    def __call__(self, x, b):
-        """Equivalent to `solve(x, b)`."""
+    def __call__(self, x: np.ndarray, b: np.ndarray) -> np.ndarray:
+        """
+        Equivalent to `solve(x, b)`.
+
+        Parameters
+        ----------
+        x : np.ndarray
+            Initial guess (unused).
+        b : np.ndarray
+            Right-hand side.
+
+        Returns
+        -------
+        np.ndarray
+            The solution, with the shape of ``b``.
+        """
         return self.solve(x, b)
 
 
 class MGJacobi:
     """Jacobi smoother with optional coarse-grid correction and repeated V-cycles."""
 
-    def __init__(self, A, ncycle=4, niter=10, subsolver=None):
+    def __init__(
+        self,
+        A: spmatrix,
+        ncycle: int = 4,
+        niter: int = 10,
+        subsolver: Callable[[np.ndarray, np.ndarray], np.ndarray] | None = None,
+    ) -> None:
         """
-        Initialise solver
+        Initialise solver.
 
-        A   - The matrix to solve
-        subsolver - An operator at lower resolution
-        ncycle - Number of V-cycles
-        niter - Number of Jacobi iterations
-
+        Parameters
+        ----------
+        A : scipy.sparse matrix
+            The matrix to solve.
+        ncycle : int, optional
+            Number of V-cycles.
+        niter : int, optional
+            Number of Jacobi iterations (before and after the coarse correction).
+        subsolver : callable or None, optional
+            Operator ``subsolver(x, b)`` at lower resolution, used for the coarse-grid
+            correction. If None, only Jacobi smoothing is applied.
         """
         self.A = A
         self.diag = A.diagonal()
@@ -87,12 +131,31 @@ class MGJacobi:
         self.sub_b = None
         self.xupdate = None
 
-    def solve(self, xi, bi, ncycle=None, niter=None):
+    def solve(
+        self,
+        xi: np.ndarray,
+        bi: np.ndarray,
+        ncycle: int | None = None,
+        niter: int | None = None,
+    ) -> np.ndarray:
         """
-        Solve Ax = b, given initial guess for x
+        Solve Ax = b, given initial guess for x.
 
-        ncycle - Optional number of cycles
+        Parameters
+        ----------
+        xi : np.ndarray
+            Initial guess, shape (nx, ny). Updated in place where possible.
+        bi : np.ndarray
+            Right-hand side, shape (nx, ny).
+        ncycle : int or None, optional
+            Number of V-cycles. If None, ``self.ncycle`` is used.
+        niter : int or None, optional
+            Number of Jacobi iterations. If None, ``self.niter`` is used.
 
+        Returns
+        -------
+        np.ndarray
+            The solution, with the shape of ``xi``.
         """
 
         # Need to reshape x and b into 1D arrays
@@ -131,33 +194,74 @@ class MGJacobi:
 
         return x.reshape(xi.shape)
 
-    def __call__(self, xi, bi, ncycle=None, niter=None):
-        """Equivalent to `solve(xi, bi, ncycle, niter)`."""
+    def __call__(
+        self,
+        xi: np.ndarray,
+        bi: np.ndarray,
+        ncycle: int | None = None,
+        niter: int | None = None,
+    ) -> np.ndarray:
+        """
+        Equivalent to `solve(xi, bi, ncycle, niter)`.
+
+        Parameters
+        ----------
+        xi : np.ndarray
+            Initial guess, shape (nx, ny).
+        bi : np.ndarray
+            Right-hand side, shape (nx, ny).
+        ncycle : int or None, optional
+            Number of V-cycles. If None, ``self.ncycle`` is used.
+        niter : int or None, optional
+            Number of Jacobi iterations. If None, ``self.niter`` is used.
+
+        Returns
+        -------
+        np.ndarray
+            The solution, with the shape of ``xi``.
+        """
         return self.solve(xi, bi, ncycle, niter)
 
 
-def createMultigridSolver(R, Z, order, nlevels=4, ncycle=1, niter=10, direct=True):
+def createMultigridSolver(
+    R: np.ndarray,
+    Z: np.ndarray,
+    order: int,
+    nlevels: int = 4,
+    ncycle: int = 1,
+    niter: int = 10,
+    direct: bool = True,
+) -> MGJacobi | MGDirect:
     """
     Creates a multigrid solver from a sparse solver of the given order and (highest)
     resolution.
 
     Parameters
     ----------
-    R: ndarray (nr,nz)
-        ndarray of the shape of the domain (nr,nz) with the radius of each point in the grid
-    Z: ndarray (nr,nz)
-        ndarray of the shape of the domain (nr,nz) with the height of each point in the grid
-    order - The order of the internal sparse solver
-    nlevels - Number of multigrid levels
-    direct - Lowest level uses direct solver
-    ncycle - Number of V cycles. This is only passed to the top level MGJacobi object
-    niter - Number of Jacobi iterations per level
+    R : np.ndarray
+        Array of shape (nr, nz) with the radius of each point in the grid.
+    Z : np.ndarray
+        Array of shape (nr, nz) with the height of each point in the grid.
+    order : int
+        The order of the internal sparse solver (2 or 4).
+    nlevels : int, optional
+        Number of multigrid levels.
+    ncycle : int, optional
+        Number of V cycles. This is only passed to the top level MGJacobi object.
+    niter : int, optional
+        Number of Jacobi iterations per level.
+    direct : bool, optional
+        If True, the lowest level uses a direct solver.
 
     Returns
     -------
-    MGsolver
-        Returns a multigrid solver
+    MGJacobi or MGDirect
+        The multigrid solver.
 
+    Raises
+    ------
+    ValueError
+        If the shapes of `R` and `Z` differ, or `order` is not 2 or 4.
     """
 
     generator = None
@@ -194,24 +298,39 @@ def createMultigridSolver(R, Z, order, nlevels=4, ncycle=1, niter=10, direct=Tru
     return mg_solver
 
 
-def createVcycle(nx, ny, generator, nlevels=4, ncycle=1, niter=10, direct=True):
+def createVcycle(
+    nx: int,
+    ny: int,
+    generator: Callable[[int, int], spmatrix],
+    nlevels: int = 4,
+    ncycle: int = 1,
+    niter: int = 10,
+    direct: bool = True,
+) -> MGJacobi | MGDirect:
     """
-    Create a hierarchy of solvers in a multigrid V-cycle
+    Create a hierarchy of solvers in a multigrid V-cycle.
 
     Parameters
     ----------
-    nx, ny - The highest resolution
-    generator(nx,ny) - Returns a sparse matrix, given resolution
-    nlevels - Number of multigrid levels
-    direct - Lowest level uses direct solver
-    ncycle - Number of V cycles. This is only passed to the top level MGJacobi object
-    niter - Number of Jacobi iterations per level
+    nx : int
+        Number of grid points in the first dimension at the highest resolution.
+    ny : int
+        Number of grid points in the second dimension at the highest resolution.
+    generator : callable
+        ``generator(nx, ny)`` returns a sparse matrix for the given resolution.
+    nlevels : int, optional
+        Number of multigrid levels.
+    ncycle : int, optional
+        Number of V cycles. This is only passed to the top level MGJacobi object.
+    niter : int, optional
+        Number of Jacobi iterations per level.
+    direct : bool, optional
+        If True, the lowest level uses a direct solver.
 
     Returns
     -------
-    MGsolver
-        Returns a multigrid solver
-
+    MGJacobi or MGDirect
+        The multigrid solver.
     """
 
     if (nx - 1) % 2 == 1 or (ny - 1) % 2 == 1:
@@ -242,9 +361,34 @@ def createVcycle(nx, ny, generator, nlevels=4, ncycle=1, niter=10, direct=True):
     return MGJacobi(A, niter=niter, ncycle=ncycle, subsolver=None)
 
 
-def smoothJacobi(A, x, b, dx, dy):
+def smoothJacobi(
+    A: LaplacianOp, x: np.ndarray, b: np.ndarray, dx: float, dy: float
+) -> np.ndarray:
     """
-    Smooth the solution using Jacobi method
+    Smooth the solution using the Jacobi method.
+
+    Parameters
+    ----------
+    A : LaplacianOp
+        Operator providing ``A(x, dx, dy)`` and ``A.diag(dx, dy)``.
+    x : np.ndarray
+        Current solution, shape (nx, ny).
+    b : np.ndarray
+        Right-hand side, same shape as `x`.
+    dx : float
+        Grid spacing in the first dimension.
+    dy : float
+        Grid spacing in the second dimension.
+
+    Returns
+    -------
+    np.ndarray
+        The smoothed solution, same shape as `x`.
+
+    Raises
+    ------
+    ValueError
+        If `b` and `x` have different shapes.
     """
 
     if b.shape != x.shape:
@@ -255,20 +399,33 @@ def smoothJacobi(A, x, b, dx, dy):
     return smooth
 
 
-def restrict(orig, out=None, avg=False):
+def restrict(
+    orig: np.ndarray, out: np.ndarray | None = None, avg: bool = False
+) -> np.ndarray | None:
     """
-    Coarsen the original onto a coarser mesh
+    Coarsen the original onto a coarser mesh.
 
-    Inputs
-    ------
-
-    orig[nx,ny] - A 2D numpy array. Each dimension must have
-                  a size (2^n + 1) though nx != ny is possible
+    Parameters
+    ----------
+    orig : np.ndarray
+        2D array of shape (nx, ny). Each dimension should have a size (2^n + 1),
+        though nx != ny is possible.
+    out : np.ndarray or None, optional
+        Array to resize and fill with the result. If None, a new array is allocated.
+    avg : bool, optional
+        If False, the result is multiplied by 4 (sum rather than average).
 
     Returns
     -------
+    np.ndarray or None
+        2D array of shape ((nx-1)/2+1, (ny-1)/2+1). If the grid cannot be coarsened
+        further, `orig` is returned unchanged (or copied into `out` and None returned
+        when `out` is given).
 
-    A 2D numpy array of size [(nx-1)/2+1, (ny-1)/2+1]
+    Notes
+    -----
+    Only the central-point term ``orig[x0, y0] / 4`` contributes to the output; the
+    neighbouring-point terms in the loop body are separate no-op expressions.
     """
 
     nx = orig.shape[0]
@@ -314,9 +471,22 @@ def restrict(orig, out=None, avg=False):
     return out
 
 
-def interpolate(orig, out=None):
+def interpolate(orig: np.ndarray, out: np.ndarray | None = None) -> np.ndarray:
     """
-    Interpolate a solution onto a finer mesh
+    Interpolate a solution onto a finer mesh.
+
+    Parameters
+    ----------
+    orig : np.ndarray
+        2D array of shape (nx, ny) on the coarse mesh.
+    out : np.ndarray or None, optional
+        Pre-allocated array of shape (2*(nx-1)+1, 2*(ny-1)+1) to fill. If None, a new
+        array is allocated.
+
+    Returns
+    -------
+    np.ndarray
+        Array of shape (2*(nx-1)+1, 2*(ny-1)+1) on the fine mesh.
     """
     nx = orig.shape[0]
     ny = orig.shape[1]
@@ -349,11 +519,42 @@ def interpolate(orig, out=None):
     return out
 
 
-def smoothVcycle(A, x, b, dx, dy, niter=10, sublevels=0, direct=True):
+def smoothVcycle(
+    A: LaplacianOp,
+    x: np.ndarray,
+    b: np.ndarray,
+    dx: float,
+    dy: float,
+    niter: int = 10,
+    sublevels: int = 0,
+    direct: bool = True,
+) -> np.ndarray:
     """
-    Perform smoothing using multigrid
+    Perform smoothing using multigrid.
 
+    Parameters
+    ----------
+    A : LaplacianOp
+        Operator providing ``A(x, dx, dy)`` and ``A.diag(dx, dy)``.
+    x : np.ndarray
+        Current solution, shape (nx, ny).
+    b : np.ndarray
+        Right-hand side, same shape as `x`.
+    dx : float
+        Grid spacing in the first dimension.
+    dy : float
+        Grid spacing in the second dimension.
+    niter : int, optional
+        Number of Jacobi iterations before and after the coarse correction.
+    sublevels : int, optional
+        Number of coarser levels used in the correction.
+    direct : bool, optional
+        Unused.
 
+    Returns
+    -------
+    np.ndarray
+        The smoothed solution, same shape as `x`.
     """
 
     # Smooth
@@ -383,8 +584,43 @@ def smoothVcycle(A, x, b, dx, dy, niter=10, sublevels=0, direct=True):
     return x
 
 
-def smoothMG(A, x, b, dx, dy, niter=10, sublevels=1, ncycle=2):
-    """Apply repeated smoothing V-cycles and print the maximum residual per cycle."""
+def smoothMG(
+    A: LaplacianOp,
+    x: np.ndarray,
+    b: np.ndarray,
+    dx: float,
+    dy: float,
+    niter: int = 10,
+    sublevels: int = 1,
+    ncycle: int = 2,
+) -> np.ndarray:
+    """
+    Apply repeated smoothing V-cycles and print the maximum residual per cycle.
+
+    Parameters
+    ----------
+    A : LaplacianOp
+        Operator providing ``A(x, dx, dy)`` and ``A.diag(dx, dy)``.
+    x : np.ndarray
+        Initial solution, shape (nx, ny).
+    b : np.ndarray
+        Right-hand side, same shape as `x`.
+    dx : float
+        Grid spacing in the first dimension.
+    dy : float
+        Grid spacing in the second dimension.
+    niter : int, optional
+        Number of Jacobi iterations per smoothing step.
+    sublevels : int, optional
+        Number of coarser levels in each V-cycle.
+    ncycle : int, optional
+        Number of V-cycles.
+
+    Returns
+    -------
+    np.ndarray
+        The solution after `ncycle` V-cycles.
+    """
     error = b - A(x, dx, dy)
     print("Starting max residual: %e" % (max(abs(error)),))
 
@@ -408,8 +644,24 @@ class LaplacianOp:
     for use with the multigrid solver
     """
 
-    def __call__(self, f, dx, dy):
-        """Apply second-order centred Laplacian differences at interior grid points."""
+    def __call__(self, f: np.ndarray, dx: float, dy: float) -> np.ndarray:
+        """
+        Apply second-order centred Laplacian differences at interior grid points.
+
+        Parameters
+        ----------
+        f : np.ndarray
+            Field, shape (nx, ny).
+        dx : float
+            Grid spacing in the first dimension.
+        dy : float
+            Grid spacing in the second dimension.
+
+        Returns
+        -------
+        np.ndarray
+            Laplacian of `f`, shape (nx, ny), zero on the boundary.
+        """
         nx = f.shape[0]
         ny = f.shape[1]
 
@@ -425,21 +677,58 @@ class LaplacianOp:
 
         return b
 
-    def diag(self, dx, dy):
-        """Return the diagonal coefficient of the second-order Laplacian stencil."""
+    def diag(self, dx: float, dy: float) -> float:
+        """
+        Return the diagonal coefficient of the second-order Laplacian stencil.
+
+        Parameters
+        ----------
+        dx : float
+            Grid spacing in the first dimension.
+        dy : float
+            Grid spacing in the second dimension.
+
+        Returns
+        -------
+        float
+            The coefficient ``-2/dx**2 - 2/dy**2``.
+        """
         return -2.0 / dx**2 - 2.0 / dy**2
 
 
 class LaplaceSparse:
     """Build a sparse two-dimensional Laplacian with identity boundary rows."""
 
-    def __init__(self, Lx, Ly):
-        """Store the physical lengths of the two rectangular-domain axes."""
+    def __init__(self, Lx: float, Ly: float) -> None:
+        """
+        Store the physical lengths of the two rectangular-domain axes.
+
+        Parameters
+        ----------
+        Lx : float
+            Length of the domain in the first dimension.
+        Ly : float
+            Length of the domain in the second dimension.
+        """
         self.Lx = Lx
         self.Ly = Ly
 
-    def __call__(self, nx, ny):
-        """Discretize the Laplacian at the requested grid resolution."""
+    def __call__(self, nx: int, ny: int) -> spmatrix:
+        """
+        Discretize the Laplacian at the requested grid resolution.
+
+        Parameters
+        ----------
+        nx : int
+            Number of grid points in the first dimension.
+        ny : int
+            Number of grid points in the second dimension.
+
+        Returns
+        -------
+        scipy.sparse.csr_matrix
+            Sparse matrix of shape (nx*ny, nx*ny).
+        """
         dx = self.Lx / (nx - 1)
         dy = self.Ly / (ny - 1)
 

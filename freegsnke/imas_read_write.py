@@ -6,19 +6,21 @@ Copyright 2025 UKAEA, UKRI-STFC, and The Authors, as per the COPYRIGHT and READM
 
 This file is part of FreeGSNKE.
 
-FreeGSNKE is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Lesser General Public License for more details.
-
 FreeGSNKE is free software: you can redistribute it and/or modify
 it under the terms of the GNU Lesser General Public License as published by
 the Free Software Foundation, either version 3 of the License, or
 (at your option) any later version.
 
+FreeGSNKE is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Lesser General Public License for more details.
+
 You should have received a copy of the GNU Lesser General Public License
-along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
+along with FreeGSNKE. If not, see <http://www.gnu.org/licenses/>.
 """
+
+from __future__ import annotations
 
 from datetime import date
 
@@ -31,7 +33,9 @@ from scipy.interpolate import RectBivariateSpline
 import freegsnke
 
 
-def _flux_surface_geometry(eq, psi_n, fpol_1d):
+def _flux_surface_geometry(
+    eq: object, psi_n: np.ndarray, fpol_1d: np.ndarray
+) -> dict[str, np.ndarray]:
     """
     Traces each requested normalised-flux surface once (via `contourpy`, the
     same technique used by `eq.flux_averaged_function`) and returns the
@@ -120,7 +124,36 @@ def _flux_surface_geometry(eq, psi_n, fpol_1d):
         Bp_inv = 1 / np.sqrt(Bp2)
         norm = trapezoid(Bp_inv, l_cum)  # = integral of dl/Bp
 
-        def flux_average(values, Bp_inv=Bp_inv, l_cum=l_cum, norm=norm):
+        def flux_average(
+            values: np.ndarray,
+            Bp_inv: np.ndarray = Bp_inv,
+            l_cum: np.ndarray = l_cum,
+            norm: float = norm,
+        ) -> float:
+            """
+            Flux-surface average of `values` on the current surface.
+
+            Computes the integral of ``values * dl / Bp`` along the surface divided
+            by the integral of ``dl / Bp``.
+
+            Parameters
+            ----------
+            values : np.ndarray
+                Quantity sampled at each point of the traced surface.
+            Bp_inv : np.ndarray, optional
+                1 / Bp at each point of the surface (bound to the current surface).
+            l_cum : np.ndarray, optional
+                Cumulative arc length along the surface [m] (bound to the current
+                surface).
+            norm : float, optional
+                Integral of ``dl / Bp`` over the surface (bound to the current
+                surface).
+
+            Returns
+            -------
+            float
+                The flux-surface average of `values`.
+            """
             return trapezoid(values * Bp_inv, l_cum) / norm
 
         result["avg_inv_R"][i] = flux_average(1 / Rc)
@@ -167,10 +200,7 @@ def _flux_surface_geometry(eq, psi_n, fpol_1d):
     return result
 
 
-def write_equilibrium_to_ids(
-    eq,
-    profiles,
-):
+def write_equilibrium_to_ids(eq: object, profiles: object) -> object:
     """
     Populates an IMAS `equilibrium` IDS (single time slice) with quantities taken
     from a solved FreeGSNKE equilibrium.
@@ -320,14 +350,15 @@ def write_equilibrium_to_ids(
     return ids_out
 
 
-def save_equilibrium_ids(ids, path):
+def save_equilibrium_ids(ids: object, path: str) -> None:
     """
-    Writes an `equilibrium` IDS to a netCDF file.
+    Write an `equilibrium` IDS to a netCDF file.
 
     Parameters
     ----------
     ids : imas.ids_toplevel.IDSToplevel
-        The `equilibrium` IDS to save (e.g. as returned by `write_equilibrium_to_ids`).
+        The `equilibrium` IDS to save (e.g. as returned by
+        `write_equilibrium_to_ids`).
     path : str
         Destination netCDF file path (should end in `.nc`).
     """
@@ -336,7 +367,7 @@ def save_equilibrium_ids(ids, path):
         db_entry.put(ids)
 
 
-def load_equilibrium_ids(path):
+def load_equilibrium_ids(path: str) -> object:
     """
     Reads an `equilibrium` IDS back from a netCDF file.
 

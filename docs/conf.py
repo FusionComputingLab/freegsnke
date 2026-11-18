@@ -121,7 +121,7 @@ html_css_files = [
 
 # suppress_warnings = [ 'autosectionlabel.*' ]
 
-autodoc_mock_imports = ["freegs"]
+autodoc_mock_imports = ["freegs", "pyuda", "mast"]
 
 # -- Extension configuration -------------------------------------------------
 
@@ -130,4 +130,12 @@ myst_enable_extensions = [
     "dollarmath",
 ]
 
+# execute notebooks that have no stored outputs (the repository keeps them stripped)
+nb_execution_mode = "auto"
 nb_execution_timeout = 1200
+
+# notebooks that cannot run on the docs build (e.g. they need pyUDA/MAST-U data access);
+# these are rendered without outputs
+nb_execution_excludepatterns = [
+    "example06*",
+]

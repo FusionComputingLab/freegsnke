@@ -12,14 +12,16 @@ the Free Software Foundation, either version 3 of the License, or
 
 FreeGSNKE is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 GNU Lesser General Public License for more details.
 
 You should have received a copy of the GNU Lesser General Public License
-along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
-
+along with FreeGSNKE. If not, see <http://www.gnu.org/licenses/>.
 """
 
+from __future__ import annotations
+
+from typing import Callable
 from unittest import makeSuite
 
 import numpy as np
@@ -46,36 +48,54 @@ try:
     from numba import njit
 except ImportError:
 
-    def njit(*args, **kwargs):
+    def njit(*args: object, **kwargs: object) -> Callable[[Callable], Callable]:
+        """
+        Fallback no-op replacement for ``numba.njit`` when numba is unavailable.
+
+        Parameters
+        ----------
+        *args : object
+            Ignored positional arguments.
+        **kwargs : object
+            Ignored keyword arguments.
+
+        Returns
+        -------
+        callable
+            A decorator that returns the decorated function unchanged.
+        """
         return lambda f: f
 
 
 from warnings import warn
 
 
-def find_critical_old(R, Z, psi, discard_xpoints=True):
+def find_critical_old(
+    R: np.ndarray, Z: np.ndarray, psi: np.ndarray, discard_xpoints: bool = True
+) -> tuple[list[tuple[float, float, float]], list[tuple[float, float, float]]]:
     """
-    Find critical points
+    Find critical points (legacy FreeGS implementation using spline Newton iterations).
 
-    Inputs
-    ------
-
-    R - R(nr, nz) 2D array of major radii
-    Z - Z(nr, nz) 2D array of heights
-    psi - psi(nr, nz) 2D array of psi values
+    Parameters
+    ----------
+    R : np.ndarray
+        Major radii, shape (nr, nz).
+    Z : np.ndarray
+        Heights, shape (nr, nz).
+    psi : np.ndarray
+        Poloidal flux values, shape (nr, nz).
+    discard_xpoints : bool, optional
+        If True, discard X-points for which psi is not monotonic along the line
+        from the primary O-point.
 
     Returns
     -------
-
-    Two lists of critical points
-
-    opoint, xpoint
-
-    Each of these is a list of tuples with (R, Z, psi) points
-
-    The first tuple is the primary O-point (magnetic axis)
-    and primary X-point (separatrix)
-
+    opoint : list of tuple
+        O-points as (R, Z, psi) tuples. The first is the primary O-point
+        (magnetic axis).
+    xpoint : list of tuple
+        X-points as (R, Z, psi) tuples. The first is the primary X-point
+        (separatrix), ordered by closeness to the axis flux.
     """
 
     # Get a spline interpolation function
@@ -175,7 +195,22 @@ def find_critical_old(R, Z, psi, discard_xpoints=True):
                         break
 
     # Remove duplicates
-    def remove_dup(points):
+    def remove_dup(
+        points: list[tuple[float, float, float]],
+    ) -> list[tuple[float, float, float]]:
+        """
+        Remove duplicate critical points (those closer than ~3e-3 in R-Z distance).
+
+        Parameters
+        ----------
+        points : list of tuple
+            Critical points as (R, Z, psi) tuples.
+
+        Returns
+        -------
+        list of tuple
+            The points with duplicates removed (first occurrence kept).
+        """
         result = []
         for n, p in enumerate(points):
             dup = False
@@ -245,7 +280,22 @@ def find_critical_old(R, Z, psi, discard_xpoints=True):
 
 
 # Remove duplicates
-def remove_dup(points):
+def remove_dup(
+    points: list[tuple[float, float, float]],
+) -> list[tuple[float, float, float]]:
+    """
+    Remove duplicate critical points (those closer than ~3e-3 in R-Z distance).
+
+    Parameters
+    ----------
+    points : list of tuple
+        Critical points as (R, Z, psi) tuples.
+
+    Returns
+    -------
+    list of tuple
+        The points with duplicates removed (first occurrence kept).
+    """
     result = []
     for n, p in enumerate(points):
         dup = False
@@ -258,7 +308,40 @@ def remove_dup(points):
     return result
 
 
-def find_critical(R, Z, psi, mask_inside_limiter=None, signIp=1, discard_xpoints=True):
+def find_critical(
+    R: np.ndarray,
+    Z: np.ndarray,
+    psi: np.ndarray,
+    mask_inside_limiter: np.ndarray | None = None,
+    signIp: float | None = 1,
+    discard_xpoints: bool = True,
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Find the O- and X-points of psi and select the X-points consistent with the plasma current.
+
+    Parameters
+    ----------
+    R : np.ndarray
+        Major radii, shape (nr, nz).
+    Z : np.ndarray
+        Heights, shape (nr, nz).
+    psi : np.ndarray
+        Poloidal flux values, shape (nr, nz).
+    mask_inside_limiter : np.ndarray of bool or None, optional
+        Mask of grid points inside the limiter, used to discard O-points outside it.
+    signIp : float or None, optional
+        Sign of the plasma current. X-points are kept only if their flux is on the
+        correct side of the axis flux. If None, no such selection is made.
+    discard_xpoints : bool, optional
+        Unused (kept for backwards compatibility).
+
+    Returns
+    -------
+    opoint : np.ndarray
+        O-points as rows of (R, Z, psi), primary O-point first.
+    xpoint : np.ndarray
+        X-points as rows of (R, Z, psi), primary X-point first.
+    """
     # if old:
     #     opoint, xpoint = find_critical_old(R,Z,psi, discard_xpoints)
     # else:
@@ -284,7 +367,28 @@ def find_critical(R, Z, psi, mask_inside_limiter=None, signIp=1, discard_xpoints
 
 # # this is 10x faster if the numba import works; otherwise, @njit is the identity and fastcrit is 3x faster anyways
 @njit(fastmath=True, cache=True)
-def scan_for_crit(R, Z, psi):
+def scan_for_crit(
+    R: np.ndarray, Z: np.ndarray, psi: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Scan the grid for local minima of |grad psi|^2 and classify them as O- or X-points.
+
+    Parameters
+    ----------
+    R : np.ndarray
+        Major radii, shape (nr, nz).
+    Z : np.ndarray
+        Heights, shape (nr, nz).
+    psi : np.ndarray
+        Poloidal flux values, shape (nr, nz).
+
+    Returns
+    -------
+    opoint : np.ndarray
+        O-points as rows of (R, Z, psi), shape (n_o, 3).
+    xpoint : np.ndarray
+        X-points as rows of (R, Z, psi), shape (n_x, 3).
+    """
     dR = R[1, 0] - R[0, 0]
     dZ = Z[0, 1] - Z[0, 0]
     Bp2 = np.zeros_like(psi)
@@ -356,7 +460,40 @@ def scan_for_crit(R, Z, psi):
     return opoint, xpoint
 
 
-def fastcrit(R, Z, psi, mask_inside_limiter):
+def fastcrit(
+    R: np.ndarray,
+    Z: np.ndarray,
+    psi: np.ndarray,
+    mask_inside_limiter: np.ndarray | None,
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Find and order the critical points of psi using the fast grid scan.
+
+    Parameters
+    ----------
+    R : np.ndarray
+        Major radii, shape (nr, nz).
+    Z : np.ndarray
+        Heights, shape (nr, nz).
+    psi : np.ndarray
+        Poloidal flux values, shape (nr, nz).
+    mask_inside_limiter : np.ndarray of bool or None
+        Mask of grid points inside the limiter. If not None, O-points outside it
+        are removed.
+
+    Returns
+    -------
+    opoint : np.ndarray
+        O-points as rows of (R, Z, psi), ordered by distance from the domain centre.
+    xpoint : np.ndarray
+        X-points as rows of (R, Z, psi), ordered by closeness of their flux to the
+        axis flux.
+
+    Raises
+    ------
+    ValueError
+        If no O-points are found.
+    """
     opoint, xpoint = scan_for_crit(R, Z, psi)
 
     len_opoint = len(opoint)
@@ -443,8 +580,28 @@ def fastcrit(R, Z, psi, mask_inside_limiter):
     return opoint, xpoint
 
 
-def discard_xpoints_f(opoint, xpt, f):
-    # Here opoint and xpt are individual critical points
+def discard_xpoints_f(
+    opoint: np.ndarray,
+    xpt: np.ndarray,
+    f: Callable[..., np.ndarray],
+) -> bool:
+    """
+    Check that psi is monotonic along the line from the O-point to an X-point.
+
+    Parameters
+    ----------
+    opoint : np.ndarray
+        The primary O-point as (R, Z, psi).
+    xpt : np.ndarray
+        An individual X-point as (R, Z, psi).
+    f : callable
+        Spline interpolator of psi, called as ``f(R, Z, grid=False)``.
+
+    Returns
+    -------
+    bool
+        True if the X-point is acceptable (monotonic), False if it should be discarded.
+    """
     Ro, Zo, Po = opoint  # The primary O-point
     result = False
 
@@ -478,27 +635,36 @@ def discard_xpoints_f(opoint, xpt, f):
     return result
 
 
-def core_mask(R, Z, psi, opoint, xpoint=[], psi_bndry=None):
+def core_mask(
+    R: np.ndarray,
+    Z: np.ndarray,
+    psi: np.ndarray,
+    opoint: np.ndarray,
+    xpoint: np.ndarray | list = [],
+    psi_bndry: float | None = None,
+) -> np.ndarray:
     """
-    Mark the parts of the domain which are in the core
+    Mark the parts of the domain which are in the core.
 
-    Inputs
-    ------
-
-    R[nx,ny] - 2D array of major radius (R) values
-    Z[nx,ny] - 2D array of height (Z) values
-    psi[nx,ny] - 2D array of poloidal flux
-
-    opoint, xpoint  - Values returned by find_critical
-
-    If psi_bndry is not None, then that is used to find the
-    separatrix, not the X-points.
+    Parameters
+    ----------
+    R : np.ndarray
+        Major radius values, shape (nx, ny).
+    Z : np.ndarray
+        Height values, shape (nx, ny).
+    psi : np.ndarray
+        Poloidal flux, shape (nx, ny).
+    opoint : np.ndarray
+        O-points as returned by find_critical.
+    xpoint : np.ndarray or list, optional
+        X-points as returned by find_critical.
+    psi_bndry : float or None, optional
+        If not None, this is used to find the separatrix, not the X-points.
 
     Returns
     -------
-
-    A 2D array [nx,ny] which is 1 inside the core, 0 outside
-
+    np.ndarray
+        Array of shape (nx, ny) which is 1 inside the core, 0 outside.
     """
 
     mask = zeros(psi.shape)
@@ -574,13 +740,43 @@ def core_mask(R, Z, psi, opoint, xpoint=[], psi_bndry=None):
 
 @njit(fastmath=True, cache=True)
 def inside_mask(
-    R, Z, psi, opoint, xpoint=[], mask_outside_limiter=None, psi_bndry=None
-):
+    R: np.ndarray,
+    Z: np.ndarray,
+    psi: np.ndarray,
+    opoint: np.ndarray,
+    xpoint: np.ndarray | list = [],
+    mask_outside_limiter: np.ndarray | None = None,
+    psi_bndry: float | None = None,
+) -> np.ndarray:
     """
-    Similar to core_mask_old above, except:
+    Mark the parts of the domain which are in the core (JIT-compilable version of core_mask).
+
+    Similar to core_mask above, except:
     (1) it's all stuff that can be JIT-compiled
     (2) some stuff is vectorised
     (3) the stack does not necessarily explore in only one direction, and it should be neat around the X-points
+
+    Parameters
+    ----------
+    R : np.ndarray
+        Major radius values, shape (nx, ny).
+    Z : np.ndarray
+        Height values, shape (nx, ny).
+    psi : np.ndarray
+        Poloidal flux, shape (nx, ny).
+    opoint : np.ndarray
+        O-points as rows of (R, Z, psi); the first is the primary O-point.
+    xpoint : np.ndarray or list, optional
+        X-points as rows of (R, Z, psi).
+    mask_outside_limiter : np.ndarray or None, optional
+        Array of shape (nx, ny), non-zero outside the limiter, used to block the fill.
+    psi_bndry : float or None, optional
+        If not None, this is used as the boundary flux instead of that of the first X-point.
+
+    Returns
+    -------
+    np.ndarray of bool
+        Mask of shape (nx, ny), True inside the core.
     """
     #
     if mask_outside_limiter is not None:
@@ -649,13 +845,46 @@ def inside_mask(
     return mask
 
 
-def find_psisurface(eq, psifunc, r0, z0, r1, z1, psival=1.0, n=100, axis=None):
+def find_psisurface(
+    eq: object,
+    psifunc: Callable[..., np.ndarray],
+    r0: float,
+    z0: float,
+    r1: float,
+    z1: float,
+    psival: float = 1.0,
+    n: int = 100,
+    axis: object | None = None,
+) -> tuple[float, float]:
     """
-    eq      - Equilibrium object
-    (r0,z0) - Start location inside separatrix
-    (r1,z1) - Location outside separatrix
+    Find where a line from inside the separatrix crosses a given psi surface.
 
-    n - Number of starting points to use
+    Parameters
+    ----------
+    eq : Equilibrium
+        Equilibrium object (provides the domain limits Rmin, Rmax, Zmin, Zmax).
+    psifunc : callable
+        Function ``psifunc(r, z, grid=False)`` returning normalised psi.
+    r0 : float
+        R of the start location, inside the separatrix.
+    z0 : float
+        Z of the start location, inside the separatrix.
+    r1 : float
+        R of the end location, outside the separatrix (clipped to the domain).
+    z1 : float
+        Z of the end location, outside the separatrix (clipped to the domain).
+    psival : float, optional
+        Value of psi for which to find the surface.
+    n : int, optional
+        Number of starting points to use along the line.
+    axis : matplotlib axis or None, optional
+        If given, the line and the result are plotted on it.
+
+    Returns
+    -------
+    r, z : float
+        Coordinates of the crossing point. If `psival` has a length, the
+        points along the line are returned unchanged.
     """
     # Clip (r1,z1) to be inside domain
     # Shorten the line so that the direction is unchanged
@@ -699,21 +928,42 @@ def find_psisurface(eq, psifunc, r0, z0, r1, z1, psival=1.0, n=100, axis=None):
 
 
 def find_separatrix(
-    eq, opoint=None, xpoint=None, ntheta=20, psi=None, axis=None, psival=1.0
-):
-    """Find the R, Z coordinates of the separatrix for equilbrium
-    eq. Returns a tuple of (R, Z, R_X, Z_X), where R_X, Z_X are the
-    coordinates of the X-point on the separatrix. Points are equally
-    spaced in geometric poloidal angle.
+    eq: object,
+    opoint: np.ndarray | list | None = None,
+    xpoint: np.ndarray | list | None = None,
+    ntheta: int = 20,
+    psi: np.ndarray | None = None,
+    axis: object | None = None,
+    psival: float = 1.0,
+) -> list[tuple[float, float, float, float]]:
+    """
+    Find the R, Z coordinates of the separatrix for equilibrium `eq`.
 
-    If opoint, xpoint or psi are not given, they are calculated from eq
+    Points are equally spaced in geometric poloidal angle. If opoint, xpoint or
+    psi are not given, they are calculated from eq.
 
-    eq - Equilibrium object
-    opoint - List of O-point tuples of (R, Z, psi)
-    xpoint - List of X-point tuples of (R, Z, psi)
-    ntheta - Number of points to find
-    psi - Grid of psi on (R, Z)
-    axis - A matplotlib axis object to plot points on
+    Parameters
+    ----------
+    eq : Equilibrium
+        Equilibrium object.
+    opoint : np.ndarray or list or None, optional
+        O-points as (R, Z, psi) tuples/rows.
+    xpoint : np.ndarray or list or None, optional
+        X-points as (R, Z, psi) tuples/rows.
+    ntheta : int, optional
+        Number of points to find.
+    psi : np.ndarray or None, optional
+        Grid of psi on (R, Z).
+    axis : matplotlib axis or None, optional
+        Axis to plot points on.
+    psival : float, optional
+        Normalised psi value of the surface to find.
+
+    Returns
+    -------
+    list of tuple
+        One tuple (R, Z, R_X, Z_X) per poloidal angle, where R_X, Z_X are the
+        coordinates of the X-point on the separatrix.
     """
     if psi is None:
         psi = eq.psi()
@@ -760,28 +1010,53 @@ def find_separatrix(
 
 
 def find_safety(
-    eq,
-    npsi=1,
-    psinorm=None,
-    ntheta=128,
-    psi=None,
-    opoint=None,
-    xpoint=None,
-    axis=None,
-):
-    """Find the safety factor for each value of psi
-    Calculates equally spaced flux surfaces. Points on
-    each flux surface are equally paced in poloidal angle
-    Performs line integral around flux surface to get q
+    eq: object,
+    npsi: int = 1,
+    psinorm: float | np.ndarray | list | None = None,
+    ntheta: int = 128,
+    psi: np.ndarray | None = None,
+    opoint: np.ndarray | list | None = None,
+    xpoint: np.ndarray | list | None = None,
+    axis: object | None = None,
+) -> np.ndarray:
+    """
+    Find the safety factor for each value of psi.
 
-    eq - The equilbrium object
-    psinorm flux surface to calculate it for
-    npsi - Number of flux surface values to find q for
-    ntheta - Number of poloidal points to find it on
+    Calculates equally spaced flux surfaces. Points on each flux surface are
+    equally spaced in poloidal angle. Performs line integral around flux
+    surface to get q. If opoint, xpoint or psi are not given, they are
+    calculated from eq.
 
-    If opoint, xpoint or psi are not given, they are calculated from eq
+    Parameters
+    ----------
+    eq : Equilibrium
+        The equilibrium object.
+    npsi : int, optional
+        Number of flux surface values to find q for (overridden by the length of
+        `psinorm`, or by 100 if `psinorm` is None).
+    psinorm : float or array_like or None, optional
+        Normalised flux surface value(s) to calculate q for. If None, 100 values
+        are used.
+    ntheta : int, optional
+        Number of poloidal points to find it on.
+    psi : np.ndarray or None, optional
+        Grid of psi on (R, Z).
+    opoint : np.ndarray or list or None, optional
+        O-points as (R, Z, psi) tuples/rows.
+    xpoint : np.ndarray or list or None, optional
+        X-points as (R, Z, psi) tuples/rows.
+    axis : matplotlib axis or None, optional
+        Axis to plot points on.
 
-    returns safety factor for npsi points in normalised psi
+    Returns
+    -------
+    np.ndarray
+        Safety factor at each of the `npsi` normalised psi values.
+
+    Raises
+    ------
+    ValueError
+        If there is no X-point.
     """
 
     if psi is None:

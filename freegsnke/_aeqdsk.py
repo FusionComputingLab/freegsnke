@@ -1,12 +1,11 @@
 """
+Low level routines for reading and writing A-EQDSK files.
 
-fields - Lists the variables stored in the file, a default value, and a description
+``fields`` lists the variables stored in the file, with default values and descriptions.
 
 Copyright 2020-2021 Ben Dudson, University of York. Email: benjamin.dudson@york.ac.uk
 
 Derived from FreeGS through FreeGS4E.
-
-SPDX-License-Identifier: LGPL-3.0-or-later
 
 This file is part of FreeGSNKE.
 
@@ -17,14 +16,17 @@ the Free Software Foundation, either version 3 of the License, or
 
 FreeGSNKE is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 GNU Lesser General Public License for more details.
 
 You should have received a copy of the GNU Lesser General Public License
-along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
+along with FreeGSNKE. If not, see <http://www.gnu.org/licenses/>.
 """
 
+from __future__ import annotations
+
 import warnings
+from typing import TextIO
 
 from . import _fileutils as fu
 
@@ -262,13 +264,20 @@ fields = [
 ]
 
 
-def write(data, fh):
+def write(data: dict, fh: TextIO) -> None:
     """
-    data  [dict] - keys are given with documentation in the `fields` list.
-        Also includes
-         shot [int] - The shot number
-    time  - in ms
+    Write an AEQDSK file, given a dictionary of data.
 
+    Parameters
+    ----------
+    data : dict
+        Data to write. Keys for the main block are given, with documentation,
+        in the module-level ``fields`` list; missing keys take the defaults
+        listed there. Also read are ``header`` (str), ``shot`` (int),
+        ``time`` (float, in ms), ``jflag`` (int), ``lflag`` (int),
+        ``limloc`` (str), ``mco2v`` (int), ``mco2r`` (int) and ``qmflag`` (str).
+    fh : TextIO
+        Open, writable text file handle.
     """
     # First line identification string
     # Default to date > 1997 since that format includes nsilop etc.
@@ -312,9 +321,21 @@ def write(data, fh):
                 output.write(data.get(key, default))
 
 
-def read(fh):
+def read(fh: TextIO) -> dict:
     """
-    Read an AEQDSK file, returning a dictionary of data
+    Read an AEQDSK file, returning a dictionary of data.
+
+    Parameters
+    ----------
+    fh : TextIO
+        Open, readable text file handle.
+
+    Returns
+    -------
+    dict
+        Header entries (``header``, ``shot``, ``time``, ``jflag``, ``lflag``,
+        ``limloc``, ``mco2v``, ``mco2r``, ``qmflag``) plus one entry per named
+        item in the module-level ``fields`` list.
     """
     # First line label. Date.
     header = fh.readline()

@@ -1,22 +1,22 @@
 """
-Module to implement plasma control in FreeGSNKE control loops. 
+Module to implement plasma control in FreeGSNKE control loops.
 
 Copyright 2025 UKAEA, UKRI-STFC, and The Authors, as per the COPYRIGHT and README files.
 
 This file is part of FreeGSNKE.
+
+FreeGSNKE is free software: you can redistribute it and/or modify
+it under the terms of the GNU Lesser General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
 
 FreeGSNKE is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 GNU Lesser General Public License for more details.
 
-FreeGSNKE is free software: you can redistribute it and/or modify
-it under the terms of the GNU Lesser General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
-  
 You should have received a copy of the GNU Lesser General Public License
-along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
+along with FreeGSNKE. If not, see <http://www.gnu.org/licenses/>.
 """
 
 from typing import Tuple
@@ -163,7 +163,7 @@ class PlasmaController:
         integral history of the plasma current error (`ip_hist`) using a blended feedback and
         feedforward control strategy.
 
-        Parameters:
+        Parameters
         ----------
         t : float
             Current time [s].
@@ -176,15 +176,15 @@ class PlasmaController:
         ip_err_prev : float
             Previous value of the plasma current error [A].
 
-        Returns:
+        Returns
         -------
         dip_dt : float
             Time derivative of the requested plasma current [A/s].
         ip_hist : float
             Updated integral of the plasma current error [A.s].
 
-        Notes:
-        ------
+        Notes
+        -----
         - The control law uses time-dependent interpolants for reference current (`ip_ref`),
         proportional gain (`k_prop`), integral gain (`k_int`), integral gain (`k_deriv`), blend factor (`ip_blend`),
         feedforward voltage (`vloop_ff`), and solenoid inductance (`M_solenoid`).

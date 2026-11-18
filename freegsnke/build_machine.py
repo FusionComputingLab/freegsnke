@@ -159,6 +159,51 @@ def check_for_overlapping_elements(
     return overlaps
 
 
+def _validate_incremental_element(tokamak, name, element, *, active, replace=False):
+    """Reject overlapping additions/replacements before changing machine state."""
+    description = getattr(tokamak, "_machine_description_data", None) or {}
+    active_data = dict(description.get("active_coils", {}) or {})
+    # Preserve default labels when filtering unnamed passive structures.
+    passive_data = [
+        dict(entry, name=entry.get("name", f"passive_{index}"))
+        for index, entry in enumerate(description.get("passive_coils", []) or [])
+    ]
+    if replace:
+        if active:
+            active_data.pop(name, None)
+        else:
+            passive_data = [entry for entry in passive_data if entry["name"] != name]
+
+    if active:
+        # Checks only the active internal windings/sub-coils overlaps.
+        overlaps = check_for_overlapping_elements({name: element}, [])
+        if overlaps:
+            overlap_list = "; ".join(
+                f"{first} and {second}" for first, second in overlaps
+            )
+            raise ValueError(f"Overlapping coil elements detected: {overlap_list}")
+        if "R" in element or "Z" in element:
+            candidates = [(name, element)]
+        else:
+            candidates = [
+                (f"{name}.{subname}", subelement)
+                for subname, subelement in element.items()
+            ]
+    else:
+        overlaps = []
+        candidates = [(name, element)]
+
+    for label, candidate in candidates:
+        overlaps.extend(
+            check_for_overlapping_single_element(
+                dict(candidate, name=label), active_data, passive_data
+            )
+        )
+    if overlaps:
+        overlap_list = "; ".join(f"{first} and {second}" for first, second in overlaps)
+        raise ValueError(f"Overlapping coil elements detected: {overlap_list}")
+
+
 def check_for_overlapping_single_element(
     element,
     active_data,
@@ -587,7 +632,8 @@ def update_active_coil(tokamak, coil_name, active_coil_data, preserve_current=Tr
     Raises
     ------
     ValueError
-        If ``coil_name`` is not an existing active coil/circuit label.
+        If ``coil_name`` is not an existing active coil/circuit label, or the
+        replacement geometry contains overlapping coil elements.
 
     Notes
     -----
@@ -618,6 +664,10 @@ def update_active_coil(tokamak, coil_name, active_coil_data, preserve_current=Tr
         tokamak._last_machine_update_topology_changed = False
         build_tokamak_R_and_M(tokamak, changed_coils=[])
         return tokamak
+
+    _validate_incremental_element(
+        tokamak, coil_name, active_coil_data, active=True, replace=True
+    )
 
     old_current = tokamak[coil_name].current
     coil_index = tokamak.coil_order[coil_name]
@@ -764,7 +814,8 @@ def update_passive_structure(
     Raises
     ------
     ValueError
-        If ``name`` is not an existing passive-structure label.
+        If ``name`` is not an existing passive-structure label, or the
+        replacement geometry overlaps another coil element.
 
     Notes
     -----
@@ -797,6 +848,10 @@ def update_passive_structure(
         tokamak._last_machine_update_topology_changed = False
         build_tokamak_R_and_M(tokamak, changed_coils=[])
         return tokamak
+
+    _validate_incremental_element(
+        tokamak, name, passive_data, active=False, replace=True
+    )
 
     old_current = tokamak[name].current
     coil_index = tokamak.coil_order[name]
@@ -863,7 +918,8 @@ def add_passive_structure(tokamak, passive_data, name=None, refine_mode="G"):
     Raises
     ------
     ValueError
-        If a coil/passive-structure with the resolved label already exists.
+        If a coil/passive-structure with the resolved label already exists,
+        or the new geometry overlaps another coil element.
 
     Notes
     -----
@@ -881,6 +937,8 @@ def add_passive_structure(tokamak, passive_data, name=None, refine_mode="G"):
 
     if hasattr(tokamak, "coil_order") and name in tokamak.coil_order:
         raise ValueError(f"Tokamak already contains a coil label '{name}'.")
+
+    _validate_incremental_element(tokamak, name, passive_data, active=False)
 
     built_component, coil_metadata = build_passive_structure_component(
         name, passive_data, refine_mode=refine_mode
@@ -1027,7 +1085,8 @@ def add_active_coil(tokamak, coil_name, active_coil_data):
     Raises
     ------
     ValueError
-        If a coil/passive-structure with the given label already exists.
+        If a coil/passive-structure with the given label already exists,
+        or the new geometry contains overlapping coil elements.
 
     Notes
     -----
@@ -1042,6 +1101,8 @@ def add_active_coil(tokamak, coil_name, active_coil_data):
 
     if hasattr(tokamak, "coil_order") and coil_name in tokamak.coil_order:
         raise ValueError(f"Tokamak already contains a coil label '{coil_name}'.")
+
+    _validate_incremental_element(tokamak, coil_name, active_coil_data, active=True)
 
     built_component, coil_metadata = build_active_coil_component(
         coil_name, active_coil_data

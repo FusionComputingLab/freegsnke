@@ -1,4 +1,4 @@
-"""Static odd susceptibility with a local source derivative at an even equilibrium."""
+"""Response calculations for Grad–Shafranov equilibria."""
 
 import numpy as np
 from scipy.sparse.linalg import LinearOperator, gmres

@@ -20,33 +20,41 @@ jobs:
         uses: actions/checkout@v4
       - name: Setup
         uses: './.github/actions/cicd-setup'
-      - name: Check build tokamak machine notebook
+      - name: Check example00
         run: jupyter nbconvert --execute --to notebook --inplace "examples/example00 - build_tokamak_machine.ipynb"
-      - name: Check static inverse solve MAST-U notebook (1a)
-        run: jupyter nbconvert --execute --to notebook --inplace "examples/example01a - static_inverse_solve_MASTU"
-      - name: Check static inverse solve MAST-U notebook (1b)
-        run: jupyter nbconvert --execute --to notebook --inplace "examples/example01b - advanced_static_inverse_solve"
-      - name: Check static forward solve MAST-U notebook
+      - name: Check example01a
+        run: jupyter nbconvert --execute --to notebook --inplace "examples/example01a - static_inverse_solve_MASTU.ipynb"
+      - name: Check example01b
+        run: jupyter nbconvert --execute --to notebook --inplace "examples/example01b - advanced_static_inverse_solve.ipynb"
+      - name: Check example01c
+        run: jupyter nbconvert --execute --to notebook --inplace "examples/example01c - advanced_divertor_configurations.ipynb"
+      - name: Check example02
         run: jupyter nbconvert --execute --to notebook --inplace "examples/example02 - static_forward_solve_MASTU.ipynb"
-      - name: Check extracting equilibrium quantities notebook
+      - name: Check example03a
         run: jupyter nbconvert --execute --to notebook --inplace "examples/example03a - extracting_equilibrium_quantities.ipynb"
-      - name: Check using magnetic probes notebook
+      - name: Check example04
         run: jupyter nbconvert --execute --to notebook --inplace "examples/example04 - using_magnetic_probes.ipynb"
-      - name: Check evolutive forward solve notebook (5a)
+      - name: Check example05a
         run: jupyter nbconvert --execute --to notebook --inplace "examples/example05a - nonlinear_and_linear_evolution_with_GS.ipynb"
-      - name: Check evolutive forward solve notebook (5b)
+      - name: Check example05b
         run: jupyter nbconvert --execute --to notebook --inplace "examples/example05b - linear_evolution_without_GS.ipynb"
-      - name: Check evolutive forward solve notebook (5c)
+      - name: Check example05c
         run: jupyter nbconvert --execute --to notebook --inplace "examples/example05c - linear_evolution_with_relinearisation.ipynb"
-      - name: Check static inverse solve Anamak notebook
-        run: jupyter nbconvert --execute --to notebook --inplace "examples/example07a - Anamak"
-      - name: Check static inverse solve SPARC notebook
-        run: jupyter nbconvert --execute --to notebook --inplace "examples/example07b - SPARC"
-      - name: Check static inverse solve ITER notebook
-        run: jupyter nbconvert --execute --to notebook --inplace "examples/example07c - ITER"
-      - name: Check virtual circuits MAST-U notebook
+      - name: Check example07a
+        run: jupyter nbconvert --execute --to notebook --inplace "examples/example07a - Anamak.ipynb"
+      - name: Check example07b
+        run: jupyter nbconvert --execute --to notebook --inplace "examples/example07b - SPARC.ipynb"
+      - name: Check example07c
+        run: jupyter nbconvert --execute --to notebook --inplace "examples/example07c - ITER.ipynb"
+      - name: Check example07d
+        run: jupyter nbconvert --execute --to notebook --inplace "examples/example07d - EAST.ipynb"
+      - name: Check example07e
+        run: jupyter nbconvert --execute --to notebook --inplace "examples/example07e - KSTAR.ipynb"
+      - name: Check example07f
+        run: jupyter nbconvert --execute --to notebook --inplace "examples/example07f - DIII-D.ipynb"
+      - name: Check example09
         run: jupyter nbconvert --execute --to notebook --inplace "examples/example09 - virtual_circuits_MASTU.ipynb"
-      - name: Check growth rates notebook
+      - name: Check example10
         run: jupyter nbconvert --execute --to notebook --inplace "examples/example10 - growth_rates.ipynb"
-      - name: Check pulse design tool notebook
+      - name: Check example11
         run: jupyter nbconvert --execute --to notebook --inplace "examples/example11 - pulse_design_tool.ipynb"

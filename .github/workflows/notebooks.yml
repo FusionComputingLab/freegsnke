@@ -27,7 +27,9 @@ jobs:
       - name: Check static inverse solve MAST-U notebook (1b)
         run: jupyter nbconvert --execute --to notebook --inplace "examples/example01b - advanced_static_inverse_solve"
       - name: Check static forward solve MAST-U notebook
-        run: jupyter nbconvert --execute --to notebook --inplace "examples/example02 - static_forward_solve_MASTU.ipynb"
+        run: jupyter nbconvert --execute --to notebook --inplace "examples/example02a - static_forward_solve_MASTU.ipynb"
+      - name: Check extracting equilibrium quantities notebook
+        run: jupyter nbconvert --execute --to notebook --inplace "examples/example02b - alternative_plasma_psi_initial_guess.ipynb"
       - name: Check extracting equilibrium quantities notebook
         run: jupyter nbconvert --execute --to notebook --inplace "examples/example03a - extracting_equilibrium_quantities.ipynb"
       - name: Check using magnetic probes notebook

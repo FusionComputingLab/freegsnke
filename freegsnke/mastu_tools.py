@@ -26,11 +26,11 @@ from __future__ import annotations
 import math
 import os
 import pickle
+from types import ModuleType
 from typing import Callable
 
 import matplotlib.pyplot as plt
 import numpy as np
-import pyuda
 import scipy as sp
 import shapely as sh
 from numpy import abs, argmax, clip, linspace, pi
@@ -38,6 +38,40 @@ from numpy.polynomial import Polynomial
 from scipy.interpolate import interp1d
 
 from . import critical
+
+
+def _require_uda_mast() -> ModuleType:
+    """
+    Import and return ``pyuda`` after verifying ``uda-mast`` is installed.
+
+    Returns
+    -------
+    ModuleType
+        The imported ``pyuda`` module with ``uda-mast`` client extensions
+        available.
+
+    Raises
+    ------
+    ImportError
+        If either ``pyuda`` or ``uda-mast`` (``mast`` / ``mast.geom``) is not
+        installed.
+    """
+
+    try:
+        import pyuda
+        from mast import MastClient as _MastClient
+        from mast.geom import GeomClient as _GeomClient
+    except ImportError as err:
+        raise ImportError(
+            "freegsnke.mastu_tools.get_machine_data requires the optional "
+            "'pyuda' and 'uda-mast' packages. Install FreeGSNKE with the "
+            "'uda' extra and then install 'uda-mast' as described in "
+            "FreeGSNKE's 'Installing with UDA' README section."
+        ) from err
+
+    _ = (_MastClient, _GeomClient)
+    return pyuda
+
 
 # --------------------------------
 # EXTRACTING EFIT++ DATA
@@ -66,6 +100,8 @@ def get_machine_data(
     ------
     ValueError
         If `save_path` is None.
+    ImportError
+        If the optional `pyuda` or `uda-mast` packages are not installed.
 
     Notes
     -----
@@ -77,7 +113,8 @@ def get_machine_data(
             "'save_path' cannot be None. Please provide a valid path to save the machine data."
         )
 
-    # set up pyUDA client
+    # set up pyUDA client (requires both pyuda and uda-mast)
+    pyuda = _require_uda_mast()
     client = pyuda.Client()
 
     # store data in dictionary form

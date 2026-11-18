@@ -121,7 +121,7 @@ html_css_files = [
 
 # suppress_warnings = [ 'autosectionlabel.*' ]
 
-autodoc_mock_imports = ["freegs"]
+autodoc_mock_imports = ["freegs", "pyuda", "mast"]
 
 # -- Extension configuration -------------------------------------------------
 

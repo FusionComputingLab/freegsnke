@@ -7,24 +7,50 @@ from scipy.sparse.linalg import LinearOperator, gmres
 def solve_odd_response(
     inverse, coefficient, vacuum_response, reflection, rtol=1e-9, maxiter=20
 ):
-    """Solve (I - Po G C Po)v = Po G C g, then dj = Po C(v+g).
+    """Solve the static odd response about a reflection-symmetric equilibrium.
 
-    inverse(j) is the linear free-boundary plasma-flux solve G, coefficient is
-    dj/dpsi in A m^-2 per (Wb/rad), and vacuum_response is Wb/rad per ampere.
-    The returned plasma_response and current_response are per forcing ampere.
-    Inputs must describe the SAME frozen equilibrium, mesh and coil geometry.
+    Solve ``(I - P_o G C P_o)v = P_o G C g`` and return
+    ``dj = P_o C(v + g)``, where ``P_o`` projects onto odd fields,
+    ``G`` is the linear free-boundary inverse, ``C`` multiplies by
+    ``dj/dpsi`` and ``g`` is the vacuum-flux response.
 
-    This is a restricted static response, not the general equilibrium Jacobian.
-    Requires an even base, even C, odd forcing and reflection-equivariant G.
-    The FULL odd-sector source variation must be local: delta_j = C*delta_psi
-    for total flux. Establish this reduction for the chosen profile model;
-    the routine does not differentiate normalization or critical-flux data.
-    Scalar variations vanish only for reflection-invariant, differentiable
-    quantities at the symmetric base. Other nonlocal/interface terms cannot
-    simply be omitted. Sharp current interfaces and critical-point switching
-    require separate treatment. A unique response requires an invertible tangent.
-    Caller must verify the full equilibrium residual and operator symmetry.
-    Growth rates additionally require a conductor/circuit dynamics model.
+    Inputs must describe one frozen equilibrium satisfying the full
+    equilibrium residual, with fixed mesh and coil geometry. ``G`` must
+    commute with reflection, and ``C`` must represent the full first-order
+    current-density variation for odd total-flux perturbations.
+    Symmetry eliminates first-order scalar variations only for differentiable,
+    reflection-invariant quantities; non-local terms, moving current
+    interfaces and critical-point switching require separate treatment.
+
+    Note also that:
+
+    - Uniqueness requires an invertible odd tangent operator.
+    - This computes a static response; it doesn't (on its own) determine growth rates.
+
+    Args:
+        inverse (Callable): Map 1D current density (A m^-2) to plasma
+            flux (Wb/rad) on the same mesh.
+        coefficient (array_like): Finite, even, 1D ``dj/dpsi`` array,
+            in A m^-2 per (Wb/rad).
+        vacuum_response (array_like): Finite, odd vacuum-flux response
+            in Wb/rad per forcing ampere, matching coefficient's shape.
+        reflection (array_like): Matching integer index permutation
+            that restores the original ordering when applied twice.
+        rtol (float): Relative GMRES tolerance. Defaults to 1e-9.
+        maxiter (int): Maximum GMRES restart cycles, each with at most
+            ``min(40, n)`` iterations for ``n`` vertices. Defaults to 20.
+
+    Returns:
+        dict: Responses per forcing ampere and convergence diagnostic:
+            plasma_response: Odd plasma flux ``v`` (Wb/rad/A).
+            current_response: Odd current density ``dj`` (A m^-2/A).
+            relative_residual:
+                ``norm(operator @ v - rhs) / max(norm(rhs), 1e-300)``.
+
+    Raises:
+        ValueError: Invalid input shapes, reflection, finiteness or parity.
+        RuntimeError: GMRES failure, non-finite relative residual, or
+            relative residual exceeding ``10 * rtol``.
     """
     # C is the local source derivative at one frozen equilibrium. The caller
     # supplies its profile physics; this solver only couples C to the inverse G.

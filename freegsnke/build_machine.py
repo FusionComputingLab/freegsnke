@@ -58,8 +58,8 @@ def _element_polygons(element, label):
             raise ValueError(f"Element '{label}' must define both dR and dZ.")
         if r_values.size == 0:
             raise ValueError(f"Element '{label}' has no windings.")
-        dR = float(element["dR"])
-        dZ = float(element["dZ"])
+        dR = np.asarray(element["dR"], dtype=float).item()
+        dZ = np.asarray(element["dZ"], dtype=float).item()
         if not np.isfinite([dR, dZ]).all() or dR <= 0 or dZ <= 0:
             raise ValueError(
                 f"Element '{label}' dimensions 'dR' and 'dZ' "

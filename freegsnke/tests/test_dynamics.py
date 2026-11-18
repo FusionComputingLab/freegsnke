@@ -123,7 +123,9 @@ def create_solver(create_machine, request):
         {"solver_type": "LUsparse", "myy_type": "reduced", "cache_myy": True},
         pytest.param(
             {"solver_type": "DST", "myy_type": "reduced", "cache_myy": True},
-            marks=pytest.mark.xfail(reason="Seems to be an issue with sensitivity/correctness of the test, not the solver"),
+            marks=pytest.mark.xfail(
+                reason="Seems to be an issue with sensitivity/correctness of the test, not the solver"
+            ),
         ),
     ],
     indirect=True,
@@ -141,7 +143,7 @@ def test_linearised_growth_rate(create_machine, create_solver):
     )
     true_GR = 0.05900
 
-    #XXX The test and error message refer to different quantities. I added the one from the test to the message in brackets. Not sure which is correct
+    # XXX The test and error message refer to different quantities. I added the one from the test to the message in brackets. Not sure which is correct
     # check that
     assert (
         abs((stepping.linearised_sol.instability_timescale[0] - true_GR) / true_GR)

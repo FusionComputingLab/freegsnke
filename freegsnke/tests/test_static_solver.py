@@ -203,8 +203,13 @@ def test_NKGS_invalid(create_machine, solver, order, error, error_msg):
         (True, "LUsparse", 4),
         (False, "DST", None),
         (True, "LUsparse", 2),
-        pytest.param(True, "multigrid", 2, marks=pytest.mark.xfail(
-            reason="The default number of levels gives a ~1% error; not addressing this as multigrid is due for deprecation anyway.")
+        pytest.param(
+            True,
+            "multigrid",
+            2,
+            marks=pytest.mark.xfail(
+                reason="The default number of levels gives a ~1% error; not addressing this as multigrid is due for deprecation anyway."
+            ),
         ),
     ],
 )
@@ -254,7 +259,7 @@ def test_static_solve(create_machine, cache, solver, order):
     test_psi = np.load(STATIC_PSI_BASELINE)
 
     psi_range = np.max(test_psi) - np.min(test_psi)
-    psi_diff = abs(eq.psi()-test_psi)
+    psi_diff = abs(eq.psi() - test_psi)
     assert np.allclose(
         eq.psi(), test_psi, atol=psi_range * 0.003
     ), f"Psi map differs significantly from the test map. Max diff: {psi_diff.max():.3e} ({psi_diff.max()/psi_range:%})"

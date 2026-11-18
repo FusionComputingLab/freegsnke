@@ -817,7 +817,7 @@ class Equilibrium(equilibrium.Equilibrium):
                     None,
                 )
                 opoint_flag = True
-            except:
+            except Exception:
                 self.plasma_psi *= 1.5
                 self.gmod += np.log(1.5)
                 n_up += 1
@@ -848,7 +848,7 @@ class Equilibrium(equilibrium.Equilibrium):
                     )
                     xpoint_flag = len(xpt) > 0
                     self.gmod *= 1.1
-                except:
+                except Exception:
                     # here if exponentiation causes the o-point to disappear
                     print(
                         "Failed to introduce an xpoint on the domain by exponentiating psi_plasma."
@@ -903,8 +903,6 @@ class Equilibrium(equilibrium.Equilibrium):
                     )
                     diverted_size = np.sum(diverted_core_mask)
                     print("diverted_size", diverted_size)
-                # except:
-                #     diverted_flag = True
 
         self.set_plasma_psi(n_plasma_psi)
 
@@ -982,7 +980,7 @@ class Equilibrium(equilibrium.Equilibrium):
             Zmin = data["Zmin"]
             Zmax = data["Zmax"]
             psi_plasma = data["psi_plasma"]
-        except:
+        except KeyError:
             raise ValueError(
                 "Data in EQUILIBRIUM_PATH pickle not in correct format or missing."
             )

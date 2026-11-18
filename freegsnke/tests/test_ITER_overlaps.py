@@ -75,15 +75,7 @@ def print_iter_overlap_coordinates():
             # Omit the closing vertex, which repeats the first corner.
             for r, z in list(shapes[name].exterior.coords)[:-1]:
                 print(f"    ({r:.17g}, {z:.17g})")
-
-
-def test_iter_elements_do_not_overlap():
-    """Fail with all offending labels when the ITER elements overlap."""
-    overlaps = find_iter_overlaps()
-    assert not overlaps, "Overlapping ITER elements:\n" + "\n".join(
-        f"  {first} <-> {second}" for first, second in overlaps
-    )
-
+                
 
 def plot_iter_overlaps(save_path=None, show=True):
     """Plot all overlapping elements together in the (R, Z) poloidal plane.

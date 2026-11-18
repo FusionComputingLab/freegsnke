@@ -7,7 +7,8 @@ These example Jupyter notebooks are intended to be the **first port of call for 
 | Example 00 | Learn how to build a generic tokamak object. | Anyone |
 | Example 01a | Learn how to use the static inverse solver. | Anyone |
 | Example 01b | Learn how to use more advanced features of the static inverse solver. | Anyone |
-| Example 02 | Learn how to use the static forward solver. | Anyone |
+| Example 02a | Learn how to use the static forward solver. | Anyone |
+| Example 02b | Learn how to use alternate plasma flux guesses in the static solvers. | Anyone |
 | Example 03a | Learn how to extract results from a calculated equilibrium. | Anyone |
 | Example 03b | Learn how to read/write equilibrium data to/from a geqdsk file, via FreeQDSK. | Anyone |
 | Example 03c | Learn how to read/write equilibrium data to/from an IMAS equilibrium IDS (netCDF), via IMAS-Python. | Anyone |

@@ -30,6 +30,8 @@ jobs:
         run: jupyter nbconvert --execute --to notebook --inplace "examples/example02a - static_forward_solve_MASTU.ipynb"
       - name: Check extracting equilibrium quantities notebook
         run: jupyter nbconvert --execute --to notebook --inplace "examples/example02b - alternative_plasma_psi_initial_guess.ipynb"
+      - name: Check high-definition static solve OpenSTEP notebook (2c)
+        run: jupyter nbconvert --execute --to notebook --inplace "examples/example02c - high_definition_static_solve_OpenSTEP.ipynb"
       - name: Check extracting equilibrium quantities notebook
         run: jupyter nbconvert --execute --to notebook --inplace "examples/example03a - extracting_equilibrium_quantities.ipynb"
       - name: Check using magnetic probes notebook
@@ -46,6 +48,8 @@ jobs:
         run: jupyter nbconvert --execute --to notebook --inplace "examples/example07b - SPARC"
       - name: Check static inverse solve ITER notebook
         run: jupyter nbconvert --execute --to notebook --inplace "examples/example07c - ITER"
+      - name: Check example07g
+        run: jupyter nbconvert --execute --to notebook --inplace "examples/example07g - OpenSTEP.ipynb"
       - name: Check virtual circuits MAST-U notebook
         run: jupyter nbconvert --execute --to notebook --inplace "examples/example09 - virtual_circuits_MASTU.ipynb"
       - name: Check growth rates notebook

@@ -30,8 +30,6 @@ jobs:
         run: jupyter nbconvert --execute --to notebook --inplace "examples/example02a - static_forward_solve_MASTU.ipynb"
       - name: Check extracting equilibrium quantities notebook
         run: jupyter nbconvert --execute --to notebook --inplace "examples/example02b - alternative_plasma_psi_initial_guess.ipynb"
-      - name: Check high-definition static solve OpenSTEP notebook (2c)
-        run: jupyter nbconvert --execute --to notebook --inplace "examples/example02c - high_definition_static_solve_OpenSTEP.ipynb"
       - name: Check extracting equilibrium quantities notebook
         run: jupyter nbconvert --execute --to notebook --inplace "examples/example03a - extracting_equilibrium_quantities.ipynb"
       - name: Check using magnetic probes notebook

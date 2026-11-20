@@ -9,6 +9,7 @@ These example Jupyter notebooks are intended to be the **first port of call for 
 | Example 01b | Learn how to use more advanced features of the static inverse solver. | Anyone |
 | Example 02a | Learn how to use the static forward solver. | Anyone |
 | Example 02b | Learn how to use alternate plasma flux guesses in the static solvers. | Anyone |
+| Example 02c | Learn how to use optional performance features in static solves. | Anyone |
 | Example 03a | Learn how to extract results from a calculated equilibrium. | Anyone |
 | Example 03b | Learn how to read/write equilibrium data to/from a geqdsk file, via FreeQDSK. | Anyone |
 | Example 03c | Learn how to read/write equilibrium data to/from an IMAS equilibrium IDS (netCDF), via IMAS-Python. | Anyone |
@@ -22,6 +23,7 @@ These example Jupyter notebooks are intended to be the **first port of call for 
 | Example 07a | Static inverse solve in the "Anamak" toy tokamak. | Anyone |
 | Example 07b | Static inverse solve in a SPARC-like tokamak. | Anyone |
 | Example 07c | Static inverse solve in an ITER-like tokamak. | Anyone |
+| Example 07g | Static forward solve in a STEP-like tokamak. | Anyone |
 | Example 09 | Learn how to use and build virtual circuits for plasma shape control. | Anyone |
 | Example 10 | Learn how to calculate growth rates associated with vertically unstable modes. | Anyone |
 | Example 11 | Learn how to use the evolutive solver alongside a virtual plasma control system (FreeGSNKE Pulse Design Tool). | Anyone |

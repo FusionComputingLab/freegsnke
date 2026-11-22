@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import os
 import pickle
+import warnings
 from copy import deepcopy
 
 import numpy as np
@@ -51,7 +52,7 @@ from .refine_passive import generate_refinement
 _OVERLAP_AREA_TOLERANCE = 1e-12
 
 
-def _element_polygons(element, label):
+def _element_polygons(element, label, *, active=False):
     """Convert one active or passive machine-description entry to polygons."""
     r_values = np.asarray(element["R"], dtype=float).reshape(-1)
     z_values = np.asarray(element["Z"], dtype=float).reshape(-1)
@@ -60,7 +61,9 @@ def _element_polygons(element, label):
     if not np.isfinite(r_values).all() or not np.isfinite(z_values).all():
         raise ValueError(f"Element '{label}' coordinates must be finite.")
 
-    if "dR" in element or "dZ" in element:
+    # Match build_passives: multiple passive coordinates are polygon vertices,
+    # even when dimensions are also present. Active coordinates are windings.
+    if active or r_values.size == 1:
         if "dR" not in element or "dZ" not in element:
             raise ValueError(f"Element '{label}' must define both dR and dZ.")
         if r_values.size == 0:
@@ -100,7 +103,7 @@ def _active_element_shapes(active_data):
             ]
 
         for coil_name, element in coils:
-            shapes = _element_polygons(element, coil_name)
+            shapes = _element_polygons(element, coil_name, active=True)
             for index, shape in enumerate(shapes):
                 label = coil_name if len(shapes) == 1 else f"{coil_name}[{index}]"
                 yield label, shape
@@ -161,10 +164,10 @@ def check_for_overlapping_elements(
         rectangular dimensions ``dR`` and ``dZ``, or a dictionary of such
         entries keyed by sub-coil name. Coordinates and dimensions are in metres.
     passive_data : list of dict
-        Passive-structure descriptions. Entries with ``dR`` and ``dZ`` define
-        rectangles centred at ``R`` and ``Z``; entries without dimensions
-        define polygons from their ``R`` and ``Z`` vertices. Coordinates and
-        dimensions are in metres. Optional ``name`` values identify structures;
+        Passive-structure descriptions. Single-point entries use rectangles
+        centred at ``R`` and ``Z``, sized by ``dR`` and ``dZ``. Multiple points
+        define polygon vertices, regardless of dimension metadata. Coordinates
+        and dimensions are in metres. Optional ``name`` values identify structures;
         unnamed entries use ``passive_{index}`` with a zero-based index.
     area_tolerance : float, optional
         Maximum intersection area, in square metres, ignored when checking
@@ -220,7 +223,20 @@ def check_for_overlapping_elements(
     return overlaps
 
 
-def _validate_incremental_element(tokamak, name, element, *, active, replace=False):
+def _report_overlaps(overlaps, strict_overlap_check):
+    """Warn about overlaps, or reject them when strict checking is requested."""
+    if not overlaps:
+        return
+    overlap_list = "; ".join(f"{first} and {second}" for first, second in overlaps)
+    message = f"Overlapping coil elements detected: {overlap_list}"
+    if strict_overlap_check:
+        raise ValueError(message)
+    warnings.warn(message, UserWarning, stacklevel=3)
+
+
+def _validate_incremental_element(
+    tokamak, name, element, *, active, replace=False, strict_overlap_check=False
+):
     """
     Validate the geometry of one proposed machine addition or replacement.
 
@@ -245,6 +261,8 @@ def _validate_incremental_element(tokamak, name, element, *, active, replace=Fal
         If True, exclude the existing element with ``name`` from the relevant
         active or passive descriptions before checking the candidate. Defaults
         to False. This is a keyword-only argument.
+    strict_overlap_check : bool, optional
+        If True, raise for overlaps; otherwise warn and allow the edit.
 
     Returns
     -------
@@ -258,13 +276,13 @@ def _validate_incremental_element(tokamak, name, element, *, active, replace=Fal
     TypeError
         If coordinates or dimensions cannot be converted to numeric values.
     ValueError
-        If geometry is invalid, numeric conversion fails, or the candidate
-        overlaps another element or contains overlapping windings/sub-coils.
+        If geometry is invalid, numeric conversion fails, or overlaps are found
+        with ``strict_overlap_check=True``.
 
     Notes
     -----
     The machine and supplied descriptions are not modified. Active candidates
-    are checked for internal overlaps first; any such overlap raises immediately.
+    are checked for internal overlaps as well as overlaps with existing elements.
     Each candidate entry is then checked against the remaining cached machine
     geometry. Touching edges and intersection areas up to ``1e-12`` square
     metres are allowed. This helper does not validate label existence or
@@ -286,11 +304,6 @@ def _validate_incremental_element(tokamak, name, element, *, active, replace=Fal
     if active:
         # Checks only the active internal windings/sub-coils overlaps.
         overlaps = check_for_overlapping_elements({name: element}, [])
-        if overlaps:
-            overlap_list = "; ".join(
-                f"{first} and {second}" for first, second in overlaps
-            )
-            raise ValueError(f"Overlapping coil elements detected: {overlap_list}")
         if "R" in element or "Z" in element:
             candidates = [(name, element)]
         else:
@@ -305,12 +318,10 @@ def _validate_incremental_element(tokamak, name, element, *, active, replace=Fal
     for label, candidate in candidates:
         overlaps.extend(
             check_for_overlapping_single_element(
-                dict(candidate, name=label), active_data, passive_data
+                dict(candidate, name=label), active_data, passive_data, active=active
             )
         )
-    if overlaps:
-        overlap_list = "; ".join(f"{first} and {second}" for first, second in overlaps)
-        raise ValueError(f"Overlapping coil elements detected: {overlap_list}")
+    _report_overlaps(overlaps, strict_overlap_check)
 
 
 def check_for_overlapping_single_element(
@@ -319,6 +330,8 @@ def check_for_overlapping_single_element(
     passive_data,
     exclude_name=None,
     area_tolerance=_OVERLAP_AREA_TOLERANCE,
+    *,
+    active=False,
 ):
     """
     Find overlaps between one candidate entry and existing machine elements.
@@ -326,10 +339,10 @@ def check_for_overlapping_single_element(
     Parameters
     ----------
     element : dict
-        Candidate winding or passive-structure entry. Entries with ``dR`` and
-        ``dZ`` define rectangles centred at ``R`` and ``Z``; entries without
-        dimensions define a polygon from ``R``/``Z`` vertices. Coordinates and
-        dimensions are in metres. The optional ``name`` defaults to
+        Candidate winding or passive-structure entry. Passive entries with
+        multiple coordinates define a polygon, regardless of dimension metadata.
+        Single-point passives and active windings use centred rectangles.
+        Coordinates and dimensions are in metres. The optional ``name`` defaults to
         ``"candidate"``. A dictionary of sub-coils is not accepted.
     active_data : dict
         Existing active-coil descriptions keyed by coil or circuit name, in
@@ -345,6 +358,9 @@ def check_for_overlapping_single_element(
     area_tolerance : float, optional
         Maximum intersection area, in square metres, ignored when checking
         overlaps. Must be finite and non-negative. Defaults to ``1e-12``.
+    active : bool, optional
+        Set True for an active winding entry, whose coordinates are winding
+        centres rather than polygon vertices. Defaults to False (passive).
 
     Returns
     -------
@@ -375,7 +391,7 @@ def check_for_overlapping_single_element(
     """
     area_tolerance = _validate_area_tolerance(area_tolerance)
     candidate_name = element.get("name", "candidate")
-    candidate_shapes = _element_polygons(element, candidate_name)
+    candidate_shapes = _element_polygons(element, candidate_name, active=active)
     existing_shapes = [
         *(
             (name, shape)
@@ -419,6 +435,8 @@ def tokamak(
     wall_path: str | None = None,
     magnetic_probe_path: str | None = None,
     refine_mode: str = "G",
+    *,
+    strict_overlap_check: bool = False,
 ) -> Machine:
     """
     Build a tokamak machine from the standardised input data.
@@ -453,6 +471,9 @@ def tokamak(
     refine_mode : str, optional
         Choose the refinement mode for extended passive structures (input as polygons), by default
         'G' for 'grid' (use 'LH' for alternative mode using a Latin Hypercube implementation).
+    strict_overlap_check : bool, optional
+        If True, reject overlaps with ValueError. By default, warn and
+        continue. Invalid geometry always raises.
 
     Returns
     -------
@@ -472,6 +493,7 @@ def tokamak(
         wall_path=wall_path,
         magnetic_probe_path=magnetic_probe_path,
         refine_mode=refine_mode,
+        strict_overlap_check=strict_overlap_check,
     )
 
     # build the tokamak
@@ -499,6 +521,8 @@ def build_tokamak_components(
     wall_path: str | None = None,
     magnetic_probe_path: str | None = None,
     refine_mode: str = "G",
+    *,
+    strict_overlap_check: bool = False,
 ) -> dict:
     """
     Build the reusable pieces of a FreeGSNKE machine description.
@@ -535,6 +559,9 @@ def build_tokamak_components(
         Path to a pickle file containing magnetic probe descriptions.
     refine_mode : str, optional
         Refinement mode for extended passive structures. Defaults to ``"G"``.
+    strict_overlap_check : bool, optional
+        If True, reject overlaps with ValueError. By default, warn and
+        continue. Invalid geometry always raises.
 
     Returns
     -------
@@ -560,11 +587,7 @@ def build_tokamak_components(
         active_data=active_coils,
         passive_data=passive_coils,
     )
-    if overlapping_elements:
-        overlap_list = "; ".join(
-            f"{first} and {second}" for first, second in overlapping_elements
-        )
-        raise ValueError(f"Overlapping coil elements detected: {overlap_list}")
+    _report_overlaps(overlapping_elements, strict_overlap_check)
 
     # build the actives into their circuits
     coil_circuits = build_actives(active_coils=active_coils)
@@ -761,6 +784,8 @@ def update_active_coil(
     coil_name: str,
     active_coil_data: dict,
     preserve_current: bool = True,
+    *,
+    strict_overlap_check: bool = False,
 ) -> Machine:
     """
     Update one active coil/circuit on an existing tokamak object.
@@ -781,6 +806,9 @@ def update_active_coil(
     preserve_current : bool, optional
         If True, the old current on ``coil_name`` is copied onto the replacement
         coil/circuit. Defaults to True.
+    strict_overlap_check : bool, optional
+        If True, reject overlaps with ValueError. By default, warn and
+        continue. Invalid geometry always raises.
 
     Returns
     -------
@@ -791,7 +819,7 @@ def update_active_coil(
     ------
     ValueError
         If ``coil_name`` is not an existing active coil/circuit label, or the
-        replacement geometry contains overlapping coil elements.
+        replacement geometry overlaps another element in strict mode.
 
     Notes
     -----
@@ -824,7 +852,12 @@ def update_active_coil(
         return tokamak
 
     _validate_incremental_element(
-        tokamak, coil_name, active_coil_data, active=True, replace=True
+        tokamak,
+        coil_name,
+        active_coil_data,
+        active=True,
+        replace=True,
+        strict_overlap_check=strict_overlap_check,
     )
 
     old_current = tokamak[coil_name].current
@@ -943,6 +976,8 @@ def update_passive_structure(
     passive_data: dict,
     preserve_current: bool = True,
     refine_mode: str = "G",
+    *,
+    strict_overlap_check: bool = False,
 ) -> Machine:
     """
     Update one passive structure on an existing tokamak object, in place.
@@ -969,6 +1004,9 @@ def update_passive_structure(
     refine_mode : str, optional
         Refinement mode for extended (polygonal) passive structures. Defaults
         to ``"G"``.
+    strict_overlap_check : bool, optional
+        If True, reject overlaps with ValueError. By default, warn and
+        continue. Invalid geometry always raises.
 
     Returns
     -------
@@ -979,7 +1017,7 @@ def update_passive_structure(
     ------
     ValueError
         If ``name`` is not an existing passive-structure label, or the
-        replacement geometry overlaps another coil element.
+        replacement geometry overlaps another coil element in strict mode.
 
     Notes
     -----
@@ -1014,7 +1052,12 @@ def update_passive_structure(
         return tokamak
 
     _validate_incremental_element(
-        tokamak, name, passive_data, active=False, replace=True
+        tokamak,
+        name,
+        passive_data,
+        active=False,
+        replace=True,
+        strict_overlap_check=strict_overlap_check,
     )
 
     old_current = tokamak[name].current
@@ -1057,6 +1100,8 @@ def add_passive_structure(
     passive_data: dict,
     name: str | None = None,
     refine_mode: str = "G",
+    *,
+    strict_overlap_check: bool = False,
 ) -> Machine:
     """
     Add one new passive structure to an existing tokamak object, in place.
@@ -1078,6 +1123,9 @@ def add_passive_structure(
     refine_mode : str, optional
         Refinement mode for extended (polygonal) passive structures. Defaults
         to ``"G"``.
+    strict_overlap_check : bool, optional
+        If True, reject overlaps with ValueError. By default, warn and
+        continue. Invalid geometry always raises.
 
     Returns
     -------
@@ -1088,7 +1136,7 @@ def add_passive_structure(
     ------
     ValueError
         If a coil/passive-structure with the resolved label already exists,
-        or the new geometry overlaps another coil element.
+        or the new geometry overlaps another coil element in strict mode.
 
     Notes
     -----
@@ -1107,7 +1155,13 @@ def add_passive_structure(
     if hasattr(tokamak, "coil_order") and name in tokamak.coil_order:
         raise ValueError(f"Tokamak already contains a coil label '{name}'.")
 
-    _validate_incremental_element(tokamak, name, passive_data, active=False)
+    _validate_incremental_element(
+        tokamak,
+        name,
+        passive_data,
+        active=False,
+        strict_overlap_check=strict_overlap_check,
+    )
 
     built_component, coil_metadata = build_passive_structure_component(
         name, passive_data, refine_mode=refine_mode
@@ -1227,7 +1281,11 @@ def remove_passive_structure(tokamak: Machine, name: str) -> Machine:
 
 
 def add_active_coil(
-    tokamak: Machine, coil_name: str, active_coil_data: dict
+    tokamak: Machine,
+    coil_name: str,
+    active_coil_data: dict,
+    *,
+    strict_overlap_check: bool = False,
 ) -> Machine:
     """
     Add one new active coil/circuit to an existing tokamak object, in place.
@@ -1247,6 +1305,9 @@ def add_active_coil(
     active_coil_data : dict
         Machine-description entry for the new active coil/circuit (same
         format as one entry of the active-coils dictionary).
+    strict_overlap_check : bool, optional
+        If True, reject overlaps with ValueError. By default, warn and
+        continue. Invalid geometry always raises.
 
     Returns
     -------
@@ -1257,7 +1318,7 @@ def add_active_coil(
     ------
     ValueError
         If a coil/passive-structure with the given label already exists,
-        or the new geometry contains overlapping coil elements.
+        or the new geometry contains overlapping coil elements in strict mode.
 
     Notes
     -----
@@ -1273,7 +1334,13 @@ def add_active_coil(
     if hasattr(tokamak, "coil_order") and coil_name in tokamak.coil_order:
         raise ValueError(f"Tokamak already contains a coil label '{coil_name}'.")
 
-    _validate_incremental_element(tokamak, coil_name, active_coil_data, active=True)
+    _validate_incremental_element(
+        tokamak,
+        coil_name,
+        active_coil_data,
+        active=True,
+        strict_overlap_check=strict_overlap_check,
+    )
 
     built_component, coil_metadata = build_active_coil_component(
         coil_name, active_coil_data
@@ -1601,6 +1668,8 @@ def update_tokamak(
     magnetic_probe_path: str | None = None,
     refine_mode: str = "G",
     preserve_currents: bool = True,
+    *,
+    strict_overlap_check: bool = False,
 ) -> Machine:
     """
     Update an existing tokamak from direct data dictionaries or pickle paths.
@@ -1640,6 +1709,9 @@ def update_tokamak(
     preserve_currents : bool, optional
         If True, currents for labels that are present in both the old and new
         machine descriptions are copied onto the updated coil objects.
+    strict_overlap_check : bool, optional
+        If True, reject overlaps with ValueError. By default, warn and
+        continue. Invalid geometry always raises.
 
     Returns
     -------
@@ -1659,6 +1731,7 @@ def update_tokamak(
         wall_path=wall_path,
         magnetic_probe_path=magnetic_probe_path,
         refine_mode=refine_mode,
+        strict_overlap_check=strict_overlap_check,
     )
     apply_tokamak_components(
         tokamak,

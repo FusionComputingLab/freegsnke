@@ -75,7 +75,7 @@ def print_iter_overlap_coordinates():
             # Omit the closing vertex, which repeats the first corner.
             for r, z in list(shapes[name].exterior.coords)[:-1]:
                 print(f"    ({r:.17g}, {z:.17g})")
-                
+
 
 def plot_iter_overlaps(save_path=None, show=True):
     """Plot all overlapping elements together in the (R, Z) poloidal plane.

@@ -158,6 +158,8 @@ class Equilibrium(equilibrium.Equilibrium):
         magnetic_probe_path: str | None = None,
         refine_mode: str = "G",
         preserve_currents: bool = True,
+        *,
+        strict_overlap_check: bool = False,
     ) -> Equilibrium:
         """
         Update the equilibrium's tokamak directly and refresh machine-dependent caches.
@@ -195,6 +197,9 @@ class Equilibrium(equilibrium.Equilibrium):
         preserve_currents : bool, optional
             If True, currents for labels that are present in both the old and new
             machine descriptions are copied onto the updated coil objects.
+        strict_overlap_check : bool, optional
+            If True, reject overlaps with ValueError. By default, warn and
+            continue. Invalid geometry always raises.
 
         Returns
         -------
@@ -221,12 +226,18 @@ class Equilibrium(equilibrium.Equilibrium):
             magnetic_probe_path=magnetic_probe_path,
             refine_mode=refine_mode,
             preserve_currents=preserve_currents,
+            strict_overlap_check=strict_overlap_check,
         )
         self.refresh_machine_dependent_state()
         return self
 
     def update_active_coil(
-        self, coil_name: str, active_coil_data: dict, preserve_current: bool = True
+        self,
+        coil_name: str,
+        active_coil_data: dict,
+        preserve_current: bool = True,
+        *,
+        strict_overlap_check: bool = False,
     ) -> Equilibrium:
         """
         Update one active coil/circuit and refresh equilibrium-level coil caches.
@@ -240,6 +251,9 @@ class Equilibrium(equilibrium.Equilibrium):
         preserve_current : bool, optional
             If True, the old current on ``coil_name`` is copied onto the
             replacement coil/circuit. Defaults to True.
+        strict_overlap_check : bool, optional
+            If True, reject overlaps with ValueError. By default, warn and
+            continue. Invalid geometry always raises.
 
         Returns
         -------
@@ -259,11 +273,18 @@ class Equilibrium(equilibrium.Equilibrium):
             coil_name=coil_name,
             active_coil_data=active_coil_data,
             preserve_current=preserve_current,
+            strict_overlap_check=strict_overlap_check,
         )
         self.refresh_machine_dependent_state(refresh_limiter=False)
         return self
 
-    def add_active_coil(self, coil_name: str, active_coil_data: dict) -> Equilibrium:
+    def add_active_coil(
+        self,
+        coil_name: str,
+        active_coil_data: dict,
+        *,
+        strict_overlap_check: bool = False,
+    ) -> Equilibrium:
         """
         Add one new active coil/circuit and extend equilibrium-level coil caches.
 
@@ -273,6 +294,9 @@ class Equilibrium(equilibrium.Equilibrium):
             Label for the new active coil/circuit.
         active_coil_data : dict
             Machine-description entry for the new active coil/circuit.
+        strict_overlap_check : bool, optional
+            If True, reject overlaps with ValueError. By default, warn and
+            continue. Invalid geometry always raises.
 
         Returns
         -------
@@ -289,7 +313,9 @@ class Equilibrium(equilibrium.Equilibrium):
         """
 
         self.tokamak.add_active_coil(
-            coil_name=coil_name, active_coil_data=active_coil_data
+            coil_name=coil_name,
+            active_coil_data=active_coil_data,
+            strict_overlap_check=strict_overlap_check,
         )
         insert_index = self.tokamak.coil_order[coil_name]
         coil = self.tokamak[coil_name]
@@ -352,6 +378,8 @@ class Equilibrium(equilibrium.Equilibrium):
         passive_data: dict,
         preserve_current: bool = True,
         refine_mode: str = "G",
+        *,
+        strict_overlap_check: bool = False,
     ) -> Equilibrium:
         """
         Update one passive structure and refresh equilibrium-level coil caches.
@@ -368,6 +396,9 @@ class Equilibrium(equilibrium.Equilibrium):
         refine_mode : str, optional
             Refinement mode for extended (polygonal) passive structures.
             Defaults to ``"G"``.
+        strict_overlap_check : bool, optional
+            If True, reject overlaps with ValueError. By default, warn and
+            continue. Invalid geometry always raises.
 
         Returns
         -------
@@ -389,12 +420,18 @@ class Equilibrium(equilibrium.Equilibrium):
             passive_data=passive_data,
             preserve_current=preserve_current,
             refine_mode=refine_mode,
+            strict_overlap_check=strict_overlap_check,
         )
         self.refresh_machine_dependent_state(refresh_limiter=False)
         return self
 
     def add_passive_structure(
-        self, passive_data: dict, name: str | None = None, refine_mode: str = "G"
+        self,
+        passive_data: dict,
+        name: str | None = None,
+        refine_mode: str = "G",
+        *,
+        strict_overlap_check: bool = False,
     ) -> Equilibrium:
         """
         Add one new passive structure and extend equilibrium-level coil caches.
@@ -410,6 +447,9 @@ class Equilibrium(equilibrium.Equilibrium):
         refine_mode : str, optional
             Refinement mode for extended (polygonal) passive structures.
             Defaults to ``"G"``.
+        strict_overlap_check : bool, optional
+            If True, reject overlaps with ValueError. By default, warn and
+            continue. Invalid geometry always raises.
 
         Returns
         -------
@@ -426,7 +466,10 @@ class Equilibrium(equilibrium.Equilibrium):
         """
 
         self.tokamak.add_passive_structure(
-            passive_data=passive_data, name=name, refine_mode=refine_mode
+            passive_data=passive_data,
+            name=name,
+            refine_mode=refine_mode,
+            strict_overlap_check=strict_overlap_check,
         )
         added_name = self.tokamak.coils_list[-1]
         coil = self.tokamak[added_name]

@@ -649,3 +649,148 @@ def test_check_for_overlapping_single_element_rejects_invalid_polygon():
 
     with pytest.raises(ValueError, match="Invalid passive-structure polygon"):
         build_machine.check_for_overlapping_single_element(candidate, {}, [])
+
+
+def test_passive_polygon_dimensions_do_not_change_its_footprint():
+    """Use the filled passive polygon, not small rectangles at its vertices."""
+    active = {"inside": {"R": [1.5], "Z": [0.0], "dR": 0.1, "dZ": 0.1}}
+    polygon = {
+        "name": "plate",
+        "R": [1.0, 2.0, 2.0, 1.0],
+        "Z": [-0.5, -0.5, 0.5, 0.5],
+        "dR": 0.02,
+        "dZ": 0.02,
+    }
+    assert build_machine.check_for_overlapping_elements(active, [polygon]) == [
+        ("inside", "plate")
+    ]
+    assert build_machine.check_for_overlapping_single_element(polygon, active, []) == [
+        ("plate", "inside")
+    ]
+
+
+def test_active_candidate_coordinates_remain_winding_centres():
+    """An explicit active candidate uses separate winding rectangles."""
+    active = {"existing": {"R": [1.0], "Z": [0.0], "dR": 0.1, "dZ": 0.1}}
+    candidate = {
+        "name": "new",
+        "R": [1.0, 2.0],
+        "Z": [0.0, 0.0],
+        "dR": 0.1,
+        "dZ": 0.1,
+    }
+    assert build_machine.check_for_overlapping_single_element(
+        candidate, active, [], active=True
+    ) == [("new[0]", "existing")]
+
+
+@pytest.mark.parametrize("strict", [False, True])
+@pytest.mark.parametrize(
+    "builder", [build_machine.tokamak, build_machine.build_tokamak_components]
+)
+def test_build_overlap_policy(tiny_machine_data, builder, strict):
+    """Construction warns by default and rejects overlaps only in strict mode."""
+    data = tiny_machine_data
+    active = deepcopy(data["active_coils"])
+    active["overlap"] = deepcopy(active["TinySingle"])
+    active["overlap"]["R"] += 0.01
+    args = dict(active_coils_data=active, limiter_data=data["limiter"])
+    if strict:
+        with pytest.raises(ValueError, match="Overlapping coil elements"):
+            builder(**args, strict_overlap_check=True)
+    else:
+        with pytest.warns(UserWarning, match="Overlapping coil elements"):
+            builder(**args)
+
+
+@pytest.mark.parametrize("strict", [False, True])
+def test_invalid_geometry_still_raises(tiny_machine_data, strict):
+    """Warning mode permits overlaps, not malformed conductor geometry."""
+    data = tiny_machine_data
+    active = deepcopy(data["active_coils"])
+    active["TinySingle"]["dR"] = -0.1
+    with pytest.raises(ValueError, match="finite and positive"):
+        build_machine.tokamak(
+            active_coils_data=active,
+            limiter_data=data["limiter"],
+            strict_overlap_check=strict,
+        )
+
+
+@pytest.mark.parametrize("equilibrium", [False, True])
+@pytest.mark.parametrize("strict", [False, True])
+@pytest.mark.parametrize("active", [False, True])
+@pytest.mark.parametrize("replace", [False, True])
+def test_incremental_overlap_policy(
+    tiny_machine_data, equilibrium, strict, active, replace
+):
+    """Machine and equilibrium edits share the policy and reject before mutation."""
+    from freegsnke import equilibrium_update
+
+    machine = _build_tiny_tokamak(tiny_machine_data)
+    owner = machine
+    if equilibrium:
+        owner = equilibrium_update.Equilibrium(
+            tokamak=machine, Rmin=0.5, Rmax=1.7, Zmin=-0.7, Zmax=0.7, nx=17, ny=17
+        )
+    if active:
+        candidate = deepcopy(tiny_machine_data["active_coils"]["TinySingle"])
+        candidate["R"] += 0.01
+        name = "TinyCircuit" if replace else "new_active"
+        method = owner.update_active_coil if replace else owner.add_active_coil
+        args = dict(coil_name=name, active_coil_data=candidate)
+    else:
+        candidate = dict(
+            R=[0.9, 1.1, 1.1, 0.9],
+            Z=[-0.1, -0.1, 0.1, 0.1],
+            dR=0.001,
+            dZ=0.001,
+            resistivity=1e-6,
+            min_refine_per_area=100,
+            min_refine_per_length=20,
+        )
+        name = "passive_plate" if replace else "new_passive"
+        method = (
+            owner.update_passive_structure if replace else owner.add_passive_structure
+        )
+        args = dict(name=name, passive_data=candidate)
+    original_coils = list(machine.coils_list)
+    original_inductance = machine.coil_self_ind.copy()
+    if strict:
+        with pytest.raises(ValueError, match="TinySingle"):
+            method(**args, strict_overlap_check=True)
+        assert machine.coils_list == original_coils
+        np.testing.assert_array_equal(machine.coil_self_ind, original_inductance)
+    else:
+        with pytest.warns(UserWarning, match="TinySingle"):
+            assert method(**args) is owner
+        assert name in machine.coils_list
+
+
+@pytest.mark.parametrize("equilibrium", [False, True])
+@pytest.mark.parametrize("strict", [False, True])
+def test_full_replacement_overlap_policy(tiny_machine_data, equilibrium, strict):
+    """Full description replacements forward the same strict option."""
+    from freegsnke import equilibrium_update
+
+    machine = _build_tiny_tokamak(tiny_machine_data)
+    if equilibrium:
+        owner = equilibrium_update.Equilibrium(
+            tokamak=machine, Rmin=0.5, Rmax=1.7, Zmin=-0.7, Zmax=0.7, nx=17, ny=17
+        )
+        method = owner.update_machine_description
+    else:
+        owner = machine
+        method = machine.set_machine_description
+    active = deepcopy(tiny_machine_data["active_coils"])
+    active["new"] = deepcopy(active["TinySingle"])
+    active["new"]["R"] += 0.01
+    args = dict(active_coils_data=active, limiter_data=tiny_machine_data["limiter"])
+    if strict:
+        with pytest.raises(ValueError, match="Overlapping coil elements"):
+            method(**args, strict_overlap_check=True)
+        assert "new" not in machine.coils_list
+    else:
+        with pytest.warns(UserWarning, match="Overlapping coil elements"):
+            assert method(**args) is owner
+        assert "new" in machine.coils_list

@@ -648,6 +648,7 @@ def symmetrise_boundary(boundary_data, z_midplane=0.0):
     Match vertices to their reflected counterparts using cyclic shifts and
     reversed polygon order, then average each pair. No vertices are resampled
     or added; polygon ordering and an explicit closing vertex are preserved.
+    Already symmetric polygons are retained even with redundant vertices.
 
     Parameters
     ----------
@@ -666,8 +667,8 @@ def symmetrise_boundary(boundary_data, z_midplane=0.0):
     ValueError
         If the polygon is invalid, does not cross the midplane exactly twice,
         or lacks a consistent one-to-one pairing of reflected vertices.
-        Upper/lower paths with different vertex counts require explicit
-        corresponding vertices; they are not resampled automatically.
+        If averaging is needed, upper/lower paths with different vertex counts
+        require explicit corresponding vertices; they are not resampled.
     """
     return _symmetrise_boundary_with_mismatch(boundary_data, z_midplane)[0]
 
@@ -701,6 +702,12 @@ def _symmetrise_boundary_with_mismatch(boundary_data, z_midplane):
 
     reflected = points.copy()
     reflected[:, 1] = 2 * z_midplane - points[:, 1]
+    # An exactly symmetric outline needs no averaging. Redundant or differently
+    # spaced collinear vertices need not have one-to-one reflected partners.
+    if polygon.equals(Polygon(reflected)):
+        if closed:
+            points = np.vstack((points, points[0]))
+        return [{"R": float(r), "Z": float(z)} for r, z in points], 0.0
     assignment = _best_point_assignment(points, reflected, polygon=True)
     indices = np.arange(len(points))
     if (

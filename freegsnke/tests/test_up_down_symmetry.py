@@ -545,11 +545,24 @@ def test_boundary_discrepancy_measures_original_vertex_pairs():
 
 
 def test_unequal_half_vertex_counts_are_not_resampled():
-    """Extra vertices on one half require an explicit correspondence."""
-    points = [(1, -1), (2, -1), (2, 1), (1.5, 1), (1, 1)]
+    """Asymmetric halves with extra vertices require explicit correspondence."""
+    points = [(1, -1), (2, -1), (2, 1), (1.5, 1.1), (1, 1)]
     boundary = [{"R": r, "Z": z} for r, z in points]
     with pytest.raises(ValueError, match="one-to-one reflection pairing"):
         symmetrise_boundary(boundary)
+
+
+@pytest.mark.parametrize("duplicate", [False, True])
+def test_symmetric_outline_keeps_redundant_vertices(duplicate):
+    """Exact symmetry needs no vertex matching, including OpenSTEP duplicates."""
+    points = [(1, -1), (2, -1), (2, 1), (1.5, 1), (1, 1)]
+    if duplicate:
+        points.insert(1, points[0])
+    points.append(points[0])
+    boundary = [{"R": r, "Z": z} for r, z in points]
+    prepared = prepare_up_down_symmetric_machine({}, limiter_data=boundary)
+    assert prepared.limiter_data == boundary
+    assert prepared.maximum_geometry_discrepancy.reflected_rms == 0.0
 
 
 @pytest.mark.parametrize("machine,prefix", [("example", ""), ("SPARC", "SPARC_")])
@@ -569,10 +582,11 @@ def test_symmetric_machine_boundaries_keep_original_vertices(
     np.testing.assert_allclose(actual, expected, rtol=0, atol=1e-14)
 
 
+@pytest.mark.parametrize("machine,prefix", [("MAST-U", "MAST-U_like_"), ("test", "")])
 @pytest.mark.parametrize("component", ["limiter", "wall"])
-def test_mastu_boundary_averages_vertices_once(component):
+def test_mastu_boundary_averages_vertices_once(machine, prefix, component):
     """The MAST-U approximation preserves vertices and is idempotent."""
-    path = REPO_ROOT / "machine_configs" / "MAST-U" / f"MAST-U_like_{component}.pickle"
+    path = REPO_ROOT / "machine_configs" / machine / f"{prefix}{component}.pickle"
     with path.open("rb") as f:
         boundary = pickle.load(f)
     result = symmetrise_boundary(boundary)
@@ -585,6 +599,16 @@ def test_mastu_boundary_averages_vertices_once(component):
         [[p["R"], p["Z"]] for p in twice], actual, rtol=0, atol=1e-14
     )
     assert Polygon(actual).is_valid
+
+
+@pytest.mark.parametrize("component", ["limiter", "wall"])
+def test_asymmetric_iter_boundary_requires_explicit_correspondence(component):
+    """The asymmetric ITER outline must not be reshaped by automatic sampling."""
+    path = REPO_ROOT / "machine_configs" / "ITER" / f"ITER_{component}.pickle"
+    with path.open("rb") as f:
+        boundary = pickle.load(f)
+    with pytest.raises(ValueError, match="one-to-one reflection pairing"):
+        symmetrise_boundary(boundary)
 
 
 @pytest.mark.parametrize(

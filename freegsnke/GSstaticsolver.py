@@ -602,6 +602,70 @@ class NKGSsolver:
         del_res = np.amax(res) - np.amin(res)
         return del_res / del_psi, del_psi
 
+    def _backtrack_valid_update(
+        self,
+        eq,
+        profiles,
+        plasma_psi,
+        tokamak_psi,
+        update,
+        *,
+        vary_tokamak=False,
+        require_xpoint=False,
+        max_attempts=32,
+    ):
+        """Find a finite, geometrically valid update in a bounded number of trials.
+
+        This preserves the existing 0.75 reduction, without imposing a new
+        residual-decrease criterion. Only expected numerical/geometry failures
+        trigger retries. On failure, restore the accepted flux and derived
+        profile state before raising; never swallow interrupts or programming
+        errors. The returned scale also applies to an inverse current update.
+        """
+        base = tokamak_psi if vary_tokamak else plasma_psi
+        scale = 1.0
+        accepted = False
+        last_error = None
+        try:
+            for _ in range(max_attempts):
+                point = base + scale * update
+                if np.array_equal(point, base) and np.any(update):
+                    break  # further reductions cannot change the field
+                try:
+                    if not np.all(np.isfinite(point)):
+                        raise ValueError("Non-finite trial flux")
+                    value = self.F_function(
+                        plasma_psi if vary_tokamak else point,
+                        point if vary_tokamak else tokamak_psi,
+                        profiles,
+                    )
+                    if not np.all(np.isfinite(value)):
+                        raise ValueError("Non-finite GS residual")
+                    if require_xpoint and not len(profiles.xpt):
+                        raise ValueError("No X-point retained by trial update")
+                    accepted = True
+                    return point, value, scale
+                except (ValueError, FloatingPointError, np.linalg.LinAlgError) as exc:
+                    last_error = exc
+                    scale *= 0.75
+            raise RuntimeError(
+                f"GS update failed after at most {max_attempts} trials: "
+                "no valid representable step; accepted equilibrium restored."
+            ) from last_error
+        finally:
+            if not accepted:
+                self.F_function(plasma_psi, tokamak_psi, profiles)
+                eq.set_plasma_psi(plasma_psi.reshape(self.nx, self.ny))
+                self.port_critical(eq, profiles)
+
+    def _finalize_forward(self, eq, profiles, plasma_psi):
+        """Synchronise the retained field, full residual and derived state."""
+        residual = self.F_function(plasma_psi, self.tokamak_psi, profiles)
+        self.relative_change = self.relative_del_residual(residual, plasma_psi)[0]
+        eq.set_plasma_psi(plasma_psi.reshape(self.nx, self.ny))
+        self.port_critical(eq=eq, profiles=profiles)
+        return self.relative_change
+
     def forward_solve(
         self,
         eq: object,
@@ -698,6 +762,10 @@ class NKGSsolver:
         -----
         Updates ``eq.plasma_psi``, the profiles (via ``Jtor``) and the internal
         convergence diagnostics.
+
+        Geometry backtracking uses at most 32 trials per update. If no valid
+        step is found, the accepted equilibrium is restored and a RuntimeError
+        is raised. The final residual is evaluated on the returned field.
 
         This solver includes:
             • Adaptive initialisation
@@ -867,28 +935,18 @@ class NKGSsolver:
             # Attempt update
             # If critical points disappear, shrink step
             # --------------------------------------------------------
-            new_residual_flag = True
-            while new_residual_flag:
-                try:
-                    # check update does not cause the disappearance of the Opoint
-                    n_trial_plasma_psi = trial_plasma_psi + update
-                    new_res0 = self.F_function(
-                        n_trial_plasma_psi, self.tokamak_psi, profiles
-                    )
-                    new_norm_rel_change = self.relative_norm_residual(
-                        new_res0, n_trial_plasma_psi
-                    )
-                    new_rel_change, new_del_psi = self.relative_del_residual(
-                        new_res0, n_trial_plasma_psi
-                    )
-
-                    new_residual_flag = False
-
-                except:
-                    log.append(
-                        "Update resizing triggered due to failure to find a critical points."
-                    )
-                    update *= 0.75
+            n_trial_plasma_psi, new_res0, scale = self._backtrack_valid_update(
+                eq, profiles, trial_plasma_psi, self.tokamak_psi, update
+            )
+            update = update * scale
+            if scale < 1.0:
+                log.append("Update resized to retain valid critical points.")
+            new_norm_rel_change = self.relative_norm_residual(
+                new_res0, n_trial_plasma_psi
+            )
+            new_rel_change, new_del_psi = self.relative_del_residual(
+                new_res0, n_trial_plasma_psi
+            )
 
             # --------------------------------------------------------
             # Accept or reject update
@@ -937,18 +995,13 @@ class NKGSsolver:
             else:
                 reduce_by = self.relative_change / new_rel_change
                 log.append("Increase in residual, update reduction triggered.")
-                # log.append(reduce_by)
-                new_residual_flag = True
-                while new_residual_flag:
-                    try:
-                        n_trial_plasma_psi = trial_plasma_psi + update * reduce_by
-                        res0 = self.F_function(
-                            n_trial_plasma_psi, self.tokamak_psi, profiles
-                        )
-                        new_residual_flag = False
-                    except:
-                        log.append("reduction!")
-                        reduce_by *= 0.75
+                n_trial_plasma_psi, res0, _ = self._backtrack_valid_update(
+                    eq,
+                    profiles,
+                    trial_plasma_psi,
+                    self.tokamak_psi,
+                    update * reduce_by,
+                )
 
                 starting_direction = np.copy(res0)
                 trial_plasma_psi = n_trial_plasma_psi.copy()
@@ -979,13 +1032,7 @@ class NKGSsolver:
         if self.best_relative_change < rel_change:
             self.relative_change = 1.0 * self.best_relative_change
             trial_plasma_psi = np.copy(self.best_psi)
-            profiles.Jtor(
-                self.R,
-                self.Z,
-                (self.tokamak_psi + trial_plasma_psi).reshape(self.nx, self.ny),
-            )
-        eq.set_plasma_psi(trial_plasma_psi.reshape(self.nx, self.ny))
-        self.port_critical(eq=eq, profiles=profiles)
+        rel_change = self._finalize_forward(eq, profiles, trial_plasma_psi)
 
         # ------------------------------------------------------------
         # Print output to user
@@ -1829,27 +1876,20 @@ class NKGSsolver:
                     axis=0,
                 ).reshape(-1)
 
-                resize = True
-                while resize:
-                    try:
-                        GS_residual = self.F_function(
-                            tokamak_psi=self.tokamak_psi.reshape(-1)
-                            + delta_tokamak_psi,
-                            plasma_psi=eq.plasma_psi.reshape(-1),
-                            profiles=profiles,
-                        )
-                        if len(profiles.xpt):
-                            # The update is approved:
-                            resize = False
-                    except:
-                        pass
-
-                    if resize:
-                        if verbose:
-                            print("Resizing of the control current update triggered!")
-                        delta_current *= 0.75
-                        delta_tokamak_psi *= 0.75
-                        previous_rel_delta_psit *= 0.75
+                _, GS_residual, scale = self._backtrack_valid_update(
+                    eq,
+                    profiles,
+                    eq.plasma_psi.reshape(-1),
+                    self.tokamak_psi.reshape(-1),
+                    delta_tokamak_psi,
+                    vary_tokamak=True,
+                    require_xpoint=True,
+                )
+                if verbose and scale < 1.0:
+                    print("Resizing of the control current update triggered!")
+                delta_current *= scale
+                delta_tokamak_psi *= scale
+                previous_rel_delta_psit *= scale
 
             self.rel_psit_updates.append(previous_rel_delta_psit)
 

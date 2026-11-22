@@ -16,7 +16,9 @@ def fixture(evaluate):
     solver.port_critical = lambda eq, profiles: setattr(
         eq, "profile_field", profiles.field.copy()
     )
-    return solver, SimpleNamespace(plasma_psi=np.zeros((1, 2))), SimpleNamespace()
+    eq = SimpleNamespace(plasma_psi=np.zeros((1, 2)))
+    eq.set_plasma_psi = lambda field: setattr(eq, "plasma_psi", field.copy())
+    return solver, eq, SimpleNamespace()
 
 
 @pytest.mark.parametrize("inverse", [False, True])
@@ -121,6 +123,7 @@ def test_best_tracking_preserves_legacy_return_and_reports_actual_residual(capsy
         _vgreen=None,
         tokamak=SimpleNamespace(getPsitokamak=lambda **kwargs: np.zeros((1, 2))),
     )
+    eq.set_plasma_psi = lambda field: setattr(eq, "plasma_psi", field.copy())
     profiles = SimpleNamespace(jtor=np.zeros((1, 2)))
 
     def evaluate(plasma, vacuum, profiles):

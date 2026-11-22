@@ -318,6 +318,50 @@ def test_anderson_forward_solve(create_machine, monkeypatch, force_recovery):
     np.testing.assert_allclose(profiles.jtor, current)
 
 
+@pytest.mark.parametrize("rollback", [False, True])
+def test_forward_field_commit_refreshes_offcentre_spline(
+    create_machine, monkeypatch, rollback
+):
+    """Finalization and rollback refresh fields even with an unchanged midpoint."""
+    from freegsnke.GSstaticsolver import NKGSsolver
+
+    eq, profiles, _ = create_machine
+    solver = NKGSsolver.__new__(NKGSsolver)
+    solver.nx, solver.ny = eq.R.shape
+    solver.tokamak_psi = np.zeros(eq.R.size)
+    solver.best_relative_change = np.inf
+    original = eq.plasma_psi.copy()
+    retained = original + 1e-3 * (eq.R - eq.R[solver.nx // 2, 0])
+    eq.set_plasma_psi(original)
+
+    def residual(plasma, vacuum, profiles):
+        if not np.array_equal(plasma, retained.ravel()):
+            raise ValueError("Invalid trial geometry")
+        return np.zeros_like(plasma)
+
+    monkeypatch.setattr(solver, "F_function", residual)
+    monkeypatch.setattr(solver, "port_critical", lambda eq, profiles: None)
+    if rollback:
+        with pytest.raises(RuntimeError, match="accepted equilibrium restored"):
+            solver._backtrack_valid_update(
+                eq,
+                profiles,
+                retained.ravel(),
+                solver.tokamak_psi,
+                np.ones(eq.R.size),
+                max_attempts=2,
+            )
+    else:
+        solver._finalize_forward(eq, profiles, retained.ravel())
+
+    midpoint = solver.nx // 2, solver.ny // 2
+    assert retained[midpoint] == original[midpoint]
+    np.testing.assert_array_equal(eq.plasma_psi, retained)
+    np.testing.assert_allclose(
+        eq.psi_func(eq.R, eq.Z, grid=False), retained, atol=1e-12
+    )
+
+
 def test_anderson_inverse_rejected_before_state_change(create_machine):
     """Unsupported inverse orchestration must not silently ignore recovery."""
     from freegsnke import GSstaticsolver

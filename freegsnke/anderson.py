@@ -74,10 +74,11 @@ def safeguarded_solve(
     SciPy success alone never certifies convergence: the full residual and
     caller's tolerance are checked independently, including under projection.
     Valid callback iterates can temporarily increase the residual to build
-    Anderson history. An unsuccessful phase restores its best full-norm
-    iterate. Geometry errors abort that phase; bounded damped Picard is then
-    attempted if no progress was made. Unexpected errors propagate after
-    restoring residual-derived state at the retained field.
+    Anderson history. An unsuccessful phase restores its best iterate by the
+    caller's full-residual convergence metric. Geometry errors abort that phase;
+    bounded damped Picard is then attempted if no progress was made.
+    Unexpected errors propagate after restoring residual-derived state at the
+    retained field.
 
     ``max_iterations`` counts both Newton and Anderson iterations. The update
     size cap applies to Newton and fallback Picard; SciPy manages its own steps.
@@ -88,7 +89,7 @@ def safeguarded_solve(
     errors, norms, relative_norms, events = [], [], [], []
     slow = evaluations = iteration = 0
     reason = "iteration_limit"
-    recoverable = (ValueError, RuntimeError, IndexError, np.linalg.LinAlgError)
+    recoverable = (ValueError, FloatingPointError, np.linalg.LinAlgError)
 
     def evaluate(point):
         """Evaluate a finite full residual, retaining its derived state."""
@@ -160,7 +161,7 @@ def safeguarded_solve(
             if accepted is None:
                 # Keep the best physical iterate outside SciPy's private state.
                 best_x, best_f = x.copy(), f.copy()
-                initial_norm = np.linalg.norm(f)
+                initial_error = best_error = error
                 phase_start = iteration
                 phase_converged = False
 
@@ -170,7 +171,7 @@ def safeguarded_solve(
 
                 def callback(point, value):
                     """Retain valid iterates and certify the full residual."""
-                    nonlocal x, f, best_x, best_f, iteration, phase_converged
+                    nonlocal x, f, best_x, best_f, best_error, iteration, phase_converged
                     point = project(point.copy())
                     full = evaluate(point)
                     iteration += 1
@@ -182,11 +183,13 @@ def safeguarded_solve(
                             method="scipy_anderson",
                         )
                     )
-                    if np.linalg.norm(full) < np.linalg.norm(best_f):
+                    current_error = float(relative_error(full, point))
+                    if current_error < best_error:
                         best_x, best_f = point.copy(), full.copy()
+                        best_error = current_error
                     # This also ensures restoration if an unexpected error follows.
                     x, f = best_x.copy(), best_f.copy()
-                    if relative_error(full, point) <= tolerance:
+                    if current_error <= tolerance:
                         x, f = point, full
                         phase_converged = True
                         raise _Converged()
@@ -238,7 +241,7 @@ def safeguarded_solve(
                 if iteration == phase_start:
                     iteration += 1
                 slow = 0
-                if np.linalg.norm(f) < initial_norm:
+                if best_error < initial_error:
                     continue  # retry NK below handover, otherwise another phase
                 if iteration >= max_iterations:
                     break

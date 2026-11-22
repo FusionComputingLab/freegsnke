@@ -62,18 +62,20 @@ def test_geometry_failure_restores_and_stops():
     assert info["evaluations"] < 30
 
 
-def test_unexpected_error_propagates_after_restoration():
+@pytest.mark.parametrize("error_type", [KeyError, IndexError, RuntimeError])
+@pytest.mark.parametrize("handover", [0.0, 10.0])
+def test_unexpected_error_propagates_after_restoration(error_type, handover):
     """Do not disguise programming errors as geometry failures."""
     state = {}
 
     def residual(x):
         state["x"] = x.copy()
         if x[0] != 0:
-            raise KeyError("broken callback")
+            raise error_type("broken callback")
         return np.ones(2)
 
-    with pytest.raises(KeyError):
-        run(residual, lambda x, f: -f)
+    with pytest.raises(error_type, match="broken callback"):
+        run(residual, lambda x, f: -f, handover=handover)
     np.testing.assert_array_equal(state["x"], [0.0, 1.0])
 
 
@@ -148,6 +150,34 @@ def test_anderson_budget_restores_best_valid_state():
     assert info["reason"] == "iteration_limit"
     assert info["iterations"] == 1
     np.testing.assert_array_equal(x, [0.0, 1.0])
+    np.testing.assert_array_equal(state["x"], x)
+
+
+@pytest.mark.parametrize("sign", [-1.0, 1.0])
+def test_anderson_best_iterate_uses_convergence_metric(sign):
+    """Relative error, not absolute norm, selects the retained phase iterate."""
+    state = {}
+
+    def residual(x):
+        state["x"] = x.copy()
+        return sign * (1.0 - (2.0 / 3.0) * x[0]) * np.array([-1.0, 1.0])
+
+    x, f, info = safeguarded_solve(
+        np.array([0.0, 1.0]),
+        residual,
+        lambda x, f: -f,
+        lambda f, x: np.ptp(f) / np.ptp(x),
+        options=AndersonOptions(),
+        tolerance=1e-9,
+        max_iterations=1,
+        handover=0.0,
+        max_rel_update_size=10.0,
+    )
+    assert len(info["residual_history"]) == 2
+    norm_improves = info["norm_history"][1] < info["norm_history"][0]
+    error_improves = info["residual_history"][1] < info["residual_history"][0]
+    assert norm_improves != error_improves
+    assert info["relative_error"] == min(info["residual_history"])
     np.testing.assert_array_equal(state["x"], x)
 
 

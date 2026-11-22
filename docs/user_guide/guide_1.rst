@@ -31,7 +31,7 @@ Newton backtracking and each Anderson phase are bounded. Anderson uses
 ``scipy.optimize.root(method="anderson")`` with Armijo line search. SciPy may
 accept a full step when its line search fails, so intermediate residuals can
 increase while history is built. This is necessary for some noncontractive
-fixed points. An unsuccessful phase restores its best full-residual-norm
+fixed points. An unsuccessful phase restores its best range-relative-residual
 iterate; if it made no progress, bounded damped Picard is tried before returning
 ``stalled``. No full Jacobian is assembled. ``max_rel_update_size`` limits
 Newton and fallback Picard updates; SciPy manages its own Anderson steps.

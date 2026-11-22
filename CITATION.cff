@@ -29,6 +29,12 @@ authors:
     given-names: Remi
   - family-names: Brown
     given-names: Theo
+  - family-names: Dudson
+    given-names: Ben
+  - family-names: Cruz
+    given-names: Tomas Rubio
+  - family-names: Qadri
+    given-names: Ubaid
 preferred-citation:
   type: article
   title: "FreeGSNKE: A Python-based dynamic free-boundary toroidal plasma equilibrium solver"

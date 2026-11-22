@@ -18,8 +18,6 @@
 
 FreeGSNKE (pronounced "free-gee-snake") is a **Python**-based code for **simulating the evolution of free-boundary tokamak plasma equilibria**.
 
-FreeGSNKE uses [FreeGS4E](https://github.com/FusionComputingLab/freegs4e), an LGPL-licensed fork of [FreeGS](https://github.com/bendudson/freegs), as its Grad-Shafranov equilibrium backend.
-
 **NOTE:**  We recommended reading this page in its entirety before attempting to install or run FreeGSNKE!
 
 ## Table of contents
@@ -39,6 +37,7 @@ FreeGSNKE uses [FreeGS4E](https://github.com/FusionComputingLab/freegs4e), an LG
 - [References](#references)
 - [Funding](#funding)
 - [License](#license)
+- [History](#history)
 
 ## Capabilities
 FreeGSNKE is capable of solving both **static** (time-<u>in</u>dependent) and **evolutive** (time-dependent) **free-boundary equilibrium problems**. For **fixed-boundary** problems we recommend using FreeGS.
@@ -70,11 +69,11 @@ In the left panel above we show an example of a dynamic equilibrium calculated u
 
 ## Coordinate and flux conventions
 
-FreeGSNKE inherits its magnetic sign and flux conventions from FreeGS4E (i.e. FreeGS). Internally, the poloidal flux function `psi` is stored in Webers per radian (`Wb/rad`, equivalently `Webers/2pi`) and `B_p = grad(psi) x grad(phi)` in the usual right-handed cylindrical coordinate system `(R, phi, Z)`. The toroidal field function is `F = R B_phi`, and the plasma current `Ip` is the integral of `J_phi` over the poloidal cross-section.
+FreeGSNKE uses the magnetic sign and flux conventions inherited from FreeGS. Internally, the poloidal flux function `psi` is stored in Webers per radian (`Wb/rad`, equivalently `Webers/2pi`) and `B_p = grad(psi) x grad(phi)` in the usual right-handed cylindrical coordinate system `(R, phi, Z)`. The toroidal field function is `F = R B_phi`, and the plasma current `Ip` is the integral of `J_phi` over the poloidal cross-section.
 
 Using the Sauter-Medvedev COCOS sign flags, these internal equations correspond to a **COCOS-7-like convention**: `exp_Bp = 0`, `sigma_Bp = -1`, `sigma_RpZ = +1`, and `sigma_rhotp = +1`.
 
-The low-level `cocos` argument in the current FreeGS4E G-EQDSK parser is only a partial conversion helper: `cocos < 10` leaves `psi` in `Wb/rad`, while `cocos > 10` divides `psi`, `simagx`, and `sibdry` by `2pi`. It does not apply the full set of sign changes required to transform arbitrary COCOS conventions. In practical terms, when importing or exporting equilibria from external tools, check both the `2pi` flux scaling and the signs of `psi`, `Ip`, `B_phi`, `F`, and `q`. The higher-level FreeGS4E equilibrium import path should also be validated for your use case before relying on it in production workflows.
+The low-level `cocos` argument in the current FreeGSNKE G-EQDSK parser is only a partial conversion helper: `cocos < 10` leaves `psi` in `Wb/rad`, while `cocos > 10` divides `psi`, `simagx`, and `sibdry` by `2pi`. It does not apply the full set of sign changes required to transform arbitrary COCOS conventions. In practical terms, when importing or exporting equilibria from external tools, check both the `2pi` flux scaling and the signs of `psi`, `Ip`, `B_phi`, `F`, and `q`. The higher-level FreeGSNKE equilibrium import path should also be validated for your use case before relying on it in production workflows.
 
 ## Feature roadmap
 FreeGSNKE is constantly evolving and so we hope to provide users with more advanced features over time:
@@ -91,7 +90,7 @@ FreeGSNKE is constantly evolving and so we hope to provide users with more advan
 
 ## Getting started
 
-**Get familiar with FreeGSNKE**: start with the FreeGSNKE user guide and examples below. The original [FreeGS documentation](https://freegs.readthedocs.io/en/latest/) provides useful background, but does not define the FreeGSNKE or FreeGS4E APIs.
+**Get familiar with FreeGSNKE**: start with the FreeGSNKE user guide and examples below. The original [FreeGS documentation](https://freegs.readthedocs.io/en/latest/) provides useful background, but does not define the FreeGSNKE APIs, algorithms or complete physics.
 
 **After installation (see below), check out the FreeGSNKE user guide**: the FreeGSNKE docs are hosted at [docs.freegsnke.com](https://docs.freegsnke.com/), and the [user guide](https://docs.freegsnke.com/user_guide/) contains several examples to get started. You can also build the documentation yourself by following the instructions in the `docs/README.md` file. The user guide is built from Jupyter notebooks in the `examples/` directory, where you can also find more demos beyond those included in the user guide.
 
@@ -106,10 +105,9 @@ FreeGSNKE is constantly evolving and so we hope to provide users with more advan
 
 FreeGSNKE can be installed using pip or built from source.
 
-FreeGSNKE supports Python 3.10 through 3.14. Its runtime requirements are kept
-within the dependency envelope supported by FreeGS4E. Compatibility changes to
-Python or shared scientific dependencies are tested against both repositories
-as one coordinated stack.
+FreeGSNKE supports Python 3.10 through 3.14. Python and scientific dependency
+compatibility are tested with the numerical solvers and evolution machinery
+together in this repository.
 
 ### Installing with pip
 
@@ -138,7 +136,7 @@ The recommended way to install FreeGSNKE is inside a virtual environment, for ex
    pip install freegsnke
    ```
 
-[FreeGS4E](https://github.com/FusionComputingLab/freegs4e) is a required dependency and is installed automatically.
+The Grad-Shafranov solver and its supporting numerical modules are included in this installation.
 
 If you are planning to develop FreeGSNKE, see the [installing from source](#installing-from-source) section below instead.
 
@@ -175,13 +173,7 @@ pip install -e ".[dev]"
 
 This will install FreeGSNKE in editable mode, including the optional development dependencies.
 
-If you are also planning to co-develop [FreeGS4E](https://github.com/FusionComputingLab/freegs4e), clone the FreeGS4E repo and install in editable mode the same way by running the following in the FreeGS4E root directory (within your environment):
-```shell
-pip install -e ".[dev]"
-```
-If the editable FreeGS4E installation reports a version satisfying FreeGSNKE's
-required version range, pip will retain it. Otherwise,
-pip may install a compatible FreeGS4E release from PyPI instead.
+Backend development takes place directly in the native `freegsnke` modules.
 
 If you are planning to make code contributions, see the [pull requests](#pull-requests) section below.
 
@@ -202,7 +194,7 @@ nbstripout examples/"your_notebook.ipynb"
 
 ## Contributing
 
-We welcome contributions including **issues**, **questions**, **bug fixes**, and **new features** for FreeGSNKE (and FreeGS4E). To do any of these, the first step is to consider opening an issue on the project's homepage.
+We welcome contributions including **issues**, **questions**, **bug fixes**, and **new features** for FreeGSNKE. To do any of these, the first step is to consider opening an issue on the project's homepage.
 
 ### Issues
 **When opening an issue, please do the following**:
@@ -270,6 +262,12 @@ This work was funded under the Fusion Computing Lab collaboration between the ST
 
 ## License
 
-FreeGSNKE is distributed under the GNU Lesser General Public License v3.0. See the [LICENSE](LICENSE) file or the [GNU website](https://www.gnu.org/licenses/lgpl-3.0.en.html) for more details.
+FreeGSNKE is distributed under the GNU Lesser General Public License v3.0. See the [LICENSE](LICENSE) and [COPYRIGHT](COPYRIGHT) files or the [GNU website](https://www.gnu.org/licenses/lgpl-3.0.en.html) for more details.
 
 The authors are also willing to discuss alternative licensing arrangements if required.
+
+## History
+
+FreeGSNKE spun out of the original [FreeGS](https://github.com/freegs-plasma/freegs) project. Originally, [FreeGS4E](https://github.com/FusionComputingLab/freegs4e) was set up as a form of FreeGS to provide the reusable magnetostatic machinery backend for FreeGSNKE, while FreeGSNKE owned the higher-level algorithms and physics to solve forward static and evolutive free-boundary Grad-Shafranov problems. The FreeGS4E repository is now archived, and the FreeGSNKE repository has been updated to own what was previously FreeGS4E.
+
+The FreeGSNKE team would like to acknowledge [Ben Dudson](https://github.com/bendudson) and other FreeGS authors for their contributions to the original FreeGS codebase, especially for making the tool free and open-source. We would also like to thank Ben for his support during development of the FreeGSNKE codebase.

@@ -5,18 +5,18 @@ Copyright 2025 UKAEA, UKRI-STFC, and The Authors, as per the COPYRIGHT and READM
 
 This file is part of FreeGSNKE.
 
+FreeGSNKE is free software: you can redistribute it and/or modify
+it under the terms of the GNU Lesser General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
 FreeGSNKE is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 GNU Lesser General Public License for more details.
 
-FreeGSNKE is free software: you can redistribute it and/or modify
-it under the terms of the GNU Lesser General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
-  
 You should have received a copy of the GNU Lesser General Public License
-along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
+along with FreeGSNKE. If not, see <http://www.gnu.org/licenses/>.
 """
 
 # imports
@@ -109,7 +109,7 @@ class PlasmaControlSystem:
         ctrl_targets: list[str],
         plasma_target: list[str],
         shape_control_mode: Optional[str] = None,
-        vc_generator=None,
+        vc_generator: object | None = None,
     ) -> None:
         """
         Initialise the top-level control system, composing all sub-controllers.

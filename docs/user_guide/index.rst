@@ -4,7 +4,7 @@ User guide
 The best starting point for understanding how FreeGSNKE works is this user guide
 and the example notebooks. The original `FreeGS documentation
 <https://freegs.readthedocs.io/en/latest/>`_ provides useful background, but
-does not define the FreeGSNKE or FreeGS4E APIs.
+does not define the FreeGSNKE APIs.
 
 To get started with using FreeGSNKE, first read the `home page <../index.html>`_ information from end to end. Then, read through and experiment with the example notebooks in the ``examples`` directory.
 
@@ -12,15 +12,6 @@ The notebooks are displayed statically on the following pages, but running them 
 
 .. toctree::
     :maxdepth: 1
-    
-    ../notebooks/example00 - build_tokamak_machine
-    ../notebooks/example01a - static_inverse_solve_MASTU
-    ../notebooks/example01b - advanced_static_inverse_solve
-    ../notebooks/example02 - static_forward_solve_MASTU
-    ../notebooks/example03 - extracting_equilibrium_quantities
-    ../notebooks/example04 - using_magnetic_probes
-    ../notebooks/example05 - evolutive_forward_solve
-    ../notebooks/example07 - static_inverse_solve_SPARC
-    ../notebooks/example08 - static_inverse_solve_ITER
-    ../notebooks/example09 - virtual_circuits_MASTU
-    ../notebooks/example10 - growth_rates
+    :glob:
+
+    ../notebooks/example*

@@ -1,6 +1,5 @@
 import os
 
-import freegs4e
 import numpy as np
 import pytest
 

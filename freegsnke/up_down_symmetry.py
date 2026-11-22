@@ -23,7 +23,7 @@ from dataclasses import dataclass
 
 import numpy as np
 from scipy.optimize import linear_sum_assignment
-
+from shapely.geometry import Polygon
 
 _SIDE_PATTERN = re.compile(r"(^|_)(upper|lower)(?=_|$)", re.IGNORECASE)
 _TRAILING_INDEX_PATTERN = re.compile(r"(\d+)$")
@@ -589,8 +589,7 @@ def prepare_up_down_symmetric_machine(
     # resistance arrays use positional, rather than name-based, indexing.
     symmetric_passive = [passive_by_name[name] for name in passive_names]
 
-    # Limiter and wall are continuous closed paths, so they require path-based
-    # resampling rather than the point assignments used for conductor elements.
+    # Preserve limiter/wall connectivity when matching reflected vertices.
     if limiter_original is None:
         symmetric_limiter = None
     else:
@@ -646,9 +645,9 @@ def symmetrise_boundary(boundary_data, z_midplane=0.0):
     """
     Average a closed limiter or wall outline with its reflection.
 
-    The outline is split at its two midplane crossings. The upper and reflected
-    lower paths are resampled by normalized arc length, averaged pointwise, and
-    mirrored to form an exactly symmetric closed polygon.
+    Match vertices to their reflected counterparts using cyclic shifts and
+    reversed polygon order, then average each pair. No vertices are resampled
+    or added; polygon ordering and an explicit closing vertex are preserved.
 
     Parameters
     ----------
@@ -665,110 +664,65 @@ def symmetrise_boundary(boundary_data, z_midplane=0.0):
     Raises
     ------
     ValueError
-        If the boundary does not cross the midplane exactly twice. Boundaries
-        with multiple disconnected lobes require an explicit user-supplied
-        symmetric outline.
+        If the polygon is invalid, does not cross the midplane exactly twice,
+        or lacks a consistent one-to-one pairing of reflected vertices.
+        Upper/lower paths with different vertex counts require explicit
+        corresponding vertices; they are not resampled automatically.
     """
     return _symmetrise_boundary_with_mismatch(boundary_data, z_midplane)[0]
 
 
 def _symmetrise_boundary_with_mismatch(boundary_data, z_midplane):
-    """Return a symmetric boundary and its pre-averaging reflected RMS."""
+    """Average corresponding boundary vertices and report their reflected RMS."""
     points = np.asarray(
         [[entry["R"], entry["Z"]] for entry in boundary_data], dtype=float
     )
     if len(points) < 4:
         raise ValueError("A boundary requires at least four vertices.")
-    if np.allclose(points[0], points[-1]):
-        # Internally use an implicit closing edge. Keeping a repeated endpoint
-        # would create a zero-length segment and bias the requested point count.
+    if not np.isfinite(points).all():
+        raise ValueError("Boundary coordinates must be finite.")
+    closed = np.allclose(points[0], points[-1], rtol=0.0, atol=1e-12)
+    if closed:
         points = points[:-1]
+    polygon = Polygon(points)
+    if not polygon.is_valid or polygon.area <= 0:
+        raise ValueError("Invalid boundary polygon.")
 
-    # Insert exact midplane intersections where an edge crosses the plane. This
-    # makes the two half-paths share identical endpoints even when the input
-    # polygon has no vertex exactly on the midplane.
-    augmented = []
-    crossing_indices = []
-    tolerance = 1e-12
-    for index, point in enumerate(points):
-        if not augmented or not np.allclose(point, augmented[-1]):
-            augmented.append(point)
-        current_index = len(augmented) - 1
-        current_side = point[1] - z_midplane
-        if abs(current_side) <= tolerance:
-            current_side = 0.0
-            crossing_indices.append(current_index)
-
-        next_point = points[(index + 1) % len(points)]
-        next_side = next_point[1] - z_midplane
-        if abs(next_side) <= tolerance:
-            next_side = 0.0
-        if current_side * next_side < 0:
-            fraction = -current_side / (next_side - current_side)
-            crossing = point + fraction * (next_point - point)
-            augmented.append(crossing)
-            crossing_indices.append(len(augmented) - 1)
-
-    augmented = np.asarray(augmented)
-    # A simple closed vessel outline must enter and leave each half-plane once.
-    # More crossings would make the choice of corresponding half-paths ambiguous.
-    crossing_indices = list(dict.fromkeys(crossing_indices))
-    if len(crossing_indices) != 2:
+    # Roundoff at the plane must not turn a self-reflecting vertex into an
+    # unmatched upper/lower vertex.
+    on_plane = np.isclose(points[:, 1], z_midplane, rtol=0.0, atol=1e-12)
+    points[on_plane, 1] = z_midplane
+    sides = np.sign(points[:, 1] - z_midplane)
+    nonzero_sides = sides[sides != 0]
+    if np.count_nonzero(nonzero_sides != np.roll(nonzero_sides, 1)) != 2:
         raise ValueError(
-            "Boundary symmetrisation requires exactly two midplane crossings; "
-            f"found {len(crossing_indices)}."
+            "Boundary symmetrisation requires exactly two midplane crossings."
         )
 
-    # Cutting the cyclic polygon at the two crossings produces two open paths.
-    # Reverse the wrap-around path so both paths run between the same endpoints.
-    first, second = sorted(crossing_indices)
-    first_path = augmented[first : second + 1]
-    second_path = np.vstack((augmented[second:], augmented[: first + 1]))[::-1]
-    if np.mean(first_path[:, 1]) >= z_midplane:
-        upper_path, lower_path = first_path, second_path
-    else:
-        upper_path, lower_path = second_path, first_path
+    reflected = points.copy()
+    reflected[:, 1] = 2 * z_midplane - points[:, 1]
+    assignment = _best_point_assignment(points, reflected, polygon=True)
+    indices = np.arange(len(points))
+    if (
+        not np.array_equal(assignment[assignment], indices)
+        or np.any(sides[assignment] != -sides)
+        or np.any(assignment[on_plane] != indices[on_plane])
+    ):
+        raise ValueError(
+            "Boundary vertices do not define a one-to-one reflection pairing. "
+            "Provide corresponding upper/lower vertices explicitly."
+        )
 
-    # Original upper/lower paths need not have the same vertex placement.
-    # Uniform arc-length coordinates provide meaningful pointwise partners.
-    path_count = int(np.ceil((len(points) + 2) / 2))
-    upper_path = _resample_path(upper_path, path_count)
-    lower_path = _resample_path(lower_path, path_count)
-    reflected_lower = lower_path.copy()
-    reflected_lower[:, 1] = 2 * z_midplane - reflected_lower[:, 1]
-    # Record the source discrepancy before replacing both halves by their mean.
-    mismatch = _point_rms_distance(upper_path, reflected_lower)
-    symmetric_upper = 0.5 * (upper_path + reflected_lower)
-    symmetric_upper[[0, -1], 1] = z_midplane
-    symmetric_lower = symmetric_upper.copy()
-    symmetric_lower[:, 1] = 2 * z_midplane - symmetric_upper[:, 1]
-    # Do not duplicate the two midplane endpoints when joining the mirrored
-    # lower path. The returned polygon remains closed through its implicit edge.
-    symmetric_points = np.vstack((symmetric_upper, symmetric_lower[-2:0:-1]))
+    mismatch = _point_rms_distance(points, reflected[assignment])
+    symmetric_points = 0.5 * (points + reflected[assignment])
+    polygon = Polygon(symmetric_points)
+    if not polygon.is_valid or polygon.area <= 0:
+        raise ValueError("Averaging boundary vertices produced an invalid polygon.")
+    if closed:
+        symmetric_points = np.vstack((symmetric_points, symmetric_points[0]))
     return (
         [{"R": float(point[0]), "Z": float(point[1])} for point in symmetric_points],
         mismatch,
-    )
-
-
-def _resample_path(points, count):
-    """Resample an open polygonal path at uniform normalized arc length."""
-    segment_lengths = np.linalg.norm(np.diff(points, axis=0), axis=1)
-    # Drop repeated neighbours before normalising arc length; otherwise the
-    # interpolation coordinate would contain duplicate values.
-    keep = np.concatenate(([True], segment_lengths > 0))
-    points = points[keep]
-    segment_lengths = np.linalg.norm(np.diff(points, axis=0), axis=1)
-    cumulative = np.concatenate(([0.0], np.cumsum(segment_lengths)))
-    if cumulative[-1] == 0:
-        raise ValueError("Cannot resample a zero-length boundary path.")
-    coordinate = cumulative / cumulative[-1]
-    target = np.linspace(0.0, 1.0, count)
-    return np.column_stack(
-        (
-            np.interp(target, coordinate, points[:, 0]),
-            np.interp(target, coordinate, points[:, 1]),
-        )
     )
 
 
@@ -996,9 +950,7 @@ def _identify_active_pairs(active_data, explicit_pairs, z_midplane):
             [np.asarray(part["Z"]) for _, part in _active_parts(active_data[name])]
         )
         if not (np.any(z_values > z_midplane) and np.any(z_values < z_midplane)):
-            print(
-                f"Unpaired active circuit '{name}' does not span the symmetry plane."
-            )
+            print(f"Unpaired active circuit '{name}' does not span the symmetry plane.")
             raise_error = True
     if raise_error:
         raise ValueError("Unpaired active circuits found. Aborting symetrization.")

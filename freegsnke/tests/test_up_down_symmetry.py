@@ -1,14 +1,18 @@
 """Tests for machine-description up-down symmetrisation."""
 
+import os
 import pickle
 from pathlib import Path
 
 import numpy as np
-import os
 import pytest
+from shapely.geometry import Polygon
 
 from freegsnke.build_machine import build_tokamak_components
-from freegsnke.up_down_symmetry import prepare_up_down_symmetric_machine
+from freegsnke.up_down_symmetry import (
+    prepare_up_down_symmetric_machine,
+    symmetrise_boundary,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -413,10 +417,10 @@ def test_misspelled_passive_pairs():
 
 def test_sparc_machine_can_be_symmetrised_and_built():
     machine_config_dir = os.path.join(REPO_ROOT, "machine_configs", "SPARC")
-   
+
     machine_data = {}
     for component in ("active_coils", "passive_coils", "limiter", "wall"):
-        path = os.path.join(machine_config_dir , f"SPARC_{component}.pickle")
+        path = os.path.join(machine_config_dir, f"SPARC_{component}.pickle")
         print(path)
         with open(path, "rb") as machine_file:
             machine_data[component] = pickle.load(machine_file)
@@ -435,7 +439,6 @@ def test_sparc_machine_can_be_symmetrised_and_built():
         passive_pairs=passive_pairs,
         exclude_odd_active=True,
     )
-
 
     assert len(prepared.passive_pairs) == len(passive_pairs)
     assert prepared.excluded_odd_active_names == ("VS1",)
@@ -484,3 +487,115 @@ def test_sparc_machine_can_be_symmetrised_and_built():
     assert components["n_coils"] == (
         components["n_active_coils"] + components["n_passive_coils"]
     )
+
+
+@pytest.mark.parametrize("closed", [False, True])
+@pytest.mark.parametrize("reverse", [False, True])
+@pytest.mark.parametrize("midplane", [0.0, 0.12])
+def test_symmetric_rectangle_keeps_corners_and_area(closed, reverse, midplane):
+    """Symmetrisation must preserve the domain, vertex order and closure."""
+    points = np.array([[0.5, -1], [2, -1], [2, 1], [0.5, 1]], dtype=float)
+    points[:, 1] += midplane
+    if reverse:
+        points = np.roll(points[::-1], 1, axis=0)
+    if closed:
+        points = np.vstack((points, points[0]))
+    boundary = [{"R": r, "Z": z} for r, z in points]
+    result = symmetrise_boundary(boundary, midplane)
+    actual = np.array([[p["R"], p["Z"]] for p in result])
+    assert len(actual) == len(points)
+    np.testing.assert_allclose(actual, points, rtol=0, atol=1e-14)
+    assert Polygon(actual).area == pytest.approx(3.0)
+    np.testing.assert_array_equal([[p["R"], p["Z"]] for p in boundary], points)
+
+
+def test_nonuniform_symmetric_vertices_are_not_redistributed():
+    """Uneven vertex spacing is part of the supplied polygon, not a mesh to fix."""
+    points = np.array(
+        [
+            [0.5, 0],
+            [0.5, 0.2],
+            [0.8, 0.9],
+            [2, 0.4],
+            [2.2, 0],
+            [2, -0.4],
+            [0.8, -0.9],
+            [0.5, -0.2],
+        ]
+    )
+    boundary = [{"R": r, "Z": z} for r, z in points]
+    result = symmetrise_boundary(boundary)
+    np.testing.assert_array_equal([[p["R"], p["Z"]] for p in result], points)
+
+
+def test_boundary_discrepancy_measures_original_vertex_pairs():
+    """The reported RMS is measured before averaging corresponding vertices."""
+    points = np.array([[1, -1], [2, -1], [2.02, 1.04], [1, 1]])
+    boundary = [{"R": r, "Z": z} for r, z in points]
+    prepared = prepare_up_down_symmetric_machine({}, limiter_data=boundary)
+    result = np.array([[p["R"], p["Z"]] for p in prepared.limiter_data])
+    expected = np.array([[1, -1], [2.01, -1.02], [2.01, 1.02], [1, 1]])
+    np.testing.assert_allclose(result, expected, rtol=0, atol=1e-14)
+    rms = np.sqrt((0.02**2 + 0.04**2) / 2)
+    assert prepared.maximum_geometry_discrepancy.reflected_rms == pytest.approx(rms)
+    with pytest.raises(ValueError, match="Largest failures"):
+        prepare_up_down_symmetric_machine(
+            {}, limiter_data=boundary, max_pair_mismatch=rms / 2
+        )
+
+
+def test_unequal_half_vertex_counts_are_not_resampled():
+    """Extra vertices on one half require an explicit correspondence."""
+    points = [(1, -1), (2, -1), (2, 1), (1.5, 1), (1, 1)]
+    boundary = [{"R": r, "Z": z} for r, z in points]
+    with pytest.raises(ValueError, match="one-to-one reflection pairing"):
+        symmetrise_boundary(boundary)
+
+
+@pytest.mark.parametrize("machine,prefix", [("example", ""), ("SPARC", "SPARC_")])
+@pytest.mark.parametrize("component", ["limiter", "wall"])
+def test_symmetric_machine_boundaries_keep_original_vertices(
+    machine, prefix, component
+):
+    """The checked-in symmetric boundaries must retain their original geometry."""
+    with (REPO_ROOT / "machine_configs" / machine / f"{prefix}{component}.pickle").open(
+        "rb"
+    ) as f:
+        boundary = pickle.load(f)
+    result = symmetrise_boundary(boundary)
+    expected = np.array([[p["R"], p["Z"]] for p in boundary])
+    actual = np.array([[p["R"], p["Z"]] for p in result])
+    assert len(actual) == len(expected)
+    np.testing.assert_allclose(actual, expected, rtol=0, atol=1e-14)
+
+
+@pytest.mark.parametrize("component", ["limiter", "wall"])
+def test_mastu_boundary_averages_vertices_once(component):
+    """The MAST-U approximation preserves vertices and is idempotent."""
+    path = REPO_ROOT / "machine_configs" / "MAST-U" / f"MAST-U_like_{component}.pickle"
+    with path.open("rb") as f:
+        boundary = pickle.load(f)
+    result = symmetrise_boundary(boundary)
+    twice = symmetrise_boundary(result)
+    source = np.array([[p["R"], p["Z"]] for p in boundary])
+    actual = np.array([[p["R"], p["Z"]] for p in result])
+    assert len(actual) == len(source)
+    assert np.max(np.linalg.norm(actual - source, axis=1)) <= 0.006 + 1e-14
+    np.testing.assert_allclose(
+        [[p["R"], p["Z"]] for p in twice], actual, rtol=0, atol=1e-14
+    )
+    assert Polygon(actual).is_valid
+
+
+@pytest.mark.parametrize(
+    "points",
+    [
+        [(1, 0), (2, 1), (1, 1), (2, 0)],
+        [(1, 0), (2, 0), (3, 0), (4, 0)],
+        [(1, -1), (2, -1), (2, np.nan), (1, 1)],
+    ],
+)
+def test_invalid_boundary_is_rejected(points):
+    """Invalid or non-finite polygons cannot be repaired by vertex averaging."""
+    with pytest.raises(ValueError, match="[Ii]nvalid boundary|finite"):
+        symmetrise_boundary([{"R": r, "Z": z} for r, z in points])

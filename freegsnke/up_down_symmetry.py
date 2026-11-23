@@ -918,16 +918,9 @@ def _active_pair_z_midpoints(upper, lower, z_midplane):
     lower_parts = _active_parts(lower)
     # Compound circuits can store filament bundles under unrelated dictionary
     # keys. Match bundles geometrically before matching points within a bundle.
-    costs = np.asarray(
-        [
-            [
-                _geometry_mismatch(upper_part, lower_part, z_midplane, False)
-                for _, lower_part in lower_parts
-            ]
-            for _, upper_part in upper_parts
-        ]
+    upper_indices, lower_indices = _active_part_assignment(
+        upper_parts, lower_parts, z_midplane
     )
-    upper_indices, lower_indices = linear_sum_assignment(costs)
     return np.concatenate(
         [
             _pair_z_midpoints(
@@ -1059,6 +1052,10 @@ def _identify_active_pairs(active_data, explicit_pairs, z_midplane):
         # Explicit pairs override naming inference but still pass through all
         # existence, geometry, and winding-parity checks below.
         pairs = [(upper, lower, _strip_side(upper)) for upper, lower in explicit_pairs]
+        _check_unique(
+            [name for upper, lower, _ in pairs for name in (upper, lower)],
+            "active pair",
+        )
     else:
         # Active series circuits are normally named in unambiguous upper/lower
         # pairs. Removing the side token supplies the reduced-circuit label.
@@ -1114,6 +1111,10 @@ def _identify_passive_pairs(passive_data, names, explicit_pairs, z_midplane):
             (upper, lower, _passive_group(by_name[upper], upper))
             for upper, lower in explicit_pairs
         ]
+        _check_unique(
+            [name for upper, lower, _ in pairs for name in (upper, lower)],
+            "passive pair",
+        )
         paired = {name for upper, lower, _ in pairs for name in (upper, lower)}
         return pairs, [name for name in names if name not in paired]
 
@@ -1216,24 +1217,38 @@ def _active_part_winding(part):
     return float(part.get("polarity", 1.0)) * float(part.get("multiplier", 1.0))
 
 
-def _matched_active_parts(upper_parts, lower_parts, z_midplane):
-    """Return geometrically matched upper/lower active-coil parts."""
-    if len(upper_parts) != len(lower_parts):
-        return None
-    if not upper_parts:
-        return []
-    # Part names are not assumed to agree across reflected circuits. Geometry
-    # supplies the correspondence used for both mismatch and polarity checks.
+def _active_part_assignment(upper_parts, lower_parts, z_midplane):
+    """Match geometry only between bundles with compatible filament counts."""
     costs = np.asarray(
         [
             [
-                _geometry_mismatch(upper_part, lower_part, z_midplane, False)
+                (
+                    _geometry_mismatch(upper_part, lower_part, z_midplane, False)
+                    if np.size(upper_part["R"]) == np.size(lower_part["R"])
+                    else np.inf
+                )
                 for _, lower_part in lower_parts
             ]
             for _, upper_part in upper_parts
         ]
+    ).reshape(len(upper_parts), len(lower_parts))
+    try:
+        return linear_sum_assignment(costs)
+    except ValueError as error:
+        raise ValueError(
+            "Active bundles cannot be matched one-to-one with equal filament counts."
+        ) from error
+
+
+def _matched_active_parts(upper_parts, lower_parts, z_midplane):
+    """Return geometrically matched upper/lower active-coil parts."""
+    if len(upper_parts) != len(lower_parts):
+        return None
+    # Part names are not assumed to agree across reflected circuits. Geometry
+    # supplies the correspondence used for both mismatch and polarity checks.
+    upper_indices, lower_indices = _active_part_assignment(
+        upper_parts, lower_parts, z_midplane
     )
-    upper_indices, lower_indices = linear_sum_assignment(costs)
     return [
         (upper_parts[upper_index][1], lower_parts[lower_index][1])
         for upper_index, lower_index in zip(upper_indices, lower_indices)
@@ -1386,16 +1401,9 @@ def _symmetrise_active_pair(upper, lower, z_midplane):
 
     # Match compound-circuit parts independently of dictionary insertion order.
     # Each matched flat pair can then use the common element-level operation.
-    costs = np.asarray(
-        [
-            [
-                _geometry_mismatch(upper_part, lower_part, z_midplane, polygon=False)
-                for _, lower_part in lower_parts
-            ]
-            for _, upper_part in upper_parts
-        ]
+    upper_indices, lower_indices = _active_part_assignment(
+        upper_parts, lower_parts, z_midplane
     )
-    upper_indices, lower_indices = linear_sum_assignment(costs)
     mismatches = []
     for upper_index, lower_index in zip(upper_indices, lower_indices):
         upper_key, upper_part = upper_parts[upper_index]
@@ -1462,18 +1470,8 @@ def _symmetrise_self_active(element, z_midplane):
             "A self-symmetric active circuit must have equal upper/lower part counts."
         )
     # For compound circuits, pair upper/lower parts geometrically and treat any
-    # midplane-spanning part as internally self-symmetric. With only middle
-    # parts, the assignment must still be a two-dimensional (0, 0) matrix.
-    costs = np.asarray(
-        [
-            [
-                _geometry_mismatch(upper_part, lower_part, z_midplane, False)
-                for _, lower_part in lower
-            ]
-            for _, upper_part in upper
-        ]
-    ).reshape(len(upper), len(lower))
-    upper_indices, lower_indices = linear_sum_assignment(costs)
+    # midplane-spanning part as internally self-symmetric.
+    upper_indices, lower_indices = _active_part_assignment(upper, lower, z_midplane)
     for upper_index, lower_index in zip(upper_indices, lower_indices):
         upper_key, upper_part = upper[upper_index]
         lower_key, lower_part = lower[lower_index]

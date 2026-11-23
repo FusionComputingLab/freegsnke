@@ -94,6 +94,102 @@ def test_centred_compound_coils_match_flat_description(n_bundles):
     assert pickle.dumps(parts) == source
 
 
+@pytest.mark.parametrize("layout", ["paired", "series"])
+@pytest.mark.parametrize("midplane", [0.0, "auto"])
+def test_mixed_size_active_bundles_match_compatible_partners(layout, midplane):
+    """Two- and three-filament bundles match despite unrelated keys and ordering."""
+    offset = 0.12 if midplane == "auto" else 0.0
+    upper = {
+        "two": _active_element([1.0, 1.1], offset + np.array([0.4, 0.5])),
+        "three": _active_element([1.5, 1.6, 1.7], offset + np.array([0.6, 0.7, 0.8])),
+    }
+    lower = {
+        "other_three": _active_element(
+            [1.7, 1.6, 1.5], offset - np.array([0.8, 0.7, 0.6])
+        ),
+        "other_two": _active_element([1.1, 1.0], offset - np.array([0.5, 0.4])),
+    }
+    active = (
+        {"p_upper": upper, "p_lower": lower}
+        if layout == "paired"
+        else {"p": {**upper, **lower}}
+    )
+    original = pickle.dumps(active)
+    prepared = prepare_up_down_symmetric_machine(active, z_midplane=midplane)
+    assert len(prepared.even_active_names) == 1
+    parts = next(iter(prepared.even_active_coils_data.values()))
+    assert sorted(np.size(part["R"]) for part in parts.values()) == [2, 2, 3, 3]
+    points = np.concatenate(
+        [np.column_stack((part["R"], part["Z"])) for part in parts.values()]
+    )
+    reflected = points * np.array([1, -1])
+    assert (
+        np.min(
+            np.linalg.norm(points[:, None] - reflected[None, :], axis=-1), axis=1
+        ).max()
+        < 1e-14
+    )
+    np.testing.assert_allclose(prepared.source_z_midplane, offset, atol=1e-14)
+    assert pickle.dumps(active) == original
+
+
+@pytest.mark.parametrize("layout", ["paired", "series"])
+def test_active_bundle_matching_rejects_incompatible_filament_counts(layout):
+    """A missing compatible partner still fails with a specific error."""
+    upper = {
+        "a": _active_element([1, 1], [0.4, 0.5]),
+        "b": _active_element([2, 2], [0.6, 0.7]),
+    }
+    lower = {
+        "c": _active_element([1, 1], [-0.4, -0.5]),
+        "d": _active_element([2, 2, 2], [-0.6, -0.7, -0.8]),
+    }
+    active = (
+        {"p_upper": upper, "p_lower": lower}
+        if layout == "paired"
+        else {"p": {**upper, **lower}}
+    )
+    with pytest.raises(ValueError, match="equal filament counts"):
+        prepare_up_down_symmetric_machine(active)
+
+
+@pytest.mark.parametrize("kind", ["active", "passive"])
+@pytest.mark.parametrize(
+    "pairs",
+    [
+        [("a", "b"), ("a", "c")],
+        [("a", "c"), ("b", "c")],
+        [("a", "b"), ("b", "a")],
+        [("a", "b"), ("a", "b")],
+        [("a", "a")],
+    ],
+)
+def test_explicit_pairs_reject_reused_elements_before_symmetrisation(kind, pairs):
+    """Each element may appear in only one pair and cannot pair with itself."""
+    if kind == "active":
+        active = {
+            name: _active_element([1.0], [z])
+            for name, z in [("a", 0.5), ("b", -0.5), ("c", -0.7)]
+        }
+        passive = None
+        options = {"active_pairs": pairs}
+    else:
+        active = {}
+        passive = [
+            _passive_element(name, "case", [1.0], [z])
+            for name, z in [("a", 0.5), ("b", -0.5), ("c", -0.7)]
+        ]
+        options = {"passive_pairs": pairs}
+    source = pickle.dumps((active, passive))
+    with patch("freegsnke.up_down_symmetry._symmetrise_element_pair") as symmetrise:
+        with pytest.raises(
+            ValueError, match=f"{kind} pair element names must be unique"
+        ):
+            prepare_up_down_symmetric_machine(active, passive, **options)
+        symmetrise.assert_not_called()
+    assert pickle.dumps((active, passive)) == source
+
+
 def test_pairing_symmetrisation_and_current_transforms():
     """Geometry assignment handles reordered children and transforms round-trip."""
     active = {

@@ -54,6 +54,46 @@ def _passive_element(name, element, r, z):
     }
 
 
+@pytest.mark.parametrize("n_bundles", [1, 2])
+def test_centred_compound_coils_match_flat_description(n_bundles):
+    """Packaging centred filaments into bundles must preserve the same machine."""
+    parts = {
+        f"bundle_{index}": _active_element(
+            [
+                0.2 + 0.5 * index,
+                0.21 + 0.5 * index,
+                0.19 + 0.5 * index,
+                0.2 + 0.5 * index,
+            ],
+            [-0.8, -0.2, 0.2, 0.8],
+        )
+        for index in range(n_bundles)
+    }
+    source = pickle.dumps(parts)
+    flat = _active_element(
+        np.concatenate([part["R"] for part in parts.values()]),
+        np.concatenate([part["Z"] for part in parts.values()]),
+    )
+    direct = prepare_up_down_symmetric_machine({"solenoid": flat})
+    compound = prepare_up_down_symmetric_machine({"solenoid": parts})
+    assert compound.even_active_names == ("solenoid",)
+    assert not compound.active_pairs
+    assert len(compound.even_active_coils_data["solenoid"]) == n_bundles
+    limiter = [{"R": r, "Z": z} for r, z in [(0.1, -1), (1.2, -1), (1.2, 1), (0.1, 1)]]
+    components = [
+        build_tokamak_components(
+            active_coils_data=prepared.even_active_coils_data, limiter_data=limiter
+        )
+        for prepared in (direct, compound)
+    ]
+    for field in ("coords", "polarity", "multiplier"):
+        np.testing.assert_allclose(
+            components[0]["coils_dict"]["solenoid"][field],
+            components[1]["coils_dict"]["solenoid"][field],
+        )
+    assert pickle.dumps(parts) == source
+
+
 def test_pairing_symmetrisation_and_current_transforms():
     """Geometry assignment handles reordered children and transforms round-trip."""
     active = {

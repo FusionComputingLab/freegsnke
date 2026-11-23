@@ -1462,7 +1462,8 @@ def _symmetrise_self_active(element, z_midplane):
             "A self-symmetric active circuit must have equal upper/lower part counts."
         )
     # For compound circuits, pair upper/lower parts geometrically and treat any
-    # midplane-spanning part as internally self-symmetric.
+    # midplane-spanning part as internally self-symmetric. With only middle
+    # parts, the assignment must still be a two-dimensional (0, 0) matrix.
     costs = np.asarray(
         [
             [
@@ -1471,7 +1472,7 @@ def _symmetrise_self_active(element, z_midplane):
             ]
             for _, upper_part in upper
         ]
-    )
+    ).reshape(len(upper), len(lower))
     upper_indices, lower_indices = linear_sum_assignment(costs)
     for upper_index, lower_index in zip(upper_indices, lower_indices):
         upper_key, upper_part = upper[upper_index]

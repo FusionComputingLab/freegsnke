@@ -384,9 +384,9 @@ def prepare_up_down_symmetric_machine(
     passive_coils_data : list, optional
         Standard FreeGSNKE passive-structure description.
     limiter_data, wall_data : list, optional
-        Standard FreeGSNKE boundary descriptions. The limiter is intersected
+        Standard FreeGSNKE boundary descriptions. Each outline is intersected
         with its reflection, with a warning and comparison plot if its footprint
-        changes. The wall uses reflected vertex averaging.
+        changes.
     z_midplane : float or "auto", default=0
         Symmetry-plane coordinate. ``"auto"`` fits the common vertical offset
         from matched machine points, shifts the complete description so that
@@ -397,8 +397,8 @@ def prepare_up_down_symmetric_machine(
     max_pair_mismatch : float, optional
         Maximum permitted reflected RMS point mismatch in metres before
         averaging. The limit applies to active and passive pairs, internally
-        symmetric elements, limiter, and wall. For the limiter this is the RMS
-        distance of source vertices to the reflected boundary, without pairing.
+        symmetric elements, limiter, and wall. For boundary outlines this is the
+        RMS distance of source vertices to the reflected boundary, without pairing.
     exclude_odd_active : bool, default=False
         If True, omit active circuits whose reflected winding polarity is odd
         from the prepared machine and record them in
@@ -595,11 +595,11 @@ def prepare_up_down_symmetric_machine(
     # resistance arrays use positional, rather than name-based, indexing.
     symmetric_passive = [passive_by_name[name] for name in passive_names]
 
-    # The limiter must stay inside both source outlines; wall vertices are paired.
+    # Both boundary outlines retain only the region inside their reflections.
     if limiter_original is None:
         symmetric_limiter = None
     else:
-        symmetric_limiter, mismatch = _symmetrise_limiter_with_mismatch(
+        symmetric_limiter, mismatch = _symmetrise_boundary_with_mismatch(
             limiter_original, target_midplane
         )
         geometry_discrepancies.append(
@@ -644,10 +644,12 @@ def prepare_up_down_symmetric_machine(
     )
     if max_pair_mismatch is not None:
         prepared.check_geometry_tolerance(max_pair_mismatch)
-    if limiter_original is not None:
-        _warn_and_plot_limiter_change(
-            limiter_original, symmetric_limiter, target_midplane
-        )
+    for original, symmetric, name in (
+        (limiter_original, symmetric_limiter, "Limiter"),
+        (wall_original, symmetric_wall, "Wall"),
+    ):
+        if original is not None:
+            _warn_and_plot_boundary_change(original, symmetric, target_midplane, name)
     return prepared
 
 
@@ -678,32 +680,32 @@ def symmetrise_limiter(limiter_data, z_midplane=0.0):
         If the input is invalid or the intersection is empty, disconnected,
         or contains holes.
     """
-    result, _ = _symmetrise_limiter_with_mismatch(limiter_data, z_midplane)
-    _warn_and_plot_limiter_change(limiter_data, result, z_midplane)
+    result, _ = _symmetrise_boundary_with_mismatch(limiter_data, z_midplane)
+    _warn_and_plot_boundary_change(limiter_data, result, z_midplane, "Limiter")
     return result
 
 
-def _symmetrise_limiter_with_mismatch(limiter_data, z_midplane):
+def _symmetrise_boundary_with_mismatch(boundary_data, z_midplane):
     """Intersect reflected outlines and measure source-to-reflection RMS distance."""
-    points = np.asarray([[p["R"], p["Z"]] for p in limiter_data], dtype=float)
+    points = np.asarray([[p["R"], p["Z"]] for p in boundary_data], dtype=float)
     if len(points) < 3 or not np.isfinite(points).all():
-        raise ValueError("A limiter requires at least three finite vertices.")
+        raise ValueError("A boundary requires at least three finite vertices.")
     closed = np.allclose(points[0], points[-1], rtol=0.0, atol=1e-12)
     if closed:
         points = points[:-1]
     if len(points) < 3:
-        raise ValueError("A limiter requires at least three distinct vertices.")
+        raise ValueError("A boundary requires at least three distinct vertices.")
     source = Polygon(points)
     if not source.is_valid or source.area <= 0:
-        raise ValueError("Invalid limiter polygon.")
+        raise ValueError("Invalid boundary polygon.")
     reflected = scale(source, xfact=1, yfact=-1, origin=(0, z_midplane))
     if source.equals(reflected):
-        return deepcopy(limiter_data), 0.0
+        return deepcopy(boundary_data), 0.0
     inner = source.intersection(reflected)
     if inner.is_empty or inner.geom_type != "Polygon" or inner.area <= 0:
-        raise ValueError("Limiter intersection must be one connected polygon.")
+        raise ValueError("Boundary intersection must be one connected polygon.")
     if not inner.is_valid or len(inner.interiors):
-        raise ValueError("Limiter intersection must be valid and without holes.")
+        raise ValueError("Boundary intersection must be valid and without holes.")
     distances = [Point(point).distance(reflected.boundary) for point in points]
     mismatch = float(np.sqrt(np.mean(np.square(distances))))
     inner = orient(inner, sign=1 if source.exterior.is_ccw else -1)
@@ -713,7 +715,7 @@ def _symmetrise_limiter_with_mismatch(limiter_data, z_midplane):
     return [{"R": float(r), "Z": float(z)} for r, z in coords], mismatch
 
 
-def _warn_and_plot_limiter_change(original, symmetric, z_midplane):
+def _warn_and_plot_boundary_change(original, symmetric, z_midplane, name):
     """Warn about a changed footprint and display its original/reflected overlap."""
     points = np.asarray([[p["R"], p["Z"]] for p in original], dtype=float)
     retained = np.asarray([[p["R"], p["Z"]] for p in symmetric], dtype=float)
@@ -723,10 +725,10 @@ def _warn_and_plot_limiter_change(original, symmetric, z_midplane):
     removed_area = max(0.0, source.area - inner.area)
     removed_percent = 100 * removed_area / source.area
     warnings.warn(
-        "Limiter changed by intersection with its reflection about "
+        f"{name} changed by intersection with its reflection about "
         f"Z={z_midplane:g} m: removed {removed_area:.6g} m² "
         f"({removed_percent:.3g}%); {len(original)} -> {len(symmetric)} vertices. "
-        "See the limiter comparison plot.",
+        "See the boundary comparison plot.",
         UserWarning,
         stacklevel=3,
     )
@@ -743,8 +745,8 @@ def _warn_and_plot_limiter_change(original, symmetric, z_midplane):
     fig, axes = plt.subplots(1, 2, figsize=(11, 6), layout="constrained")
     for axis in axes:
         axis.fill(*paths[2].T, color="#00865A", alpha=0.15)
-        axis.plot(*paths[0].T, color="#0072B2", label="Original limiter")
-        axis.plot(*paths[1].T, "--", color="#D55E00", label="Reflected limiter")
+        axis.plot(*paths[0].T, color="#0072B2", label=f"Original {name.lower()}")
+        axis.plot(*paths[1].T, "--", color="#D55E00", label=f"Reflected {name.lower()}")
         axis.plot(
             *paths[2].T, color="#00865A", linewidth=2, label="Retained intersection"
         )
@@ -761,26 +763,22 @@ def _warn_and_plot_limiter_change(original, symmetric, z_midplane):
         axis.set_aspect("equal", adjustable="box")
         axis.grid(alpha=0.2)
     axes[0].axhline(z_midplane, color="grey", linestyle=":", linewidth=0.8)
-    axes[0].set_title("Original and retained limiter")
+    axes[0].set_title(f"Original and retained {name.lower()}")
     axes[0].legend(fontsize="small")
     height = max(np.max(np.abs(points[:, 1] - z_midplane)), 1e-12)
     axes[1].set_ylim(z_midplane - 0.05 * height, z_midplane + 1.1 * height)
     axes[1].set_title("Upper half: retained boundary segments")
-    fig.suptitle(f"Limiter symmetrisation: {removed_percent:.3g}% of area removed")
+    fig.suptitle(f"{name} symmetrisation: {removed_percent:.3g}% of area removed")
     plt.show(block=False)
 
 
 def symmetrise_boundary(boundary_data, z_midplane=0.0):
     """
-    Average corresponding boundary vertices with their reflected partners.
+    Keep the intersection of a boundary and its reflection about the midplane.
 
-    Machine preparation uses this method for the wall. Use
-    ``symmetrise_limiter`` to retain a conservative inner plasma domain.
-
-    Match vertices to their reflected counterparts using cyclic shifts and
-    reversed polygon order, then average each pair. No vertices are resampled
-    or added; polygon ordering and an explicit closing vertex are preserved.
-    Already symmetric polygons are retained even with redundant vertices.
+    This is the common strategy for limiter and wall outlines. Retain existing
+    segments and introduce vertices only at edge crossings, without pairing or
+    resampling. Warn and show a comparison plot whenever the footprint changes.
 
     Parameters
     ----------
@@ -792,77 +790,17 @@ def symmetrise_boundary(boundary_data, z_midplane=0.0):
     Returns
     -------
     list of dict
-        Exactly symmetric boundary with the same number of vertices.
+        Symmetric inner boundary, preserving winding and explicit closure.
 
     Raises
     ------
     ValueError
-        If the polygon is invalid, does not cross the midplane exactly twice,
-        or lacks a consistent one-to-one pairing of reflected vertices.
-        If averaging is needed, upper/lower paths with different vertex counts
-        require explicit corresponding vertices; they are not resampled.
+        If the input is invalid or the intersection is empty, disconnected,
+        or contains holes.
     """
-    return _symmetrise_boundary_with_mismatch(boundary_data, z_midplane)[0]
-
-
-def _symmetrise_boundary_with_mismatch(boundary_data, z_midplane):
-    """Average corresponding boundary vertices and report their reflected RMS."""
-    points = np.asarray(
-        [[entry["R"], entry["Z"]] for entry in boundary_data], dtype=float
-    )
-    if len(points) < 4:
-        raise ValueError("A boundary requires at least four vertices.")
-    if not np.isfinite(points).all():
-        raise ValueError("Boundary coordinates must be finite.")
-    closed = np.allclose(points[0], points[-1], rtol=0.0, atol=1e-12)
-    if closed:
-        points = points[:-1]
-    polygon = Polygon(points)
-    if not polygon.is_valid or polygon.area <= 0:
-        raise ValueError("Invalid boundary polygon.")
-
-    # Roundoff at the plane must not turn a self-reflecting vertex into an
-    # unmatched upper/lower vertex.
-    on_plane = np.isclose(points[:, 1], z_midplane, rtol=0.0, atol=1e-12)
-    points[on_plane, 1] = z_midplane
-    sides = np.sign(points[:, 1] - z_midplane)
-    nonzero_sides = sides[sides != 0]
-    if np.count_nonzero(nonzero_sides != np.roll(nonzero_sides, 1)) != 2:
-        raise ValueError(
-            "Boundary symmetrisation requires exactly two midplane crossings."
-        )
-
-    reflected = points.copy()
-    reflected[:, 1] = 2 * z_midplane - points[:, 1]
-    # An exactly symmetric outline needs no averaging. Redundant or differently
-    # spaced collinear vertices need not have one-to-one reflected partners.
-    if polygon.equals(Polygon(reflected)):
-        if closed:
-            points = np.vstack((points, points[0]))
-        return [{"R": float(r), "Z": float(z)} for r, z in points], 0.0
-    assignment = _best_point_assignment(points, reflected, polygon=True)
-    indices = np.arange(len(points))
-    if (
-        not np.array_equal(assignment[assignment], indices)
-        or np.any(sides[assignment] != -sides)
-        or np.any(assignment[on_plane] != indices[on_plane])
-    ):
-        raise ValueError(
-            "Boundary vertices do not define a one-to-one reflection pairing. "
-            "Provide corresponding upper/lower vertices explicitly."
-        )
-
-    mismatch = _point_rms_distance(points, reflected[assignment])
-    symmetric_points = 0.5 * (points + reflected[assignment])
-    polygon = Polygon(symmetric_points)
-    if not polygon.is_valid or polygon.area <= 0:
-        raise ValueError("Averaging boundary vertices produced an invalid polygon.")
-    if closed:
-        symmetric_points = np.vstack((symmetric_points, symmetric_points[0]))
-    return (
-        [{"R": float(point[0]), "Z": float(point[1])} for point in symmetric_points],
-        mismatch,
-    )
+    result, _ = _symmetrise_boundary_with_mismatch(boundary_data, z_midplane)
+    _warn_and_plot_boundary_change(boundary_data, result, z_midplane, "Boundary")
+    return result
 
 
 def _point_rms_distance(first, second):

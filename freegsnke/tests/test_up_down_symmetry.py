@@ -642,7 +642,7 @@ def test_sparc_machine_can_be_symmetrised_and_built():
 @pytest.mark.parametrize("reverse", [False, True])
 @pytest.mark.parametrize("midplane", [0.0, 0.12])
 def test_symmetric_rectangle_keeps_corners_and_area(closed, reverse, midplane):
-    """Symmetrisation must preserve the domain, vertex order and closure."""
+    """Intersection preserves all rectangle corners, winding and closure."""
     points = np.array([[0.5, -1], [2, -1], [2, 1], [0.5, 1]], dtype=float)
     points[:, 1] += midplane
     if reverse:
@@ -653,7 +653,9 @@ def test_symmetric_rectangle_keeps_corners_and_area(closed, reverse, midplane):
     result = symmetrise_boundary(boundary, midplane)
     actual = np.array([[p["R"], p["Z"]] for p in result])
     assert len(actual) == len(points)
-    np.testing.assert_allclose(actual, points, rtol=0, atol=1e-14)
+    assert Polygon(actual).hausdorff_distance(Polygon(points)) < 1e-14
+    assert Polygon(actual).exterior.is_ccw == Polygon(points).exterior.is_ccw
+    assert (result[0] == result[-1]) == closed
     assert Polygon(actual).area == pytest.approx(3.0)
     np.testing.assert_array_equal([[p["R"], p["Z"]] for p in boundary], points)
 
@@ -698,12 +700,13 @@ def test_limiter_discrepancy_measures_distance_to_reflected_boundary():
     show.assert_not_called()
 
 
-def test_unequal_half_vertex_counts_are_not_resampled():
-    """Asymmetric halves with extra vertices require explicit correspondence."""
+def test_unequal_boundary_vertex_counts_are_intersected():
+    """The general boundary helper uses intersection despite unequal sampling."""
     points = [(1, -1), (2, -1), (2, 1), (1.5, 1.1), (1, 1)]
     boundary = [{"R": r, "Z": z} for r, z in points]
-    with pytest.raises(ValueError, match="one-to-one reflection pairing"):
-        symmetrise_boundary(boundary)
+    with pytest.warns(UserWarning, match="Boundary changed"):
+        result = symmetrise_boundary(boundary)
+    assert Polygon([(p["R"], p["Z"]) for p in result]).equals(box(1, -1, 2, 1))
 
 
 @pytest.mark.parametrize("duplicate", [False, True])
@@ -738,8 +741,10 @@ def test_symmetric_machine_boundaries_keep_original_vertices(
 
 @pytest.mark.parametrize("machine,prefix", [("MAST-U", "MAST-U_like_"), ("test", "")])
 @pytest.mark.parametrize("component", ["limiter", "wall"])
-def test_mastu_boundary_averages_vertices_once(machine, prefix, component):
-    """The MAST-U approximation preserves vertices and is idempotent."""
+def test_mastu_boundary_intersection_is_conservative_and_idempotent(
+    machine, prefix, component
+):
+    """Both real boundary outlines stay inside the source and remain symmetric."""
     path = REPO_ROOT / "machine_configs" / machine / f"{prefix}{component}.pickle"
     with path.open("rb") as f:
         boundary = pickle.load(f)
@@ -747,22 +752,36 @@ def test_mastu_boundary_averages_vertices_once(machine, prefix, component):
     twice = symmetrise_boundary(result)
     source = np.array([[p["R"], p["Z"]] for p in boundary])
     actual = np.array([[p["R"], p["Z"]] for p in result])
-    assert len(actual) == len(source)
-    assert np.max(np.linalg.norm(actual - source, axis=1)) <= 0.006 + 1e-14
-    np.testing.assert_allclose(
-        [[p["R"], p["Z"]] for p in twice], actual, rtol=0, atol=1e-14
+    polygon = Polygon(actual)
+    assert polygon.is_valid
+    assert polygon.difference(Polygon(source)).area < 1e-12
+    assert (
+        polygon.symmetric_difference(
+            scale(polygon, xfact=1, yfact=-1, origin=(0, 0))
+        ).area
+        < 1e-12
     )
-    assert Polygon(actual).is_valid
+    assert (
+        polygon.hausdorff_distance(Polygon([(p["R"], p["Z"]) for p in twice])) < 1e-12
+    )
 
 
 @pytest.mark.parametrize("component", ["limiter", "wall"])
-def test_asymmetric_iter_boundary_requires_explicit_correspondence(component):
-    """The asymmetric ITER outline must not be reshaped by automatic sampling."""
+def test_asymmetric_iter_boundary_uses_symmetric_inner_intersection(component):
+    """ITER needs no corresponding vertices for either limiter or wall."""
     path = REPO_ROOT / "machine_configs" / "ITER" / f"ITER_{component}.pickle"
     with path.open("rb") as f:
         boundary = pickle.load(f)
-    with pytest.raises(ValueError, match="one-to-one reflection pairing"):
-        symmetrise_boundary(boundary)
+    with pytest.warns(UserWarning, match="Boundary changed"):
+        result = symmetrise_boundary(boundary)
+    source = Polygon([(p["R"], p["Z"]) for p in boundary])
+    inner = Polygon([(p["R"], p["Z"]) for p in result])
+    assert inner.is_valid and 0 < inner.area < source.area
+    assert inner.difference(source).area < 1e-12
+    assert (
+        inner.symmetric_difference(scale(inner, xfact=1, yfact=-1, origin=(0, 0))).area
+        < 1e-12
+    )
 
 
 @pytest.mark.parametrize(
@@ -774,7 +793,7 @@ def test_asymmetric_iter_boundary_requires_explicit_correspondence(component):
     ],
 )
 def test_invalid_boundary_is_rejected(points):
-    """Invalid or non-finite polygons cannot be repaired by vertex averaging."""
+    """Invalid or non-finite polygons must be rejected before intersection."""
     with pytest.raises(ValueError, match="[Ii]nvalid boundary|finite"):
         symmetrise_boundary([{"R": r, "Z": z} for r, z in points])
 
@@ -782,7 +801,8 @@ def test_invalid_boundary_is_rejected(points):
 @pytest.mark.parametrize("closed", [False, True])
 @pytest.mark.parametrize("reverse", [False, True])
 @pytest.mark.parametrize("midplane", [0.0, 0.12])
-def test_limiter_intersection_inserts_crossings(closed, reverse, midplane):
+@pytest.mark.parametrize("symmetrise", [symmetrise_limiter, symmetrise_boundary])
+def test_limiter_intersection_inserts_crossings(closed, reverse, midplane, symmetrise):
     """Known crossing points replace averaging while preserving closure and winding."""
     points = np.array([(1, -1), (3, -2), (3, 1), (1, 2)], dtype=float)
     points[:, 1] += midplane
@@ -792,8 +812,8 @@ def test_limiter_intersection_inserts_crossings(closed, reverse, midplane):
         points = np.vstack((points, points[0]))
     boundary = [{"R": r, "Z": z} for r, z in points]
     original = pickle.dumps(boundary)
-    with pytest.warns(UserWarning, match="Limiter changed"):
-        result = symmetrise_limiter(boundary, midplane)
+    with pytest.warns(UserWarning, match="Limiter changed|Boundary changed"):
+        result = symmetrise(boundary, midplane)
     expected = Polygon(
         [
             (r, z + midplane)
@@ -852,6 +872,49 @@ def test_unchanged_limiter_and_repeated_intersection_are_quiet():
         assert prepared.limiter_data == symmetric
     assert not caught
     show.assert_not_called()
+
+
+def test_preparation_intersects_and_reports_both_limiter_and_wall():
+    """Both outlines use the same conservative strategy and get labelled plots."""
+    boundary = [{"R": r, "Z": z} for r, z in [(1, -1), (3, -2), (3, 1), (1, 2)]]
+    with patch("freegsnke.up_down_symmetry.plt.show") as show:
+        with pytest.warns(UserWarning) as notices:
+            prepared = prepare_up_down_symmetric_machine(
+                {}, limiter_data=boundary, wall_data=boundary
+            )
+        assert [str(w.message).split(" changed")[0] for w in notices] == [
+            "Limiter",
+            "Wall",
+        ]
+        assert show.call_count == 2
+        assert prepared.limiter_data == prepared.wall_data
+        assert [r.component for r in prepared.geometry_discrepancies] == [
+            "limiter",
+            "wall",
+        ]
+        for record in prepared.geometry_discrepancies:
+            assert record.reflected_rms == pytest.approx(np.sqrt(0.4))
+        titles = [plt.figure(n)._suptitle.get_text() for n in plt.get_fignums()]
+        assert any(title.startswith("Limiter symmetrisation") for title in titles)
+        assert any(title.startswith("Wall symmetrisation") for title in titles)
+
+
+def test_invalid_or_rejected_wall_does_not_display_an_accepted_change():
+    """Wall validation and tolerance checks happen before either notification."""
+    boundary = [{"R": r, "Z": z} for r, z in [(1, -1), (3, -2), (3, 1), (1, 2)]]
+    invalid = [{"R": r, "Z": z} for r, z in [(1, 0), (2, 1), (1, 1), (2, 0)]]
+    for wall, options in [(invalid, {}), (boundary, {"max_pair_mismatch": 0.1})]:
+        with (
+            warnings.catch_warnings(record=True) as caught,
+            patch("freegsnke.up_down_symmetry.plt.show") as show,
+            pytest.raises(ValueError),
+        ):
+            warnings.simplefilter("always")
+            prepare_up_down_symmetric_machine(
+                {}, limiter_data=boundary, wall_data=wall, **options
+            )
+        assert not caught
+        show.assert_not_called()
 
 
 def test_unequal_limiter_vertex_counts_need_no_pairing():

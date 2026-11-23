@@ -532,6 +532,7 @@ class FFT_Myy_handler(Myy_handler):
         R_1D, Z_1D = self.make_1D(limiter_handler.eqR, limiter_handler.eqZ)
 
         self.gg = self.grid_greens(R_1D, Z_1D)  # in Fourier space, (nR, nR, L_fft)
+        self.cache_myy = False
 
     def grid_greens(self, R_1D: np.ndarray, Z_1D: np.ndarray) -> np.ndarray:
         """

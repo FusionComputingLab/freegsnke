@@ -258,7 +258,8 @@ def test_linearised_stepper(create_machine, create_solver):
 @pytest.mark.parametrize(
     "create_solver",
     [
-        "default",
+        {"solver_type": "LUsparse", "myy_type": "reduced", "cache_myy": True},
+        {"solver_type": "LUsparse", "myy_type": "fft", "cache_myy": True},
     ],
     indirect=True,
 )

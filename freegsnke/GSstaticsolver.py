@@ -466,7 +466,7 @@ class NKGSsolver:
         else:
             raise ValueError(f"Solver type {solver_type} not recognized")
 
-        self.gs_operator_order = order
+        self.gs_operator_order = self.linear_GS_solver.order
 
         return self.linear_GS_solver
 

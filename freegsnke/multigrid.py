@@ -44,7 +44,7 @@ class MGDirect:
     # as a standalone LU solver
     """Direct sparse-LU solve used at the coarsest multigrid level."""
 
-    def __init__(self, A: spmatrix) -> None:
+    def __init__(self, A: spmatrix, order: int = None) -> None:
         """
         Initialise solver by LU-factorising the matrix.
 
@@ -52,9 +52,12 @@ class MGDirect:
         ----------
         A : scipy.sparse matrix
             The matrix to solve.
+        order : int
+            The order of the internal sparse solver (2 or 4).
         """
 
         self.solver = factorized(A.tocsc())  # LU decompose
+        self.order = order
 
     def solve(self, x: np.ndarray, b: np.ndarray) -> np.ndarray:
         """
@@ -106,6 +109,7 @@ class MGJacobi:
         ncycle: int = 4,
         niter: int = 10,
         subsolver: Callable[[np.ndarray, np.ndarray], np.ndarray] | None = None,
+        order: int = None,
     ) -> None:
         """
         Initialise solver.
@@ -121,6 +125,8 @@ class MGJacobi:
         subsolver : callable or None, optional
             Operator ``subsolver(x, b)`` at lower resolution, used for the coarse-grid
             correction. If None, only Jacobi smoothing is applied.
+        order : int
+            The order of the internal sparse solver (2 or 4).
         """
         self.A = A
         self.diag = A.diagonal()
@@ -130,6 +136,8 @@ class MGJacobi:
 
         self.sub_b = None
         self.xupdate = None
+
+        self.order = order
 
     def solve(
         self,
@@ -293,6 +301,7 @@ def createMultigridSolver(
         ncycle=ncycle,
         niter=niter,
         direct=direct,
+        order=order,
     )
 
     return mg_solver
@@ -306,6 +315,7 @@ def createVcycle(
     ncycle: int = 1,
     niter: int = 10,
     direct: bool = True,
+    order: int = 4,
 ) -> MGJacobi | MGDirect:
     """
     Create a hierarchy of solvers in a multigrid V-cycle.
@@ -326,6 +336,8 @@ def createVcycle(
         Number of Jacobi iterations per level.
     direct : bool, optional
         If True, the lowest level uses a direct solver.
+    order : int
+        The order of the internal sparse solver (2 or 4).
 
     Returns
     -------
@@ -350,15 +362,15 @@ def createVcycle(
         # Create the sparse matrix
         A = generator(nx, ny)
         # Create the solver
-        return MGJacobi(A, niter=niter, subsolver=subsolver, ncycle=ncycle)
+        return MGJacobi(A, niter=niter, subsolver=subsolver, ncycle=ncycle, order=order)
 
     # At lowest level
 
     # Create the sparse matrix
     A = generator(nx, ny)
     if direct:
-        return MGDirect(A)
-    return MGJacobi(A, niter=niter, ncycle=ncycle, subsolver=None)
+        return MGDirect(A, order=order)
+    return MGJacobi(A, niter=niter, ncycle=ncycle, subsolver=None, order=order)
 
 
 def smoothJacobi(

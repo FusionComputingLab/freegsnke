@@ -18,12 +18,16 @@ later version.
 """
 
 import re
+import warnings
 from copy import deepcopy
 from dataclasses import dataclass
 
+import matplotlib.pyplot as plt
 import numpy as np
 from scipy.optimize import linear_sum_assignment
-from shapely.geometry import Polygon
+from shapely.affinity import scale
+from shapely.geometry import Point, Polygon
+from shapely.geometry.polygon import orient
 
 _SIDE_PATTERN = re.compile(r"(^|_)(upper|lower)(?=_|$)", re.IGNORECASE)
 _TRAILING_INDEX_PATTERN = re.compile(r"(\d+)$")
@@ -380,8 +384,9 @@ def prepare_up_down_symmetric_machine(
     passive_coils_data : list, optional
         Standard FreeGSNKE passive-structure description.
     limiter_data, wall_data : list, optional
-        Standard FreeGSNKE boundary descriptions. Each supplied boundary is
-        recentered and averaged with its reflection.
+        Standard FreeGSNKE boundary descriptions. The limiter is intersected
+        with its reflection, with a warning and comparison plot if its footprint
+        changes. The wall uses reflected vertex averaging.
     z_midplane : float or "auto", default=0
         Symmetry-plane coordinate. ``"auto"`` fits the common vertical offset
         from matched machine points, shifts the complete description so that
@@ -392,7 +397,8 @@ def prepare_up_down_symmetric_machine(
     max_pair_mismatch : float, optional
         Maximum permitted reflected RMS point mismatch in metres before
         averaging. The limit applies to active and passive pairs, internally
-        symmetric elements, limiter, and wall.
+        symmetric elements, limiter, and wall. For the limiter this is the RMS
+        distance of source vertices to the reflected boundary, without pairing.
     exclude_odd_active : bool, default=False
         If True, omit active circuits whose reflected winding polarity is odd
         from the prepared machine and record them in
@@ -589,11 +595,11 @@ def prepare_up_down_symmetric_machine(
     # resistance arrays use positional, rather than name-based, indexing.
     symmetric_passive = [passive_by_name[name] for name in passive_names]
 
-    # Preserve limiter/wall connectivity when matching reflected vertices.
+    # The limiter must stay inside both source outlines; wall vertices are paired.
     if limiter_original is None:
         symmetric_limiter = None
     else:
-        symmetric_limiter, mismatch = _symmetrise_boundary_with_mismatch(
+        symmetric_limiter, mismatch = _symmetrise_limiter_with_mismatch(
             limiter_original, target_midplane
         )
         geometry_discrepancies.append(
@@ -638,12 +644,138 @@ def prepare_up_down_symmetric_machine(
     )
     if max_pair_mismatch is not None:
         prepared.check_geometry_tolerance(max_pair_mismatch)
+    if limiter_original is not None:
+        _warn_and_plot_limiter_change(
+            limiter_original, symmetric_limiter, target_midplane
+        )
     return prepared
+
+
+def symmetrise_limiter(limiter_data, z_midplane=0.0):
+    """
+    Keep the intersection of a limiter and its reflection about the midplane.
+
+    Retain existing boundary segments and add vertices only at edge crossings.
+    Unequal upper/lower vertex counts require no pairing or resampling. An
+    already symmetric polygon is returned unchanged. Otherwise, warn and show
+    the original, reflected and retained outlines in a nonblocking plot.
+
+    Parameters
+    ----------
+    limiter_data : sequence of dict
+        Ordered polygon vertices with ``R`` and ``Z`` entries.
+    z_midplane : float, default=0
+        Coordinate of the symmetry plane.
+
+    Returns
+    -------
+    list of dict
+        Symmetric inner boundary, preserving winding and explicit closure.
+
+    Raises
+    ------
+    ValueError
+        If the input is invalid or the intersection is empty, disconnected,
+        or contains holes.
+    """
+    result, _ = _symmetrise_limiter_with_mismatch(limiter_data, z_midplane)
+    _warn_and_plot_limiter_change(limiter_data, result, z_midplane)
+    return result
+
+
+def _symmetrise_limiter_with_mismatch(limiter_data, z_midplane):
+    """Intersect reflected outlines and measure source-to-reflection RMS distance."""
+    points = np.asarray([[p["R"], p["Z"]] for p in limiter_data], dtype=float)
+    if len(points) < 3 or not np.isfinite(points).all():
+        raise ValueError("A limiter requires at least three finite vertices.")
+    closed = np.allclose(points[0], points[-1], rtol=0.0, atol=1e-12)
+    if closed:
+        points = points[:-1]
+    if len(points) < 3:
+        raise ValueError("A limiter requires at least three distinct vertices.")
+    source = Polygon(points)
+    if not source.is_valid or source.area <= 0:
+        raise ValueError("Invalid limiter polygon.")
+    reflected = scale(source, xfact=1, yfact=-1, origin=(0, z_midplane))
+    if source.equals(reflected):
+        return deepcopy(limiter_data), 0.0
+    inner = source.intersection(reflected)
+    if inner.is_empty or inner.geom_type != "Polygon" or inner.area <= 0:
+        raise ValueError("Limiter intersection must be one connected polygon.")
+    if not inner.is_valid or len(inner.interiors):
+        raise ValueError("Limiter intersection must be valid and without holes.")
+    distances = [Point(point).distance(reflected.boundary) for point in points]
+    mismatch = float(np.sqrt(np.mean(np.square(distances))))
+    inner = orient(inner, sign=1 if source.exterior.is_ccw else -1)
+    coords = list(inner.exterior.coords)
+    if not closed:
+        coords = coords[:-1]
+    return [{"R": float(r), "Z": float(z)} for r, z in coords], mismatch
+
+
+def _warn_and_plot_limiter_change(original, symmetric, z_midplane):
+    """Warn about a changed footprint and display its original/reflected overlap."""
+    points = np.asarray([[p["R"], p["Z"]] for p in original], dtype=float)
+    retained = np.asarray([[p["R"], p["Z"]] for p in symmetric], dtype=float)
+    source, inner = Polygon(points), Polygon(retained)
+    if source.equals(inner):
+        return
+    removed_area = max(0.0, source.area - inner.area)
+    removed_percent = 100 * removed_area / source.area
+    warnings.warn(
+        "Limiter changed by intersection with its reflection about "
+        f"Z={z_midplane:g} m: removed {removed_area:.6g} m² "
+        f"({removed_percent:.3g}%); {len(original)} -> {len(symmetric)} vertices. "
+        "See the limiter comparison plot.",
+        UserWarning,
+        stacklevel=3,
+    )
+    reflected = points.copy()
+    reflected[:, 1] = 2 * z_midplane - points[:, 1]
+    # Close plotting paths even when the supplied polygon omits its closing vertex.
+    paths = [np.vstack((p, p[0])) for p in (points, reflected, retained)]
+    candidates = np.vstack((points, reflected))
+    tolerance = 1e-12 * max(np.ptp(points, axis=0).max(), 1.0)
+    crossings = retained[
+        np.min(np.linalg.norm(retained[:, None] - candidates[None, :], axis=-1), axis=1)
+        > tolerance
+    ]
+    fig, axes = plt.subplots(1, 2, figsize=(11, 6), layout="constrained")
+    for axis in axes:
+        axis.fill(*paths[2].T, color="#00865A", alpha=0.15)
+        axis.plot(*paths[0].T, color="#0072B2", label="Original limiter")
+        axis.plot(*paths[1].T, "--", color="#D55E00", label="Reflected limiter")
+        axis.plot(
+            *paths[2].T, color="#00865A", linewidth=2, label="Retained intersection"
+        )
+        if len(crossings):
+            axis.scatter(
+                *crossings.T,
+                marker="*",
+                s=80,
+                color="#A51C47",
+                zorder=4,
+                label="New edge crossings",
+            )
+        axis.set(xlabel="R [m]", ylabel="Z [m]")
+        axis.set_aspect("equal", adjustable="box")
+        axis.grid(alpha=0.2)
+    axes[0].axhline(z_midplane, color="grey", linestyle=":", linewidth=0.8)
+    axes[0].set_title("Original and retained limiter")
+    axes[0].legend(fontsize="small")
+    height = max(np.max(np.abs(points[:, 1] - z_midplane)), 1e-12)
+    axes[1].set_ylim(z_midplane - 0.05 * height, z_midplane + 1.1 * height)
+    axes[1].set_title("Upper half: retained boundary segments")
+    fig.suptitle(f"Limiter symmetrisation: {removed_percent:.3g}% of area removed")
+    plt.show(block=False)
 
 
 def symmetrise_boundary(boundary_data, z_midplane=0.0):
     """
-    Average a closed limiter or wall outline with its reflection.
+    Average corresponding boundary vertices with their reflected partners.
+
+    Machine preparation uses this method for the wall. Use
+    ``symmetrise_limiter`` to retain a conservative inner plasma domain.
 
     Match vertices to their reflected counterparts using cyclic shifts and
     reversed polygon order, then average each pair. No vertices are resampled

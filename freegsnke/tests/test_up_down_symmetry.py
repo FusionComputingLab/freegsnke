@@ -2,19 +2,32 @@
 
 import os
 import pickle
+import warnings
 from pathlib import Path
+from unittest.mock import patch
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pytest
-from shapely.geometry import Polygon
+from shapely.affinity import scale
+from shapely.geometry import Polygon, box
+from shapely.ops import unary_union
 
 from freegsnke.build_machine import build_tokamak_components
 from freegsnke.up_down_symmetry import (
     prepare_up_down_symmetric_machine,
     symmetrise_boundary,
+    symmetrise_limiter,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+@pytest.fixture(autouse=True)
+def close_geometry_plots():
+    """Release diagnostic figures after each geometry test."""
+    yield
+    plt.close("all")
 
 
 def _active_element(r, z):
@@ -528,20 +541,25 @@ def test_nonuniform_symmetric_vertices_are_not_redistributed():
     np.testing.assert_array_equal([[p["R"], p["Z"]] for p in result], points)
 
 
-def test_boundary_discrepancy_measures_original_vertex_pairs():
-    """The reported RMS is measured before averaging corresponding vertices."""
-    points = np.array([[1, -1], [2, -1], [2.02, 1.04], [1, 1]])
+def test_limiter_discrepancy_measures_distance_to_reflected_boundary():
+    """Limiter diagnostics need no one-to-one correspondence between vertices."""
+    points = np.array([[1, -1], [3, -2], [3, 1], [1, 2]])
     boundary = [{"R": r, "Z": z} for r, z in points]
-    prepared = prepare_up_down_symmetric_machine({}, limiter_data=boundary)
+    with pytest.warns(UserWarning, match="Limiter changed"):
+        prepared = prepare_up_down_symmetric_machine({}, limiter_data=boundary)
     result = np.array([[p["R"], p["Z"]] for p in prepared.limiter_data])
-    expected = np.array([[1, -1], [2.01, -1.02], [2.01, 1.02], [1, 1]])
-    np.testing.assert_allclose(result, expected, rtol=0, atol=1e-14)
-    rms = np.sqrt((0.02**2 + 0.04**2) / 2)
+    expected = Polygon([(1, -1), (2, -1.5), (3, -1), (3, 1), (2, 1.5), (1, 1)])
+    assert Polygon(result).equals(expected)
+    rms = np.sqrt(0.4)
     assert prepared.maximum_geometry_discrepancy.reflected_rms == pytest.approx(rms)
-    with pytest.raises(ValueError, match="Largest failures"):
+    with (
+        patch("freegsnke.up_down_symmetry.plt.show") as show,
+        pytest.raises(ValueError, match="Largest failures"),
+    ):
         prepare_up_down_symmetric_machine(
             {}, limiter_data=boundary, max_pair_mismatch=rms / 2
         )
+    show.assert_not_called()
 
 
 def test_unequal_half_vertex_counts_are_not_resampled():
@@ -623,3 +641,139 @@ def test_invalid_boundary_is_rejected(points):
     """Invalid or non-finite polygons cannot be repaired by vertex averaging."""
     with pytest.raises(ValueError, match="[Ii]nvalid boundary|finite"):
         symmetrise_boundary([{"R": r, "Z": z} for r, z in points])
+
+
+@pytest.mark.parametrize("closed", [False, True])
+@pytest.mark.parametrize("reverse", [False, True])
+@pytest.mark.parametrize("midplane", [0.0, 0.12])
+def test_limiter_intersection_inserts_crossings(closed, reverse, midplane):
+    """Known crossing points replace averaging while preserving closure and winding."""
+    points = np.array([(1, -1), (3, -2), (3, 1), (1, 2)], dtype=float)
+    points[:, 1] += midplane
+    if reverse:
+        points = points[::-1]
+    if closed:
+        points = np.vstack((points, points[0]))
+    boundary = [{"R": r, "Z": z} for r, z in points]
+    original = pickle.dumps(boundary)
+    with pytest.warns(UserWarning, match="Limiter changed"):
+        result = symmetrise_limiter(boundary, midplane)
+    expected = Polygon(
+        [
+            (r, z + midplane)
+            for r, z in [(1, -1), (2, -1.5), (3, -1), (3, 1), (2, 1.5), (1, 1)]
+        ]
+    )
+    polygon = Polygon([(p["R"], p["Z"]) for p in result])
+    assert polygon.hausdorff_distance(expected) < 1e-14
+    assert polygon.area == pytest.approx(5.0)
+    assert len(result) == 6 + int(closed)
+    assert (result[0] == result[-1]) == closed
+    assert polygon.exterior.is_ccw == Polygon(points).exterior.is_ccw
+    assert pickle.dumps(boundary) == original
+
+
+@pytest.mark.parametrize("entry_point", ["direct", "prepare"])
+def test_changed_limiter_warns_and_plots_each_time(entry_point):
+    """Every accepted footprint change has a quantified warning and comparison plot."""
+    boundary = [{"R": r, "Z": z} for r, z in [(1, -1), (3, -2), (3, 1), (1, 2)]]
+    with patch("freegsnke.up_down_symmetry.plt.show") as show:
+        for _ in range(2):
+            with pytest.warns(UserWarning, match=r"16\.7%.*4 -> 6 vertices"):
+                if entry_point == "direct":
+                    symmetrise_limiter(boundary)
+                else:
+                    prepare_up_down_symmetric_machine({}, limiter_data=boundary)
+            fig = plt.gcf()
+            assert len(fig.axes) == 2
+            assert [line.get_label() for line in fig.axes[0].lines[:3]] == [
+                "Original limiter",
+                "Reflected limiter",
+                "Retained intersection",
+            ]
+            assert len(fig.axes[0].collections[0].get_offsets()) == 2
+        assert show.call_count == 2
+        show.assert_called_with(block=False)
+
+
+def test_unchanged_limiter_and_repeated_intersection_are_quiet():
+    """An unchanged footprint never produces an extra warning or plot."""
+    symmetric = [
+        {"R": r, "Z": z}
+        for r, z in [(1, -1), (2, -1), (2, 1), (1.5, 1), (1, 1), (1, -1)]
+    ]
+    asymmetric = [{"R": r, "Z": z} for r, z in [(1, -1), (3, -2), (3, 1), (1, 2)]]
+    with pytest.warns(UserWarning, match="Limiter changed"):
+        clipped = symmetrise_limiter(asymmetric)
+    with (
+        warnings.catch_warnings(record=True) as caught,
+        patch("freegsnke.up_down_symmetry.plt.show") as show,
+    ):
+        warnings.simplefilter("always")
+        assert symmetrise_limiter(symmetric) == symmetric
+        assert symmetrise_limiter(clipped) == clipped
+        prepared = prepare_up_down_symmetric_machine({}, limiter_data=symmetric)
+        assert prepared.limiter_data == symmetric
+    assert not caught
+    show.assert_not_called()
+
+
+def test_unequal_limiter_vertex_counts_need_no_pairing():
+    """Asymmetric upper and lower sampling is accepted without resampling."""
+    boundary = [
+        {"R": r, "Z": z} for r, z in [(1, -1), (2, -1), (2, 1), (1.5, 1.1), (1, 1)]
+    ]
+    with pytest.warns(UserWarning, match="Limiter changed"):
+        result = symmetrise_limiter(boundary)
+    assert Polygon([(p["R"], p["Z"]) for p in result]).equals(box(1, -1, 2, 1))
+
+
+@pytest.mark.parametrize(
+    "machine,prefix",
+    [
+        ("example", ""),
+        ("test", ""),
+        ("MAST-U", "MAST-U_like_"),
+        ("SPARC", "SPARC_"),
+        ("ITER", "ITER_"),
+    ],
+)
+def test_checked_in_limiter_intersections_are_symmetric_and_conservative(
+    machine, prefix
+):
+    """All checked-in limiters produce one valid symmetric inner domain."""
+    path = REPO_ROOT / "machine_configs" / machine / f"{prefix}limiter.pickle"
+    with path.open("rb") as f:
+        boundary = pickle.load(f)
+    result = symmetrise_limiter(boundary)
+    source = Polygon([(p["R"], p["Z"]) for p in boundary])
+    inner = Polygon([(p["R"], p["Z"]) for p in result])
+    reflected = scale(inner, xfact=1, yfact=-1, origin=(0, 0))
+    assert inner.is_valid and not len(inner.interiors)
+    assert inner.difference(source).area < 1e-12
+    assert inner.symmetric_difference(reflected).area < 1e-12
+    again = symmetrise_limiter(result)
+    assert inner.hausdorff_distance(Polygon([(p["R"], p["Z"]) for p in again])) < 1e-12
+
+
+@pytest.mark.parametrize("kind", ["empty", "disconnected", "invalid", "nonfinite"])
+def test_invalid_limiter_intersection_does_not_warn_or_plot(kind):
+    """Invalid or disconnected domains must be rejected before notifying a change."""
+    if kind == "empty":
+        points = list(box(1, 1, 2, 2).exterior.coords)
+    elif kind == "disconnected":
+        source = unary_union([box(1, -1, 2, 1), box(4, -1, 5, 1), box(2, 0.5, 4, 1)])
+        points = list(source.exterior.coords)
+    elif kind == "invalid":
+        points = [(1, 0), (2, 1), (1, 1), (2, 0)]
+    else:
+        points = [(1, 0), (2, np.nan), (3, 1)]
+    with (
+        warnings.catch_warnings(record=True) as caught,
+        patch("freegsnke.up_down_symmetry.plt.show") as show,
+        pytest.raises(ValueError),
+    ):
+        warnings.simplefilter("always")
+        symmetrise_limiter([{"R": r, "Z": z} for r, z in points])
+    assert not caught
+    show.assert_not_called()

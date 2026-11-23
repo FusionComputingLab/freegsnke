@@ -1,28 +1,30 @@
 """
-Defines the metal_currents object, which handles the circuit equations of 
+Defines the metal_currents object, which handles the circuit equations of
 all metal structures in the tokamak - both active PF coils and passive structures.
 
 Copyright 2025 UKAEA, UKRI-STFC, and The Authors, as per the COPYRIGHT and README files.
 
 This file is part of FreeGSNKE.
 
+FreeGSNKE is free software: you can redistribute it and/or modify
+it under the terms of the GNU Lesser General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
 FreeGSNKE is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 GNU Lesser General Public License for more details.
 
-FreeGSNKE is free software: you can redistribute it and/or modify
-it under the terms of the GNU Lesser General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
-  
 You should have received a copy of the GNU Lesser General Public License
-along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>. 
+along with FreeGSNKE. If not, see <http://www.gnu.org/licenses/>.
 """
 
-import numpy as np
-from freegs4e.gradshafranov import Greens, GreensBr, GreensBz
+from __future__ import annotations
 
+import numpy as np
+
+from .gradshafranov import Greens, GreensBr, GreensBz
 from .implicit_euler import implicit_euler_solver
 from .normal_modes import mode_decomposition
 
@@ -53,20 +55,20 @@ class metal_currents:
 
     def __init__(
         self,
-        eq,
-        flag_vessel_eig,
-        flag_plasma,
-        max_mode_frequency,
-        max_internal_timestep,
-        full_timestep,
-        plasma_pts=None,
-        coil_resist=None,
-        coil_self_ind=None,
-        passive_reflection_operator=None,
-        remove_odd_passive_modes=True,
-        symmetry_tolerance=1e-8,
-        verbose=True,
-    ):
+        eq: object,
+        flag_vessel_eig: bool,
+        flag_plasma: bool,
+        max_mode_frequency: float,
+        max_internal_timestep: float,
+        full_timestep: float,
+        plasma_pts: np.ndarray | None = None,
+        coil_resist: np.ndarray | None = None,
+        coil_self_ind: np.ndarray | None = None,
+        verbose: bool = True,
+        passive_reflection_operator: np.ndarray | None = None,
+        remove_odd_passive_modes: bool = True,
+        symmetry_tolerance: float = 1e-8,
+    ) -> None:
         """
         Initialise the dynamical evolution model for metallic currents.
 
@@ -76,7 +78,7 @@ class metal_currents:
 
         Parameters
         ----------
-        eq : FreeGSNKE equilibrium object
+        eq : object
             Initial equilibrium used to define grid geometry, machine configuration,
             and linearisation for the evolution solver. Changing machine geometry
             requires re-instantiation.
@@ -92,13 +94,14 @@ class metal_currents:
         full_timestep : float
             Physical timestep for advancing the system. May be split into
             multiple internal steps if larger than `max_internal_timestep`.
-        plasma_pts : array-like, optional
-            Grid points included in plasma evolution coupling (typically points
+        plasma_pts : np.ndarray or None, optional
+            Array of shape (n_points, 2) with the (R, Z) coordinates of the grid
+            points included in plasma evolution coupling (typically points
             inside the limiter).
-        coil_resist : ndarray, optional
+        coil_resist : np.ndarray or None, optional
             Resistances of all conducting elements (coils + passive structures).
             If None, default machine values are used.
-        coil_self_ind : ndarray, optional
+        coil_self_ind : np.ndarray or None, optional
             Mutual inductance matrix for all conducting elements.
             If None, default machine values are used.
         passive_reflection_operator : ndarray, optional
@@ -116,6 +119,12 @@ class metal_currents:
             dynamics and reflection.
         verbose : bool
             If True, enable diagnostic output during setup.
+
+        Raises
+        ------
+        ValueError
+            If `coil_resist` or `coil_self_ind` are not compatible with the
+            machine description.
         """
 
         self.n_coils = eq.tokamak.n_coils
@@ -191,7 +200,7 @@ class metal_currents:
 
     def build_rm1l(
         self,
-    ):
+    ) -> None:
         """
         Construct the R⁻¹L coupling matrix for the circuit model.
 
@@ -200,17 +209,17 @@ class metal_currents:
         (active coils and passive structures).
 
         The resulting matrix is used in the formulation of the linear circuit
-        evolution equations.
-
-        Returns
-        -------
-        None
-            The result is stored in `self.rm1l_non_symm`.
+        evolution equations. The result is stored in `self.rm1l_non_symm`.
         """
 
         self.rm1l_non_symm = np.diag(self.coil_resist**-1.0) @ self.coil_self_ind
 
-    def make_selected_mode_mask(self, mode_coupling_masks, verbose):
+    def make_selected_mode_mask(
+        self,
+        mode_coupling_masks: tuple[np.ndarray, np.ndarray] | None,
+        verbose: bool,
+        fixed_n_passive_modes: int | None = None,
+    ) -> np.ndarray:
         """
         Build selection mask for vessel normal modes used in circuit equations.
 
@@ -218,19 +227,33 @@ class metal_currents:
         reduced-order circuit model based on a frequency cutoff and optional
         plasma-coupling criteria.
 
-        Active coil variables are always included, while passive vessel modes are
-        filtered according to:
-        - maximum mode frequency (`self.max_mode_frequency`)
-        - optional coupling thresholds provided in `mode_coupling_masks`
+        Active coil variables are always included. Passive vessel modes are selected
+        in one of two ways:
+
+        - if `fixed_n_passive_modes` is provided, retain exactly that many modes,
+          starting with the lowest-frequency (longest-timescale) modes;
+        - otherwise, apply `self.max_mode_frequency` and then, if provided, the
+          plasma-coupling inclusion and exclusion masks.
+
+        Coupling masks describe the plasma response at the equilibrium where they
+        were calculated. If the plasma is expected to move or change shape
+        substantially, the retained modes should be validated at representative
+        equilibria or selected using equilibrium-independent timescale criteria.
 
         Parameters
         ----------
-        mode_coupling_masks : tuple of ndarray or None
+        mode_coupling_masks : tuple[np.ndarray, np.ndarray] or None
             Optional pair of boolean masks used to:
+
             - reintroduce strongly coupled modes
             - remove weakly coupled modes
+
+            These masks are local to the equilibrium used to calculate them.
         verbose : bool
             If True, print diagnostic information about mode selection.
+        fixed_n_passive_modes : int or None, optional
+            If provided, retain exactly this many lowest-frequency passive modes.
+            `mode_coupling_masks` must be None in this mode.
 
         Returns
         -------
@@ -239,18 +262,36 @@ class metal_currents:
             full-basis selection remains available as
             ``self.selected_modes_mask``.
 
+        Raises
+        ------
+        ValueError
+            If `fixed_n_passive_modes` is combined with `mode_coupling_masks`, or
+            lies outside the range zero to the number of available passive modes.
+
         Notes
         -----
-        Three mode spaces are involved: all modes in the eigendecomposition,
-        parity-available modes after optional odd-mode removal, and the final
-        modes retained by frequency and plasma-coupling criteria. Keeping the
-        returned mask in the second space allows callers to reduce arrays that
-        were already built after parity filtering.
+        Updates the attributes `self.selected_modes_mask` and
+        `self.n_independent_vars`.
         """
         available_passive = self.available_modes_mask[self.n_active_coils :]
-        selected_modes_mask = (
-            self.normal_modes.w_passive[available_passive] < self.max_mode_frequency
-        )
+        n_passive_modes = int(np.sum(available_passive))
+        if fixed_n_passive_modes is not None:
+            if mode_coupling_masks is not None:
+                raise ValueError(
+                    "fixed_n_passive_modes cannot be combined with coupling masks."
+                )
+            if not 0 <= fixed_n_passive_modes <= n_passive_modes:
+                raise ValueError(
+                    "fixed_n_passive_modes must be between zero and the number "
+                    f"of available passive modes ({n_passive_modes}); received "
+                    f"{fixed_n_passive_modes}."
+                )
+            selected_modes_mask = np.zeros(n_passive_modes, dtype=bool)
+            selected_modes_mask[:fixed_n_passive_modes] = True
+        else:
+            selected_modes_mask = (
+                self.normal_modes.w_passive[available_passive] < self.max_mode_frequency
+            )
         freq_only_number = np.sum(selected_modes_mask)
 
         local_selected_modes_mask = np.concatenate(
@@ -262,9 +303,13 @@ class metal_currents:
                 f"      total selected = {self.n_active_coils} (out of {self.n_active_coils})"
             )
             print(f"   Passive structures")
-            print(
-                f"      {freq_only_number} selected with characteristic timescales larger than 'max_mode_frequency'"
-            )
+            if fixed_n_passive_modes is None:
+                print(f"      {freq_only_number} selected below 'max_mode_frequency'")
+            else:
+                print(
+                    f"      {freq_only_number} lowest-frequency "
+                    "(longest-timescale) modes selected"
+                )
 
         if mode_coupling_masks is not None:
             # reintroduce modes that couple strongly
@@ -303,8 +348,12 @@ class metal_currents:
         return local_selected_modes_mask
 
     def initialize_for_eig(
-        self, selected_modes_mask=None, mode_coupling_masks=None, verbose=True
-    ):
+        self,
+        selected_modes_mask: np.ndarray | bool | None = None,
+        mode_coupling_masks: tuple[np.ndarray, np.ndarray] | None = None,
+        verbose: bool = True,
+        fixed_n_passive_modes: int | None = None,
+    ) -> np.ndarray:
         """
         Initialise the metal current system in eigenmode representation.
 
@@ -319,16 +368,22 @@ class metal_currents:
 
         Parameters
         ----------
-        selected_modes_mask : ndarray of bool, optional
-            Explicit mask selecting which modes to retain. If None, the mask is
-            constructed using `mode_coupling_masks`. If False, all modes are used.
-        mode_coupling_masks : tuple of ndarray of bool, optional
-            Pair of masks used to:
+        selected_modes_mask : np.ndarray or bool or None, optional
+            If None, the mask is constructed using `mode_coupling_masks`. If
+            False, all modes are used. If a boolean array, it is applied to the
+            currently retained modes to reduce them further.
+        mode_coupling_masks : tuple[np.ndarray, np.ndarray] or None, optional
+            Pair of boolean masks used to:
+
             - include strongly coupled modes
             - exclude weakly coupled modes
+
             Only used when `selected_modes_mask is None`.
-        verbose : bool
+        verbose : bool, optional
             If True, print diagnostic information about mode reduction.
+        fixed_n_passive_modes : int or None, optional
+            Retain exactly this many lowest-frequency passive modes. This is a
+            timescale-only selection and cannot be combined with coupling masks.
 
         Returns
         -------
@@ -336,11 +391,21 @@ class metal_currents:
             Mask selecting the retained modes relative to the mode basis that
             was available on entry. Internal mode transformations and the time
             integrator are updated as side effects.
+
+        Notes
+        -----
+        Updates the internal solver state, including the mode selection masks,
+        the transformation matrices (`P`, `Pm1`), the system matrix
+        (`Lambdam1`), the time integrator solver and the forcing term selection.
         """
 
         if selected_modes_mask is None:
             # this is the case when mode_coupling_masks are used to build self.selected_modes_mask
-            selection_mask = self.make_selected_mode_mask(mode_coupling_masks, verbose)
+            selection_mask = self.make_selected_mode_mask(
+                mode_coupling_masks,
+                verbose,
+                fixed_n_passive_modes=fixed_n_passive_modes,
+            )
             # Pmatrix is the full matrix that changes the basis in the current space
             # from the normal modes Id (for diagonal) to the metal currents I:
             # I = Pmatrix Id
@@ -405,7 +470,9 @@ class metal_currents:
 
         return selection_mask
 
-    def reset_active_coil_resistances(self, active_coil_resistances):
+    def reset_active_coil_resistances(
+        self, active_coil_resistances: np.ndarray
+    ) -> None:
         """
         Update the resistances of the active coils and rebuild derived system matrices.
 
@@ -421,7 +488,7 @@ class metal_currents:
 
         Parameters
         ----------
-        active_coil_resistances : ndarray
+        active_coil_resistances : np.ndarray
             Updated resistances for the active coils only (length = n_active_coils).
         """
         self.coil_resist = np.concatenate(
@@ -432,7 +499,7 @@ class metal_currents:
         self.build_rm1l()
         self.Lambdam1 = self.Pm1 @ (self.rm1l_non_symm @ self.P)
 
-    def initialize_for_no_eig(self):
+    def initialize_for_no_eig(self) -> None:
         """
         Initialise the metal current system without eigenmode decomposition.
 
@@ -446,10 +513,7 @@ class metal_currents:
         - Mmatrix is the full mutual inductance matrix
         - Rmatrix is the diagonal resistance matrix
 
-        Returns
-        -------
-        None
-            Updates internal solver and forcing term configuration.
+        Updates the internal solver and forcing term configuration.
         """
 
         # Equation is Mmatrix Idot + Rmatrix I = F
@@ -465,7 +529,9 @@ class metal_currents:
         else:
             self.forcing_term = self.forcing_term_no_eig_no_plasma
 
-    def reset_timesteps(self, max_internal_timestep, full_timestep):
+    def reset_timesteps(
+        self, max_internal_timestep: float, full_timestep: float
+    ) -> None:
         """
         Update solver time-stepping parameters.
 
@@ -485,7 +551,9 @@ class metal_currents:
             full_timestep=full_timestep, max_internal_timestep=max_internal_timestep
         )
 
-    def forcing_term_eig_plasma(self, active_voltage_vec, Iydot):
+    def forcing_term_eig_plasma(
+        self, active_voltage_vec: np.ndarray, Iydot: np.ndarray
+    ) -> np.ndarray:
         """
         Compute forcing term in eigenmode basis including plasma coupling.
 
@@ -498,14 +566,14 @@ class metal_currents:
 
         Parameters
         ----------
-        active_voltage_vec : ndarray
+        active_voltage_vec : np.ndarray
             Voltages applied to the active coils.
-        Iydot : ndarray
+        Iydot : np.ndarray
             Time derivative of plasma current degrees of freedom.
 
         Returns
         -------
-        all_Us : ndarray
+        np.ndarray
             Forcing term expressed in the eigenmode basis.
         """
         all_Us = np.zeros_like(self.empty_U)
@@ -514,7 +582,9 @@ class metal_currents:
         all_Us = np.dot(self.Pm1, self.Rm1 * all_Us)
         return all_Us
 
-    def forcing_term_eig_no_plasma(self, active_voltage_vec, Iydot=0):
+    def forcing_term_eig_no_plasma(
+        self, active_voltage_vec: np.ndarray, Iydot: np.ndarray | float = 0
+    ) -> np.ndarray:
         """
         Compute forcing term in eigenmode basis without plasma coupling.
 
@@ -524,14 +594,14 @@ class metal_currents:
 
         Parameters
         ----------
-        active_voltage_vec : ndarray
+        active_voltage_vec : np.ndarray
             Voltages applied to the active coils.
-        Iydot : ndarray, optional
+        Iydot : np.ndarray or float, optional
             Unused placeholder for interface compatibility.
 
         Returns
         -------
-        all_Us : ndarray
+        np.ndarray
             Forcing term expressed in the eigenmode basis.
         """
         all_Us = self.empty_U.copy()
@@ -539,7 +609,9 @@ class metal_currents:
         all_Us = np.dot(self.Pm1, self.Rm1 * all_Us)
         return all_Us
 
-    def forcing_term_no_eig_plasma(self, active_voltage_vec, Iydot):
+    def forcing_term_no_eig_plasma(
+        self, active_voltage_vec: np.ndarray, Iydot: np.ndarray
+    ) -> np.ndarray:
         """
         Compute forcing term in coil basis including plasma coupling.
 
@@ -549,14 +621,14 @@ class metal_currents:
 
         Parameters
         ----------
-        active_voltage_vec : ndarray
+        active_voltage_vec : np.ndarray
             Voltages applied to the active coils.
-        Iydot : ndarray
+        Iydot : np.ndarray
             Time derivative of plasma current degrees of freedom.
 
         Returns
         -------
-        all_Us : ndarray
+        np.ndarray
             Forcing term in the physical coil basis.
         """
         all_Us = self.empty_U.copy()
@@ -564,7 +636,9 @@ class metal_currents:
         all_Us -= np.dot(self.Mey, Iydot)
         return all_Us
 
-    def forcing_term_no_eig_no_plasma(self, active_voltage_vec, Iydot=0):
+    def forcing_term_no_eig_no_plasma(
+        self, active_voltage_vec: np.ndarray, Iydot: np.ndarray | float = 0
+    ) -> np.ndarray:
         """
         Compute forcing term in coil basis without plasma coupling.
 
@@ -574,21 +648,21 @@ class metal_currents:
 
         Parameters
         ----------
-        active_voltage_vec : ndarray
+        active_voltage_vec : np.ndarray
             Voltages applied to the active coils.
-        Iydot : ndarray, optional
+        Iydot : np.ndarray or float, optional
             Unused placeholder for interface consistency.
 
         Returns
         -------
-        all_Us : ndarray
+        np.ndarray
             Forcing term in the physical coil basis.
         """
         all_Us = self.empty_U.copy()
         all_Us[: self.n_active_coils] = active_voltage_vec
         return all_Us
 
-    def IvesseltoId(self, Ivessel):
+    def IvesseltoId(self, Ivessel: np.ndarray) -> np.ndarray:
         """
         Given the vector of currents in the metals, this returns Id,
         the vector of currents in the eigenmodes basis.
@@ -600,13 +674,13 @@ class metal_currents:
 
         Returns
         -------
-        Id : np.ndarray
+        np.ndarray
             Currents in the eigenmode basis.
         """
 
         return self.Pm1 @ Ivessel
 
-    def IdtoIvessel(self, Id):
+    def IdtoIvessel(self, Id: np.ndarray) -> np.ndarray:
         """
         Given the vector of currents in the eigenmode basis, this returns Ivessel,
         the vector of currents in all the metals.
@@ -618,14 +692,20 @@ class metal_currents:
 
         Returns
         -------
-        Ivessel : np.ndarray
+        np.ndarray
             Vessel currents (all metals).
         """
 
         return self.P @ Id
 
-    def stepper(self, It, active_voltage_vec, Iydot=0):
-        """Steps the circuit equation forward in time.
+    def stepper(
+        self,
+        It: np.ndarray,
+        active_voltage_vec: np.ndarray,
+        Iydot: np.ndarray | float = 0,
+    ) -> np.ndarray:
+        """
+        Step the circuit equation forward in time.
 
         Parameters
         ----------
@@ -638,7 +718,7 @@ class metal_currents:
 
         Returns
         -------
-        It : np.ndarray
+        np.ndarray
             Currents at time t+dt.
         """
         forcing = self.forcing_term(active_voltage_vec, Iydot)
@@ -647,21 +727,24 @@ class metal_currents:
 
     def Mey(
         self,
-        eq,
-    ):
+        eq: object,
+    ) -> np.ndarray:
         """
-        Calculates the matrix of mutual inductance values between plasma grid points
-        included in the dynamics calculations and all vessel coils.
+        Calculate the mutual inductances between plasma grid points and all coils.
+
+        Uses the plasma grid points (`self.plasma_pts`) included in the
+        dynamics calculations and all vessel coils.
 
         Parameters
-        -------
-        eq : class
-            FreeGSNKE equilibrium Object
+        ----------
+        eq : object
+            FreeGSNKE equilibrium object.
 
         Returns
         -------
-        Mey : np.ndarray
-            Array of mutual inductances between plasma grid points and all vessel coils
+        np.ndarray
+            Array of shape (n_coils, n_plasma_pts) of mutual inductances
+            between all coils and the plasma grid points.
         """
         coils_dict = eq.tokamak.coils_dict
         mey = np.zeros((eq.tokamak.n_coils, len(self.plasma_pts)))

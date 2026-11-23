@@ -5,19 +5,21 @@ Copyright 2025 UKAEA, UKRI-STFC, and The Authors, as per the COPYRIGHT and READM
 
 This file is part of FreeGSNKE.
 
+FreeGSNKE is free software: you can redistribute it and/or modify
+it under the terms of the GNU Lesser General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
 FreeGSNKE is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 GNU Lesser General Public License for more details.
 
-FreeGSNKE is free software: you can redistribute it and/or modify
-it under the terms of the GNU Lesser General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
-  
 You should have received a copy of the GNU Lesser General Public License
-along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.   
+along with FreeGSNKE. If not, see <http://www.gnu.org/licenses/>.
 """
+
+from __future__ import annotations
 
 import numpy as np
 from scipy.linalg import solve, solve_sylvester
@@ -47,17 +49,17 @@ class linear_solver:
 
     def __init__(
         self,
-        coil_numbers,
-        Lambdam1,
-        P,
-        Pm1,
-        Rm1,
-        Mey,
-        plasma_norm_factor,
-        plasma_resistance_1d,
-        max_internal_timestep=0.0001,
-        full_timestep=0.0001,
-    ):
+        coil_numbers: tuple[int, int],
+        Lambdam1: np.ndarray,
+        P: np.ndarray,
+        Pm1: np.ndarray,
+        Rm1: np.ndarray,
+        Mey: np.ndarray,
+        plasma_norm_factor: float,
+        plasma_resistance_1d: np.ndarray,
+        max_internal_timestep: float = 0.0001,
+        full_timestep: float = 0.0001,
+    ) -> None:
         """
         Initialise the linearised circuit solver.
 
@@ -70,26 +72,26 @@ class linear_solver:
         coil_numbers : tuple[int, int]
             Tuple ``(n_active_coils, n_coils)`` giving the number of active
             coils and the total number of conducting elements.
-        Lambdam1 : ndarray
+        Lambdam1 : np.ndarray
             State matrix of the metal circuit equations in the reduced basis.
             Active coils remain in the physical current basis, while passive
             structures are represented by vessel eigenmodes.
-        P : ndarray
+        P : np.ndarray
             Change-of-basis matrix mapping currents from the reduced modal
             basis to the physical conductor basis.
-        Pm1 : ndarray
+        Pm1 : np.ndarray
             Inverse of ``P``, mapping currents from the physical conductor
             basis to the reduced modal basis.
-        Rm1 : ndarray
+        Rm1 : np.ndarray
             Inverse resistance matrix of all conducting elements. This is
             typically diagonal.
-        Mey : ndarray
+        Mey : np.ndarray
             Mutual inductance matrix between plasma current elements and
             metal conductors (active coils and passive structures).
         plasma_norm_factor : float
             Scaling factor applied to the plasma current variable to improve
             conditioning and keep its magnitude comparable to metal currents.
-        plasma_resistance_1d : ndarray
+        plasma_resistance_1d : np.ndarray
             Effective plasma resistance associated with each plasma current
             element in the reduced plasma domain.
         max_internal_timestep : float, optional
@@ -146,7 +148,7 @@ class linear_solver:
         self.forcing = np.zeros(self.n_independent_vars + 1)
         self.profiles_forcing = np.zeros(self.n_independent_vars + 1)
 
-    def reset_plasma_resistivity(self, plasma_resistance_1d):
+    def reset_plasma_resistivity(self, plasma_resistance_1d: np.ndarray) -> None:
         """
         Update the plasma resistivity profile used by the linearised solver.
 
@@ -157,7 +159,7 @@ class linear_solver:
 
         Parameters
         ----------
-        plasma_resistance_1d : ndarray
+        plasma_resistance_1d : np.ndarray
             Vector of effective plasma resistance coefficients for all grid
             points in the reduced plasma domain. Each entry represents the
             geometric resistance factor (2π * resistivity divided by cell area).
@@ -165,7 +167,9 @@ class linear_solver:
         self.plasma_resistance_1d = plasma_resistance_1d
         self.set_linearization_point(None, None, None, None)
 
-    def reset_timesteps(self, max_internal_timestep, full_timestep):
+    def reset_timesteps(
+        self, max_internal_timestep: float, full_timestep: float
+    ) -> None:
         """
         Update the timesteps used by the implicit-Euler integrator.
 
@@ -184,7 +188,13 @@ class linear_solver:
             full_timestep=full_timestep, max_internal_timestep=max_internal_timestep
         )
 
-    def set_linearization_point(self, dIydI, dIydtheta, hatIy0, Myy_hatIy0):
+    def set_linearization_point(
+        self,
+        dIydI: np.ndarray | None,
+        dIydtheta: np.ndarray | None,
+        hatIy0: np.ndarray | None,
+        Myy_hatIy0: np.ndarray | None,
+    ) -> None:
         """
         Set or update the linearisation point for the coupled plasma–metal system.
 
@@ -194,18 +204,18 @@ class linear_solver:
 
         Parameters
         ----------
-        dIydI : ndarray or None
+        dIydI : np.ndarray or None
             Jacobian of plasma cell currents with respect to independent metal
             currents (active coils, vessel modes, and normalised total plasma
             current). Typically computed from a Grad–Shafranov solve using finite
             differences.
-        dIydtheta : ndarray or None
+        dIydtheta : np.ndarray or None
             Jacobian of plasma cell currents with respect to plasma profile
             parameterisation variables.
-        hatIy0 : ndarray or None
+        hatIy0 : np.ndarray or None
             Normalised equilibrium plasma current distribution over the reduced
             plasma domain. This vector is scaled to sum to one.
-        Myy_hatIy0 : ndarray or None
+        Myy_hatIy0 : np.ndarray or None
             Precomputed product of the plasma–plasma coupling matrix with the
             equilibrium current distribution, provided by the plasma coupling
             handler.
@@ -236,12 +246,11 @@ class linear_solver:
             full_timestep=self.full_timestep,
         )
 
-    def build_Mmatrix(
-        self,
-    ):
-        """Initialises the pseudo-inductance matrix of the problem
-        M\dot(x) + Rx = forcing
-        using the linearisation Jacobian.
+    def build_Mmatrix(self) -> None:
+        r"""Initialise the pseudo-inductance matrix of the problem.
+
+        The problem is M\dot{x} + Rx = forcing, with M built using the
+        linearisation Jacobian.
 
                           \Lambda^-1 + P^-1R^-1Mey A        P^-1R^-1Mey B
         M = M0 + dM =  (                                                       )
@@ -256,10 +265,9 @@ class linear_solver:
               B = dIy/dIp
               C = dIy/plasmapars
 
-        Parameters
-        ----------
-        None given explicitly, they are all given by the object attributes.
-
+        The matrices ``M0matrix``, ``dMmatrix``, ``Mmatrix`` and (if ``dIydtheta`` is
+        not None) ``forcing_pars_matrix`` are stored as attributes. All inputs are
+        taken from object attributes.
         """
 
         nRp = (
@@ -307,25 +315,25 @@ class linear_solver:
 
     def stepper(
         self,
-        It,
-        active_voltage_vec,
-        dtheta_dt,
-    ):
-        """Executes the time advancement. Uses the implicit_euler instance.
+        It: np.ndarray,
+        active_voltage_vec: np.ndarray,
+        dtheta_dt: np.ndarray,
+    ) -> np.ndarray:
+        """Execute the time advancement using the implicit_euler instance.
 
         Parameters
         ----------
-        It : np.array
-            vector of all independent currents that are solved for by the linearides problem, in terms of normal modes:
+        It : np.ndarray
+            vector of all independent currents that are solved for by the linearised problem, in terms of normal modes:
             (active currents, vessel normal modes, total plasma current divided by normalisation factor)
-        active_voltage_vec : np.array
+        active_voltage_vec : np.ndarray
             voltages applied to the active coils
-        dtheta_dt : np.array
-            Vector of plasma current density profile parameters derivateives with respect to t.
+        dtheta_dt : np.ndarray
+            Vector of plasma current density profile parameters derivatives with respect to time.
 
         Returns
         -------
-        Itpdt : ndarray
+        Itpdt : np.ndarray
             Updated state vector after one full implicit-Euler timestep.
         """
 
@@ -342,15 +350,14 @@ class linear_solver:
 
         return Itpdt
 
-    def calculate_linear_growth_rate(
-        self,
-    ):
-        """Looks into the eigenvecotrs of the "M" matrix to find the negative singular values,
-        which correspond to the growth rates of instabilities.
+    def calculate_linear_growth_rate(self) -> None:
+        """Find the unstable modes and growth rates from the eigenvalues of "M".
 
-        Parameters
-        ----------
-        parameters are passed in as object attributes
+        Eigenvalues of the ``Mmatrix`` attribute with negative real part
+        correspond to unstable modes. Stores ``all_timescales``, ``all_modes``,
+        ``instability_timescale``, ``growth_rates`` (plasma + circuits), the
+        ``*_const_Ip`` equivalents (circuits only, constant plasma current) and
+        the normalised ``unstable_modes`` of the constant-Ip problem.
         """
 
         # full set of characteristic timescales (circuits + plasma)
@@ -379,20 +386,19 @@ class linear_solver:
         self.unstable_modes = self.all_modes_const_Ip[:, mask]
         self.unstable_modes /= np.linalg.norm(self.unstable_modes, axis=0)
 
-    def calculate_pseudo_rigid_projections(self, dRZdI):
-        """Projects the unstable modes on the vectors of currents
-        which best isolate an R or a Z movement of the plasma
-
+    def calculate_pseudo_rigid_projections(self, dRZdI: np.ndarray) -> np.ndarray:
+        """Project the unstable modes on the current vectors that best isolate R or Z motion.
 
         Parameters
         ----------
-        dRZdI : np.array
+        dRZdI : np.ndarray
             Jacobian of Rcurrent and Zcurrent shifts wrt the modes,
             as calculated in nonlinear_solve
 
         Returns
         -------
-        np.array
+        np.ndarray
+            Array of shape (n_unstable_modes, 2).
             proj[i,0] is the scalar product of the unstable mode i on the vector of modes resulting in an Rcurrent shift
             proj[i,1] is the scalar product of the unstable mode i on the vector of modes resulting in an Zcurrent shift
         """
@@ -406,17 +412,13 @@ class linear_solver:
         )
         return proj
 
-    def calculate_stability_margin(
-        self,
-    ):
-        """
-        Here we calculate the stability margin parameter from:
+    def calculate_stability_margin(self) -> None:
+        """Calculate the stability margin parameter.
 
-        https://iopscience.iop.org/article/10.1088/0029-5515/45/8/021
-
-        Parameters
-        ----------
-        parameters are passed in as object attributes
+        See https://iopscience.iop.org/article/10.1088/0029-5515/45/8/021.
+        Uses the ``M0matrix`` and ``dMmatrix`` attributes and stores
+        ``all_stability_margins`` and ``stability_margin`` (the positive,
+        i.e. unstable, values).
         """
 
         # extract the L and S matrices

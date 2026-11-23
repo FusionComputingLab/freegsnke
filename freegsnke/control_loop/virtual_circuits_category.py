@@ -5,18 +5,18 @@ Copyright 2025 UKAEA, UKRI-STFC, and The Authors, as per the COPYRIGHT and READM
 
 This file is part of FreeGSNKE.
 
+FreeGSNKE is free software: you can redistribute it and/or modify
+it under the terms of the GNU Lesser General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
 FreeGSNKE is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 GNU Lesser General Public License for more details.
 
-FreeGSNKE is free software: you can redistribute it and/or modify
-it under the terms of the GNU Lesser General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
-  
 You should have received a copy of the GNU Lesser General Public License
-along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
+along with FreeGSNKE. If not, see <http://www.gnu.org/licenses/>.
 """
 
 from typing import Any, Optional, Tuple
@@ -66,6 +66,12 @@ class VirtualCircuitsController:
         attribute (set when the generator was initialised) controls how often, in
         seconds, new VCs are computed.
 
+    Attributes
+    ----------
+    interpolant_derivatives : dict
+        Derivatives of the coil-reference spline interpolants, rebuilt whenever
+        `update_interpolants` is called and reused during control steps.
+
     """
 
     def __init__(
@@ -75,7 +81,7 @@ class VirtualCircuitsController:
         ctrl_coils: list[str],
         ctrl_targets: list[str],
         plasma_target: list[str],
-        vc_generator=None,
+        vc_generator: object | None = None,
     ) -> None:
         """
         Initialise the virtual circuits controller.
@@ -242,19 +248,20 @@ class VirtualCircuitsController:
         """
         Recompute all interpolant functions from the current `self.data`.
 
-        This method clears the existing `self.interpolants` dictionary and
-        rebuilds it by applying either `interpolate_spline` or `interpolate_step`
-        depending on whether each key belongs to `self.keys_to_spline` or
-        `self.keys_to_step`.
+        This method rebuilds `self.interpolants` by applying either
+        `interpolate_spline` or `interpolate_step`, and rebuilds the cached
+        derivatives of every spline interpolant.
 
         """
 
-        # create a dictionary to store the spline functions
+        # create dictionaries to store the interpolants and spline derivatives
         self.interpolants = {}
+        self.interpolant_derivatives = {}
 
         # interpolate the input data
         for key in self.keys_to_spline:
             self.interpolants[key] = interpolate_spline(self.data[key])
+            self.interpolant_derivatives[key] = self.interpolants[key].derivative(n=1)
         for key in self.keys_to_step:
             self.interpolants[key] = interpolate_step(self.data[key])
 
@@ -427,12 +434,12 @@ class VirtualCircuitsController:
         Notes
         -----
         - Assumes that `self.interpolants[target]` is a valid `scipy.interpolate` object.
-        - If `deriv=True`, the method calls `.derivative()` on the interpolant before evaluation.
+        - Spline derivatives are constructed by `update_interpolants` and reused here.
         """
 
         if deriv:
             return np.array(
-                [self.interpolants[target].derivative(n=1)(t) for target in targets]
+                [self.interpolant_derivatives[target](t) for target in targets]
             )
         else:
             return np.array([self.interpolants[target](t) for target in targets])

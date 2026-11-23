@@ -1,22 +1,22 @@
 """
-Module to implement systems control in FreeGSNKE control loops. 
+Module to implement systems control in FreeGSNKE control loops.
 
 Copyright 2025 UKAEA, UKRI-STFC, and The Authors, as per the COPYRIGHT and README files.
 
 This file is part of FreeGSNKE.
+
+FreeGSNKE is free software: you can redistribute it and/or modify
+it under the terms of the GNU Lesser General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
 
 FreeGSNKE is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 GNU Lesser General Public License for more details.
 
-FreeGSNKE is free software: you can redistribute it and/or modify
-it under the terms of the GNU Lesser General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
-  
 You should have received a copy of the GNU Lesser General Public License
-along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
+along with FreeGSNKE. If not, see <http://www.gnu.org/licenses/>.
 """
 
 from typing import Tuple
@@ -68,6 +68,10 @@ class SystemsController:
     interpolants : dict
         A nested dictionary storing interpolation functions of each input waveform.
         Structure: {spline/step key: interpolant_function}
+
+    interpolant_derivatives : dict
+        Derivatives of the coil-perturbation spline interpolants, rebuilt whenever
+        `update_interpolants` is called and reused during control steps.
 
     """
 
@@ -148,19 +152,20 @@ class SystemsController:
         """
         Recompute all interpolant functions from the current `self.data`.
 
-        This method clears the existing `self.interpolants` dictionary and
-        rebuilds it by applying either `interpolate_spline` or `interpolate_step`
-        depending on whether each key belongs to `self.keys_to_spline` or
-        `self.keys_to_step`.
+        This method rebuilds `self.interpolants` by applying either
+        `interpolate_spline` or `interpolate_step`, and rebuilds the cached
+        derivatives of every spline interpolant.
 
         """
 
-        # create a dictionary to store the spline functions
+        # create dictionaries to store the interpolants and spline derivatives
         self.interpolants = {}
+        self.interpolant_derivatives = {}
 
         # interpolate the input data
         for key in self.keys_to_spline:
             self.interpolants[key] = interpolate_spline(self.data[key])
+            self.interpolant_derivatives[key] = self.interpolants[key].derivative(n=1)
         for key in self.keys_to_step:
             self.interpolants[key] = interpolate_step(self.data[key])
 
@@ -271,13 +276,13 @@ class SystemsController:
         Notes
         -----
         - Assumes that `self.interpolants[target]` is a valid `scipy.interpolate` object.
-        - If `deriv=True`, the method calls `.derivative()` on the interpolant before evaluation.
+        - Spline derivatives are constructed by `update_interpolants` and reused here.
         """
 
         if deriv:
             return np.array(
                 [
-                    self.interpolants[target + "_pert"].derivative(n=1)(t)
+                    self.interpolant_derivatives[target + "_pert"](t)
                     for target in targets
                 ]
             )
@@ -327,7 +332,7 @@ class SystemsController:
 
             # find out which control is ON and when
             if key in self.keys_to_spline:
-                FF_reference = self.interpolants[key].derivative()(t)
+                FF_reference = self.interpolant_derivatives[key](t)
                 FF_mask = np.abs(FF_reference) > 0
 
                 # shade region of FF control

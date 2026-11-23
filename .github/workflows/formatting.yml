@@ -4,7 +4,6 @@ on:
   pull_request:
     branches:
       - main
-      - MAST-U_symmetry-reduced-solver-subclass
 
 jobs:
   formatting:

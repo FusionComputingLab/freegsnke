@@ -3,6 +3,7 @@
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
 
 from freegsnke.circuit_eq_metal import metal_currents
 from freegsnke.linear_solve import linear_solver
@@ -269,3 +270,31 @@ def test_even_no_gs_relinearisation_advances_time_only_once():
     assert solver.step_no == 1
     assert solver.time == solver.dt_step
     np.testing.assert_array_equal(solver.hatIy, solver.hatIy[::-1])
+
+
+@pytest.mark.parametrize("n_modes", [0, 1, 2])
+def test_timescale_selection_uses_available_even_modes(n_modes):
+    """Fast odd modes must not displace the requested lowest-frequency even modes."""
+    currents = metal_currents(
+        eq=_Equilibrium(),
+        flag_vessel_eig=True,
+        flag_plasma=False,
+        max_mode_frequency=np.inf,
+        max_internal_timestep=1e-3,
+        full_timestep=1e-3,
+        passive_reflection_operator=_Tokamak.reflection,
+        verbose=False,
+    )
+    with pytest.raises(ValueError, match="available passive modes"):
+        currents.initialize_for_eig(fixed_n_passive_modes=3, verbose=False)
+    local_mask = currents.initialize_for_eig(
+        fixed_n_passive_modes=n_modes, verbose=False
+    )
+    selected_passive = currents.selected_modes_mask[1:]
+    np.testing.assert_allclose(
+        currents.normal_modes.w_passive[selected_passive], [0.5, 1.0][:n_modes]
+    )
+    assert np.all(currents.normal_modes.passive_mode_parity[selected_passive] == 1)
+    assert currents.n_independent_vars == 1 + n_modes
+    assert local_mask.shape == (3,)
+    assert np.count_nonzero(local_mask) == 1 + n_modes

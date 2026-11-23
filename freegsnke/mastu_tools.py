@@ -1,50 +1,88 @@
 """
-Contains various functions required to load MAST-U experimental shot data, ready for 
+Contains various functions required to load MAST-U experimental shot data, ready for
 simulation in FreeGSNKE. Also contains additional functions that may be of use in the
-simulations themselves. 
+simulations themselves.
 
 Copyright 2025 UKAEA, UKRI-STFC, and The Authors, as per the COPYRIGHT and README files.
 
 This file is part of FreeGSNKE.
+
+FreeGSNKE is free software: you can redistribute it and/or modify
+it under the terms of the GNU Lesser General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
 
 FreeGSNKE is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 GNU Lesser General Public License for more details.
 
-FreeGSNKE is free software: you can redistribute it and/or modify
-it under the terms of the GNU Lesser General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
-  
 You should have received a copy of the GNU Lesser General Public License
-along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
+along with FreeGSNKE. If not, see <http://www.gnu.org/licenses/>.
 """
+
+from __future__ import annotations
 
 import math
 import os
 import pickle
 from copy import deepcopy
+from types import ModuleType
+from typing import Callable
 
 import matplotlib.pyplot as plt
 import numpy as np
-import pyuda
 import scipy as sp
 import shapely as sh
-from freegs4e import critical
 from numpy import abs, argmax, clip, linspace, pi
 from numpy.polynomial import Polynomial
 from scipy.interpolate import interp1d
+
+from . import critical
+
+
+def _require_uda_mast() -> ModuleType:
+    """
+    Import and return ``pyuda`` after verifying ``uda-mast`` is installed.
+
+    Returns
+    -------
+    ModuleType
+        The imported ``pyuda`` module with ``uda-mast`` client extensions
+        available.
+
+    Raises
+    ------
+    ImportError
+        If either ``pyuda`` or ``uda-mast`` (``mast`` / ``mast.geom``) is not
+        installed.
+    """
+
+    try:
+        import pyuda
+        from mast import MastClient as _MastClient
+        from mast.geom import GeomClient as _GeomClient
+    except ImportError as err:
+        raise ImportError(
+            "freegsnke.mastu_tools.get_machine_data requires the optional "
+            "'pyuda' and 'uda-mast' packages. Install FreeGSNKE with the "
+            "'uda' extra and then install 'uda-mast' as described in "
+            "FreeGSNKE's 'Installing with UDA' README section."
+        ) from err
+
+    _ = (_MastClient, _GeomClient)
+    return pyuda
+
 
 # --------------------------------
 # EXTRACTING EFIT++ DATA
 
 
 def get_machine_data(
-    save_path=None,
-    shot=45425,
-    split_passives=True,
-):
+    save_path: str | None = None,
+    shot: int = 45425,
+    split_passives: bool = True,
+) -> dict:
     """
     Build the active-coil, passive-structure, wall, limiter, and probe
     descriptions for MAST-U for a given shot number.
@@ -56,7 +94,7 @@ def get_machine_data(
         are written and the descriptions are returned in memory only.
     shot : int
         MAST-U shot number.
-    split_passives : bool
+    split_passives : bool, optional
         If True, we model the passive structures as parallelograms (recommended), if False, we model as point current sources
 
     Returns
@@ -64,6 +102,11 @@ def get_machine_data(
     dict
         Machine descriptions keyed by their FreeGSNKE data roles. Existing
         callers may ignore this return value when using ``save_path``.
+
+    Raises
+    ------
+    ImportError
+        If the optional `pyuda` or `uda-mast` packages are not installed.
     """
 
     def save_if_requested(value, filename):
@@ -72,7 +115,8 @@ def get_machine_data(
             with open(os.path.join(save_path, filename), "wb") as handle:
                 pickle.dump(value, handle)
 
-    # set up pyUDA client
+    # set up pyUDA client (requires both pyuda and uda-mast)
+    pyuda = _require_uda_mast()
     client = pyuda.Client()
 
     # store data in dictionary form
@@ -759,23 +803,25 @@ def get_machine_data(
     }
 
 
-def load_efit_times_and_status(client, shot=45425):
+def load_efit_times_and_status(
+    client: object, shot: int = 45425
+) -> tuple[np.ndarray, np.ndarray]:
     """
     Extract the (magnetics-only) EFIT++ reconstruction shot status, which tells us whether
     each time slice converged or not.
 
     Parameters
     ----------
-    client :
+    client : object
         The pyUDA client.
     shot : int
         MAST-U shot number.
 
     Returns
     -------
-    np.array
+    np.ndarray
         Shot times at which EFIT++ reconstructions take place.
-    np.array
+    np.ndarray
         Shot status at the times when EFIT++ reconstructions take place.
     """
 
@@ -785,23 +831,25 @@ def load_efit_times_and_status(client, shot=45425):
     return status.time.data, status.data
 
 
-def load_efit_times_and_status_splines(client, shot=45425):
+def load_efit_times_and_status_splines(
+    client: object, shot: int = 45425
+) -> tuple[np.ndarray, np.ndarray]:
     """
     Extract the (magnetics + motional stark effect) EFIT++ reconstruction shot status, which
     tells us whether each time slice converged or not.
 
     Parameters
     ----------
-    client :
+    client : object
         The pyUDA client.
     shot : int
         MAST-U shot number.
 
     Returns
     -------
-    np.array
+    np.ndarray
         Shot times at which EFIT++ reconstructions take place.
-    np.array
+    np.ndarray
         Shot status at the times when EFIT++ reconstructions take place.
     """
 
@@ -814,15 +862,29 @@ def load_efit_times_and_status_splines(client, shot=45425):
 # ------------
 # ------------
 def load_static_solver_inputs(
-    client, active_coils_path, passive_coils_path, shot=45425, zero_passives=False
-):
+    client: object,
+    active_coils_path: str,
+    passive_coils_path: str,
+    shot: int = 45425,
+    zero_passives: bool = False,
+) -> tuple[
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    dict,
+    dict,
+    dict,
+]:
     """
     Extract the key (magnetics-only) EFIT++ reconstruction data at each time slice so that
     we can use it in FreeGSNKE to carry out static forward GS solves.
 
     Parameters
     ----------
-    client :
+    client : object
         The pyUDA client.
     active_coils_path : str
         Path to active coils pickle.
@@ -836,30 +898,31 @@ def load_static_solver_inputs(
 
     Returns
     -------
-    np.array
+    np.ndarray
         Total plasma current [Amps] at each EFIT++ reconstruction time.
-    np.array
+    np.ndarray
         Vaccum toroidal field parameter at each EFIT++ reconstruction time.
-    np.array
+    np.ndarray
         Alpha coefficients (for p') from Lao toroidal current density profile
         at each EFIT++ reconstruction time.
-    np.array
+    np.ndarray
         Beta coefficients (for FF') from Lao toroidal current density profile
         at each EFIT++ reconstruction time.
-    np.array
+    np.ndarray
         Alpha logical parameter (sets p' edge boundary condition) for Lao toroidal current
         density profile at each EFIT++ reconstruction time.
-    np.array
+    np.ndarray
         Beta logical parameter (sets FF' edge boundary condition) for Lao toroidal current
         density profile at each EFIT++ reconstruction time.
     dict
         Dictionary of active coil and passive structure currents: within each key is an
         array of currents (one at each EFIT++ reconstruction time). These are currents for
-        the symmetric active coil set up.
+        the symmetric active coil set up (upper/lower coil currents averaged).
     dict
-        Dictionary of active coil and passive structure currents: within each key is an
-        array of currents (one at each EFIT++ reconstruction time). These are currents for
-        the symmetric active coil set up.
+        Dictionary of active coil and passive structure currents, keyed by the individual
+        EFIT++ coil names (upper and lower coils separately): within each key is an array
+        of currents (one at each EFIT++ reconstruction time). These are currents for the
+        non-symmetric active coil set up.
     dict
         Dictionary of active coil and passive structure current discrepancies:  these are between
         the symmetric and non-symmetric active coil set ups.
@@ -989,15 +1052,33 @@ def load_static_solver_inputs(
 # ------------
 # ------------
 def load_static_solver_inputs_splines(
-    client, active_coils_path, passive_coils_path, shot=45425, zero_passives=False
-):
+    client: object,
+    active_coils_path: str,
+    passive_coils_path: str,
+    shot: int = 45425,
+    zero_passives: bool = False,
+) -> tuple[
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    dict,
+    dict,
+    dict,
+]:
     """
     Extract the key (magnetics + motional stark effect) EFIT++ reconstruction data at each
     time slice so that we can use it in FreeGSNKE to carry out static forward GS solves.
 
     Parameters
     ----------
-    client :
+    client : object
         The pyUDA client.
     active_coils_path : str
         Path to active coils pickle.
@@ -1011,38 +1092,39 @@ def load_static_solver_inputs_splines(
 
     Returns
     -------
-    np.array
+    np.ndarray
         Total plasma current [Amps] at each EFIT++ reconstruction time.
-    np.array
+    np.ndarray
         Vaccum toroidal field parameter at each EFIT++ reconstruction time.
-    np.array
+    np.ndarray
         Knot points for p' profile at each EFIT++ reconstruction time.
-    np.array
+    np.ndarray
         Knot points for FF' profile at each EFIT++ reconstruction time.
-    np.array
+    np.ndarray
         Values of p' profile at knot points at each EFIT++ reconstruction time.
-    np.array
+    np.ndarray
         Values of FF' profile at knot points at each EFIT++ reconstruction time.
-    np.array
+    np.ndarray
         Values of second derivative of p' profile at knot points at each EFIT++
         reconstruction time.
-    np.array
+    np.ndarray
         Values of second derivative of FF' profile at knot points at each EFIT++
         reconstruction time.
-    np.array
+    np.ndarray
         Values of tension spline parameter for p' profile at each EFIT++
         reconstruction time.
-    np.array
+    np.ndarray
         Values of tension spline parameter for FF' profile at each EFIT++
         reconstruction time.
     dict
         Dictionary of active coil and passive structure currents: within each key is an
         array of currents (one at each EFIT++ reconstruction time). These are currents for
-        the symmetric active coil set up.
+        the symmetric active coil set up (upper/lower coil currents averaged).
     dict
-        Dictionary of active coil and passive structure currents: within each key is an
-        array of currents (one at each EFIT++ reconstruction time). These are currents for
-        the symmetric active coil set up.
+        Dictionary of active coil and passive structure currents, keyed by the individual
+        EFIT++ coil names (upper and lower coils separately): within each key is an array
+        of currents (one at each EFIT++ reconstruction time). These are currents for the
+        non-symmetric active coil set up.
     dict
         Dictionary of active coil and passive structure current discrepancies:  these are between
         the symmetric and non-symmetric active coil set ups.
@@ -1194,42 +1276,55 @@ def load_static_solver_inputs_splines(
     )
 
 
-def extract_EFIT_outputs(client, shot, time_indices):
+def extract_EFIT_outputs(client: object, shot: int, time_indices: np.ndarray) -> tuple[
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    dict,
+    dict,
+]:
     """
     Extract the key (magnetics-only) EFIT++ reconstruction output data at each
     time slice so that we can compare to FreeGSNKE.
 
     Parameters
     ----------
-    client :
+    client : object
         The pyUDA client.
     shot : int
         MAST-U shot number.
-    time_indices : np.array
+    time_indices : np.ndarray
         Array of logicals, same length as the number of EFIT++ reconstruction time slices, at
         which to extract the EFIT++ output data.
 
     Returns
     -------
-    np.array
+    np.ndarray
         Total plasma flux map [Webers/(2pi)] at each EFIT++ reconstruction time.
-    np.array
+    np.ndarray
         Total plasma flux on the magnetic axis [Webers/(2pi)] at each EFIT++ reconstruction time.
-    np.array
+    np.ndarray
         Total plasma flux on the plasma boundary [Webers/(2pi)] at each EFIT++ reconstruction time.
-    np.array
+    np.ndarray
         Toroidal plasma current density map [Amps/m^2] at each EFIT++ reconstruction time.
-    np.array
+    np.ndarray
         The (R,Z) location of the magnetic axis at each EFIT++ reconstruction time.
-    np.array
+    np.ndarray
         The inner and outer R location of the plasma boundary at the midplane at each EFIT++ reconstruction time.
-    np.array
+    np.ndarray
         The (R,Z) location of the X-points at each EFIT++ reconstruction time.
-    np.array
+    np.ndarray
         The p' profile (vs. normalised psi) at each EFIT++ reconstruction time.
-    np.array
+    np.ndarray
         The FF' profile (vs. normalised psi) at each EFIT++ reconstruction time.
-    np.array
+    np.ndarray
         The strikepoints at each EFIT++ reconstruction time (not always very accurate).
     dict
         Dictionary of (target and computed) fluxloop readings used by EFIT++ at each reconstruction time.
@@ -1358,42 +1453,57 @@ def extract_EFIT_outputs(client, shot, time_indices):
     )
 
 
-def extract_EFIT_outputs_splines(client, shot, time_indices):
+def extract_EFIT_outputs_splines(
+    client: object, shot: int, time_indices: np.ndarray
+) -> tuple[
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    dict,
+    dict,
+]:
     """
     Extract the key (magnetics + motional stark effect) EFIT++ reconstruction output data at each
     time slice so that we can compare to FreeGSNKE.
 
     Parameters
     ----------
-    client :
+    client : object
         The pyUDA client.
     shot : int
         MAST-U shot number.
-    time_indices : np.array
+    time_indices : np.ndarray
         Array of logicals, same length as the number of EFIT++ reconstruction time slices, at
         which to extract the EFIT++ output data.
 
     Returns
     -------
-    np.array
+    np.ndarray
         Total plasma flux map [Webers/(2pi)] at each EFIT++ reconstruction time.
-    np.array
+    np.ndarray
         Total plasma flux on the magnetic axis [Webers/(2pi)] at each EFIT++ reconstruction time.
-    np.array
+    np.ndarray
         Total plasma flux on the plasma boundary [Webers/(2pi)] at each EFIT++ reconstruction time.
-    np.array
+    np.ndarray
         Toroidal plasma current density map [Amps/m^2] at each EFIT++ reconstruction time.
-    np.array
+    np.ndarray
         The (R,Z) location of the magnetic axis at each EFIT++ reconstruction time.
-    np.array
+    np.ndarray
         The inner and outer R location of the plasma boundary at the midplane at each EFIT++ reconstruction time.
-    np.array
+    np.ndarray
         The (R,Z) location of the X-points at each EFIT++ reconstruction time.
-    np.array
+    np.ndarray
         The p' profile (vs. normalised psi) at each EFIT++ reconstruction time.
-    np.array
+    np.ndarray
         The FF' profile (vs. normalised psi) at each EFIT++ reconstruction time.
-    np.array
+    np.ndarray
         The strikepoints at each EFIT++ reconstruction time (not always very accurate).
     dict
         Dictionary of (target and computed) fluxloop readings used by EFIT++ at each reconstruction time.
@@ -1523,16 +1633,16 @@ def extract_EFIT_outputs_splines(client, shot, time_indices):
 
 
 def load_currents_voltages_and_TS_signals(
-    client,
-    shot=45425,
-):
+    client: object,
+    shot: int = 45425,
+) -> tuple[dict, dict]:
     """
     Extract the (analysed) AMC currents, the (raw) XDC/XCM voltages, and
     (if available) the (analysed) AYC Thomson scattering information.
 
     Parameters
     ----------
-    client :
+    client : object
         The pyUDA client.
     shot : int
         MAST-U shot number.
@@ -1649,7 +1759,7 @@ def load_currents_voltages_and_TS_signals(
     len_coils = len(att_dict)
     coil_list = np.sort(list(att_dict.keys()))
 
-    def get_voltages(shotn):
+    def get_voltages(shotn: int) -> dict:
         """
         Retrieve coil voltage signals for a given shot number.
 
@@ -1700,7 +1810,7 @@ def load_currents_voltages_and_TS_signals(
                 pass  # print('voltages not found for coil '+attk+', shot '+str(shotn))
         return outdict
 
-    def get_req_voltages(shotn):
+    def get_req_voltages(shotn: int) -> dict:
         """
         Retrieve requested (reference/commanded) coil voltages for a given shot.
 
@@ -1753,7 +1863,7 @@ def load_currents_voltages_and_TS_signals(
                 print("Voltage not found for coil " + coil + ".")
         return outdict
 
-    def get_coilcurrs_AMC(shotn):
+    def get_coilcurrs_AMC(shotn: int) -> dict:
         """
         Retrieve AMC Rogowski coil current measurements for a given shot.
 
@@ -1800,7 +1910,7 @@ def load_currents_voltages_and_TS_signals(
                     pass  # print('current not found for coil '+attk+', shot '+str(shotn))
         return outdict
 
-    def get_coilcurrs(shotn):
+    def get_coilcurrs(shotn: int) -> dict:
         """
         Retrieve measured coil currents for a given shot.
 
@@ -1855,7 +1965,7 @@ def load_currents_voltages_and_TS_signals(
                 pass  # print('current not found for coil '+attk+', shot '+str(shotn))
         return outdict
 
-    def get_rogs(shotn):
+    def get_rogs(shotn: int) -> dict:
         """
         Retrieve Rogowski coil measurements (external and internal) for a given shot.
 
@@ -2052,11 +2162,11 @@ def load_currents_voltages_and_TS_signals(
 
 
 def get_AMC_currents(
-    t,
-    att_dict,
-    data,
-    dt=0.002,
-):
+    t: float,
+    att_dict: dict,
+    data: dict,
+    dt: float = 0.002,
+) -> np.ndarray:
     """
     Extract required AMC currents in the active coils in MAST-U at time 't' from 'data'
     dictionary by taking the average current between [t - dt, t + dt].
@@ -2074,7 +2184,7 @@ def get_AMC_currents(
 
     Returns
     -------
-    np.array
+    np.ndarray
         Returns array of currents in the active coils [Amps].
     """
 
@@ -2106,24 +2216,25 @@ def get_AMC_currents(
 
 
 def get_XDC_voltages(
-    t,
-    dt,
-    att_dict,
-    data,
-    nsteps=1,
-):
+    t: float,
+    dt: float,
+    att_dict: dict,
+    data: dict,
+    nsteps: int = 1,
+) -> np.ndarray:
     """
     Extract required XDC voltages in the active coils in MAST-U at time 't' from 'data'
     dictionary by taking the average voltage between [t-dt, t+dt].
 
-    Returns voltages for 'nsteps' (in array).
+    Returns voltages for 'nsteps' (in array); `t` advances by `dt` at each step.
 
     Parameters
     ----------
     t : float
         Time from which to average voltages values over [s].
     dt : float
-        Time step over which to average the voltages: interval will be [t, t+dt].
+        Half-width of the averaging window, [t-dt, t+dt], and the step in time
+        between successive returned voltages.
     att_dict : dict
         Dictionary containing the attributes corresponding to the data.
     data : dict
@@ -2133,7 +2244,7 @@ def get_XDC_voltages(
 
     Returns
     -------
-    np.array
+    np.ndarray
         Returns array (nsteps x 12) of voltages in the active coils [Volts].
     """
 
@@ -2170,13 +2281,13 @@ def get_XDC_voltages(
 
 
 def smooth_data(
-    t_start,
-    t_end,
-    data,
-    t_data_start,
-    t_data_end,
-    n_data_points=None,
-):
+    t_start: float,
+    t_end: float,
+    data: np.ndarray,
+    t_data_start: float,
+    t_data_end: float,
+    n_data_points: int | None = None,
+) -> float:
     """
     Finds the median of the `data' vector values between [t_start, t_end]. Requires knowledge
     of the time interval the data is recorded over [t_data_start, t_data_end].
@@ -2187,14 +2298,14 @@ def smooth_data(
         Start time from which to average data values over.
     t_end : float
         End time from which to average data values over.
-    data : np.array
+    data : np.ndarray
         1D array of data values.
     t_data_start : float
         Start time at which data is recorded, i.e. data[0] corresponds to 't_data_start'.
-    t_end_start : float
+    t_data_end : float
         End time at which data is recorded, i.e. data[-1] corresponds to 't_data_end'.
-    nsteps : int
-        Number of time steps data recorded over, i.e. len(data).
+    n_data_points : int, optional
+        Number of time steps data recorded over. If None, ``len(data)`` is used.
 
     Returns
     -------
@@ -2218,20 +2329,20 @@ def smooth_data(
 
 
 def vertical_controller(
-    dt,
-    target,
-    history,
-    k_prop,
-    k_int,
-    k_deriv,
-    prop_exponent,
-    prop_error,
-    deriv_threshold,
-    int_factor,
-    Ip,
-    Ip_ref=None,
-    derivative_lag=1,
-):
+    dt: float,
+    target: float,
+    history: list[float],
+    k_prop: float,
+    k_int: float,
+    k_deriv: float,
+    prop_exponent: float,
+    prop_error: float,
+    deriv_threshold: float,
+    int_factor: float,
+    Ip: float,
+    Ip_ref: float | None = None,
+    derivative_lag: int = 1,
+) -> float:
     """
     PID controller required for plasma vertical position. Computes the required voltage
     in the vertical stability coil to stabilise the plasma.
@@ -2260,15 +2371,17 @@ def vertical_controller(
         Exponential decay factor that limits effect of older values on integral term.
     Ip : float
         Total plasma current at current time [Amps].
-    Ip_ref : float
-        Reference total plasma current [Amps], used to normalise output.
+    Ip_ref : float, optional
+        Reference total plasma current [Amps], used to normalise output. If
+        None, the output is not rescaled.
     derivative_lag : int
         Number of historical values over which the derivative term acts.
 
     Returns
     -------
     float
-        Voltage required for the vertical stability coil to stabilise the plasma [Volts].
+        Voltage required for the vertical stability coil to stabilise the plasma [Volts]
+        (0 if `history` is empty).
     """
 
     # if not history, no control action
@@ -2307,21 +2420,21 @@ def vertical_controller(
 
 
 def plasma_resistivity_controller(
-    t,
-    dt,
-    target,
-    history,
-    k_prop,
-    k_int,
-    k_deriv,
-    prop_exponent,
-    prop_error,
-    deriv_threshold,
-    int_factor,
-    derivative_lag=1,
-    shift_pred=True,
-    Ip_func=None,
-):
+    t: float,
+    dt: float,
+    target: float,
+    history: list[float],
+    k_prop: float,
+    k_int: float,
+    k_deriv: float,
+    prop_exponent: float,
+    prop_error: float,
+    deriv_threshold: float,
+    int_factor: float,
+    derivative_lag: int = 1,
+    shift_pred: bool = True,
+    Ip_func: Callable[[float], float] | None = None,
+) -> float:
     """
     PID controller required to calculate required change in plasma resistivity.
 
@@ -2353,8 +2466,9 @@ def plasma_resistivity_controller(
         Number of historical values over which the derivative term acts.
     shift_pred : bool
         Shift the predictions using future values of the total plasma current.
-    Ip_func : function
-        Function that returns the total plasma current at time 't'.
+    Ip_func : Callable[[float], float], optional
+        Function that returns the total plasma current at time 't'. Required
+        if `shift_pred` is True.
 
     Returns
     -------
@@ -2400,8 +2514,15 @@ def plasma_resistivity_controller(
 
 
 def get_element_vertices(
-    centreR, centreZ, dR, dZ, a1, a2, version=0.1, close_shape=False
-):
+    centreR: float,
+    centreZ: float,
+    dR: float,
+    dZ: float,
+    a1: float,
+    a2: float,
+    version: float = 0.1,
+    close_shape: bool = False,
+) -> list:
     """
     Convert EFIT++ description of parallelograms to four vertices (used in FreeGSNKE
     passive structures).
@@ -2422,7 +2543,7 @@ def get_element_vertices(
         Angle between the horizontal and the base of the parallelogram (zero for rectangles).
     a2 : float
         Angle between the horizontal and the right side of the parallelogram (zero for rectangles).
-    version : float
+    version : float, optional
         Geometry version (backwards compatibilty for bug in < V0.1). Use default.
     close_shape : bool
         Repeat first vertex to close the shape if set to True.
@@ -2430,8 +2551,8 @@ def get_element_vertices(
     Returns
     -------
     list
-        Returns list of vertics with radial 'rr' and vertical 'zz' positions and
-        the original width 'dR' and height 'dZ' of the shape.
+        ``[rr, zz, dR, dZ]``: the radial 'rr' and vertical 'zz' vertex positions
+        and the original width 'dR' and height 'dZ' of the shape.
     """
 
     if a1 == 0.0 and a2 == 0.0:
@@ -2502,7 +2623,13 @@ def get_element_vertices(
     return [rr, zz, dR, dZ]
 
 
-def find_strikepoints(R, Z, psi, psi_boundary, wall):
+def find_strikepoints(
+    R: np.ndarray,
+    Z: np.ndarray,
+    psi: np.ndarray,
+    psi_boundary: float,
+    wall: np.ndarray,
+) -> np.ndarray | None:
     """
     Find the strikepoints of an equilibrium with the wall.
 
@@ -2561,7 +2688,15 @@ def find_strikepoints(R, Z, psi, psi_boundary, wall):
     return out
 
 
-def Separatrix(R, Z, psi, ntheta, psival=1.0, theta_grid=None, input_opoint=None):
+def Separatrix(
+    R: np.ndarray,
+    Z: np.ndarray,
+    psi: np.ndarray,
+    ntheta: int,
+    psival: float = 1.0,
+    theta_grid: np.ndarray | None = None,
+    input_opoint: tuple[float, float] | None = None,
+) -> tuple[np.ndarray, np.ndarray]:
     """
     Compute separatrix coordinates for a given equilibrium flux map.
 
@@ -2653,7 +2788,17 @@ def Separatrix(R, Z, psi, ntheta, psival=1.0, theta_grid=None, input_opoint=None
     return points, theta_grid
 
 
-def find_psisurface(psifunc, R, Z, r0, z0, r1, z1, psival=1.0, n=100):
+def find_psisurface(
+    psifunc: Callable[..., np.ndarray],
+    R: np.ndarray,
+    Z: np.ndarray,
+    r0: float,
+    z0: float,
+    r1: float,
+    z1: float,
+    psival: float = 1.0,
+    n: int = 100,
+) -> tuple[float, float]:
     """
     Find an intersection point of a ψ = const surface along a straight line.
 
@@ -2724,7 +2869,7 @@ def find_psisurface(psifunc, R, Z, r0, z0, r1, z1, psival=1.0, n=100):
     return r, z
 
 
-def max_euclidean_distance(points1, points2):
+def max_euclidean_distance(points1: np.ndarray, points2: np.ndarray) -> float:
     """
     Compute the maximum Euclidean distance between corresponding points in two sets.
 
@@ -2753,7 +2898,7 @@ def max_euclidean_distance(points1, points2):
     return np.max(np.sqrt(np.sum((points1_valid - points2_valid) ** 2, axis=1)))
 
 
-def median_euclidean_distance(points1, points2):
+def median_euclidean_distance(points1: np.ndarray, points2: np.ndarray) -> float:
     """
     Compute the median Euclidean distance between corresponding points in two sets.
 
@@ -2782,7 +2927,9 @@ def median_euclidean_distance(points1, points2):
     return np.median(np.sqrt(np.sum((points1_valid - points2_valid) ** 2, axis=1)))
 
 
-def separatrix_areas(separatrix_1, separatrix_2):
+def separatrix_areas(
+    separatrix_1: np.ndarray, separatrix_2: np.ndarray
+) -> tuple[float, sh.Polygon, sh.Polygon]:
     """
     Compute a geometric similarity metric between two separatrix shapes.
 
@@ -2826,12 +2973,12 @@ def separatrix_areas(separatrix_1, separatrix_2):
 
 
 def interpolate_data(
-    times,
-    data,
-    t_start=None,
-    t_final=None,
-    order=5,
-):
+    times: np.ndarray,
+    data: np.ndarray,
+    t_start: float | None = None,
+    t_final: float | None = None,
+    order: int = 5,
+) -> Polynomial:
     """
     Fit a polynomial to time-series data and return an evaluatable interpolant.
 

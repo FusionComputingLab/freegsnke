@@ -1,30 +1,56 @@
 """
-Defines class that represents the virtual circuits. 
+Defines class that represents the virtual circuits.
 
 Copyright 2025 UKAEA, UKRI-STFC, and The Authors, as per the COPYRIGHT and README files.
 
 This file is part of FreeGSNKE.
+
+FreeGSNKE is free software: you can redistribute it and/or modify
+it under the terms of the GNU Lesser General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
 
 FreeGSNKE is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 GNU Lesser General Public License for more details.
 
-FreeGSNKE is free software: you can redistribute it and/or modify
-it under the terms of the GNU Lesser General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
-  
 You should have received a copy of the GNU Lesser General Public License
-along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>. 
+along with FreeGSNKE. If not, see <http://www.gnu.org/licenses/>.
 """
 
 from __future__ import annotations
 
+import multiprocessing
+from concurrent.futures import ProcessPoolExecutor
 from datetime import datetime
 from typing import Callable
 
 import numpy as np
+from threadpoolctl import threadpool_limits
+
+_parallel_virtual_circuit_handler = None
+
+
+def _build_shape_matrix_column_worker(
+    arguments: tuple[int, list[str], float, float],
+) -> tuple[int, float, np.ndarray]:
+    """
+    Build one virtual-circuit shape-matrix column in a worker process.
+
+    Parameters
+    ----------
+    arguments : tuple
+        Positional arguments unpacked and passed to
+        ``_parallel_virtual_circuit_handler._build_shape_matrix_column``.
+
+    Returns
+    -------
+    tuple[int, float, np.ndarray]
+        ``(j, final_dI, shape_matrix_column)`` as returned by
+        ``_build_shape_matrix_column``.
+    """
+    return _parallel_virtual_circuit_handler._build_shape_matrix_column(*arguments)
 
 
 class VirtualCircuit:
@@ -89,10 +115,6 @@ class VirtualCircuitHandling:
     ) -> None:
         """
         Initialises the virtual circuits.
-
-        Parameters
-        ----------
-
         """
 
         # name to store the VC under
@@ -110,10 +132,6 @@ class VirtualCircuitHandling:
             The static Grad-Shafranov solver object.
         target_relative_tolerance : float
             Target relative tolerance to be met by the solver.
-
-        Returns
-        -------
-        None
             Modifies the class object in place.
         """
 
@@ -131,10 +149,6 @@ class VirtualCircuitHandling:
             The equilibrium object.
         coils : list
             List of strings containing the names of the coil currents to be stored.
-
-        Returns
-        -------
-        None
             Modifies the class object in place.
         """
 
@@ -160,12 +174,7 @@ class VirtualCircuitHandling:
         coils : list
             List of strings containing the names of the coil currents to be assigned.
         eq : object
-            The equilibrium object.
-
-        Returns
-        -------
-        None
-            Modifies the class object in place.
+            The equilibrium object, modified in place.
         """
 
         # directly assign the currents
@@ -191,10 +200,10 @@ class VirtualCircuitHandling:
         target_relative_tolerance : float
             Target relative tolerance to be met by the solver.
 
-        Returns
-        -------
-        None
-            Modifies the class (and other private) object(s) in place.
+        Raises
+        ------
+        AttributeError
+            If the solver has not been defined (see ``define_solver``).
         """
 
         # assign currents
@@ -244,10 +253,11 @@ class VirtualCircuitHandling:
         max_curr : float, optional, by default 300
             If inferred current value is above max_curr, clip to max_curr.
 
-        Returns
-        -------
-        None
-            Modifies the class (and other private) object(s) in place.
+        Raises
+        ------
+        ZeroDivisionError
+            If the plasma current change from the initial perturbation is
+            near zero, so no finite-difference slope can be inferred.
         """
 
         # copy of currents
@@ -333,6 +343,109 @@ class VirtualCircuitHandling:
 
         return dtargets / final_dI
 
+    def _build_shape_matrix_column(
+        self,
+        j: int,
+        coils: list[str],
+        target_dIy: float,
+        starting_dI: float,
+    ) -> tuple[int, float, np.ndarray]:
+        """
+        Build one virtual-circuit shape-matrix column in a worker process.
+
+        Parameters
+        ----------
+        j : int
+            Index of the coil current to perturb.
+        coils : list[str]
+            Names of the coil currents.
+        target_dIy : float
+            Target norm of delta(I_y) used for the finite-difference derivative.
+        starting_dI : float
+            Initial delta(I_j) used to infer the slope.
+
+        Returns
+        -------
+        tuple[int, float, np.ndarray]
+            ``(j, final_dI, shape_matrix_column)``.
+        """
+        self.prepare_build_dIydI_j(j, coils, target_dIy, starting_dI)
+        return (
+            j,
+            float(self.final_dI_record[j]),
+            self.build_dIydI_j(j, coils, verbose=False),
+        )
+
+    def _build_shape_matrix_columns(
+        self,
+        coils: list[str],
+        target_dIy: float,
+        starting_dI: np.ndarray,
+        n_vc_workers: int,
+    ) -> list[tuple[int, float, np.ndarray]]:
+        """
+        Build VC shape-matrix columns serially or in isolated processes.
+
+        Parameters
+        ----------
+        coils : list[str]
+            Coil names defining the virtual circuits.
+        target_dIy : float
+            Target dIy value used to build each column.
+        starting_dI : np.ndarray
+            Per-coil starting dI values, indexed by coil position.
+        n_vc_workers : int
+            Number of worker processes to use. If 1 (or fewer than two
+            columns are needed), columns are built serially in-process;
+            otherwise a fork-based `ProcessPoolExecutor` is used.
+
+        Returns
+        -------
+        list[tuple[int, float, np.ndarray]]
+            One ``(j, final_dI, shape_matrix_column)`` tuple per coil,
+            in coil order.
+
+        Raises
+        ------
+        RuntimeError
+            If parallel execution is requested but the 'fork' start
+            method is unavailable.
+        """
+        arguments = [
+            (int(j), coils, target_dIy, float(starting_dI[j]))
+            for j in np.arange(len(coils))
+        ]
+        if n_vc_workers == 1 or len(arguments) < 2:
+            return [
+                self._build_shape_matrix_column(*argument) for argument in arguments
+            ]
+
+        if "fork" not in multiprocessing.get_all_start_methods():
+            raise RuntimeError(
+                "Parallel virtual-circuit calculation requires multiprocessing "
+                "support for the 'fork' start method. Set n_vc_workers=1."
+            )
+
+        global _parallel_virtual_circuit_handler
+        _parallel_virtual_circuit_handler = self
+        try:
+            # Match the dynamics linearization worker model: independent process
+            # columns, with one native BLAS/OpenMP thread per worker.
+            with threadpool_limits(limits=1):
+                with ProcessPoolExecutor(
+                    max_workers=min(n_vc_workers, len(arguments)),
+                    mp_context=multiprocessing.get_context("fork"),
+                ) as executor:
+                    return list(
+                        executor.map(
+                            _build_shape_matrix_column_worker,
+                            arguments,
+                            chunksize=1,
+                        )
+                    )
+        finally:
+            _parallel_virtual_circuit_handler = None
+
     @staticmethod
     def calculate_matrix_inverse(
         matrix: np.ndarray,
@@ -359,6 +472,12 @@ class VirtualCircuitHandling:
         -------
         inverse : np.ndarray
             inverse of matrix
+
+        Raises
+        ------
+        ValueError
+            If ``tikhonov_lambda`` is not 1d or a 2d diagonal matrix, or its
+            size is inconsistent with the number of columns of ``matrix``.
         """
 
         # convert tensorflow to numpy
@@ -421,6 +540,7 @@ class VirtualCircuitHandling:
         verbose: bool = False,
         tikhonov_lambda: np.ndarray | None = None,
         name: str | None = None,
+        n_vc_workers: int = 1,
     ) -> None:
         """
         Calculate the "virtual circuits" matrix:
@@ -460,12 +580,17 @@ class VirtualCircuitHandling:
             the Moore-Penrose pseudo-inverse is used instead.
         name: str
             Name to store the VC under (in the 'VirtualCircuit' class).
+        n_vc_workers : int, default=1
+            Number of worker processes used to build independent shape-matrix
+            columns. A value of 1 retains the serial calculation.
 
-        Returns
-        -------
-        None
-            Modifies the class (and other private) object(s) in place.
-
+        Raises
+        ------
+        ValueError
+            If ``target_calculator`` or ``target_names`` is missing or inconsistent,
+            or ``n_vc_workers`` is not a positive integer.
+        AttributeError
+            If the solver has not been defined (see ``define_solver``).
         """
 
         # store original currents
@@ -486,6 +611,14 @@ class VirtualCircuitHandling:
                 "Number of 'target_names' does not match length of array from 'target_calculator' function!"
             )
         self.target_names = target_names
+
+        if (
+            isinstance(n_vc_workers, (bool, np.bool_))
+            or not isinstance(n_vc_workers, (int, np.integer))
+            or n_vc_workers < 1
+        ):
+            raise ValueError("'n_vc_workers' must be a positive integer.")
+        n_vc_workers = int(n_vc_workers)
 
         # solve static GS problem (it's already solved?)
         try:
@@ -524,26 +657,46 @@ class VirtualCircuitHandling:
         self._eq2 = eq.create_auxiliary_equilibrium()
         self._profiles2 = profiles.copy()
 
-        # for each coil, prepare by inferring delta(I_j) corresponding to a change delta(I_y)
-        # with norm(delta(I_y)) = target_dIy
-        for j in np.arange(len(coils)):
-            self.prepare_build_dIydI_j(j, coils, target_dIy, starting_dI[j])
+        if n_vc_workers == 1:
+            # for each coil, prepare by inferring delta(I_j) corresponding to a change delta(I_y)
+            # with norm(delta(I_y)) = target_dIy
+            for j in np.arange(len(coils)):
+                self.prepare_build_dIydI_j(j, coils, target_dIy, starting_dI[j])
+                if verbose:
+                    print(
+                        f"Coil {coils[j]} (original current shift = {np.round(starting_dI[j],2)} [A] --> scaled current shift {np.round(self.final_dI_record[j],2)} [A])."
+                    )
+
             if verbose:
+                print("--- Stage two ---")
                 print(
-                    f"Coil {coils[j]} (original current shift = {np.round(starting_dI[j],2)} [A] --> scaled current shift {np.round(self.final_dI_record[j],2)} [A])."
+                    "Building the shape matrix (Jacobian) of the shape parameter changes wrt scaled current shifts for each coil:"
                 )
 
-        if verbose:
-            print("--- Stage two ---")
-            print(
-                "Building the shape matrix (Jacobian) of the shape parameter changes wrt scaled current shifts for each coil:"
-            )
+            # for each coil, build the Jacobian using the value of delta(I_j) inferred earlier
+            # by self.prepare_build_dIydI_j.
+            for j in np.arange(len(coils)):
+                # each shape matrix row is derivative of targets wrt the final coil current change
+                shape_matrix[:, j] = self.build_dIydI_j(j, coils, verbose)
+        else:
+            if verbose:
+                print(
+                    f"Building shape matrix columns with {min(n_vc_workers, len(coils))} worker processes."
+                )
 
-        # for each coil, build the Jacobian using the value of delta(I_j) inferred earlier
-        # by self.prepare_build_dIydI_j.
-        for j in np.arange(len(coils)):
-            # each shape matrix row is derivative of targets wrt the final coil current change
-            shape_matrix[:, j] = self.build_dIydI_j(j, coils, verbose)
+            column_results = self._build_shape_matrix_columns(
+                coils,
+                target_dIy,
+                starting_dI,
+                n_vc_workers,
+            )
+            for j, final_dI, column in column_results:
+                self.final_dI_record[j] = final_dI
+                shape_matrix[:, j] = column
+                if verbose:
+                    print(
+                        f"Coil {coils[j]} (original current shift = {np.round(starting_dI[j],2)} [A] --> scaled current shift {np.round(final_dI,2)} [A])."
+                    )
 
         # store the data in its own (new) class
         if name is None:
@@ -613,6 +766,14 @@ class VirtualCircuitHandling:
             Array of new target values.
         np.array
             Array of old target values.
+
+        Raises
+        ------
+        ValueError
+            If the length of ``requested_target_shifts`` does not match the
+            targets of ``VC_object``.
+        AttributeError
+            If the solver has not been defined (see ``define_solver``).
         """
 
         # verify targets, coils, and shifts all match those used to generate VCs

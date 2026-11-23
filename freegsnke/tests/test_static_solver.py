@@ -1,16 +1,15 @@
 from copy import deepcopy
 from pathlib import Path
 
-import freegs4e
 import matplotlib.pyplot as plt
 import numpy as np
 import pytest
-from freegs4e.critical import find_critical
-from freegs4e.plotting import plotConstraints
 from IPython.display import clear_output, display
 from matplotlib.widgets import Slider
 
 from freegsnke import build_machine
+from freegsnke.critical import find_critical
+from freegsnke.plotting import plotConstraints
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 TEST_DATA_DIR = Path(__file__).resolve().parent / "baselines"
@@ -25,8 +24,8 @@ def create_machine():
     # Create the machine, which specifies coil locations
     # and equilibrium, specifying the domain to solve over
     # this has to be either
-    # freegs4e.machine.MASTU(), in which case:
-    # tokamak = freegs4e.machine.MASTU()
+    # freegsnke.machine.MASTU(), in which case:
+    # tokamak = freegsnke.machine.MASTU()
     # or
     # MASTU_coils.MASTU_wpass()
     # from freegsnke import MASTU_coils
@@ -101,6 +100,25 @@ def create_machine():
     return eq, profiles, constrain
 
 
+def test_set_plasma_psi_refreshes_interpolator(create_machine):
+    eq, _, _ = create_machine
+    # Perturb off-centre only: psi_func's centre-point self-check then cannot
+    # detect a stale spline, so only set_plasma_psi can make this pass.
+    plasma_psi = np.copy(eq.plasma_psi)
+    i, j = eq.nxh + 2, eq.nyh + 3
+    plasma_psi[i, j] += 42.0
+    assert plasma_psi[eq.nxh, eq.nyh] == eq.plasma_psi[eq.nxh, eq.nyh]
+
+    eq.set_plasma_psi(plasma_psi)
+
+    assert "psi_func" not in eq.__dict__
+    assert np.isclose(eq.psi_func(eq.R[i, j], eq.Z[i, j], grid=False), plasma_psi[i, j])
+
+    # The installed array is a copy, decoupled from the caller's array.
+    plasma_psi[i, j] = 0.0
+    assert eq.plasma_psi[i, j] != 0.0
+
+
 def create_test_files_static_solve(create_machine):
     """
     Saves the control currents and psi map needed for testing the static solver.
@@ -155,7 +173,7 @@ def test_static_solve(create_machine):
     eq.tokamak["Solenoid"].control = False
     eq.tokamak.set_coil_current("Solenoid", 15000)
 
-    # # freegs4e.solve(
+    # # freegsnke.solve(
     # NK.solve(
     #     eq=eq,  # The equilibrium to adjust
     #     profiles=profiles,  # The plasma profiles
@@ -175,3 +193,70 @@ def test_static_solve(create_machine):
     assert np.allclose(
         eq.psi(), test_psi, atol=(np.max(test_psi) - np.min(test_psi)) * 0.003
     ), "Psi map differs significantly from the test map"
+    assert np.allclose(
+        eq.psi_func(eq.R, eq.Z, grid=False), eq.plasma_psi
+    ), "Plasma-flux interpolator is stale after the solve"
+
+
+def test_second_order_static_solve(create_machine):
+    """The opt-in second-order GS operator produces a consistent equilibrium."""
+    eq, profiles, _ = create_machine
+
+    from freegsnke import GSstaticsolver
+
+    eq.tokamak.set_coil_current("P6", 0)
+    eq.tokamak["P6"].control = False
+    eq.tokamak["Solenoid"].control = False
+    eq.tokamak.set_coil_current("Solenoid", 15000)
+    eq.tokamak.setControlCurrents(np.load(STATIC_CURRENT_BASELINE))
+
+    solver = GSstaticsolver.NKGSsolver(eq, gs_operator_order=2)
+    solver.forward_solve(eq, profiles, 1e-8, suppress=True)
+
+    reference_psi = np.load(STATIC_PSI_BASELINE)
+    tolerance = np.ptp(reference_psi) * 0.003
+    assert solver.gs_operator_order == 2
+    assert np.allclose(eq.psi(), reference_psi, atol=tolerance)
+
+
+def test_static_solver_rejects_invalid_operator_order(create_machine):
+    """Only the two finite-difference operators supplied by FreeGSNKE are valid."""
+    eq, _, _ = create_machine
+
+    from freegsnke import GSstaticsolver
+
+    with pytest.raises(ValueError, match="gs_operator_order"):
+        GSstaticsolver.NKGSsolver(eq, gs_operator_order=3)
+
+
+def test_limiter_reduced_boundary_green_is_exact(create_machine):
+    """Limiter reduction preserves the boundary flux for confined current."""
+    eq, _, _ = create_machine
+
+    from freegsnke import GSstaticsolver
+
+    solver = GSstaticsolver.NKGSsolver(eq)
+    boundary_indices = solver.bndry_indices
+    from freegsnke.gradshafranov import Greens
+
+    full_green = Greens(
+        eq.R[np.newaxis, :, :],
+        eq.Z[np.newaxis, :, :],
+        eq.R[:, 0][boundary_indices[:, 0]][:, np.newaxis, np.newaxis],
+        eq.Z[0, :][boundary_indices[:, 1]][:, np.newaxis, np.newaxis],
+    )
+    full_green[
+        np.arange(len(boundary_indices)),
+        boundary_indices[:, 0],
+        boundary_indices[:, 1],
+    ] = 0.0
+    full_green *= solver.dRdZ
+
+    jtor = np.zeros_like(eq.R)
+    jtor[solver.plasma_source_mask] = np.random.default_rng(0).random(
+        np.count_nonzero(solver.plasma_source_mask)
+    )
+    expected = np.tensordot(full_green, jtor, axes=([1, 2], [0, 1]))
+    actual = solver._boundary_flux_from_jtor(jtor)
+
+    np.testing.assert_allclose(actual, expected, rtol=2e-14, atol=1e-14)

@@ -173,7 +173,10 @@ def test_nonlinear_state_acceptance_uses_the_solved_grid_flux():
         calcPsiFromGreens=Mock(side_effect=AssertionError("Used obsolete cache")),
     )
     solver.eq1 = SimpleNamespace(
-        tokamak=tokamak, _vgreen=flux[None], _pgreen={"obsolete": True}
+        tokamak=tokamak,
+        _vgreen=flux[None],
+        _pgreen={"obsolete": True},
+        set_plasma_psi=Mock(),
     )
     solver.eq2 = SimpleNamespace(tokamak=tokamak)
     solver.vessel_currents_vec = np.array([1.0])
@@ -188,5 +191,6 @@ def test_nonlinear_state_acceptance_uses_the_solved_grid_flux():
         Iy_from_jtor=lambda j: j.ravel(), normalize_sum=lambda j: j / j.sum()
     )
     solver.assign_trial_solution_state()
+    solver.eq1.set_plasma_psi.assert_called_once_with(solver.trial_plasma_psi)
     np.testing.assert_array_equal(solver.profiles1.Jtor.call_args.args[2], flux)
     tokamak.calcPsiFromGreens.assert_not_called()

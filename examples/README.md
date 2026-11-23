@@ -7,8 +7,13 @@ These example Jupyter notebooks are intended to be the **first port of call for 
 | Example 00 | Learn how to build a generic tokamak object. | Anyone |
 | Example 01a | Learn how to use the static inverse solver. | Anyone |
 | Example 01b | Learn how to use more advanced features of the static inverse solver. | Anyone |
-| Example 02 | Learn how to use the static forward solver. | Anyone |
-| Example 03 | Learn how to extract results from a calculated equilibrium. | Anyone |
+| Example 02a | Learn how to use the static forward solver. | Anyone |
+| Example 02b | Learn how to use alternate plasma flux guesses in the static solvers. | Anyone |
+| Example 03a | Learn how to extract results from a calculated equilibrium. | Anyone |
+| Example 03b | Learn how to read/write equilibrium data to/from a geqdsk file, via FreeQDSK. | Anyone |
+| Example 03c | Learn how to read/write equilibrium data to/from an IMAS equilibrium IDS (netCDF), via IMAS-Python. | Anyone |
+| Example 03d | Learn how to read/write equilibrium data to/from a geqdsk file, via eqdsk (an alternative to FreeQDSK). | Anyone |
+| Example 03e | Learn how to build the circuit + plasma equation state space matrices (for control modelling) from a calculated equilibrium.  | Anyone |
 | Example 04 | Learn how to use the magnetic probes object. | Anyone |
 | Example 05a | Learn how to use the nonlinear and linear (with GS) evolutive solver to simulate time-dependent equilibria. | Anyone |
 | Example 05b | Learn how to use the linear evolutive solver without solving GS at each timestep. | Anyone |
@@ -22,6 +27,8 @@ These example Jupyter notebooks are intended to be the **first port of call for 
 | Example 09 | Learn how to use and build virtual circuits for plasma shape control. | Anyone |
 | Example 10 | Learn how to calculate growth rates associated with vertically unstable modes. | Anyone |
 | Example 11 | Learn how to use the evolutive solver alongside a virtual plasma control system (FreeGSNKE Pulse Design Tool). | Anyone |
-| Example 11a | Build a self-contained analytic symmetric machine, decompose its orthogonal even/odd dynamics, and validate an even-only Pulse Design Tool evolution with a longer timestep against the full symmetric system. | Anyone |
+| Example 11a | Build a self-contained symmetric machine, run a linearised controlled pulse, and compare coupled nonlinear evolution with full and even-only passive bases. | Anyone |
+| Example 11b | Run the symmetrised MAST-U Pulse Design Tool using UDA or a cached prepared machine. | UKAEA employees + collaborators, or users with a prepared cache |
+| Example 11c | Prepare and verify the up-down symmetric SPARC geometry, including explicit passive pairing. | Anyone |
 
 If a new example has been created, please add a new line to the table explaining its purpose!

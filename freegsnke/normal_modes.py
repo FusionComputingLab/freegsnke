@@ -5,19 +5,21 @@ Copyright 2025 UKAEA, UKRI-STFC, and The Authors, as per the COPYRIGHT and READM
 
 This file is part of FreeGSNKE.
 
+FreeGSNKE is free software: you can redistribute it and/or modify
+it under the terms of the GNU Lesser General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
 FreeGSNKE is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 GNU Lesser General Public License for more details.
 
-FreeGSNKE is free software: you can redistribute it and/or modify
-it under the terms of the GNU Lesser General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
-  
 You should have received a copy of the GNU Lesser General Public License
-along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.   
+along with FreeGSNKE. If not, see <http://www.gnu.org/licenses/>.
 """
+
+from __future__ import annotations
 
 import numpy as np
 
@@ -51,20 +53,20 @@ class mode_decomposition:
 
     def __init__(
         self,
-        coil_resist,
-        coil_self_ind,
-        n_coils,
-        n_active_coils,
-        passive_reflection_operator=None,
-        symmetry_tolerance=1e-8,
-    ):
+        coil_resist: np.ndarray,
+        coil_self_ind: np.ndarray,
+        n_coils: int,
+        n_active_coils: int,
+        passive_reflection_operator: np.ndarray | None = None,
+        symmetry_tolerance: float = 1e-8,
+    ) -> None:
         """Instantiates the class.
         Matrix data calculated here is used to reformulate the system of circuit eqs,
         primarily in circuit_eq_metal.py
 
         Parameters
         ----------
-        coil_resist : np.array
+        coil_resist : np.ndarray
             1d array of resistance values for all machine conducting elements,
             including both active coils and passive structures.
         coil_self_ind : np.array
@@ -190,23 +192,46 @@ class mode_decomposition:
             self.Pmatrix.T @ self.Pmatrix, self.Pmatrix.T
         )
 
-    def normal_modes_greens(self, eq_vgreen, mode_matrix=None):
-        """Calculate the Green functions of the vessel normal modes.
+    def normal_modes_greens(
+        self, eq_vgreen: np.ndarray, mode_matrix: np.ndarray | None = None
+    ) -> np.ndarray:
+        """
+        Calculate the Green functions of the vessel normal modes.
 
-        If physical metal currents and mode currents obey ``I_m = P @ I_d``,
-        then ``psi = I_m.T @ G_m = I_d.T @ P.T @ G_m``. The modal Green
-        functions are consequently ``P.T @ G_m``. ``P^-1`` is used only for
-        transforming physical currents into mode currents.
+        If ``I_m`` contains the physical metal currents and ``I_d`` contains
+        the normal-mode currents, the current transformation is
+
+        ``I_m = Pmatrix @ I_d``.
+
+        Since the physical-coil Green functions satisfy
+        ``psi = I_m.T @ G_m``, substitution gives
+
+        ``psi = I_d.T @ Pmatrix.T @ G_m``.
+
+        The modal Green functions are therefore ``Pmatrix.T @ G_m``.  The
+        inverse transformation is instead used to recover modal currents from
+        physical currents and must not be applied to the Green functions.
 
         Parameters
         ----------
-        eq_vgreen : np.array
-            the vectorised green functions of each coil.
-            Can be found at eq._vgreen. np.shape(eq_vgreen)=(n_coils, nx, ny)
-        mode_matrix : np.array, optional
-            Transformation ``P`` from retained mode currents to physical
-            currents. If omitted, the full mode matrix is used.
+        eq_vgreen : np.ndarray
+            The vectorised Green functions of each coil, found at
+            ``eq._vgreen``, with shape (n_coils, nx, ny).
+
+        mode_matrix : np.ndarray or None, optional
+            Transformation from retained mode currents to physical currents.
+            Defaults to the full mode matrix.
+
+        Returns
+        -------
+        np.ndarray
+            Green functions of the retained modes, shape (n_modes, nx, ny).
         """
+
         if mode_matrix is None:
             mode_matrix = self.Pmatrix
-        return np.einsum("im,irz->mrz", mode_matrix, eq_vgreen)
+        grid_shape = eq_vgreen.shape[1:]
+        physical_greens = eq_vgreen.reshape(self.n_coils, -1)
+        return (mode_matrix.T @ physical_greens).reshape(
+            mode_matrix.shape[1], *grid_shape
+        )

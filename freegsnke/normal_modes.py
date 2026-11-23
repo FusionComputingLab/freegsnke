@@ -22,6 +22,24 @@ along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 import numpy as np
 
 
+def _validate_passive_reflection(reflection, n_passive):
+    """Validate a finite symmetric involution before it changes machine state."""
+    reflection = np.asarray(reflection, dtype=float)
+    if reflection.shape != (n_passive, n_passive):
+        raise ValueError(
+            f"'passive_reflection_operator' must have shape ({n_passive}, {n_passive})."
+        )
+    if (
+        not np.isfinite(reflection).all()
+        or not np.allclose(reflection, reflection.T)
+        or not np.allclose(reflection @ reflection, np.eye(n_passive))
+    ):
+        raise ValueError(
+            "'passive_reflection_operator' must be a finite symmetric involution."
+        )
+    return reflection
+
+
 class mode_decomposition:
     """Set up the vessel mode decomposition used by the dynamic solvers.
 
@@ -98,20 +116,10 @@ class mode_decomposition:
             self.w_passive = frequencies[order]
             Pmatrix_passive = modes[:, order]
         else:
-            reflection = np.asarray(passive_reflection_operator)
             n_passive = self.n_coils - self.n_active_coils
-            if reflection.shape != (n_passive, n_passive):
-                raise ValueError(
-                    "'passive_reflection_operator' must have shape "
-                    f"({n_passive}, {n_passive})."
-                )
-            identity = np.eye(n_passive)
-            if not np.allclose(reflection, reflection.T) or not np.allclose(
-                reflection @ reflection, identity
-            ):
-                raise ValueError(
-                    "'passive_reflection_operator' must be a symmetric involution."
-                )
+            reflection = _validate_passive_reflection(
+                passive_reflection_operator, n_passive
+            )
             relative_commutator = np.linalg.norm(
                 reflection @ passive_dynamics - passive_dynamics @ reflection
             ) / np.linalg.norm(passive_dynamics)

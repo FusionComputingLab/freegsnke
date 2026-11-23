@@ -4,7 +4,7 @@ import os
 import pickle
 import warnings
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -13,7 +13,9 @@ from shapely.affinity import scale
 from shapely.geometry import Polygon, box
 from shapely.ops import unary_union
 
+from freegsnke import build_machine, equilibrium_update
 from freegsnke.build_machine import build_tokamak_components
+from freegsnke.symmetry_reduced_solve import SymmetryReducedSolver
 from freegsnke.up_down_symmetry import (
     prepare_up_down_symmetric_machine,
     symmetrise_boundary,
@@ -21,6 +23,151 @@ from freegsnke.up_down_symmetry import (
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+@pytest.mark.parametrize("lower_closed", [False, True])
+def test_closed_passive_pairs_preserve_footprint(lower_closed):
+    """Closing vertices and different ring starts cannot alter a conductor."""
+    upper = np.array([[1, 0.4], [2, 0.4], [2, 0.6], [1, 0.6], [1, 0.4]])
+    lower = np.array([[2, -0.6], [1, -0.6], [1, -0.4], [2, -0.4]])
+    if lower_closed:
+        lower = np.vstack((lower, lower[0]))
+    passive = [
+        _passive_element(name, "vessel", *p.T)
+        for name, p in [("upper", upper), ("lower", lower)]
+    ]
+    original = pickle.dumps(passive)
+    prepared = prepare_up_down_symmetric_machine({}, passive, max_pair_mismatch=1e-12)
+    for output, source in zip(prepared.passive_coils_data, (upper, lower)):
+        points = np.column_stack((output["R"], output["Z"]))
+        assert Polygon(points).symmetric_difference(Polygon(source)).area < 1e-14
+        assert np.array_equal(points[0], points[-1]) == np.array_equal(
+            source[0], source[-1]
+        )
+    assert pickle.dumps(passive) == original
+
+
+def test_mixed_passive_vertex_counts_find_compatible_pairs():
+    """Mixed triangle/rectangle groups match after normalising closure."""
+    triangle = np.array([[1, 0.4], [1.1, 0.4], [1.05, 0.5], [1, 0.4]])
+    rectangle = np.array([[1.3, 0.4], [1.4, 0.4], [1.4, 0.5], [1.3, 0.5]])
+    data = [
+        _passive_element(name, "vessel", *points.T)
+        for name, points in [
+            ("tri_upper", triangle),
+            ("rect_upper", rectangle),
+            ("rect_lower", rectangle * [1, -1]),
+            ("tri_lower", triangle[:-1] * [1, -1]),
+        ]
+    ]
+    prepared = prepare_up_down_symmetric_machine({}, data)
+    assert {(p.upper_name, p.lower_name) for p in prepared.passive_pairs} == {
+        ("tri_upper", "tri_lower"),
+        ("rect_upper", "rect_lower"),
+    }
+
+
+@pytest.mark.parametrize("self_first", [False, True])
+def test_reduced_labels_cannot_overwrite_self_circuits(self_first):
+    """A stripped pair name may also be a retained self-circuit name."""
+    pairs = {
+        "PF_upper": _active_element([1], [0.5]),
+        "PF_lower": _active_element([1], [-0.5]),
+    }
+    centre = {"PF": _active_element([1, 1], [-0.3, 0.3])}
+    data = {**centre, **pairs} if self_first else {**pairs, **centre}
+    prepared = prepare_up_down_symmetric_machine(data)
+    assert len(prepared.even_active_names) == len(set(prepared.even_active_names)) == 2
+    assert set(prepared.even_active_names) == set(prepared.even_active_coils_data)
+    currents = np.arange(3.0)
+    even, odd = prepared.split_active_currents(currents)
+    np.testing.assert_allclose(prepared.combine_active_currents(even, odd), currents)
+
+
+@pytest.mark.parametrize("offset", [0.0, 1e-16, -1e-16])
+def test_compound_midplane_classification_tolerates_roundoff(offset):
+    """A middle bundle cannot also be classified as an unmatched upper bundle."""
+    prepared = prepare_up_down_symmetric_machine(
+        {"central": {"bundle": _active_element([1, 1], [-0.3, 0.3 + offset])}}
+    )
+    part = prepared.even_active_coils_data["central"]["bundle"]
+    np.testing.assert_allclose(part["Z"], [-0.3, 0.3], atol=1e-15)
+
+
+def test_scalar_passive_recentering_and_midplane_active_are_supported():
+    """Standard point-coil coordinates remain usable with automatic recentring."""
+    point = dict(name="point", R=1.2, Z=0.12, dR=0.02, dZ=0.02, resistivity=1e-6)
+    prepared = prepare_up_down_symmetric_machine(
+        {"central": _active_element([1], [0.12])}, [point], z_midplane="auto"
+    )
+    np.testing.assert_allclose(prepared.source_z_midplane, 0.12)
+    np.testing.assert_allclose(prepared.passive_coils_data[0]["Z"], [0.0])
+    assert prepared.even_active_names == ("central",)
+
+
+@pytest.mark.parametrize("legacy_cache", [False, True])
+def test_prepared_passive_fields_share_one_reflected_discretisation(legacy_cache):
+    """Grid, named-cache and fresh point fields agree for paired/self passives."""
+    upper = np.array([[1.2, 0.3], [1.4, 0.3], [1.4, 0.45], [1.2, 0.45]])
+    centre = np.array([[1.5, -0.1], [1.6, -0.1], [1.6, 0.1], [1.5, 0.1]])
+    data = [
+        _passive_element(name, "vessel", *points.T)
+        for name, points in [
+            ("upper", upper),
+            ("lower", upper * [1, -1]),
+            ("central", centre),
+        ]
+    ]
+    prepared = prepare_up_down_symmetric_machine(
+        {"PF": _active_element([0.8], [0.0])}, data
+    )
+    if legacy_cache:
+        for element in prepared.passive_coils_data:
+            element.pop("_up_down_refinement", None)
+    limiter = [
+        dict(R=r, Z=z) for r, z in [(0.5, -0.6), (1.8, -0.6), (1.8, 0.6), (0.5, 0.6)]
+    ]
+    tokamak = build_machine.tokamak(
+        active_coils_data=prepared.even_active_coils_data,
+        passive_coils_data=prepared.passive_coils_data,
+        limiter_data=limiter,
+    )
+    eq = equilibrium_update.Equilibrium(
+        tokamak=tokamak, Rmin=0.4, Rmax=1.9, Zmin=-0.7, Zmax=0.7, nx=9, ny=9
+    )
+    static_solver = Mock()
+    static_solver.forward_solve.side_effect = RuntimeError("Reached GS")
+    with pytest.raises(RuntimeError, match="Reached GS"):
+        SymmetryReducedSolver(
+            object(),
+            eq,
+            static_solver,
+            passive_reflection_operator=prepared.passive_reflection_operator,
+        )
+    counts = [
+        len(coil.filaments) for _, coil in tokamak.coils if hasattr(coil, "filaments")
+    ]
+    pairs = [(p.upper_name, p.lower_name) for p in prepared.passive_pairs]
+    pairs += [(name, name) for name in prepared.self_symmetric_passive_names]
+    assert not build_machine._symmetrise_passive_refinement(
+        tokamak.coils, tokamak.coils_dict, pairs
+    )
+    assert counts == [
+        len(coil.filaments) for _, coil in tokamak.coils if hasattr(coil, "filaments")
+    ]
+    tokamak.set_all_coil_currents(np.array([10.0, 1000.0, 1000.0, 1000.0]))
+    flux = tokamak.getPsitokamak(eq._vgreen)
+    np.testing.assert_allclose(flux, flux[:, ::-1], atol=1e-14, rtol=0)
+    np.testing.assert_allclose(tokamak.psi(eq.R, eq.Z), flux, atol=1e-14, rtol=0)
+    np.testing.assert_allclose(
+        tokamak.calcPsiFromGreens(eq._pgreen), flux, atol=1e-14, rtol=0
+    )
+    r, z = np.array([0.7, 1.0, 1.7]), np.array([0.2, 0.25, 0.3])
+    np.testing.assert_allclose(
+        tokamak.psi(r, z), tokamak.psi(r, -z), atol=1e-14, rtol=0
+    )
+    np.testing.assert_allclose(tokamak.Br(r, z), -tokamak.Br(r, -z), atol=1e-14, rtol=0)
+    np.testing.assert_allclose(tokamak.Bz(r, z), tokamak.Bz(r, -z), atol=1e-14, rtol=0)
 
 
 @pytest.fixture(autouse=True)

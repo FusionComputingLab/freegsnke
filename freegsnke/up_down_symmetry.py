@@ -259,10 +259,12 @@ class PreparedUpDownMachine:
             raise ValueError(
                 "Active current vector is incompatible with original_active_names."
             )
-        return (
-            self.active_original_to_even @ currents,
-            self.active_original_to_odd @ currents,
+        even, odd, _, _, _ = _parity_transforms(
+            self.original_active_names,
+            self.active_pairs,
+            self.self_symmetric_active_names,
         )
+        return even @ currents, odd @ currents
 
     def combine_active_currents(self, even_currents, odd_currents=None):
         """
@@ -275,14 +277,19 @@ class PreparedUpDownMachine:
             raise ValueError(
                 "Even current vector is incompatible with even_active_names."
             )
-        currents = self.active_even_to_original @ even_currents
+        _, _, even, odd, odd_names = _parity_transforms(
+            self.original_active_names,
+            self.active_pairs,
+            self.self_symmetric_active_names,
+        )
+        currents = even @ even_currents
         if odd_currents is not None:
             odd_currents = np.asarray(odd_currents)
-            if odd_currents.shape[0] != len(self.active_odd_names):
+            if odd_currents.shape[0] != len(odd_names):
                 raise ValueError(
                     "Odd current vector is incompatible with active_odd_names."
                 )
-            currents = currents + self.active_odd_to_original @ odd_currents
+            currents = currents + odd @ odd_currents
         return currents
 
     def project_metal_currents_even(self, currents):
@@ -301,13 +308,7 @@ class PreparedUpDownMachine:
         This is useful for auditing operators generated before the geometric
         description itself was made exactly symmetric.
         """
-        operator = np.asarray(operator)
-        reflection = self.reflection_operator
-        if operator.shape != reflection.shape:
-            raise ValueError("Operator shape is incompatible with the machine.")
-        # Conjugating by R reflects both the input and output current bases.
-        # Averaging A with R A R therefore makes the result commute with R.
-        return 0.5 * (operator + reflection @ operator @ reflection)
+        return _symmetrise_square_operator(operator, self.reflection_operator)
 
     def symmetrise_even_machine_resistances(self, resistances):
         """Reflection-average resistances in the reduced even-machine basis."""
@@ -319,11 +320,9 @@ class PreparedUpDownMachine:
 
     def symmetrise_even_machine_square_operator(self, operator):
         """Reflection-average an operator in the reduced even-machine basis."""
-        operator = np.asarray(operator)
-        reflection = self.even_machine_reflection_operator
-        if operator.shape != reflection.shape:
-            raise ValueError("Operator shape is incompatible with the machine.")
-        return 0.5 * (operator + reflection @ operator @ reflection)
+        return _symmetrise_square_operator(
+            operator, self.even_machine_reflection_operator
+        )
 
     def symmetrise_greens(self, greens, z_axis=-1):
         """
@@ -336,26 +335,28 @@ class PreparedUpDownMachine:
         z_axis : int, default=-1
             Axis corresponding to an exactly symmetric Z grid.
         """
-        greens = np.asarray(greens)
-        if greens.shape[0] != self.reflection_operator.shape[0]:
-            raise ValueError("Green-function coil axis has the wrong length.")
-        # Reflection acts twice here: flip the observation grid in Z, then
-        # exchange every source element with its reflected current partner.
-        reflected_fields = np.flip(greens, axis=z_axis)
-        reflected_coils = np.einsum(
-            "ij,j...->i...", self.reflection_operator, reflected_fields
-        )
-        return 0.5 * (greens + reflected_coils)
+        return _symmetrise_greens(greens, self.reflection_operator, z_axis)
 
     def symmetrise_even_machine_greens(self, greens, z_axis=-1):
         """Reflection-average Green functions in the reduced machine basis."""
-        greens = np.asarray(greens)
-        reflection = self.even_machine_reflection_operator
-        if greens.shape[0] != len(reflection):
-            raise ValueError("Green-function coil axis has the wrong length.")
-        reflected_fields = np.flip(greens, axis=z_axis)
-        reflected_coils = np.einsum("ij,j...->i...", reflection, reflected_fields)
-        return 0.5 * (greens + reflected_coils)
+        return _symmetrise_greens(greens, self.even_machine_reflection_operator, z_axis)
+
+
+def _symmetrise_square_operator(operator, reflection):
+    """Average a metal operator with its reflected input/output coordinates."""
+    operator = np.asarray(operator)
+    if operator.shape != reflection.shape:
+        raise ValueError("Operator shape is incompatible with the machine.")
+    return 0.5 * (operator + reflection @ operator @ reflection)
+
+
+def _symmetrise_greens(greens, reflection, z_axis=-1):
+    """Reflect both the observation grid and the source-current coordinates."""
+    greens = np.asarray(greens)
+    if greens.shape[0] != len(reflection):
+        raise ValueError("Green-function coil axis has the wrong length.")
+    reflected = np.einsum("ij,j...->i...", reflection, np.flip(greens, axis=z_axis))
+    return 0.5 * (greens + reflected)
 
 
 def prepare_up_down_symmetric_machine(
@@ -383,6 +384,8 @@ def prepare_up_down_symmetric_machine(
         Standard FreeGSNKE active-coil description.
     passive_coils_data : list, optional
         Standard FreeGSNKE passive-structure description.
+        Outputs carry private refinement-pair metadata so machine construction
+        uses reflected filament samples rather than independent meshes.
     limiter_data, wall_data : list, optional
         Standard FreeGSNKE boundary descriptions. Each outline is intersected
         with its reflection, with a warning and comparison plot if its footprint
@@ -418,6 +421,11 @@ def prepare_up_down_symmetric_machine(
     passive_original = deepcopy(passive_coils_data)
     limiter_original = None if limiter_data is None else deepcopy(limiter_data)
     wall_original = None if wall_data is None else deepcopy(wall_data)
+    for coil in active_original.values():
+        for _, part in _active_parts(coil):
+            _normalise_coordinates(part)
+    for element in passive_original:
+        _normalise_coordinates(element)
 
     active_names = tuple(active_original)
     passive_names = tuple(
@@ -533,7 +541,7 @@ def prepare_up_down_symmetric_machine(
     # First make the retained active geometry exactly reflected. Mismatch is
     # measured before averaging so the approximation remains quantitatively
     # visible to the caller.
-    symmetric_active = deepcopy(active_original)
+    symmetric_active = active_original
     active_diagnostics = []
     geometry_discrepancies = []
     for upper_name, lower_name, group in active_pair_names:
@@ -564,7 +572,7 @@ def prepare_up_down_symmetric_machine(
 
     # Passive elements retain their original one-element-per-current basis.
     # Only their geometry is averaged here; reflected currents remain separate.
-    passive_by_name = dict(zip(passive_names, deepcopy(passive_original)))
+    passive_by_name = dict(zip(passive_names, passive_original))
     passive_diagnostics = []
     for upper_name, lower_name, group in passive_pair_names:
         upper, lower, mismatch = _symmetrise_element_pair(
@@ -575,6 +583,7 @@ def prepare_up_down_symmetric_machine(
         )
         passive_by_name[upper_name] = upper
         passive_by_name[lower_name] = lower
+        lower["_up_down_refinement"] = (upper_name, target_midplane)
         passive_diagnostics.append(
             _make_diagnostic(upper_name, lower_name, group, mismatch)
         )
@@ -583,10 +592,13 @@ def prepare_up_down_symmetric_machine(
         )
 
     for name in passive_self:
-        mismatch = _self_element_mismatch(passive_by_name[name], target_midplane)
-        passive_by_name[name] = _symmetrise_self_element(
-            passive_by_name[name], target_midplane
+        mismatch = _self_element_mismatch(
+            passive_by_name[name], target_midplane, polygon=True
         )
+        passive_by_name[name] = _symmetrise_self_element(
+            passive_by_name[name], target_midplane, polygon=True
+        )
+        passive_by_name[name]["_up_down_refinement"] = (name, target_midplane)
         geometry_discrepancies.append(
             GeometryDiscrepancy("passive", name, name, mismatch)
         )
@@ -808,6 +820,37 @@ def _point_rms_distance(first, second):
     return float(np.sqrt(np.mean(np.sum((first - second) ** 2, axis=-1))))
 
 
+def _normalise_coordinates(element):
+    """Keep one-dimensional, finite R/Z arrays in private geometry copies."""
+    for key in ("R", "Z"):
+        element[key] = np.atleast_1d(np.asarray(element[key], dtype=float))
+    if element["R"].shape != element["Z"].shape or element["R"].ndim != 1:
+        raise ValueError("R and Z must be matching one-dimensional coordinates.")
+    if not element["R"].size or not np.isfinite([element["R"], element["Z"]]).all():
+        raise ValueError("R and Z must contain finite coordinates.")
+
+
+def _element_points(element, polygon=False):
+    """Return unique polygon vertices or filament points and explicit closure."""
+    points = np.column_stack((element["R"], element["Z"])).astype(float)
+    closed = polygon and len(points) > 2 and np.array_equal(points[0], points[-1])
+    return (points[:-1] if closed else points), closed
+
+
+def _split_about_plane(values, z_midplane):
+    """Partition coordinates into disjoint upper, lower and middle masks."""
+    values = np.asarray(values)
+    middle = np.isclose(values, z_midplane, rtol=0.0, atol=1e-8)
+    return (values > z_midplane) & ~middle, (values < z_midplane) & ~middle, middle
+
+
+def _active_sides(element, z_midplane):
+    """Partition compound parts once for parity and geometry operations."""
+    parts = _active_parts(element)
+    masks = _split_about_plane([_centroid_z(part) for _, part in parts], z_midplane)
+    return tuple([part for part, keep in zip(parts, mask) if keep] for mask in masks)
+
+
 def _geometry_bounds_midplane(active_data, passive_data):
     """Estimate a preliminary midplane from the complete geometry bounds."""
     z_values = []
@@ -840,8 +883,8 @@ def _shift_flat_geometry(elements, z_shift):
 
 def _pair_z_midpoints(upper, lower, z_midplane, polygon):
     """Return fitted-plane samples from one aligned upper/lower point pair."""
-    upper_points = np.column_stack((upper["R"], upper["Z"])).astype(float)
-    lower_points = np.column_stack((lower["R"], lower["Z"])).astype(float)
+    upper_points, _ = _element_points(upper, polygon)
+    lower_points, _ = _element_points(lower, polygon)
     reflected_lower = lower_points.copy()
     reflected_lower[:, 1] = 2 * z_midplane - reflected_lower[:, 1]
     # Use the preliminary plane only to establish correspondence. Once points
@@ -872,16 +915,14 @@ def _active_pair_z_midpoints(upper, lower, z_midplane):
     )
 
 
-def _self_z_midpoints(element, z_midplane):
+def _self_z_midpoints(element, z_midplane, polygon=False):
     """Return fitted-plane samples from a circuit or element spanning the plane."""
     points = np.vstack(
-        [
-            np.column_stack((part["R"], part["Z"])).astype(float)
-            for _, part in _active_parts(element)
-        ]
+        [_element_points(part, polygon)[0] for _, part in _active_parts(element)]
     )
-    upper = points[points[:, 1] > z_midplane]
-    lower = points[points[:, 1] < z_midplane]
+    upper_mask, lower_mask, middle_mask = _split_about_plane(points[:, 1], z_midplane)
+    upper = points[upper_mask]
+    lower = points[lower_mask]
     if len(upper) != len(lower):
         raise ValueError(
             "Automatic midplane fitting requires equal upper/lower point counts "
@@ -893,7 +934,7 @@ def _self_z_midpoints(element, z_midplane):
     reflected_lower = lower.copy()
     reflected_lower[:, 1] = 2 * z_midplane - reflected_lower[:, 1]
     assignment = _best_point_assignment(upper, reflected_lower, False)
-    return 0.5 * (upper[:, 1] + lower[assignment, 1])
+    return np.r_[0.5 * (upper[:, 1] + lower[assignment, 1]), points[middle_mask, 1]]
 
 
 def _fit_source_midplane(
@@ -932,7 +973,9 @@ def _fit_source_midplane(
             )
         )
     for name in passive_self:
-        samples.extend(_self_z_midpoints(passive_by_name[name], preliminary_midplane))
+        samples.extend(
+            _self_z_midpoints(passive_by_name[name], preliminary_midplane, True)
+        )
 
     samples = np.asarray(samples, dtype=float)
     if not len(samples):
@@ -1023,7 +1066,8 @@ def _identify_active_pairs(active_data, explicit_pairs, z_midplane):
         z_values = np.concatenate(
             [np.asarray(part["Z"]) for _, part in _active_parts(active_data[name])]
         )
-        if not (np.any(z_values > z_midplane) and np.any(z_values < z_midplane)):
+        upper, lower, middle = _split_about_plane(z_values, z_midplane)
+        if not (np.all(middle) or (np.any(upper) and np.any(lower))):
             print(f"Unpaired active circuit '{name}' does not span the symmetry plane.")
             raise_error = True
     if raise_error:
@@ -1080,18 +1124,12 @@ def _identify_passive_pairs(passive_data, names, explicit_pairs, z_midplane):
             )
         # Find the globally minimum one-to-one reflected assignment. Greedy
         # nearest-neighbour matching can pair one lower element more than once.
-        costs = np.asarray(
-            [
-                [
-                    _geometry_mismatch(
-                        by_name[upper], by_name[lower], z_midplane, polygon=True
-                    )
-                    for lower in lower_names
-                ]
-                for upper in upper_names
-            ]
+        upper_indices, lower_indices = _compatible_assignment(
+            [by_name[name] for name in upper_names],
+            [by_name[name] for name in lower_names],
+            z_midplane,
+            polygon=True,
         )
-        upper_indices, lower_indices = linear_sum_assignment(costs)
         pairs.extend(
             (
                 upper_names[upper_index],
@@ -1142,8 +1180,8 @@ def _best_point_assignment(upper_points, reflected_lower_points, polygon):
 
 def _geometry_mismatch(upper, lower, z_midplane, polygon):
     """Return RMS reflected point mismatch between two flat elements."""
-    upper_points = np.column_stack((upper["R"], upper["Z"])).astype(float)
-    lower_points = np.column_stack((lower["R"], lower["Z"])).astype(float)
+    upper_points, _ = _element_points(upper, polygon)
+    lower_points, _ = _element_points(lower, polygon)
     reflected_lower = lower_points.copy()
     reflected_lower[:, 1] = 2 * z_midplane - reflected_lower[:, 1]
     assignment = _best_point_assignment(upper_points, reflected_lower, polygon)
@@ -1157,24 +1195,37 @@ def _active_part_winding(part):
 
 def _active_part_assignment(upper_parts, lower_parts, z_midplane):
     """Match geometry only between bundles with compatible filament counts."""
+    return _compatible_assignment(
+        [part for _, part in upper_parts],
+        [part for _, part in lower_parts],
+        z_midplane,
+        count_label="filament",
+    )
+
+
+def _compatible_assignment(
+    upper, lower, z_midplane, polygon=False, count_label="point"
+):
+    """Match compatible point counts before comparing reflected geometry."""
     costs = np.asarray(
         [
             [
                 (
-                    _geometry_mismatch(upper_part, lower_part, z_midplane, False)
-                    if np.size(upper_part["R"]) == np.size(lower_part["R"])
+                    _geometry_mismatch(upper_part, lower_part, z_midplane, polygon)
+                    if len(_element_points(upper_part, polygon)[0])
+                    == len(_element_points(lower_part, polygon)[0])
                     else np.inf
                 )
-                for _, lower_part in lower_parts
+                for lower_part in lower
             ]
-            for _, upper_part in upper_parts
+            for upper_part in upper
         ]
-    ).reshape(len(upper_parts), len(lower_parts))
+    ).reshape(len(upper), len(lower))
     try:
         return linear_sum_assignment(costs)
     except ValueError as error:
         raise ValueError(
-            "Active bundles cannot be matched one-to-one with equal filament counts."
+            f"Reflected elements cannot be matched one-to-one with equal {count_label} counts."
         ) from error
 
 
@@ -1223,10 +1274,7 @@ def _self_active_parity(element, z_midplane):
     """Classify a series circuit containing its own reflected filament bundles."""
     if "R" in element and "Z" in element:
         return 1
-    parts = _active_parts(element)
-    upper = [(key, part) for key, part in parts if _centroid_z(part) > z_midplane]
-    lower = [(key, part) for key, part in parts if _centroid_z(part) < z_midplane]
-    middle = [part for _, part in parts if np.isclose(_centroid_z(part), z_midplane)]
+    upper, lower, middle = _active_sides(element, z_midplane)
     matched = _matched_active_parts(upper, lower, z_midplane)
     parity = 0 if matched is None else _matched_parts_parity(matched)
     # A part lying on the plane maps to itself and is therefore even. It cannot
@@ -1236,11 +1284,12 @@ def _self_active_parity(element, z_midplane):
     return parity if matched else (1 if middle else 0)
 
 
-def _self_element_mismatch(element, z_midplane):
+def _self_element_mismatch(element, z_midplane, polygon=False):
     """Return reflected RMS mismatch within one midplane-spanning element."""
-    points = np.column_stack((element["R"], element["Z"])).astype(float)
-    upper = points[points[:, 1] > z_midplane]
-    lower = points[points[:, 1] < z_midplane]
+    points, _ = _element_points(element, polygon)
+    upper_mask, lower_mask, _ = _split_about_plane(points[:, 1], z_midplane)
+    upper = points[upper_mask]
+    lower = points[lower_mask]
     if len(upper) != len(lower):
         raise ValueError(
             "A self-symmetric element must have equal upper/lower point counts."
@@ -1259,10 +1308,7 @@ def _self_active_mismatch(element, z_midplane):
     """Return the largest reflected RMS mismatch within one active circuit."""
     if "R" in element and "Z" in element:
         return _self_element_mismatch(element, z_midplane)
-    parts = _active_parts(element)
-    upper = [(key, part) for key, part in parts if _centroid_z(part) > z_midplane]
-    lower = [(key, part) for key, part in parts if _centroid_z(part) < z_midplane]
-    middle = [part for _, part in parts if np.isclose(_centroid_z(part), z_midplane)]
+    upper, lower, middle = _active_sides(element, z_midplane)
     matched = _matched_active_parts(upper, lower, z_midplane)
     if matched is None:
         raise ValueError(
@@ -1272,7 +1318,7 @@ def _self_active_mismatch(element, z_midplane):
         _geometry_mismatch(upper_part, lower_part, z_midplane, False)
         for upper_part, lower_part in matched
     ]
-    mismatches.extend(_self_element_mismatch(part, z_midplane) for part in middle)
+    mismatches.extend(_self_element_mismatch(part, z_midplane) for _, part in middle)
     return max(mismatches, default=0.0)
 
 
@@ -1303,10 +1349,8 @@ def _average_pair_scalars(upper, lower):
 
 def _symmetrise_element_pair(upper, lower, z_midplane, polygon):
     """Average one flat upper/lower pair onto exactly reflected geometries."""
-    upper = deepcopy(upper)
-    lower = deepcopy(lower)
-    upper_points = np.column_stack((upper["R"], upper["Z"])).astype(float)
-    lower_points = np.column_stack((lower["R"], lower["Z"])).astype(float)
+    upper_points, upper_closed = _element_points(upper, polygon)
+    lower_points, lower_closed = _element_points(lower, polygon)
     reflected_lower = lower_points.copy()
     reflected_lower[:, 1] = 2 * z_midplane - reflected_lower[:, 1]
     assignment = _best_point_assignment(upper_points, reflected_lower, polygon)
@@ -1320,6 +1364,11 @@ def _symmetrise_element_pair(upper, lower, z_midplane, polygon):
     symmetric_lower = np.empty_like(symmetric_lower_aligned)
     symmetric_lower[assignment] = symmetric_lower_aligned
 
+    if upper_closed:
+        symmetric_upper = np.vstack((symmetric_upper, symmetric_upper[0]))
+    if lower_closed:
+        symmetric_lower = np.vstack((symmetric_lower, symmetric_lower[0]))
+
     upper["R"] = symmetric_upper[:, 0]
     upper["Z"] = symmetric_upper[:, 1]
     lower["R"] = symmetric_lower[:, 0]
@@ -1330,8 +1379,6 @@ def _symmetrise_element_pair(upper, lower, z_midplane, polygon):
 
 def _symmetrise_active_pair(upper, lower, z_midplane):
     """Symmetrise all filament groups in a paired active circuit."""
-    upper = deepcopy(upper)
-    lower = deepcopy(lower)
     upper_parts = _active_parts(upper)
     lower_parts = _active_parts(lower)
     if len(upper_parts) != len(lower_parts):
@@ -1361,13 +1408,12 @@ def _symmetrise_active_pair(upper, lower, z_midplane):
     return upper, lower, float(np.max(mismatches))
 
 
-def _symmetrise_self_element(element, z_midplane):
+def _symmetrise_self_element(element, z_midplane, polygon=False):
     """Make one flat element spanning the midplane internally symmetric."""
-    element = deepcopy(element)
-    points = np.column_stack((element["R"], element["Z"])).astype(float)
-    upper_indices = np.flatnonzero(points[:, 1] > z_midplane)
-    lower_indices = np.flatnonzero(points[:, 1] < z_midplane)
-    middle_indices = np.flatnonzero(np.isclose(points[:, 1], z_midplane))
+    points, closed = _element_points(element, polygon)
+    upper, lower, middle = _split_about_plane(points[:, 1], z_midplane)
+    upper_indices, lower_indices = np.flatnonzero(upper), np.flatnonzero(lower)
+    middle_indices = np.flatnonzero(middle)
     if len(upper_indices) != len(lower_indices):
         raise ValueError(
             "A self-symmetric element must have equal upper/lower point counts."
@@ -1386,6 +1432,8 @@ def _symmetrise_self_element(element, z_midplane):
         points[lower_indices, 1] = new_lower["Z"]
     # Numerical noise on self-reflecting points is removed explicitly.
     points[middle_indices, 1] = z_midplane
+    if closed:
+        points = np.vstack((points, points[0]))
     element["R"] = points[:, 0]
     element["Z"] = points[:, 1]
     return element
@@ -1396,13 +1444,7 @@ def _symmetrise_self_active(element, z_midplane):
     if "R" in element and "Z" in element:
         return _symmetrise_self_element(element, z_midplane)
 
-    element = deepcopy(element)
-    parts = _active_parts(element)
-    upper = [(key, part) for key, part in parts if _centroid_z(part) > z_midplane]
-    lower = [(key, part) for key, part in parts if _centroid_z(part) < z_midplane]
-    middle = [
-        (key, part) for key, part in parts if np.isclose(_centroid_z(part), z_midplane)
-    ]
+    upper, lower, middle = _active_sides(element, z_midplane)
     if len(upper) != len(lower):
         raise ValueError(
             "A self-symmetric active circuit must have equal upper/lower part counts."
@@ -1458,8 +1500,10 @@ def _build_even_active_description(active_data, pair_names, self_names):
         reduced_name = group
         # Distinct source groups can collapse to the same stripped label. Keep
         # both circuits by falling back to an explicit composite name.
-        if reduced_name in even_data:
+        if reduced_name in even_data or reduced_name in self_names:
             reduced_name = f"{upper}__{lower}"
+        while reduced_name in even_data or reduced_name in self_names:
+            reduced_name += "_pair"
         circuit = {}
         # A single current through this compound entry drives both reflected
         # source circuits, which is precisely the retained even coordinate.

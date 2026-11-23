@@ -132,3 +132,61 @@ def test_unrestricted_solver_accepts_asymmetric_grid_and_mask():
         nl_solver(object(), eq, static_solver)
     static_solver.forward_solve.assert_called_once()
     np.testing.assert_array_equal(eq._vgreen, greens)
+
+
+@pytest.mark.parametrize(
+    "reflection",
+    [
+        np.eye(3),
+        np.array([[1.0, 0.1], [0.0, 1.0]]),
+        np.full((2, 2), 0.5),
+        np.array([[np.nan, 0.0], [0.0, 1.0]]),
+        np.array([[np.inf, 0.0], [0.0, 1.0]]),
+    ],
+)
+def test_invalid_reflection_fails_before_mutation_or_gs(reflection):
+    """Reflection validation happens before changing any part of the machine."""
+    eq = _symmetry_test_equilibrium([-1.0, 0.0, 1.0])
+    eq.tokamak.n_coils = 3
+    eq.tokamak.coils_dict = {"active": {}, "upper": {}, "lower": {}}
+    eq.tokamak.coil_resist = np.ones(3)
+    eq.tokamak.coil_self_ind = np.eye(3)
+    eq._vgreen = np.arange(18.0).reshape(3, 2, 3)
+    original = eq._vgreen.copy()
+    static_solver = Mock()
+    with pytest.raises(ValueError, match="passive_reflection_operator"):
+        SymmetryReducedSolver(
+            object(), eq, static_solver, passive_reflection_operator=reflection
+        )
+    np.testing.assert_array_equal(eq._vgreen, original)
+    static_solver.forward_solve.assert_not_called()
+
+
+def test_nonlinear_state_acceptance_uses_the_solved_grid_flux():
+    """An old named Green cache cannot change the accepted plasma distribution."""
+    solver = object.__new__(nl_solver)
+    solver.force_up_down_symmetric = True
+    flux = np.array([[1.0, 2.0, 1.0], [3.0, 4.0, 3.0]])
+    tokamak = SimpleNamespace(
+        set_all_coil_currents=Mock(),
+        getPsitokamak=lambda greens: greens[0],
+        calcPsiFromGreens=Mock(side_effect=AssertionError("Used obsolete cache")),
+    )
+    solver.eq1 = SimpleNamespace(
+        tokamak=tokamak, _vgreen=flux[None], _pgreen={"obsolete": True}
+    )
+    solver.eq2 = SimpleNamespace(tokamak=tokamak)
+    solver.vessel_currents_vec = np.array([1.0])
+    solver.assign_currents = Mock()
+    solver.trial_currents = np.array([1.0, 2.0])
+    solver.trial_plasma_psi = np.zeros_like(flux)
+    solver.plasma_norm_factor = 1.0
+    solver.eqR, solver.eqZ = np.ones_like(flux), np.zeros_like(flux)
+    solver.profiles1 = SimpleNamespace(jtor=flux.copy(), Jtor=Mock())
+    solver.NK = SimpleNamespace(port_critical=Mock())
+    solver.limiter_handler = SimpleNamespace(
+        Iy_from_jtor=lambda j: j.ravel(), normalize_sum=lambda j: j / j.sum()
+    )
+    solver.assign_trial_solution_state()
+    np.testing.assert_array_equal(solver.profiles1.Jtor.call_args.args[2], flux)
+    tokamak.calcPsiFromGreens.assert_not_called()

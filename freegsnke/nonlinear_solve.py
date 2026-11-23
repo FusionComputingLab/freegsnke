@@ -29,11 +29,14 @@ from freegs4e.gradshafranov import GreensBr, GreensdBrdz
 from scipy.signal import convolve2d
 
 from . import nk_solver_H as nk_solver
+from .build_machine import _symmetrise_passive_refinement, build_tokamak_R_and_M
 from .circuit_eq_metal import metal_currents
 from .GSstaticsolver import NKGSsolver
 from .linear_solve import linear_solver
 from .Myy_builder import Myy_handler
+from .normal_modes import _validate_passive_reflection
 from .simplified_solve import simplified_solver_J1
+from .up_down_symmetry import _symmetrise_greens, _symmetrise_square_operator
 
 
 class nl_solver:
@@ -218,18 +221,31 @@ class nl_solver:
                 )
             metal_reflection = np.eye(self.n_coils)
             if self.n_passive_coils:
-                passive_reflection_operator = np.asarray(
-                    passive_reflection_operator, dtype=float
+                passive_reflection_operator = _validate_passive_reflection(
+                    passive_reflection_operator, self.n_passive_coils
                 )
-                expected_shape = (self.n_passive_coils, self.n_passive_coils)
-                if passive_reflection_operator.shape != expected_shape:
+                partners = np.argmax(passive_reflection_operator, axis=1)
+                permutation = np.eye(self.n_passive_coils)[partners]
+                if not np.allclose(passive_reflection_operator, permutation):
                     raise ValueError(
-                        "'passive_reflection_operator' must have shape "
-                        f"{expected_shape}."
+                        "Passive reflection must permute the physical passive elements."
                     )
+                passive_reflection_operator = permutation
                 metal_reflection[self.n_active_coils :, self.n_active_coils :] = (
                     passive_reflection_operator
                 )
+                passive_names = self.coils_order[self.n_active_coils :]
+                pairs = [
+                    (passive_names[i], passive_names[j])
+                    for i, j in enumerate(partners)
+                    if i <= j
+                ]
+                if _symmetrise_passive_refinement(
+                    eq.tokamak.coils, eq.tokamak.coils_dict, pairs
+                ):
+                    build_tokamak_R_and_M(eq.tokamak)
+                    eq._pgreen = eq.tokamak.createPsiGreens(eq.R, eq.Z)
+                    eq._vgreen = eq.tokamak.createPsiGreensVec(eq.R, eq.Z)
 
             # Reflection-average the machine operators:
             #   R_sym = (R + S_m R) / 2,
@@ -248,13 +264,8 @@ class nl_solver:
                 else np.asarray(custom_self_ind)
             )
             custom_coil_resist = 0.5 * (resistance + metal_reflection @ resistance)
-            custom_self_ind = 0.5 * (
-                inductance + metal_reflection @ inductance @ metal_reflection
-            )
-            reflected_greens = np.einsum(
-                "ij,jrz->irz", metal_reflection, eq._vgreen[:, :, ::-1]
-            )
-            eq._vgreen = 0.5 * (eq._vgreen + reflected_greens)
+            custom_self_ind = _symmetrise_square_operator(inductance, metal_reflection)
+            eq._vgreen = _symmetrise_greens(eq._vgreen, metal_reflection)
 
         # setting up reduced domain for plasma circuit eq.:
         self.limiter_handler = eq.limiter_handler
@@ -2539,9 +2550,10 @@ class nl_solver:
         else:
             self.eq1.plasma_psi = np.copy(self.trial_plasma_psi)
             self.profiles1.Ip = self.trial_currents[-1] * self.plasma_norm_factor
-            self.tokamak_psi = self.eq1.tokamak.calcPsiFromGreens(
-                pgreen=self.eq1._pgreen
-            )
+            if self.force_up_down_symmetric:
+                self.tokamak_psi = self.eq1.tokamak.getPsitokamak(self.eq1._vgreen)
+            else:
+                self.tokamak_psi = self.eq1.tokamak.calcPsiFromGreens(self.eq1._pgreen)
             self.profiles1.Jtor(
                 self.eqR, self.eqZ, self.tokamak_psi + self.trial_plasma_psi
             )

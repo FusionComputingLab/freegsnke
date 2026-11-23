@@ -357,8 +357,11 @@ class NKGSsolver:
 
         return psi_bnd
 
-    def _build_masked_boundary_greens(self, source_mask: np.ndarray) -> np.ndarray:
+    def __build_masked_boundary_greens(self, source_mask: np.ndarray) -> np.ndarray:
         """
+
+        NOT SUPPORTED currently. Kept for future development.
+
         Build the boundary Green matrix for a selected set of source points.
 
         Singular self-interactions are removed when the selected sources include
@@ -376,6 +379,10 @@ class NKGSsolver:
             Matrix of shape (n_boundary_points, n_sources) mapping source plasma
             current density to boundary flux.
         """
+
+        raise NotImplementedError(
+            "Masked boundary Green's functionalities not currently supported in GSstaticsolver"
+        )
 
         source_indices = np.flatnonzero(source_mask)
         boundary_indices = np.ravel_multi_index(
@@ -400,8 +407,13 @@ class NKGSsolver:
         greenfunc[np.flatnonzero(matches), positions[matches]] = 0.0
         return np.ascontiguousarray(greenfunc * self.dRdZ)
 
-    def _calculate_masked_boundary_flux_from_jtor(self, jtor: np.ndarray) -> np.ndarray:
+    def __calculate_masked_boundary_flux_from_jtor(
+        self, jtor: np.ndarray
+    ) -> np.ndarray:
         """
+
+        NOT SUPPORTED currently. Kept for future development.
+
         Return boundary flux from plasma current inside the limiter.
 
         Parameters
@@ -414,6 +426,10 @@ class NKGSsolver:
         np.ndarray
             Flux at the boundary grid points (ordered as `bndry_indices`).
         """
+
+        raise NotImplementedError(
+            "Masked boundary Green's functionalities not currently supported in GSstaticsolver"
+        )
         return self.greenfunc @ jtor[self.plasma_source_mask]
 
     def configureLinearSolver(

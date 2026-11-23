@@ -150,8 +150,10 @@ class nl_solver:
             Print diagnostic output during initialization.
         force_up_down_symmetric : bool, default=False
             Restrict every Grad-Shafranov solve and plasma-response Jacobian to
-            the even-in-Z subspace. This strict path requires a symmetric grid,
-            limiter, and plasma initial condition. Retained active circuits must
+            the even-in-Z subspace. This strict path requires a grid symmetric
+            about Z=0, a symmetric limiter mask, and an even plasma initial
+            condition. Invalid grids and masks are rejected before the machine
+            operators are modified. Retained active circuits must
             be even. Small residual asymmetries in the machine resistance,
             inductance, sampled Green functions, and metal-plasma coupling are
             removed by reflection averaging.
@@ -203,6 +205,17 @@ class nl_solver:
                 "evolution with passive structures."
             )
         if force_up_down_symmetric:
+            if not np.allclose(eq.Z, -eq.Z[:, ::-1], rtol=0.0, atol=1e-12):
+                raise ValueError(
+                    "Symmetric evolution requires a Z grid symmetric about Z=0: "
+                    "reversing its indices must map each Z coordinate to -Z."
+                )
+            limiter_mask = eq.limiter_handler.mask_inside_limiter
+            if not np.array_equal(limiter_mask, limiter_mask[:, ::-1]):
+                raise ValueError(
+                    "Symmetric evolution requires a limiter mask symmetric "
+                    "about Z=0."
+                )
             metal_reflection = np.eye(self.n_coils)
             if self.n_passive_coils:
                 passive_reflection_operator = np.asarray(

@@ -22,6 +22,7 @@ along with FreeGSNKE. If not, see <http://www.gnu.org/licenses/>.
 from __future__ import annotations
 
 from copy import deepcopy
+from warnings import warn
 
 import numpy as np
 
@@ -151,7 +152,7 @@ class NKGSsolver:
             Differential area element used for integration.
 
         self.linear_GS_solver
-            Multigrid solver for linearised GS equation.
+            Numerical solver for linearised GS equation.
 
         self.greenfunc
             Boundary response Green's function matrix for source points inside
@@ -322,6 +323,13 @@ class NKGSsolver:
             batch_len = n_bndry_nodes // default_num_batches
             batch_len = min(batch_len, max_batch_len)
             batch_len = max(batch_len, 2)  # ensure at least two rows are in a batch
+
+            # warn when user-provided is not applied
+            if max_batch_len < 2:
+                warn(
+                    f"Provided max_batch_size {self._max_batch_size} not honored "
+                    "as it violates the minimum allowed number of batch rows."
+                )
 
             # calculate number of batches (adds one more if there is a remainder)
             num_batches = (n_bndry_nodes - 1) // batch_len + 1

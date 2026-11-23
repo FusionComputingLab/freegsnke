@@ -6,3 +6,4 @@ deepdiff~=7.0.1
 scikit-image~=0.25.2
 notebook~=7.4.2
 cvxpy~=1.7.5
+Shapely>=2.0.6,<3

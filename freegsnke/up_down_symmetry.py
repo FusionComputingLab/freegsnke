@@ -18,12 +18,16 @@ later version.
 """
 
 import re
+import warnings
 from copy import deepcopy
 from dataclasses import dataclass
 
+import matplotlib.pyplot as plt
 import numpy as np
 from scipy.optimize import linear_sum_assignment
-
+from shapely.affinity import scale
+from shapely.geometry import Point, Polygon
+from shapely.geometry.polygon import orient
 
 _SIDE_PATTERN = re.compile(r"(^|_)(upper|lower)(?=_|$)", re.IGNORECASE)
 _TRAILING_INDEX_PATTERN = re.compile(r"(\d+)$")
@@ -380,8 +384,9 @@ def prepare_up_down_symmetric_machine(
     passive_coils_data : list, optional
         Standard FreeGSNKE passive-structure description.
     limiter_data, wall_data : list, optional
-        Standard FreeGSNKE boundary descriptions. Each supplied boundary is
-        recentered and averaged with its reflection.
+        Standard FreeGSNKE boundary descriptions. Each outline is intersected
+        with its reflection, with a warning and comparison plot if its footprint
+        changes.
     z_midplane : float or "auto", default=0
         Symmetry-plane coordinate. ``"auto"`` fits the common vertical offset
         from matched machine points, shifts the complete description so that
@@ -392,7 +397,8 @@ def prepare_up_down_symmetric_machine(
     max_pair_mismatch : float, optional
         Maximum permitted reflected RMS point mismatch in metres before
         averaging. The limit applies to active and passive pairs, internally
-        symmetric elements, limiter, and wall.
+        symmetric elements, limiter, and wall. For boundary outlines this is the
+        RMS distance of source vertices to the reflected boundary, without pairing.
     exclude_odd_active : bool, default=False
         If True, omit active circuits whose reflected winding polarity is odd
         from the prepared machine and record them in
@@ -589,8 +595,7 @@ def prepare_up_down_symmetric_machine(
     # resistance arrays use positional, rather than name-based, indexing.
     symmetric_passive = [passive_by_name[name] for name in passive_names]
 
-    # Limiter and wall are continuous closed paths, so they require path-based
-    # resampling rather than the point assignments used for conductor elements.
+    # Both boundary outlines retain only the region inside their reflections.
     if limiter_original is None:
         symmetric_limiter = None
     else:
@@ -639,16 +644,141 @@ def prepare_up_down_symmetric_machine(
     )
     if max_pair_mismatch is not None:
         prepared.check_geometry_tolerance(max_pair_mismatch)
+    for original, symmetric, name in (
+        (limiter_original, symmetric_limiter, "Limiter"),
+        (wall_original, symmetric_wall, "Wall"),
+    ):
+        if original is not None:
+            _warn_and_plot_boundary_change(original, symmetric, target_midplane, name)
     return prepared
+
+
+def symmetrise_limiter(limiter_data, z_midplane=0.0):
+    """
+    Keep the intersection of a limiter and its reflection about the midplane.
+
+    Retain existing boundary segments and add vertices only at edge crossings.
+    Unequal upper/lower vertex counts require no pairing or resampling. An
+    already symmetric polygon is returned unchanged. Otherwise, warn and show
+    the original, reflected and retained outlines in a nonblocking plot.
+
+    Parameters
+    ----------
+    limiter_data : sequence of dict
+        Ordered polygon vertices with ``R`` and ``Z`` entries.
+    z_midplane : float, default=0
+        Coordinate of the symmetry plane.
+
+    Returns
+    -------
+    list of dict
+        Symmetric inner boundary, preserving winding and explicit closure.
+
+    Raises
+    ------
+    ValueError
+        If the input is invalid or the intersection is empty, disconnected,
+        or contains holes.
+    """
+    result, _ = _symmetrise_boundary_with_mismatch(limiter_data, z_midplane)
+    _warn_and_plot_boundary_change(limiter_data, result, z_midplane, "Limiter")
+    return result
+
+
+def _symmetrise_boundary_with_mismatch(boundary_data, z_midplane):
+    """Intersect reflected outlines and measure source-to-reflection RMS distance."""
+    points = np.asarray([[p["R"], p["Z"]] for p in boundary_data], dtype=float)
+    if len(points) < 3 or not np.isfinite(points).all():
+        raise ValueError("A boundary requires at least three finite vertices.")
+    closed = np.allclose(points[0], points[-1], rtol=0.0, atol=1e-12)
+    if closed:
+        points = points[:-1]
+    if len(points) < 3:
+        raise ValueError("A boundary requires at least three distinct vertices.")
+    source = Polygon(points)
+    if not source.is_valid or source.area <= 0:
+        raise ValueError("Invalid boundary polygon.")
+    reflected = scale(source, xfact=1, yfact=-1, origin=(0, z_midplane))
+    if source.equals(reflected):
+        return deepcopy(boundary_data), 0.0
+    inner = source.intersection(reflected)
+    if inner.is_empty or inner.geom_type != "Polygon" or inner.area <= 0:
+        raise ValueError("Boundary intersection must be one connected polygon.")
+    if not inner.is_valid or len(inner.interiors):
+        raise ValueError("Boundary intersection must be valid and without holes.")
+    distances = [Point(point).distance(reflected.boundary) for point in points]
+    mismatch = float(np.sqrt(np.mean(np.square(distances))))
+    inner = orient(inner, sign=1 if source.exterior.is_ccw else -1)
+    coords = list(inner.exterior.coords)
+    if not closed:
+        coords = coords[:-1]
+    return [{"R": float(r), "Z": float(z)} for r, z in coords], mismatch
+
+
+def _warn_and_plot_boundary_change(original, symmetric, z_midplane, name):
+    """Warn about a changed footprint and display its original/reflected overlap."""
+    points = np.asarray([[p["R"], p["Z"]] for p in original], dtype=float)
+    retained = np.asarray([[p["R"], p["Z"]] for p in symmetric], dtype=float)
+    source, inner = Polygon(points), Polygon(retained)
+    if source.equals(inner):
+        return
+    removed_area = max(0.0, source.area - inner.area)
+    removed_percent = 100 * removed_area / source.area
+    warnings.warn(
+        f"{name} changed by intersection with its reflection about "
+        f"Z={z_midplane:g} m: removed {removed_area:.6g} m² "
+        f"({removed_percent:.3g}%); {len(original)} -> {len(symmetric)} vertices. "
+        "See the boundary comparison plot.",
+        UserWarning,
+        stacklevel=3,
+    )
+    reflected = points.copy()
+    reflected[:, 1] = 2 * z_midplane - points[:, 1]
+    # Close plotting paths even when the supplied polygon omits its closing vertex.
+    paths = [np.vstack((p, p[0])) for p in (points, reflected, retained)]
+    candidates = np.vstack((points, reflected))
+    tolerance = 1e-12 * max(np.ptp(points, axis=0).max(), 1.0)
+    crossings = retained[
+        np.min(np.linalg.norm(retained[:, None] - candidates[None, :], axis=-1), axis=1)
+        > tolerance
+    ]
+    fig, axes = plt.subplots(1, 2, figsize=(11, 6), layout="constrained")
+    for axis in axes:
+        axis.fill(*paths[2].T, color="#00865A", alpha=0.15)
+        axis.plot(*paths[0].T, color="#0072B2", label=f"Original {name.lower()}")
+        axis.plot(*paths[1].T, "--", color="#D55E00", label=f"Reflected {name.lower()}")
+        axis.plot(
+            *paths[2].T, color="#00865A", linewidth=2, label="Retained intersection"
+        )
+        if len(crossings):
+            axis.scatter(
+                *crossings.T,
+                marker="*",
+                s=80,
+                color="#A51C47",
+                zorder=4,
+                label="New edge crossings",
+            )
+        axis.set(xlabel="R [m]", ylabel="Z [m]")
+        axis.set_aspect("equal", adjustable="box")
+        axis.grid(alpha=0.2)
+    axes[0].axhline(z_midplane, color="grey", linestyle=":", linewidth=0.8)
+    axes[0].set_title(f"Original and retained {name.lower()}")
+    axes[0].legend(fontsize="small")
+    height = max(np.max(np.abs(points[:, 1] - z_midplane)), 1e-12)
+    axes[1].set_ylim(z_midplane - 0.05 * height, z_midplane + 1.1 * height)
+    axes[1].set_title("Upper half: retained boundary segments")
+    fig.suptitle(f"{name} symmetrisation: {removed_percent:.3g}% of area removed")
+    plt.show(block=False)
 
 
 def symmetrise_boundary(boundary_data, z_midplane=0.0):
     """
-    Average a closed limiter or wall outline with its reflection.
+    Keep the intersection of a boundary and its reflection about the midplane.
 
-    The outline is split at its two midplane crossings. The upper and reflected
-    lower paths are resampled by normalized arc length, averaged pointwise, and
-    mirrored to form an exactly symmetric closed polygon.
+    This is the common strategy for limiter and wall outlines. Retain existing
+    segments and introduce vertices only at edge crossings, without pairing or
+    resampling. Warn and show a comparison plot whenever the footprint changes.
 
     Parameters
     ----------
@@ -660,116 +790,17 @@ def symmetrise_boundary(boundary_data, z_midplane=0.0):
     Returns
     -------
     list of dict
-        Exactly symmetric boundary with the same number of vertices.
+        Symmetric inner boundary, preserving winding and explicit closure.
 
     Raises
     ------
     ValueError
-        If the boundary does not cross the midplane exactly twice. Boundaries
-        with multiple disconnected lobes require an explicit user-supplied
-        symmetric outline.
+        If the input is invalid or the intersection is empty, disconnected,
+        or contains holes.
     """
-    return _symmetrise_boundary_with_mismatch(boundary_data, z_midplane)[0]
-
-
-def _symmetrise_boundary_with_mismatch(boundary_data, z_midplane):
-    """Return a symmetric boundary and its pre-averaging reflected RMS."""
-    points = np.asarray(
-        [[entry["R"], entry["Z"]] for entry in boundary_data], dtype=float
-    )
-    if len(points) < 4:
-        raise ValueError("A boundary requires at least four vertices.")
-    if np.allclose(points[0], points[-1]):
-        # Internally use an implicit closing edge. Keeping a repeated endpoint
-        # would create a zero-length segment and bias the requested point count.
-        points = points[:-1]
-
-    # Insert exact midplane intersections where an edge crosses the plane. This
-    # makes the two half-paths share identical endpoints even when the input
-    # polygon has no vertex exactly on the midplane.
-    augmented = []
-    crossing_indices = []
-    tolerance = 1e-12
-    for index, point in enumerate(points):
-        if not augmented or not np.allclose(point, augmented[-1]):
-            augmented.append(point)
-        current_index = len(augmented) - 1
-        current_side = point[1] - z_midplane
-        if abs(current_side) <= tolerance:
-            current_side = 0.0
-            crossing_indices.append(current_index)
-
-        next_point = points[(index + 1) % len(points)]
-        next_side = next_point[1] - z_midplane
-        if abs(next_side) <= tolerance:
-            next_side = 0.0
-        if current_side * next_side < 0:
-            fraction = -current_side / (next_side - current_side)
-            crossing = point + fraction * (next_point - point)
-            augmented.append(crossing)
-            crossing_indices.append(len(augmented) - 1)
-
-    augmented = np.asarray(augmented)
-    # A simple closed vessel outline must enter and leave each half-plane once.
-    # More crossings would make the choice of corresponding half-paths ambiguous.
-    crossing_indices = list(dict.fromkeys(crossing_indices))
-    if len(crossing_indices) != 2:
-        raise ValueError(
-            "Boundary symmetrisation requires exactly two midplane crossings; "
-            f"found {len(crossing_indices)}."
-        )
-
-    # Cutting the cyclic polygon at the two crossings produces two open paths.
-    # Reverse the wrap-around path so both paths run between the same endpoints.
-    first, second = sorted(crossing_indices)
-    first_path = augmented[first : second + 1]
-    second_path = np.vstack((augmented[second:], augmented[: first + 1]))[::-1]
-    if np.mean(first_path[:, 1]) >= z_midplane:
-        upper_path, lower_path = first_path, second_path
-    else:
-        upper_path, lower_path = second_path, first_path
-
-    # Original upper/lower paths need not have the same vertex placement.
-    # Uniform arc-length coordinates provide meaningful pointwise partners.
-    path_count = int(np.ceil((len(points) + 2) / 2))
-    upper_path = _resample_path(upper_path, path_count)
-    lower_path = _resample_path(lower_path, path_count)
-    reflected_lower = lower_path.copy()
-    reflected_lower[:, 1] = 2 * z_midplane - reflected_lower[:, 1]
-    # Record the source discrepancy before replacing both halves by their mean.
-    mismatch = _point_rms_distance(upper_path, reflected_lower)
-    symmetric_upper = 0.5 * (upper_path + reflected_lower)
-    symmetric_upper[[0, -1], 1] = z_midplane
-    symmetric_lower = symmetric_upper.copy()
-    symmetric_lower[:, 1] = 2 * z_midplane - symmetric_upper[:, 1]
-    # Do not duplicate the two midplane endpoints when joining the mirrored
-    # lower path. The returned polygon remains closed through its implicit edge.
-    symmetric_points = np.vstack((symmetric_upper, symmetric_lower[-2:0:-1]))
-    return (
-        [{"R": float(point[0]), "Z": float(point[1])} for point in symmetric_points],
-        mismatch,
-    )
-
-
-def _resample_path(points, count):
-    """Resample an open polygonal path at uniform normalized arc length."""
-    segment_lengths = np.linalg.norm(np.diff(points, axis=0), axis=1)
-    # Drop repeated neighbours before normalising arc length; otherwise the
-    # interpolation coordinate would contain duplicate values.
-    keep = np.concatenate(([True], segment_lengths > 0))
-    points = points[keep]
-    segment_lengths = np.linalg.norm(np.diff(points, axis=0), axis=1)
-    cumulative = np.concatenate(([0.0], np.cumsum(segment_lengths)))
-    if cumulative[-1] == 0:
-        raise ValueError("Cannot resample a zero-length boundary path.")
-    coordinate = cumulative / cumulative[-1]
-    target = np.linspace(0.0, 1.0, count)
-    return np.column_stack(
-        (
-            np.interp(target, coordinate, points[:, 0]),
-            np.interp(target, coordinate, points[:, 1]),
-        )
-    )
+    result, _ = _symmetrise_boundary_with_mismatch(boundary_data, z_midplane)
+    _warn_and_plot_boundary_change(boundary_data, result, z_midplane, "Boundary")
+    return result
 
 
 def _point_rms_distance(first, second):
@@ -825,16 +856,9 @@ def _active_pair_z_midpoints(upper, lower, z_midplane):
     lower_parts = _active_parts(lower)
     # Compound circuits can store filament bundles under unrelated dictionary
     # keys. Match bundles geometrically before matching points within a bundle.
-    costs = np.asarray(
-        [
-            [
-                _geometry_mismatch(upper_part, lower_part, z_midplane, False)
-                for _, lower_part in lower_parts
-            ]
-            for _, upper_part in upper_parts
-        ]
+    upper_indices, lower_indices = _active_part_assignment(
+        upper_parts, lower_parts, z_midplane
     )
-    upper_indices, lower_indices = linear_sum_assignment(costs)
     return np.concatenate(
         [
             _pair_z_midpoints(
@@ -966,6 +990,10 @@ def _identify_active_pairs(active_data, explicit_pairs, z_midplane):
         # Explicit pairs override naming inference but still pass through all
         # existence, geometry, and winding-parity checks below.
         pairs = [(upper, lower, _strip_side(upper)) for upper, lower in explicit_pairs]
+        _check_unique(
+            [name for upper, lower, _ in pairs for name in (upper, lower)],
+            "active pair",
+        )
     else:
         # Active series circuits are normally named in unambiguous upper/lower
         # pairs. Removing the side token supplies the reduced-circuit label.
@@ -990,14 +1018,16 @@ def _identify_active_pairs(active_data, explicit_pairs, z_midplane):
     # internally symmetric, rather than silently treating it as an unmatched
     # upper- or lower-only source.
     self_names = [name for name in names if name not in paired]
+    raise_error = False
     for name in self_names:
         z_values = np.concatenate(
             [np.asarray(part["Z"]) for _, part in _active_parts(active_data[name])]
         )
         if not (np.any(z_values > z_midplane) and np.any(z_values < z_midplane)):
-            raise ValueError(
-                f"Unpaired active circuit '{name}' does not span the symmetry plane."
-            )
+            print(f"Unpaired active circuit '{name}' does not span the symmetry plane.")
+            raise_error = True
+    if raise_error:
+        raise ValueError("Unpaired active circuits found. Aborting symetrization.")
     return pairs, self_names
 
 
@@ -1019,6 +1049,10 @@ def _identify_passive_pairs(passive_data, names, explicit_pairs, z_midplane):
             (upper, lower, _passive_group(by_name[upper], upper))
             for upper, lower in explicit_pairs
         ]
+        _check_unique(
+            [name for upper, lower, _ in pairs for name in (upper, lower)],
+            "passive pair",
+        )
         paired = {name for upper, lower, _ in pairs for name in (upper, lower)}
         return pairs, [name for name in names if name not in paired]
 
@@ -1121,24 +1155,38 @@ def _active_part_winding(part):
     return float(part.get("polarity", 1.0)) * float(part.get("multiplier", 1.0))
 
 
-def _matched_active_parts(upper_parts, lower_parts, z_midplane):
-    """Return geometrically matched upper/lower active-coil parts."""
-    if len(upper_parts) != len(lower_parts):
-        return None
-    if not upper_parts:
-        return []
-    # Part names are not assumed to agree across reflected circuits. Geometry
-    # supplies the correspondence used for both mismatch and polarity checks.
+def _active_part_assignment(upper_parts, lower_parts, z_midplane):
+    """Match geometry only between bundles with compatible filament counts."""
     costs = np.asarray(
         [
             [
-                _geometry_mismatch(upper_part, lower_part, z_midplane, False)
+                (
+                    _geometry_mismatch(upper_part, lower_part, z_midplane, False)
+                    if np.size(upper_part["R"]) == np.size(lower_part["R"])
+                    else np.inf
+                )
                 for _, lower_part in lower_parts
             ]
             for _, upper_part in upper_parts
         ]
+    ).reshape(len(upper_parts), len(lower_parts))
+    try:
+        return linear_sum_assignment(costs)
+    except ValueError as error:
+        raise ValueError(
+            "Active bundles cannot be matched one-to-one with equal filament counts."
+        ) from error
+
+
+def _matched_active_parts(upper_parts, lower_parts, z_midplane):
+    """Return geometrically matched upper/lower active-coil parts."""
+    if len(upper_parts) != len(lower_parts):
+        return None
+    # Part names are not assumed to agree across reflected circuits. Geometry
+    # supplies the correspondence used for both mismatch and polarity checks.
+    upper_indices, lower_indices = _active_part_assignment(
+        upper_parts, lower_parts, z_midplane
     )
-    upper_indices, lower_indices = linear_sum_assignment(costs)
     return [
         (upper_parts[upper_index][1], lower_parts[lower_index][1])
         for upper_index, lower_index in zip(upper_indices, lower_indices)
@@ -1291,16 +1339,9 @@ def _symmetrise_active_pair(upper, lower, z_midplane):
 
     # Match compound-circuit parts independently of dictionary insertion order.
     # Each matched flat pair can then use the common element-level operation.
-    costs = np.asarray(
-        [
-            [
-                _geometry_mismatch(upper_part, lower_part, z_midplane, polygon=False)
-                for _, lower_part in lower_parts
-            ]
-            for _, upper_part in upper_parts
-        ]
+    upper_indices, lower_indices = _active_part_assignment(
+        upper_parts, lower_parts, z_midplane
     )
-    upper_indices, lower_indices = linear_sum_assignment(costs)
     mismatches = []
     for upper_index, lower_index in zip(upper_indices, lower_indices):
         upper_key, upper_part = upper_parts[upper_index]
@@ -1368,16 +1409,7 @@ def _symmetrise_self_active(element, z_midplane):
         )
     # For compound circuits, pair upper/lower parts geometrically and treat any
     # midplane-spanning part as internally self-symmetric.
-    costs = np.asarray(
-        [
-            [
-                _geometry_mismatch(upper_part, lower_part, z_midplane, False)
-                for _, lower_part in lower
-            ]
-            for _, upper_part in upper
-        ]
-    )
-    upper_indices, lower_indices = linear_sum_assignment(costs)
+    upper_indices, lower_indices = _active_part_assignment(upper, lower, z_midplane)
     for upper_index, lower_index in zip(upper_indices, lower_indices):
         upper_key, upper_part = upper[upper_index]
         lower_key, lower_part = lower[lower_index]

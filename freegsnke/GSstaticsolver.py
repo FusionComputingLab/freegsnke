@@ -329,6 +329,7 @@ class NKGSsolver:
                 warn(
                     f"Provided max_batch_size {self._max_batch_size} not honored "
                     "as it violates the minimum allowed number of batch rows."
+                    f"(total rows: {self.bndry_indices.shape[0]}; row size: {self.nx*self.ny}, max rows req: {max_batch_len})"
                 )
 
             # calculate number of batches (adds one more if there is a remainder)

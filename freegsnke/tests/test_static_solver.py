@@ -1,5 +1,6 @@
 from copy import deepcopy
 from pathlib import Path
+from warnings import catch_warnings
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -266,6 +267,46 @@ def test_static_solve(create_machine, cache, solver, order):
     assert np.allclose(
         eq.psi_func(eq.R, eq.Z, grid=False), eq.plasma_psi
     ), "Plasma-flux interpolator is stale after the solve"
+
+
+@pytest.mark.parametrize(
+    "max_batch_size, warning_needed",
+    [(1.7e4, False), (1e12, False), (100, True), (-10, True), (0, True)],
+)
+def test_max_batch_size(create_machine, max_batch_size, warning_needed):
+    """The opt-in second-order GS operator produces a consistent equilibrium."""
+    eq, profiles, _ = create_machine
+
+    from freegsnke import GSstaticsolver
+
+    eq.tokamak.set_coil_current("P6", 0)
+    eq.tokamak["P6"].control = False
+    eq.tokamak["Solenoid"].control = False
+    eq.tokamak.set_coil_current("Solenoid", 15000)
+    eq.tokamak.setControlCurrents(np.load(STATIC_CURRENT_BASELINE))
+
+    solver = GSstaticsolver.NKGSsolver(
+        eq,
+        solver_type="DST",
+        cache_greens=False,
+        max_batch_size=max_batch_size,
+    )
+    catcher = (
+        pytest.warns(Warning, match="not honored")
+        if warning_needed
+        else catch_warnings(record=True)
+    )
+
+    # error if the warning was needed but was not raised
+    with catcher as record:
+        solver.jtor = np.ones_like(solver.R)
+        solver._calculate_boundary_flux()
+
+    # error if the warning was not needed but was raised
+    assert warning_needed or not any(
+        issubclass(w.category, Warning) and "not honored" in str(w.message)
+        for w in record
+    ), f"A batch size warning was emitted where none was needed. Size limit requested: {max_batch_size}; minimum allowed: {solver.nx*solver.ny*2}"
 
 
 def test_second_order_static_solve(create_machine):

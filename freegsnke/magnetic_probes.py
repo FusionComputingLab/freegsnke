@@ -956,7 +956,7 @@ class Probes:
         if probe == "pickups":
             try:
                 greens_pl = self.greens_bz_plasma_pickup[eq_key]
-            except Exception:
+            except KeyError:
                 self.greens_bz_plasma_pickup[eq_key] = self.create_greens_BrBz_plasma(
                     eq, "pickups"
                 )[1]
@@ -1041,7 +1041,7 @@ class Probes:
         if probe == "pickups":
             try:
                 greens_pl = self.greens_B_plasma_oriented[eq_key]
-            except Exception:
+            except KeyError:
                 #  add new greens functions to dictionary
                 self.greens_B_plasma_oriented[eq_key] = (
                     self.create_greens_B_oriented_plasma(eq, "floops")

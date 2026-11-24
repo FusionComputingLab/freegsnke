@@ -52,6 +52,8 @@ jobs:
         run: jupyter nbconvert --execute --to notebook --inplace "examples/example07e - KSTAR.ipynb"
       - name: Check example07f
         run: jupyter nbconvert --execute --to notebook --inplace "examples/example07f - DIII-D.ipynb"
+      - name: Check example07g
+        run: jupyter nbconvert --execute --to notebook --inplace "examples/example07g - MAST.ipynb"
       - name: Check example09
         run: jupyter nbconvert --execute --to notebook --inplace "examples/example09 - virtual_circuits_MASTU.ipynb"
       - name: Check example10

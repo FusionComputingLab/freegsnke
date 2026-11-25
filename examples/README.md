@@ -7,6 +7,7 @@ These example Jupyter notebooks are intended to be the **first port of call for 
 | Example 00 | Learn how to build a generic tokamak object. | Anyone |
 | Example 01a | Learn how to use the static inverse solver. | Anyone |
 | Example 01b | Learn how to use more advanced features of the static inverse solver. | Anyone |
+| Example 01c | Learn how to construct some advanced divertor configurations using the static inverse solver. | Anyone |
 | Example 02a | Learn how to use the static forward solver. | Anyone |
 | Example 02b | Learn how to use alternate plasma flux guesses in the static solvers. | Anyone |
 | Example 03a | Learn how to extract results from a calculated equilibrium. | Anyone |
@@ -22,6 +23,10 @@ These example Jupyter notebooks are intended to be the **first port of call for 
 | Example 07a | Static inverse solve in the "Anamak" toy tokamak. | Anyone |
 | Example 07b | Static inverse solve in a SPARC-like tokamak. | Anyone |
 | Example 07c | Static inverse solve in an ITER-like tokamak. | Anyone |
+| Example 07d | Static forward solve in an EAST-like tokamak. | Anyone |
+| Example 07e | Static inverse solve in a KSTAR-like tokamak. | Anyone |
+| Example 07f | Static inverse solve in a DIII-D-like tokamak. | Anyone |
+| Example 07g | Static forward solve in the MAST tokamak, using input data from FAIR-MAST. | Anyone |
 | Example 09 | Learn how to use and build virtual circuits for plasma shape control. | Anyone |
 | Example 10 | Learn how to calculate growth rates associated with vertically unstable modes. | Anyone |
 | Example 11 | Learn how to use the evolutive solver alongside a virtual plasma control system (FreeGSNKE Pulse Design Tool). | Anyone |

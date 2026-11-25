@@ -794,3 +794,31 @@ def test_full_replacement_overlap_policy(tiny_machine_data, equilibrium, strict)
         with pytest.warns(UserWarning, match="Overlapping coil elements"):
             assert method(**args) is owner
         assert "new" in machine.coils_list
+
+
+def test_check_for_overlapping_elements_accepts_one_element_dimension_arrays():
+    """1-element array dR/dZ dimensions are accepted without scalar TypeError."""
+    active = {
+        "coil_a": {
+            "R": np.array([1.0]),
+            "Z": np.array([0.0]),
+            "dR": np.array([0.2]),
+            "dZ": np.array([0.2]),
+        },
+        "coil_b": {
+            "R": np.array([1.15]),
+            "Z": np.array([0.0]),
+            "dR": np.array([0.2]),
+            "dZ": np.array([0.2]),
+        },
+        "coil_clear": {
+            "R": np.array([2.0]),
+            "Z": np.array([0.0]),
+            "dR": np.array([0.2]),
+            "dZ": np.array([0.2]),
+        },
+    }
+
+    assert build_machine.check_for_overlapping_elements(active, []) == [
+        ("coil_a", "coil_b")
+    ]

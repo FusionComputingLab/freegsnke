@@ -49,7 +49,7 @@ from .multi_coil import MultiCoil
 from .passive_structure import PassiveStructure
 from .refine_passive import generate_refinement
 
-_OVERLAP_AREA_TOLERANCE = 1e-12
+_OVERLAP_AREA_TOLERANCE = 1e-6
 
 
 def _element_polygons(element, label, *, active=False):
@@ -171,7 +171,7 @@ def check_for_overlapping_elements(
         unnamed entries use ``passive_{index}`` with a zero-based index.
     area_tolerance : float, optional
         Maximum intersection area, in square metres, ignored when checking
-        overlaps. Must be finite and non-negative. Defaults to ``1e-12``.
+        overlaps. Must be finite and non-negative. Defaults to ``1e-6``.
 
     Returns
     -------
@@ -284,7 +284,7 @@ def _validate_incremental_element(
     The machine and supplied descriptions are not modified. Active candidates
     are checked for internal overlaps as well as overlaps with existing elements.
     Each candidate entry is then checked against the remaining cached machine
-    geometry. Touching edges and intersection areas up to ``1e-12`` square
+    geometry. Touching edges and intersection areas up to ``1e-6`` square
     metres are allowed. This helper does not validate label existence or
     uniqueness.
     """
@@ -357,7 +357,7 @@ def check_for_overlapping_single_element(
         Passive labels are excluded only on an exact match. Defaults to None.
     area_tolerance : float, optional
         Maximum intersection area, in square metres, ignored when checking
-        overlaps. Must be finite and non-negative. Defaults to ``1e-12``.
+        overlaps. Must be finite and non-negative. Defaults to ``1e-6``.
     active : bool, optional
         Set True for an active winding entry, whose coordinates are winding
         centres rather than polygon vertices. Defaults to False (passive).

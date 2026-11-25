@@ -28,8 +28,12 @@ jobs:
         run: jupyter nbconvert --execute --to notebook --inplace "examples/example01b - advanced_static_inverse_solve.ipynb"
       - name: Check example01c
         run: jupyter nbconvert --execute --to notebook --inplace "examples/example01c - advanced_divertor_configurations.ipynb"
-      - name: Check example02
+      - name: Check example02a
         run: jupyter nbconvert --execute --to notebook --inplace "examples/example02 - static_forward_solve_MASTU.ipynb"
+      - name: Check example02a
+        run: jupyter nbconvert --execute --to notebook --inplace "examples/example02a - static_forward_solve_MASTU.ipynb"
+      - name: Check example02b
+        run: jupyter nbconvert --execute --to notebook --inplace "examples/example02b - alternative_plasma_psi_initial_guess.ipynb"
       - name: Check example03a
         run: jupyter nbconvert --execute --to notebook --inplace "examples/example03a - extracting_equilibrium_quantities.ipynb"
       - name: Check example04

@@ -117,9 +117,19 @@ def _passive_element_shapes(passive_data):
             yield label, shape
 
 
+def _overlap_details(first, second, area_tolerance=_OVERLAP_AREA_TOLERANCE):
+    """Return ``(area_m2, r_center, z_center)`` if polygons overlap, else None."""
+    intersection = first.intersection(second)
+    area = intersection.area
+    if area <= area_tolerance:
+        return None
+    centroid = intersection.centroid
+    return area, centroid.x, centroid.y
+
+
 def _polygons_overlap(first, second, area_tolerance=_OVERLAP_AREA_TOLERANCE):
     """Return whether two polygons overlap by more than the area tolerance."""
-    return first.intersection(second).area > area_tolerance
+    return _overlap_details(first, second, area_tolerance) is not None
 
 
 def _validate_area_tolerance(area_tolerance):
@@ -148,6 +158,39 @@ def _validate_area_tolerance(area_tolerance):
     if not np.isfinite(area_tolerance) or area_tolerance < 0:
         raise ValueError("area_tolerance must be finite and non-negative.")
     return area_tolerance
+
+
+def _collect_overlapping_element_details(
+    active_data, passive_data, area_tolerance=_OVERLAP_AREA_TOLERANCE
+):
+    """Collect ``(first, second, r, z, area_m2)`` for all overlapping pairs."""
+    area_tolerance = _validate_area_tolerance(area_tolerance)
+    active_elements = list(_active_element_shapes(active_data))
+    passive_elements = list(_passive_element_shapes(passive_data))
+
+    overlaps = []
+    for index, (first_name, first_shape) in enumerate(active_elements):
+        for second_name, second_shape in active_elements[index + 1 :]:
+            details = _overlap_details(first_shape, second_shape, area_tolerance)
+            if details is not None:
+                area, r_pos, z_pos = details
+                overlaps.append((first_name, second_name, r_pos, z_pos, area))
+
+    for index, (first_name, first_shape) in enumerate(passive_elements):
+        for second_name, second_shape in passive_elements[index + 1 :]:
+            details = _overlap_details(first_shape, second_shape, area_tolerance)
+            if details is not None:
+                area, r_pos, z_pos = details
+                overlaps.append((first_name, second_name, r_pos, z_pos, area))
+
+    for active_name, active_shape in active_elements:
+        for passive_name, passive_shape in passive_elements:
+            details = _overlap_details(active_shape, passive_shape, area_tolerance)
+            if details is not None:
+                area, r_pos, z_pos = details
+                overlaps.append((active_name, passive_name, r_pos, z_pos, area))
+
+    return overlaps
 
 
 def check_for_overlapping_elements(
@@ -200,38 +243,35 @@ def check_for_overlapping_elements(
     overlaps; touching edges are allowed. Overlaps are returned, not raised as
     exceptions.
     """
-    area_tolerance = _validate_area_tolerance(area_tolerance)
-    active_elements = list(_active_element_shapes(active_data))
-    passive_elements = list(_passive_element_shapes(passive_data))
+    overlaps = _collect_overlapping_element_details(
+        active_data, passive_data, area_tolerance
+    )
+    return [(first, second) for first, second, *_ in overlaps]
 
-    overlaps = []
-    for index, (first_name, first_shape) in enumerate(active_elements):
-        for second_name, second_shape in active_elements[index + 1 :]:
-            if _polygons_overlap(first_shape, second_shape, area_tolerance):
-                overlaps.append((first_name, second_name))
 
-    for index, (first_name, first_shape) in enumerate(passive_elements):
-        for second_name, second_shape in passive_elements[index + 1 :]:
-            if _polygons_overlap(first_shape, second_shape, area_tolerance):
-                overlaps.append((first_name, second_name))
-
-    for active_name, active_shape in active_elements:
-        for passive_name, passive_shape in passive_elements:
-            if _polygons_overlap(active_shape, passive_shape, area_tolerance):
-                overlaps.append((active_name, passive_name))
-
-    return overlaps
+def _format_overlap_entry(entry):
+    """Format one overlap tuple as a human-readable line."""
+    if len(entry) == 2:
+        first, second = entry
+        return f"  - {first} and {second}"
+    first, second, r_pos, z_pos, area_m2 = entry
+    r_pos = 0.0 if abs(r_pos) < 5e-4 else r_pos
+    z_pos = 0.0 if abs(z_pos) < 5e-4 else z_pos
+    return (
+        f"  - {first} and {second} "
+        f"(R={r_pos:.3f} m, Z={z_pos:.3f} m, area={area_m2 * 1e4:.4g} cm^2)"
+    )
 
 
 def _report_overlaps(overlaps, strict_overlap_check):
     """Warn about overlaps, or reject them when strict checking is requested."""
     if not overlaps:
         return
-    overlap_list = "; ".join(f"{first} and {second}" for first, second in overlaps)
-    message = f"Overlapping coil elements detected: {overlap_list}"
+    overlap_lines = "\n".join(_format_overlap_entry(entry) for entry in overlaps)
+    message = f"Overlapping coil elements detected:\n{overlap_lines}"
     if strict_overlap_check:
         raise ValueError(message)
-    warnings.warn(message, UserWarning, stacklevel=3)
+    warnings.warn(message, UserWarning, stacklevel=2)
 
 
 def _validate_incremental_element(
@@ -303,7 +343,7 @@ def _validate_incremental_element(
 
     if active:
         # Checks only the active internal windings/sub-coils overlaps.
-        overlaps = check_for_overlapping_elements({name: element}, [])
+        overlaps = _collect_overlapping_element_details({name: element}, [])
         if "R" in element or "Z" in element:
             candidates = [(name, element)]
         else:
@@ -317,11 +357,57 @@ def _validate_incremental_element(
 
     for label, candidate in candidates:
         overlaps.extend(
-            check_for_overlapping_single_element(
+            _collect_single_element_overlap_details(
                 dict(candidate, name=label), active_data, passive_data, active=active
             )
         )
     _report_overlaps(overlaps, strict_overlap_check)
+
+
+def _collect_single_element_overlap_details(
+    element,
+    active_data,
+    passive_data,
+    exclude_name=None,
+    area_tolerance=_OVERLAP_AREA_TOLERANCE,
+    *,
+    active=False,
+):
+    """Collect ``(candidate, existing, r, z, area_m2)`` for overlapping pairs."""
+    area_tolerance = _validate_area_tolerance(area_tolerance)
+    candidate_name = element.get("name", "candidate")
+    candidate_shapes = _element_polygons(element, candidate_name, active=active)
+    existing_shapes = [
+        *(
+            (name, shape)
+            for name, shape in _active_element_shapes(active_data)
+            if exclude_name is None
+            or (
+                name != exclude_name
+                and not name.startswith(f"{exclude_name}.")
+                and not name.startswith(f"{exclude_name}[")
+            )
+        ),
+        *(
+            (name, shape)
+            for name, shape in _passive_element_shapes(passive_data)
+            if name != exclude_name
+        ),
+    ]
+
+    overlaps = []
+    for candidate_index, candidate_shape in enumerate(candidate_shapes):
+        candidate_label = (
+            candidate_name
+            if len(candidate_shapes) == 1
+            else f"{candidate_name}[{candidate_index}]"
+        )
+        for existing_name, existing_shape in existing_shapes:
+            details = _overlap_details(candidate_shape, existing_shape, area_tolerance)
+            if details is not None:
+                area, r_pos, z_pos = details
+                overlaps.append((candidate_label, existing_name, r_pos, z_pos, area))
+    return overlaps
 
 
 def check_for_overlapping_single_element(
@@ -389,38 +475,15 @@ def check_for_overlapping_single_element(
     areas strictly greater than ``area_tolerance`` count as overlaps; touching
     edges are allowed. Overlaps are returned, not raised as exceptions.
     """
-    area_tolerance = _validate_area_tolerance(area_tolerance)
-    candidate_name = element.get("name", "candidate")
-    candidate_shapes = _element_polygons(element, candidate_name, active=active)
-    existing_shapes = [
-        *(
-            (name, shape)
-            for name, shape in _active_element_shapes(active_data)
-            if exclude_name is None
-            or (
-                name != exclude_name
-                and not name.startswith(f"{exclude_name}.")
-                and not name.startswith(f"{exclude_name}[")
-            )
-        ),
-        *(
-            (name, shape)
-            for name, shape in _passive_element_shapes(passive_data)
-            if name != exclude_name
-        ),
-    ]
-
-    overlaps = []
-    for candidate_index, candidate_shape in enumerate(candidate_shapes):
-        candidate_label = (
-            candidate_name
-            if len(candidate_shapes) == 1
-            else f"{candidate_name}[{candidate_index}]"
-        )
-        for existing_name, existing_shape in existing_shapes:
-            if _polygons_overlap(candidate_shape, existing_shape, area_tolerance):
-                overlaps.append((candidate_label, existing_name))
-    return overlaps
+    overlaps = _collect_single_element_overlap_details(
+        element,
+        active_data,
+        passive_data,
+        exclude_name=exclude_name,
+        area_tolerance=area_tolerance,
+        active=active,
+    )
+    return [(first, second) for first, second, *_ in overlaps]
 
 
 def tokamak(
@@ -494,7 +557,9 @@ def tokamak(
         magnetic_probe_path=magnetic_probe_path,
         refine_mode=refine_mode,
         strict_overlap_check=strict_overlap_check,
+        _defer_overlap_warning=True,
     )
+    deferred_overlaps = components.pop("_overlapping_elements", [])
 
     # build the tokamak
     tokamak = Machine(
@@ -505,6 +570,7 @@ def tokamak(
     apply_tokamak_components(tokamak, components, rebuild_R_and_M=False)
 
     print("Tokamak built.")
+    _report_overlaps(deferred_overlaps, strict_overlap_check=False)
 
     return tokamak
 
@@ -523,6 +589,7 @@ def build_tokamak_components(
     refine_mode: str = "G",
     *,
     strict_overlap_check: bool = False,
+    _defer_overlap_warning: bool = False,
 ) -> dict:
     """
     Build the reusable pieces of a FreeGSNKE machine description.
@@ -583,11 +650,15 @@ def build_tokamak_components(
         wall_path=wall_path,
     )
 
-    overlapping_elements = check_for_overlapping_elements(
+    overlapping_elements = _collect_overlapping_element_details(
         active_data=active_coils,
         passive_data=passive_coils,
     )
-    _report_overlaps(overlapping_elements, strict_overlap_check)
+    if strict_overlap_check or not _defer_overlap_warning:
+        _report_overlaps(overlapping_elements, strict_overlap_check)
+        deferred_overlaps = []
+    else:
+        deferred_overlaps = overlapping_elements
 
     # build the actives into their circuits
     coil_circuits = build_actives(active_coils=active_coils)
@@ -640,6 +711,7 @@ def build_tokamak_components(
             "wall": deepcopy(wall),
             "magnetic_probes": deepcopy(magnetic_probe_data),
         },
+        "_overlapping_elements": deferred_overlaps,
     }
 
 
@@ -1732,7 +1804,9 @@ def update_tokamak(
         magnetic_probe_path=magnetic_probe_path,
         refine_mode=refine_mode,
         strict_overlap_check=strict_overlap_check,
+        _defer_overlap_warning=True,
     )
+    deferred_overlaps = components.pop("_overlapping_elements", [])
     apply_tokamak_components(
         tokamak,
         components,
@@ -1740,6 +1814,7 @@ def update_tokamak(
         rebuild_R_and_M=True,
     )
     print("Tokamak updated.")
+    _report_overlaps(deferred_overlaps, strict_overlap_check=False)
     return tokamak
 
 

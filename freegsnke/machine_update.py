@@ -67,6 +67,8 @@ class Machine(machine.Machine):
         magnetic_probe_path: str | None = None,
         refine_mode: str = "G",
         preserve_currents: bool = True,
+        *,
+        strict_overlap_check: bool = False,
     ) -> Machine:
         """
         Update this machine in place from direct data dictionaries or pickle paths.
@@ -104,6 +106,9 @@ class Machine(machine.Machine):
         preserve_currents : bool, optional
             If True, currents for labels that are present in both the old and new
             machine descriptions are copied onto the updated coil objects.
+        strict_overlap_check : bool, optional
+            If True, reject overlaps with ValueError. By default, warn and
+            continue. Invalid geometry always raises.
 
         Returns
         -------
@@ -137,10 +142,16 @@ class Machine(machine.Machine):
             magnetic_probe_path=magnetic_probe_path,
             refine_mode=refine_mode,
             preserve_currents=preserve_currents,
+            strict_overlap_check=strict_overlap_check,
         )
 
     def update_active_coil(
-        self, coil_name: str, active_coil_data: dict, preserve_current: bool = True
+        self,
+        coil_name: str,
+        active_coil_data: dict,
+        preserve_current: bool = True,
+        *,
+        strict_overlap_check: bool = False,
     ) -> Machine:
         """
         Update one active coil/circuit in place from direct machine-description data.
@@ -156,6 +167,9 @@ class Machine(machine.Machine):
         preserve_current : bool, optional
             If True, the old current on ``coil_name`` is copied onto the
             replacement coil/circuit. Defaults to True.
+        strict_overlap_check : bool, optional
+            If True, reject overlaps with ValueError. By default, warn and
+            continue. Invalid geometry always raises.
 
         Returns
         -------
@@ -180,9 +194,16 @@ class Machine(machine.Machine):
             coil_name=coil_name,
             active_coil_data=active_coil_data,
             preserve_current=preserve_current,
+            strict_overlap_check=strict_overlap_check,
         )
 
-    def add_active_coil(self, coil_name: str, active_coil_data: dict) -> Machine:
+    def add_active_coil(
+        self,
+        coil_name: str,
+        active_coil_data: dict,
+        *,
+        strict_overlap_check: bool = False,
+    ) -> Machine:
         """
         Add one new active coil/circuit in place from direct machine-description data.
 
@@ -192,6 +213,9 @@ class Machine(machine.Machine):
             Label for the new active coil/circuit.
         active_coil_data : dict
             Machine-description entry for the new active coil/circuit.
+        strict_overlap_check : bool, optional
+            If True, reject overlaps with ValueError. By default, warn and
+            continue. Invalid geometry always raises.
 
         Returns
         -------
@@ -217,6 +241,7 @@ class Machine(machine.Machine):
             self,
             coil_name=coil_name,
             active_coil_data=active_coil_data,
+            strict_overlap_check=strict_overlap_check,
         )
 
     def remove_active_coil(self, coil_name: str) -> Machine:
@@ -254,6 +279,8 @@ class Machine(machine.Machine):
         passive_data: dict,
         preserve_current: bool = True,
         refine_mode: str = "G",
+        *,
+        strict_overlap_check: bool = False,
     ) -> Machine:
         """
         Update one passive structure in place from direct machine-description data.
@@ -272,6 +299,9 @@ class Machine(machine.Machine):
         refine_mode : str, optional
             Refinement mode for extended (polygonal) passive structures.
             Defaults to ``"G"``.
+        strict_overlap_check : bool, optional
+            If True, reject overlaps with ValueError. By default, warn and
+            continue. Invalid geometry always raises.
 
         Returns
         -------
@@ -298,10 +328,16 @@ class Machine(machine.Machine):
             passive_data=passive_data,
             preserve_current=preserve_current,
             refine_mode=refine_mode,
+            strict_overlap_check=strict_overlap_check,
         )
 
     def add_passive_structure(
-        self, passive_data: dict, name: str | None = None, refine_mode: str = "G"
+        self,
+        passive_data: dict,
+        name: str | None = None,
+        refine_mode: str = "G",
+        *,
+        strict_overlap_check: bool = False,
     ) -> Machine:
         """
         Add one new passive structure in place from direct machine-description data.
@@ -317,6 +353,9 @@ class Machine(machine.Machine):
         refine_mode : str, optional
             Refinement mode for extended (polygonal) passive structures.
             Defaults to ``"G"``.
+        strict_overlap_check : bool, optional
+            If True, reject overlaps with ValueError. By default, warn and
+            continue. Invalid geometry always raises.
 
         Returns
         -------
@@ -342,6 +381,7 @@ class Machine(machine.Machine):
             passive_data=passive_data,
             name=name,
             refine_mode=refine_mode,
+            strict_overlap_check=strict_overlap_check,
         )
 
     def remove_passive_structure(self, name: str) -> Machine:

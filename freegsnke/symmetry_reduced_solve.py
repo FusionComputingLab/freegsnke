@@ -1,4 +1,30 @@
-"""Specialised solver interface for up-down symmetry-reduced evolution."""
+"""
+Specialised solver interface for up-down symmetry-reduced evolution.
+
+Copyright 2025 UKAEA, UKRI-STFC, and The Authors, as per the COPYRIGHT and
+README files.
+
+This file is part of FreeGSNKE.
+
+FreeGSNKE is free software: you can redistribute it and/or modify
+it under the terms of the GNU Lesser General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+FreeGSNKE is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Lesser General Public License for more details.
+
+You should have received a copy of the GNU Lesser General Public License
+along with FreeGSNKE. If not, see <http://www.gnu.org/licenses/>.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+import numpy as np
 
 from .nonlinear_solve import nl_solver
 
@@ -29,13 +55,30 @@ class SymmetryReducedSolver(nl_solver):
 
     def __init__(
         self,
-        profiles,
-        eq,
-        GSStaticSolver,
+        profiles: object,
+        eq: object,
+        GSStaticSolver: object,
         *,
-        passive_reflection_operator=None,
-        **kwargs,
-    ):
+        passive_reflection_operator: np.ndarray | None = None,
+        **kwargs: Any,
+    ) -> None:
+        """Initialise the symmetry-reduced evolutive solver.
+
+        Parameters
+        ----------
+        profiles : object
+            Profile object accepted by :class:`~freegsnke.nonlinear_solve.nl_solver`.
+        eq : object
+            Up-down symmetric equilibrium object.
+        GSStaticSolver : object
+            Static Grad-Shafranov solver instance.
+        passive_reflection_operator : np.ndarray, optional
+            Reflection permutation matrix between passive structures; required
+            when passive structures are present.
+        **kwargs : Any
+            Additional keyword arguments forwarded to
+            :class:`~freegsnke.nonlinear_solve.nl_solver`.
+        """
         force_symmetric = kwargs.pop("force_up_down_symmetric", True)
         remove_odd_modes = kwargs.pop("remove_odd_passive_modes", True)
         if not force_symmetric:

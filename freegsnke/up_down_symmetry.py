@@ -15,15 +15,28 @@ FreeGSNKE is free software: you can redistribute it and/or modify it under the
 terms of the GNU Lesser General Public License as published by the Free
 Software Foundation, either version 3 of the License, or (at your option) any
 later version.
+
+FreeGSNKE is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Lesser General Public License for more details.
+
+You should have received a copy of the GNU Lesser General Public License
+along with FreeGSNKE. If not, see <http://www.gnu.org/licenses/>.
 """
+
+from __future__ import annotations
 
 import re
 import warnings
+from collections.abc import Sequence
 from copy import deepcopy
 from dataclasses import dataclass
+from typing import Any
 
 import matplotlib.pyplot as plt
 import numpy as np
+import numpy.typing as npt
 from scipy.optimize import linear_sum_assignment
 from shapely.affinity import scale
 from shapely.geometry import Point, Polygon
@@ -86,7 +99,9 @@ class PreparedUpDownMachine:
     geometry_discrepancies: tuple
     excluded_odd_active_names: tuple
 
-    def largest_geometry_discrepancies(self, count=None):
+    def largest_geometry_discrepancies(
+        self, count: int | None = None
+    ) -> tuple[GeometryDiscrepancy, ...]:
         """Return pre-symmetrisation discrepancies in descending RMS order."""
         records = tuple(
             sorted(
@@ -102,12 +117,12 @@ class PreparedUpDownMachine:
         return records[:count]
 
     @property
-    def maximum_geometry_discrepancy(self):
+    def maximum_geometry_discrepancy(self) -> GeometryDiscrepancy | None:
         """Return the largest pre-symmetrisation discrepancy, or None."""
         largest = self.largest_geometry_discrepancies(count=1)
         return None if not largest else largest[0]
 
-    def check_geometry_tolerance(self, max_reflected_rms):
+    def check_geometry_tolerance(self, max_reflected_rms: float) -> None:
         """Raise if any component exceeds a reflected RMS tolerance in metres."""
         max_reflected_rms = float(max_reflected_rms)
         if max_reflected_rms < 0:
@@ -132,7 +147,7 @@ class PreparedUpDownMachine:
         )
 
     @property
-    def active_reflection_operator(self):
+    def active_reflection_operator(self) -> np.ndarray:
         """Return the reflection permutation in the original active basis."""
         return _reflection_operator(
             self.original_active_names,
@@ -141,7 +156,7 @@ class PreparedUpDownMachine:
         )
 
     @property
-    def passive_reflection_operator(self):
+    def passive_reflection_operator(self) -> np.ndarray:
         """Return the reflection permutation in the original passive basis."""
         return _reflection_operator(
             self.passive_names,
@@ -150,7 +165,7 @@ class PreparedUpDownMachine:
         )
 
     @property
-    def reflection_operator(self):
+    def reflection_operator(self) -> np.ndarray:
         """Return the block reflection permutation for all metal currents."""
         active = self.active_reflection_operator
         passive = self.passive_reflection_operator
@@ -167,7 +182,7 @@ class PreparedUpDownMachine:
         return reflection
 
     @property
-    def even_machine_reflection_operator(self):
+    def even_machine_reflection_operator(self) -> np.ndarray:
         """
         Return reflection in the reduced machine basis used for even evolution.
 
@@ -181,7 +196,7 @@ class PreparedUpDownMachine:
         return reflection
 
     @property
-    def active_original_to_even(self):
+    def active_original_to_even(self) -> np.ndarray:
         """
         Return the map from original active currents to pair-average currents.
 
@@ -196,7 +211,7 @@ class PreparedUpDownMachine:
         return forward
 
     @property
-    def active_original_to_odd(self):
+    def active_original_to_odd(self) -> np.ndarray:
         """
         Return the map from original active currents to pair-difference currents.
 
@@ -211,7 +226,7 @@ class PreparedUpDownMachine:
         return odd_forward
 
     @property
-    def active_even_to_original(self):
+    def active_even_to_original(self) -> np.ndarray:
         """Return the map from reduced even currents to original active currents."""
         _, _, backward, _, _ = _parity_transforms(
             self.original_active_names,
@@ -221,7 +236,7 @@ class PreparedUpDownMachine:
         return backward
 
     @property
-    def active_odd_to_original(self):
+    def active_odd_to_original(self) -> np.ndarray:
         """Return the map from odd pair currents to original active currents."""
         _, _, _, odd_backward, _ = _parity_transforms(
             self.original_active_names,
@@ -231,7 +246,7 @@ class PreparedUpDownMachine:
         return odd_backward
 
     @property
-    def active_odd_names(self):
+    def active_odd_names(self) -> tuple[str, ...]:
         """Return labels for the active odd-current coordinates."""
         _, _, _, _, odd_names = _parity_transforms(
             self.original_active_names,
@@ -240,7 +255,9 @@ class PreparedUpDownMachine:
         )
         return odd_names
 
-    def split_active_currents(self, currents):
+    def split_active_currents(
+        self, currents: npt.ArrayLike
+    ) -> tuple[np.ndarray, np.ndarray]:
         """
         Split original active currents into even and odd coordinates.
 
@@ -266,7 +283,11 @@ class PreparedUpDownMachine:
         )
         return even @ currents, odd @ currents
 
-    def combine_active_currents(self, even_currents, odd_currents=None):
+    def combine_active_currents(
+        self,
+        even_currents: npt.ArrayLike,
+        odd_currents: npt.ArrayLike | None = None,
+    ) -> np.ndarray:
         """
         Reconstruct original active currents from even and odd coordinates.
 
@@ -292,7 +313,7 @@ class PreparedUpDownMachine:
             currents = currents + odd @ odd_currents
         return currents
 
-    def project_metal_currents_even(self, currents):
+    def project_metal_currents_even(self, currents: npt.ArrayLike) -> np.ndarray:
         """Project all original-basis metal currents onto the even subspace."""
         currents = np.asarray(currents)
         if currents.shape[0] != self.reflection_operator.shape[0]:
@@ -301,7 +322,7 @@ class PreparedUpDownMachine:
         # are unchanged by reflection. This removes the odd current component.
         return 0.5 * (currents + self.reflection_operator @ currents)
 
-    def symmetrise_square_operator(self, operator):
+    def symmetrise_square_operator(self, operator: npt.ArrayLike) -> np.ndarray:
         """
         Average a full metal-current operator with its reflected counterpart.
 
@@ -310,7 +331,9 @@ class PreparedUpDownMachine:
         """
         return _symmetrise_square_operator(operator, self.reflection_operator)
 
-    def symmetrise_even_machine_resistances(self, resistances):
+    def symmetrise_even_machine_resistances(
+        self, resistances: npt.ArrayLike
+    ) -> np.ndarray:
         """Reflection-average resistances in the reduced even-machine basis."""
         resistances = np.asarray(resistances)
         reflection = self.even_machine_reflection_operator
@@ -318,13 +341,15 @@ class PreparedUpDownMachine:
             raise ValueError("Resistance vector is incompatible with the machine.")
         return 0.5 * (resistances + reflection @ resistances)
 
-    def symmetrise_even_machine_square_operator(self, operator):
+    def symmetrise_even_machine_square_operator(
+        self, operator: npt.ArrayLike
+    ) -> np.ndarray:
         """Reflection-average an operator in the reduced even-machine basis."""
         return _symmetrise_square_operator(
             operator, self.even_machine_reflection_operator
         )
 
-    def symmetrise_greens(self, greens, z_axis=-1):
+    def symmetrise_greens(self, greens: npt.ArrayLike, z_axis: int = -1) -> np.ndarray:
         """
         Average coil Green functions with their reflected partners.
 
@@ -337,12 +362,16 @@ class PreparedUpDownMachine:
         """
         return _symmetrise_greens(greens, self.reflection_operator, z_axis)
 
-    def symmetrise_even_machine_greens(self, greens, z_axis=-1):
+    def symmetrise_even_machine_greens(
+        self, greens: npt.ArrayLike, z_axis: int = -1
+    ) -> np.ndarray:
         """Reflection-average Green functions in the reduced machine basis."""
         return _symmetrise_greens(greens, self.even_machine_reflection_operator, z_axis)
 
 
-def _symmetrise_square_operator(operator, reflection):
+def _symmetrise_square_operator(
+    operator: npt.ArrayLike, reflection: np.ndarray
+) -> np.ndarray:
     """Average a metal operator with its reflected input/output coordinates."""
     operator = np.asarray(operator)
     if operator.shape != reflection.shape:
@@ -350,7 +379,9 @@ def _symmetrise_square_operator(operator, reflection):
     return 0.5 * (operator + reflection @ operator @ reflection)
 
 
-def _symmetrise_greens(greens, reflection, z_axis=-1):
+def _symmetrise_greens(
+    greens: npt.ArrayLike, reflection: np.ndarray, z_axis: int = -1
+) -> np.ndarray:
     """Reflect both the observation grid and the source-current coordinates."""
     greens = np.asarray(greens)
     if greens.shape[0] != len(reflection):
@@ -360,16 +391,16 @@ def _symmetrise_greens(greens, reflection, z_axis=-1):
 
 
 def prepare_up_down_symmetric_machine(
-    active_coils_data,
-    passive_coils_data=None,
-    limiter_data=None,
-    wall_data=None,
-    z_midplane=0.0,
-    active_pairs=None,
-    passive_pairs=None,
-    max_pair_mismatch=None,
-    exclude_odd_active=False,
-):
+    active_coils_data: dict[str, Any],
+    passive_coils_data: Sequence[dict[str, Any]] | None = None,
+    limiter_data: Sequence[dict[str, float]] | None = None,
+    wall_data: Sequence[dict[str, float]] | None = None,
+    z_midplane: float | str = 0.0,
+    active_pairs: Sequence[tuple[str, str]] | None = None,
+    passive_pairs: Sequence[tuple[str, str]] | None = None,
+    max_pair_mismatch: float | None = None,
+    exclude_odd_active: bool = False,
+) -> PreparedUpDownMachine:
     """
     Identify pairs and construct an exactly up-down symmetric description.
 
@@ -665,7 +696,9 @@ def prepare_up_down_symmetric_machine(
     return prepared
 
 
-def symmetrise_limiter(limiter_data, z_midplane=0.0):
+def symmetrise_limiter(
+    limiter_data: Sequence[dict[str, float]], z_midplane: float = 0.0
+) -> list[dict[str, float]]:
     """
     Keep the intersection of a limiter and its reflection about the midplane.
 
@@ -784,7 +817,9 @@ def _warn_and_plot_boundary_change(original, symmetric, z_midplane, name):
     plt.show(block=False)
 
 
-def symmetrise_boundary(boundary_data, z_midplane=0.0):
+def symmetrise_boundary(
+    boundary_data: Sequence[dict[str, float]], z_midplane: float = 0.0
+) -> list[dict[str, float]]:
     """
     Keep the intersection of a boundary and its reflection about the midplane.
 

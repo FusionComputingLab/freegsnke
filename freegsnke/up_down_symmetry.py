@@ -31,7 +31,7 @@ import re
 import warnings
 from collections.abc import Sequence
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 import matplotlib.pyplot as plt
@@ -98,6 +98,197 @@ class PreparedUpDownMachine:
     midplane_fit_samples: int
     geometry_discrepancies: tuple
     excluded_odd_active_names: tuple
+    source_active_coils_data: dict | None = field(default=None, repr=False)
+    source_passive_coils_data: list | None = field(default=None, repr=False)
+    source_limiter_data: list | None = field(default=None, repr=False)
+    source_wall_data: list | None = field(default=None, repr=False)
+
+    def summary(self, print_summary: bool = True) -> str:
+        """Format and optionally print a summary of the symmetrisation.
+
+        Parameters
+        ----------
+        print_summary : bool, default=True
+            If True, print the summary text to standard output.
+
+        Returns
+        -------
+        str
+            Formatted summary string.
+        """
+        lines = [
+            f"Source midplane:             {self.source_z_midplane * 1e3:+.3f} mm",
+            f"Applied whole-machine shift: {self.z_shift * 1e3:+.3f} mm",
+            f"Midplane fit RMS:            {self.midplane_fit_rms * 1e3:.3f} mm",
+            f"Matched fit samples:         {self.midplane_fit_samples}",
+            f"Excluded odd circuits:       {self.excluded_odd_active_names}",
+            f"Active reflected pairs:      {len(self.active_pairs)}",
+            f"Passive reflected pairs:     {len(self.passive_pairs)}",
+        ]
+        if self.geometry_discrepancies:
+            lines.append("Component discrepancies (pre-averaging reflected RMS):")
+            for record in self.largest_geometry_discrepancies():
+                lines.append(
+                    f"  {record.component:8s} {record.upper_name:18s} / "
+                    f"{record.lower_name:18s}: {record.reflected_rms * 1e3:7.3f} mm"
+                )
+        text = "\n".join(lines)
+        if print_summary:
+            print(text)
+        return text
+
+    def plot(self, axis: plt.Axes | None = None, show: bool = True) -> plt.Axes:
+        """Plot the original and symmetrised machine geometries overlaid.
+
+        Parameters
+        ----------
+        axis : matplotlib.axes.Axes, optional
+            Existing axes to draw onto. A new figure and axes are created when
+            omitted.
+        show : bool, default=True
+            If True, call ``plt.show()`` after drawing.
+
+        Returns
+        -------
+        matplotlib.axes.Axes
+            Axes containing the comparison plot.
+        """
+        if axis is None:
+            _, axis = plt.subplots(figsize=(6.5, 8.5))
+
+        def _active_centroids(active_dict: dict[str, Any]) -> np.ndarray:
+            pts = []
+            for circuit in active_dict.values():
+                for _, part in _active_parts(circuit):
+                    pts.append([np.mean(part["R"]), np.mean(part["Z"])])
+            return np.asarray(pts, dtype=float) if pts else np.empty((0, 2))
+
+        def _plot_passives(
+            passive_list: list[dict[str, Any]] | None,
+            *,
+            facecolor: str,
+            edgecolor: str,
+            alpha: float,
+            linestyle: str,
+            label: str,
+        ) -> None:
+            if not passive_list:
+                return
+            for idx, element in enumerate(passive_list):
+                r = np.r_[element["R"], element["R"][0]]
+                z = np.r_[element["Z"], element["Z"][0]]
+                axis.fill(
+                    r,
+                    z,
+                    facecolor=facecolor,
+                    edgecolor=edgecolor,
+                    alpha=alpha,
+                    linestyle=linestyle,
+                    linewidth=0.9,
+                    label=label if idx == 0 else None,
+                )
+
+        def _plot_outline(
+            outline: list[dict[str, float]] | None,
+            *,
+            color: str,
+            linestyle: str,
+            linewidth: float,
+            label: str,
+        ) -> None:
+            if not outline:
+                return
+            pts = np.asarray([[p["R"], p["Z"]] for p in outline], dtype=float)
+            closed = np.vstack((pts, pts[0]))
+            axis.plot(
+                closed[:, 0],
+                closed[:, 1],
+                color=color,
+                linestyle=linestyle,
+                linewidth=linewidth,
+                label=label,
+            )
+
+        if self.source_active_coils_data is not None:
+            src_pts = _active_centroids(self.source_active_coils_data)
+            if len(src_pts):
+                axis.scatter(
+                    src_pts[:, 0],
+                    src_pts[:, 1],
+                    s=55,
+                    facecolors="none",
+                    edgecolors="tab:orange",
+                    linewidths=1.4,
+                    zorder=4,
+                    label="Original active coils",
+                )
+        sym_pts = _active_centroids(self.active_coils_data)
+        if len(sym_pts):
+            axis.scatter(
+                sym_pts[:, 0],
+                sym_pts[:, 1],
+                s=28,
+                color="tab:blue",
+                zorder=5,
+                label="Symmetrised active coils",
+            )
+
+        _plot_passives(
+            self.source_passive_coils_data,
+            facecolor="none",
+            edgecolor="tab:orange",
+            alpha=0.85,
+            linestyle="--",
+            label="Original passives",
+        )
+        _plot_passives(
+            self.passive_coils_data,
+            facecolor="0.65",
+            edgecolor="0.25",
+            alpha=0.45,
+            linestyle="-",
+            label="Symmetrised passives",
+        )
+
+        _plot_outline(
+            self.source_limiter_data,
+            color="tab:orange",
+            linestyle="--",
+            linewidth=1.4,
+            label="Original limiter",
+        )
+        _plot_outline(
+            self.limiter_data,
+            color="black",
+            linestyle="-",
+            linewidth=1.6,
+            label="Symmetrised limiter",
+        )
+        _plot_outline(
+            self.source_wall_data,
+            color="tab:red",
+            linestyle=":",
+            linewidth=1.1,
+            label="Original wall",
+        )
+        _plot_outline(
+            self.wall_data,
+            color="0.4",
+            linestyle="-.",
+            linewidth=1.1,
+            label="Symmetrised wall",
+        )
+
+        axis.axhline(0.0, color="0.4", linewidth=0.8, linestyle=":")
+        axis.set_aspect("equal")
+        axis.grid(alpha=0.3)
+        axis.set_xlabel("R [m]")
+        axis.set_ylabel("Z [m]")
+        axis.set_title("Original vs symmetrised machine geometry")
+        axis.legend(loc="best", fontsize="small")
+        if show:
+            plt.show()
+        return axis
 
     def largest_geometry_discrepancies(
         self, count: int | None = None
@@ -400,6 +591,7 @@ def prepare_up_down_symmetric_machine(
     passive_pairs: Sequence[tuple[str, str]] | None = None,
     max_pair_mismatch: float | None = None,
     exclude_odd_active: bool = False,
+    verbose: bool = True,
 ) -> PreparedUpDownMachine:
     """
     Identify pairs and construct an exactly up-down symmetric description.
@@ -448,6 +640,12 @@ def prepare_up_down_symmetric_machine(
     # Work on private copies throughout: callers often reuse the original
     # machine description to compare full and symmetry-reduced calculations.
     passive_coils_data = [] if passive_coils_data is None else passive_coils_data
+    source_active_snapshot = deepcopy(active_coils_data)
+    source_passive_snapshot = deepcopy(list(passive_coils_data))
+    source_limiter_snapshot = (
+        None if limiter_data is None else deepcopy(list(limiter_data))
+    )
+    source_wall_snapshot = None if wall_data is None else deepcopy(list(wall_data))
     active_original = deepcopy(active_coils_data)
     passive_original = deepcopy(passive_coils_data)
     limiter_original = None if limiter_data is None else deepcopy(limiter_data)
@@ -684,6 +882,10 @@ def prepare_up_down_symmetric_machine(
         midplane_fit_samples=midplane_fit_samples,
         geometry_discrepancies=tuple(geometry_discrepancies),
         excluded_odd_active_names=excluded_odd_active,
+        source_active_coils_data=source_active_snapshot,
+        source_passive_coils_data=source_passive_snapshot,
+        source_limiter_data=source_limiter_snapshot,
+        source_wall_data=source_wall_snapshot,
     )
     if max_pair_mismatch is not None:
         prepared.check_geometry_tolerance(max_pair_mismatch)
@@ -692,7 +894,9 @@ def prepare_up_down_symmetric_machine(
         (wall_original, symmetric_wall, "Wall"),
     ):
         if original is not None:
-            _warn_and_plot_boundary_change(original, symmetric, target_midplane, name)
+            _warn_boundary_change(original, symmetric, target_midplane, name)
+    if verbose:
+        prepared.summary(print_summary=True)
     return prepared
 
 
@@ -726,7 +930,7 @@ def symmetrise_limiter(
         or contains holes.
     """
     result, _ = _symmetrise_boundary_with_mismatch(limiter_data, z_midplane)
-    _warn_and_plot_boundary_change(limiter_data, result, z_midplane, "Limiter")
+    _warn_boundary_change(limiter_data, result, z_midplane, "Limiter")
     return result
 
 
@@ -760,8 +964,8 @@ def _symmetrise_boundary_with_mismatch(boundary_data, z_midplane):
     return [{"R": float(r), "Z": float(z)} for r, z in coords], mismatch
 
 
-def _warn_and_plot_boundary_change(original, symmetric, z_midplane, name):
-    """Warn about a changed footprint and display its original/reflected overlap."""
+def _warn_boundary_change(original, symmetric, z_midplane, name):
+    """Warn when a boundary outline is modified by reflection intersection."""
     points = np.asarray([[p["R"], p["Z"]] for p in original], dtype=float)
     retained = np.asarray([[p["R"], p["Z"]] for p in symmetric], dtype=float)
     source, inner = Polygon(points), Polygon(retained)
@@ -772,49 +976,10 @@ def _warn_and_plot_boundary_change(original, symmetric, z_midplane, name):
     warnings.warn(
         f"{name} changed by intersection with its reflection about "
         f"Z={z_midplane:g} m: removed {removed_area:.6g} m² "
-        f"({removed_percent:.3g}%); {len(original)} -> {len(symmetric)} vertices. "
-        "See the boundary comparison plot.",
+        f"({removed_percent:.3g}%); {len(original)} -> {len(symmetric)} vertices.",
         UserWarning,
-        stacklevel=3,
+        stacklevel=2,
     )
-    reflected = points.copy()
-    reflected[:, 1] = 2 * z_midplane - points[:, 1]
-    # Close plotting paths even when the supplied polygon omits its closing vertex.
-    paths = [np.vstack((p, p[0])) for p in (points, reflected, retained)]
-    candidates = np.vstack((points, reflected))
-    tolerance = 1e-12 * max(np.ptp(points, axis=0).max(), 1.0)
-    crossings = retained[
-        np.min(np.linalg.norm(retained[:, None] - candidates[None, :], axis=-1), axis=1)
-        > tolerance
-    ]
-    fig, axes = plt.subplots(1, 2, figsize=(11, 6), layout="constrained")
-    for axis in axes:
-        axis.fill(*paths[2].T, color="#00865A", alpha=0.15)
-        axis.plot(*paths[0].T, color="#0072B2", label=f"Original {name.lower()}")
-        axis.plot(*paths[1].T, "--", color="#D55E00", label=f"Reflected {name.lower()}")
-        axis.plot(
-            *paths[2].T, color="#00865A", linewidth=2, label="Retained intersection"
-        )
-        if len(crossings):
-            axis.scatter(
-                *crossings.T,
-                marker="*",
-                s=80,
-                color="#A51C47",
-                zorder=4,
-                label="New edge crossings",
-            )
-        axis.set(xlabel="R [m]", ylabel="Z [m]")
-        axis.set_aspect("equal", adjustable="box")
-        axis.grid(alpha=0.2)
-    axes[0].axhline(z_midplane, color="grey", linestyle=":", linewidth=0.8)
-    axes[0].set_title(f"Original and retained {name.lower()}")
-    axes[0].legend(fontsize="small")
-    height = max(np.max(np.abs(points[:, 1] - z_midplane)), 1e-12)
-    axes[1].set_ylim(z_midplane - 0.05 * height, z_midplane + 1.1 * height)
-    axes[1].set_title("Upper half: retained boundary segments")
-    fig.suptitle(f"{name} symmetrisation: {removed_percent:.3g}% of area removed")
-    plt.show(block=False)
 
 
 def symmetrise_boundary(
@@ -846,7 +1011,7 @@ def symmetrise_boundary(
         or contains holes.
     """
     result, _ = _symmetrise_boundary_with_mismatch(boundary_data, z_midplane)
-    _warn_and_plot_boundary_change(boundary_data, result, z_midplane, "Boundary")
+    _warn_boundary_change(boundary_data, result, z_midplane, "Boundary")
     return result
 
 

@@ -977,26 +977,20 @@ def test_limiter_intersection_inserts_crossings(closed, reverse, midplane, symme
 
 
 @pytest.mark.parametrize("entry_point", ["direct", "prepare"])
-def test_changed_limiter_warns_and_plots_each_time(entry_point):
-    """Every accepted footprint change has a quantified warning and comparison plot."""
+def test_changed_limiter_warns_each_time(entry_point):
+    """Every accepted footprint change emits a quantified warning without auto-plotting."""
     boundary = [{"R": r, "Z": z} for r, z in [(1, -1), (3, -2), (3, 1), (1, 2)]]
     with patch("freegsnke.up_down_symmetry.plt.show") as show:
         for _ in range(2):
-            with pytest.warns(UserWarning, match=r"16\.7%.*4 -> 6 vertices"):
+            with pytest.warns(UserWarning, match=r"16\.7%.*4 -> 6 vertices") as caught:
                 if entry_point == "direct":
                     symmetrise_limiter(boundary)
                 else:
-                    prepare_up_down_symmetric_machine({}, limiter_data=boundary)
-            fig = plt.gcf()
-            assert len(fig.axes) == 2
-            assert [line.get_label() for line in fig.axes[0].lines[:3]] == [
-                "Original limiter",
-                "Reflected limiter",
-                "Retained intersection",
-            ]
-            assert len(fig.axes[0].collections[0].get_offsets()) == 2
-        assert show.call_count == 2
-        show.assert_called_with(block=False)
+                    prepare_up_down_symmetric_machine(
+                        {}, limiter_data=boundary, verbose=False
+                    )
+            assert caught[0].filename.endswith("up_down_symmetry.py")
+        show.assert_not_called()
 
 
 def test_unchanged_limiter_and_repeated_intersection_are_quiet():
@@ -1022,18 +1016,18 @@ def test_unchanged_limiter_and_repeated_intersection_are_quiet():
 
 
 def test_preparation_intersects_and_reports_both_limiter_and_wall():
-    """Both outlines use the same conservative strategy and get labelled plots."""
+    """Both outlines use the same conservative strategy and support summary/plot."""
     boundary = [{"R": r, "Z": z} for r, z in [(1, -1), (3, -2), (3, 1), (1, 2)]]
     with patch("freegsnke.up_down_symmetry.plt.show") as show:
         with pytest.warns(UserWarning) as notices:
             prepared = prepare_up_down_symmetric_machine(
-                {}, limiter_data=boundary, wall_data=boundary
+                {}, limiter_data=boundary, wall_data=boundary, verbose=False
             )
         assert [str(w.message).split(" changed")[0] for w in notices] == [
             "Limiter",
             "Wall",
         ]
-        assert show.call_count == 2
+        show.assert_not_called()
         assert prepared.limiter_data == prepared.wall_data
         assert [r.component for r in prepared.geometry_discrepancies] == [
             "limiter",
@@ -1041,9 +1035,11 @@ def test_preparation_intersects_and_reports_both_limiter_and_wall():
         ]
         for record in prepared.geometry_discrepancies:
             assert record.reflected_rms == pytest.approx(np.sqrt(0.4))
-        titles = [plt.figure(n)._suptitle.get_text() for n in plt.get_fignums()]
-        assert any(title.startswith("Limiter symmetrisation") for title in titles)
-        assert any(title.startswith("Wall symmetrisation") for title in titles)
+        text = prepared.summary(print_summary=False)
+        assert "limiter" in text and "wall" in text
+        ax = prepared.plot(show=False)
+        labels = [line.get_label() for line in ax.lines]
+        assert "Original limiter" in labels and "Symmetrised limiter" in labels
 
 
 def test_invalid_or_rejected_wall_does_not_display_an_accepted_change():

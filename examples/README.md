@@ -19,16 +19,15 @@ These example Jupyter notebooks are intended to be the **first port of call for 
 | Example 05b | Learn how to use the linear evolutive solver without solving GS at each timestep. | Anyone |
 | Example 05c | Learn how to use the linear evolutive solver (with or without solving GS) with automatic relinearisation enabled. | Anyone |
 | Example 06a/b | Simulate (static) MAST-U equilibria over an entire shot using inputs from EFIT++ (requires internal UKAEA MAST-U database). | UKAEA employees + collaborators |
-| Example 06c | Audit and prepare the series-connected MAST-U machine for exactly up-down symmetric calculations, including odd-circuit detection, active/passive magnetic-fingerprint changes, supporting geometry discrepancies, and explicit user acceptance (requires access to UDA). | UKAEA employees + collaborators |
-| Example 06d | Step through up-down machine symmetrisation using a self-contained MAST-U-like description, including pairing, odd-circuit handling, acceptance diagnostics, current transforms, and plots. | Anyone |
+| Example 06c | Audit and prepare the series-connected MAST-U machine for up-down symmetric calculations via UDA (start with Example 12a first). | UKAEA employees + collaborators |
 | Example 07a | Static inverse solve in the "Anamak" toy tokamak. | Anyone |
 | Example 07b | Static inverse solve in a SPARC-like tokamak. | Anyone |
 | Example 07c | Static inverse solve in an ITER-like tokamak. | Anyone |
 | Example 09 | Learn how to use and build virtual circuits for plasma shape control. | Anyone |
 | Example 10 | Learn how to calculate growth rates associated with vertically unstable modes. | Anyone |
 | Example 11 | Learn how to use the evolutive solver alongside a virtual plasma control system (FreeGSNKE Pulse Design Tool). | Anyone |
-| Example 11a | Build a self-contained symmetric machine, run a linearised controlled pulse, and compare coupled nonlinear evolution with full and even-only passive bases. | Anyone |
-| Example 11b | Run the symmetrised MAST-U Pulse Design Tool using UDA or a cached prepared machine. | UKAEA employees + collaborators, or users with a prepared cache |
-| Example 11c | Prepare and verify the up-down symmetric SPARC geometry, including explicit passive pairing. | Anyone |
+| Example 12a | Step through up-down machine symmetrisation using a self-contained MAST-U-like description, including pairing, odd-circuit handling, diagnostics, and current transforms. | Anyone |
+| Example 12c | Run a closed-loop symmetric Pulse Design Tool simulation with `SymmetryReducedSolver` on a self-contained analytic tokamak, verified against full-mode references. | Anyone |
+| Example 12d | Run the symmetrised MAST-U Pulse Design Tool with `SymmetryReducedSolver` using UDA or a cached prepared machine. | UKAEA employees + collaborators, or users with a prepared cache |
 
 If a new example has been created, please add a new line to the table explaining its purpose!

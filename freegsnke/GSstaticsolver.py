@@ -393,29 +393,6 @@ class NKGSsolver:
             "Masked boundary Green's functionalities not currently supported in GSstaticsolver"
         )
 
-        source_indices = np.flatnonzero(source_mask)
-        boundary_indices = np.ravel_multi_index(
-            (self.bndry_indices[:, 0], self.bndry_indices[:, 1]),
-            (self.nx, self.ny),
-        )
-        flat_R = self.R.reshape(-1)
-        flat_Z = self.Z.reshape(-1)
-        greenfunc = Greens(
-            flat_R[source_indices][np.newaxis, :],
-            flat_Z[source_indices][np.newaxis, :],
-            flat_R[boundary_indices][:, np.newaxis],
-            flat_Z[boundary_indices][:, np.newaxis],
-        )
-
-        # Remove singular self-interactions when the selected sources include
-        # points on the computational boundary.
-        positions = np.searchsorted(source_indices, boundary_indices)
-        valid = positions < len(source_indices)
-        matches = np.zeros_like(valid)
-        matches[valid] = source_indices[positions[valid]] == boundary_indices[valid]
-        greenfunc[np.flatnonzero(matches), positions[matches]] = 0.0
-        return np.ascontiguousarray(greenfunc * self.dRdZ)
-
     def __calculate_masked_boundary_flux_from_jtor(
         self, jtor: np.ndarray
     ) -> np.ndarray:
@@ -439,11 +416,10 @@ class NKGSsolver:
         raise NotImplementedError(
             "Masked boundary Green's functionalities not currently supported in GSstaticsolver"
         )
-        return self.greenfunc @ jtor[self.plasma_source_mask]
 
     def configureLinearSolver(
         self, solver_type: str, order: int | None, mg_kwargs: dict | None
-    ) -> None:
+    ) -> GSLUSolver | GSDSTSolver | multigrid.MGJacobi | multigrid.MGDirect:
         """
         Creates and assigns the linear solver `self.linear_GS_solver` using the arguments provided.
 

@@ -44,7 +44,7 @@ class MGDirect:
     # as a standalone LU solver
     """Direct sparse-LU solve used at the coarsest multigrid level."""
 
-    def __init__(self, A: spmatrix, order: int = None) -> None:
+    def __init__(self, A: spmatrix, order: int | None = None) -> None:
         """
         Initialise solver by LU-factorising the matrix.
 
@@ -109,7 +109,7 @@ class MGJacobi:
         ncycle: int = 4,
         niter: int = 10,
         subsolver: Callable[[np.ndarray, np.ndarray], np.ndarray] | None = None,
-        order: int = None,
+        order: int | None = None,
     ) -> None:
         """
         Initialise solver.

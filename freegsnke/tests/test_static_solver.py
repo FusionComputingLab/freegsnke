@@ -182,22 +182,6 @@ def test_NKGS_invalid(create_machine, solver, order, error, error_msg):
         )
 
 
-#    if issubclass(error,Warning):
-#        with pytest.warns(error,match=error_msg):
-#            NK = GSstaticsolver.NKGSsolver(
-#                eq,
-#                solver_type=solver,
-#                gs_operator_order=order,
-#            )
-#    else:
-#        with pytest.raises(error,match=error_msg):
-#            NK = GSstaticsolver.NKGSsolver(
-#                eq,
-#                solver_type=solver,
-#                gs_operator_order=order,
-#            )
-
-
 @pytest.mark.parametrize(
     "cache,solver,order",
     [
@@ -274,7 +258,7 @@ def test_static_solve(create_machine, cache, solver, order):
     [(1.7e4, False), (1e12, False), (100, True), (-10, True), (0, True)],
 )
 def test_max_batch_size(create_machine, max_batch_size, warning_needed):
-    """The opt-in second-order GS operator produces a consistent equilibrium."""
+    """Tests that max_batch_size emits a warning only when the minimum batch row constraint is violated."""
     eq, profiles, _ = create_machine
 
     from freegsnke import GSstaticsolver
@@ -328,17 +312,6 @@ def test_second_order_static_solve(create_machine):
     tolerance = np.ptp(reference_psi) * 0.003
     assert solver.gs_operator_order == 2
     assert np.allclose(eq.psi(), reference_psi, atol=tolerance)
-
-
-@pytest.mark.skip(reason="this should be covered by test_NKGS_invalid above")
-def test_static_solver_rejects_invalid_operator_order(create_machine):
-    """Only the two finite-difference operators supplied by FreeGSNKE are valid."""
-    eq, _, _ = create_machine
-
-    from freegsnke import GSstaticsolver
-
-    with pytest.raises(ValueError, match="order"):
-        GSstaticsolver.NKGSsolver(eq, gs_operator_order=3)
 
 
 @pytest.mark.skip(reason="masked/reduced versions not currently supported")

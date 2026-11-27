@@ -33,11 +33,11 @@ from .parallel import threaded_take
 
 def make_Myy_handler(
     domain_type: str,
-    limiter_handler: int,
+    limiter_handler: object,
     layer_size: int | None = None,
     tolerance: int | None = None,
     cache_myy: bool | None = None,
-):
+) -> Myy_handler:
     """
     Returns an Myy_handler object of appropriate type given the domain_type specified. Note that
     if `domain_type`=="fft" all optional arguments are ignored.
@@ -67,6 +67,10 @@ def make_Myy_handler(
         (reducing memory usage by up to an order of magnitude).
         True by default.
 
+    Returns
+    -------
+    Myy_handler
+        Handler instance for the requested Myy representation.
     """
 
     # TODO: perhaps replace `domain_type` with something more generic that directly distinguishes
@@ -95,6 +99,15 @@ class Myy_handler(abc.ABC):
     i.e. the mututal inductance matrix of all domain grid points.
     """
 
+    def __new__(cls, *args, **kwargs):
+        """
+        Return a `Reduced_Myy_handler` when `Myy_handler` is instantiated directly
+        for backward compatibility.
+        """
+        if cls is Myy_handler:
+            return super().__new__(Reduced_Myy_handler)
+        return super().__new__(cls)
+
     def make_1D(self, R: np.ndarray, Z: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         """
         Utility function to obtain a 1D vector representation of R and Z
@@ -108,7 +121,7 @@ class Myy_handler(abc.ABC):
 
         Returns
         -------
-        tuple[np.ndarray, np.ndarray}
+        tuple[np.ndarray, np.ndarray]
             1D vector of R-values and 1D vector of Z-values
         """
 
@@ -198,7 +211,7 @@ class Reduced_Myy_handler(Myy_handler):
         limiter_handler: object,
         layer_size: int = 5,
         tolerance: int = 3,
-        cache_myy=True,
+        cache_myy: bool = True,
     ) -> None:
         """
         Instantiate the object.
@@ -216,6 +229,9 @@ class Reduced_Myy_handler(Myy_handler):
             Used to check if Myy needs recalculating. Myy is not recalculated if
             the mask defined by the plasma region, broadened by `tolerance`
             pixels, is fully contained in the domain of the current Myy matrix.
+        cache_myy : bool, optional
+            Determines whether the mutual inductance matrix is pre-calculated and
+            stored, or re-calculated every time a product with Myy is computed.
         """
 
         limiter_handler.build_reduced_rect_domain()
@@ -241,7 +257,7 @@ class Reduced_Myy_handler(Myy_handler):
 
         self.cache_myy = cache_myy
 
-    def grid_greens(self, R_1D, Z_1D):
+    def grid_greens(self, R_1D: np.ndarray, Z_1D: np.ndarray) -> np.ndarray:
         """
         Calculate the Green's function values on the reduced rectangular domain.
 
@@ -530,6 +546,8 @@ class FFT_Myy_handler(Myy_handler):
         self.down_project = limiter_handler.down_project
 
         R_1D, Z_1D = self.make_1D(limiter_handler.eqR, limiter_handler.eqZ)
+        self.nR = len(R_1D)
+        self.nZ = len(Z_1D)
 
         self.gg = self.grid_greens(R_1D, Z_1D)  # in Fourier space, (nR, nR, L_fft)
         self.cache_myy = False
@@ -542,10 +560,10 @@ class FFT_Myy_handler(Myy_handler):
 
         Parameters
         ----------
-        R : np.ndarray
+        R_1D : np.ndarray
             Like eq.R, but only in 1D
             i.e. self.make_1D(limiter_handler.eqR,...)
-        Z : np.ndarray
+        Z_1D : np.ndarray
             Like eq.Z, but only in 1D
 
         Returns
@@ -632,23 +650,24 @@ class FFT_Myy_handler(Myy_handler):
 
     def _myy_dot(self, vector: np.ndarray) -> np.ndarray:
         """
-        Performs the dot product Myy@vector for a vector that has already been up-projected onto
+        Performs the dot product Myy@vector for an array that has already been up-projected onto
         the full grid domain (where Myy is defined), but NOT yet transformed into Fourier space.
 
-        Returns a vector on the input domain.
+        Returns an array on the full grid domain `(nR, nZ)`.
 
         Parameters
         ----------
         vector: np.ndarray
-            1d vector on the full domain, in real space
+            2d array of shape `(nR, nZ)` (or 1d vector of length `nR * nZ`) on the full domain,
+            in real space
 
         Returns
         -------
         np.ndarray
-            Resulting 1d vector on the same domain.
+            Resulting 2d array of shape `(nR, nZ)` on the full domain.
         """
 
-        nR, nZ = self.gg.shape[1], self.gg.shape[2]
+        nR, nZ = self.nR, self.nZ
         x = vector.reshape(nR, nZ)
 
         # Zero-pad vec along Z to length L
@@ -664,6 +683,6 @@ class FFT_Myy_handler(Myy_handler):
         conv_fft = ne.evaluate("sum(gg_fft*x_fft, axis=1)")
 
         y_full = np.fft.irfft(conv_fft, n=L, axis=1)
-        y_full = y_full[:, :nZ]  # .reshape(-1)
+        y_full = y_full[:, :nZ]
 
         return y_full

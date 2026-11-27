@@ -401,3 +401,43 @@ def test_reinitialisation_preserves_dRZdI_after_mode_removal(
     )
 
     np.testing.assert_array_equal(solver.dRZdI, saved_drzdi)
+
+
+def test_myy_handler_backward_compatibility_and_fft_non_square(create_machine):
+    """Direct Myy_handler instantiation returns Reduced_Myy_handler, and FFT_Myy_handler agrees with Reduced_Myy_handler on a non-square grid."""
+    from freegsnke import equilibrium_update
+    from freegsnke.Myy_builder import (
+        FFT_Myy_handler,
+        Myy_handler,
+        Reduced_Myy_handler,
+        make_Myy_handler,
+    )
+
+    tokamak, _, _ = create_machine
+    eq_rect = equilibrium_update.Equilibrium(
+        tokamak=tokamak,
+        Rmin=0.1,
+        Rmax=2.0,
+        Zmin=-2.2,
+        Zmax=2.2,
+        nx=33,
+        ny=65,
+    )
+
+    direct_handler = Myy_handler(eq_rect.limiter_handler)
+    assert isinstance(direct_handler, Reduced_Myy_handler)
+
+    fft_handler = make_Myy_handler("fft", eq_rect.limiter_handler)
+    assert isinstance(fft_handler, FFT_Myy_handler)
+    assert (fft_handler.nR, fft_handler.nZ) == (33, 65)
+
+    n_pts = int(np.sum(eq_rect.limiter_handler.mask_inside_limiter))
+    hat_iy = np.ones(n_pts, dtype=float) / n_pts
+    direct_handler.force_build_Myy(hat_iy)
+
+    np.testing.assert_allclose(
+        fft_handler.dot(hat_iy),
+        direct_handler.dot(hat_iy),
+        rtol=1e-12,
+        atol=1e-12,
+    )

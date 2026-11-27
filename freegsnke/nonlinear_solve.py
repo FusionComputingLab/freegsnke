@@ -1092,7 +1092,7 @@ class nl_solver:
             True if ``force_up_down_symmetric`` is enabled and column ``j``
             corresponds to a retained passive mode with odd parity.
         """
-        if not self.force_up_down_symmetric:
+        if not getattr(self, "force_up_down_symmetric", False):
             return False
         if j < self.n_active_coils or j >= self.n_metal_modes:
             return False

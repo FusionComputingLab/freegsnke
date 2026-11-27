@@ -29,17 +29,21 @@ from typing import Callable
 
 import matplotlib.pyplot as plt
 import numpy as np
+import numpy.typing as npt
 from scipy.signal import convolve2d
 from threadpoolctl import threadpool_limits
 
 from . import bilinear_interpolation
 from . import nk_solver_H as nk_solver
+from .build_machine import _symmetrise_passive_refinement, build_tokamak_R_and_M
 from .circuit_eq_metal import metal_currents
 from .gradshafranov import GreensBr, GreensdBrdz
 from .GSstaticsolver import NKGSsolver
 from .linear_solve import linear_solver
 from .Myy_builder import make_Myy_handler
+from .normal_modes import _validate_passive_reflection
 from .simplified_solve import simplified_solver_J1
+from .up_down_symmetry import _symmetrise_greens, _symmetrise_square_operator
 
 _parallel_linearization_solver = None
 
@@ -134,6 +138,10 @@ class nl_solver:
         plasma_descriptor_function: Callable[[object], np.ndarray] | None = None,
         mode_selection: str = "coupling",
         n_linearization_workers: int = 1,
+        force_up_down_symmetric: bool = False,
+        passive_reflection_operator: np.ndarray | None = None,
+        remove_odd_passive_modes: bool = True,
+        symmetry_tolerance: float = 1e-8,
         myy_type: str = "reduced",
         cache_myy: bool = True,
     ) -> None:
@@ -222,6 +230,32 @@ class nl_solver:
             Additional penalty for collinear terms in nonlinear solver.
         verbose : bool, default=False
             Print diagnostic output during initialization.
+        force_up_down_symmetric : bool, default=False
+            Restrict every Grad-Shafranov solve and plasma-response Jacobian to
+            the even-in-Z subspace. This strict path requires a grid symmetric
+            about Z=0, a symmetric limiter mask, and an even plasma initial
+            condition. Invalid grids and masks are rejected before the machine
+            operators are modified. Retained active circuits must
+            be even. Small residual asymmetries in the machine resistance,
+            inductance, sampled Green functions (``eq._vgreen`` is updated in
+            place, along with any un-mirrored passive filament refinements on
+            ``eq.tokamak``), and metal-plasma coupling are removed by reflection
+            averaging.
+        passive_reflection_operator : ndarray, optional
+            Reflection map for passive currents. Required with
+            ``force_up_down_symmetric=True`` when passive structures are present;
+            by default odd passive modes are removed before plasma coupling is
+            calculated.
+            Use ``prepare_up_down_symmetric_machine`` to infer this map from a
+            standard machine description.
+        remove_odd_passive_modes : bool, default=True
+            Whether to remove odd-in-Z passive modes when
+            ``force_up_down_symmetric=True``. Set False to retain the full
+            passive-mode basis as a reference while still constraining all
+            Grad-Shafranov solves and plasma-response Jacobians to be even.
+        symmetry_tolerance : float, default=1e-8
+            Maximum relative commutator error permitted between passive
+            dynamics and reflection.
         plasma_descriptor_function : Callable[[object], np.ndarray] or None, optional
             Function taking an equilibrium and returning a 1D array of plasma
             descriptors (e.g. shape parameters), whose linear response to the
@@ -265,6 +299,76 @@ class nl_solver:
         self.n_passive_coils = eq.tokamak.n_coils - eq.tokamak.n_active_coils
         self.coils_order = list(eq.tokamak.coils_dict.keys())
         self.currents_vec = np.zeros(self.n_coils + 1)
+        self.force_up_down_symmetric = force_up_down_symmetric
+        self.remove_odd_passive_modes = remove_odd_passive_modes
+        if (
+            force_up_down_symmetric
+            and self.n_passive_coils
+            and passive_reflection_operator is None
+        ):
+            raise ValueError(
+                "'passive_reflection_operator' is required for symmetric "
+                "evolution with passive structures."
+            )
+        if force_up_down_symmetric:
+            if not np.allclose(eq.Z, -eq.Z[:, ::-1], rtol=0.0, atol=1e-12):
+                raise ValueError(
+                    "Symmetric evolution requires a Z grid symmetric about Z=0: "
+                    "reversing its indices must map each Z coordinate to -Z."
+                )
+            limiter_mask = eq.limiter_handler.mask_inside_limiter
+            if not np.array_equal(limiter_mask, limiter_mask[:, ::-1]):
+                raise ValueError(
+                    "Symmetric evolution requires a limiter mask symmetric "
+                    "about Z=0."
+                )
+            metal_reflection = np.eye(self.n_coils)
+            if self.n_passive_coils:
+                passive_reflection_operator = _validate_passive_reflection(
+                    passive_reflection_operator, self.n_passive_coils
+                )
+                partners = np.argmax(passive_reflection_operator, axis=1)
+                permutation = np.eye(self.n_passive_coils)[partners]
+                if not np.allclose(passive_reflection_operator, permutation):
+                    raise ValueError(
+                        "Passive reflection must permute the physical passive elements."
+                    )
+                passive_reflection_operator = permutation
+                metal_reflection[self.n_active_coils :, self.n_active_coils :] = (
+                    passive_reflection_operator
+                )
+                passive_names = self.coils_order[self.n_active_coils :]
+                pairs = [
+                    (passive_names[i], passive_names[j])
+                    for i, j in enumerate(partners)
+                    if i <= j
+                ]
+                if _symmetrise_passive_refinement(
+                    eq.tokamak.coils, eq.tokamak.coils_dict, pairs
+                ):
+                    build_tokamak_R_and_M(eq.tokamak)
+                    eq._pgreen = eq.tokamak.createPsiGreens(eq.R, eq.Z)
+                    eq._vgreen = eq.tokamak.createPsiGreensVec(eq.R, eq.Z)
+
+            # Reflection-average the machine operators:
+            #   R_sym = (R + S_m R) / 2,
+            #   L_sym = (L + S_m L S_m) / 2,
+            #   G_sym(R, Z) = (G(R, Z) + S_m G(R, -Z)) / 2.
+            # These forms commute with reflection and leave the even and odd
+            # metal-current subspaces dynamically independent.
+            resistance = (
+                eq.tokamak.coil_resist
+                if custom_coil_resist is None
+                else np.asarray(custom_coil_resist)
+            )
+            inductance = (
+                eq.tokamak.coil_self_ind
+                if custom_self_ind is None
+                else np.asarray(custom_self_ind)
+            )
+            custom_coil_resist = 0.5 * (resistance + metal_reflection @ resistance)
+            custom_self_ind = _symmetrise_square_operator(inductance, metal_reflection)
+            eq._vgreen = _symmetrise_greens(eq._vgreen, metal_reflection)
 
         # setting up reduced domain for plasma circuit eq.:
         self.limiter_handler = eq.limiter_handler
@@ -312,6 +416,7 @@ class nl_solver:
             profiles,
             target_relative_tolerance=target_relative_tolerance_linearization,
             verbose=False,
+            force_up_down_symmetric=self.force_up_down_symmetric,
         )
         print("-----")
 
@@ -368,12 +473,29 @@ class nl_solver:
             full_timestep=self.dt_step,
             coil_resist=custom_coil_resist,
             coil_self_ind=custom_self_ind,
+            passive_reflection_operator=(
+                passive_reflection_operator if force_up_down_symmetric else None
+            ),
+            remove_odd_passive_modes=remove_odd_passive_modes,
+            symmetry_tolerance=symmetry_tolerance,
         )
         self.n_metal_modes = self.evol_metal_curr.n_independent_vars
+        n_available_passive_modes = self.n_metal_modes - self.n_active_coils
+        if fix_n_vessel_modes > n_available_passive_modes:
+            print(
+                f"'fix_n_vessel_modes' ({fix_n_vessel_modes}) exceeds the "
+                "number of available passive modes "
+                f"({n_available_passive_modes}); setting it to "
+                f"{n_available_passive_modes}."
+            )
+            fix_n_vessel_modes = n_available_passive_modes
 
         # prepare the vectorised green functions of the vessel modes
         self.vessel_modes_greens = (
-            self.evol_metal_curr.normal_modes.normal_modes_greens(eq._vgreen)
+            self.evol_metal_curr.normal_modes.normal_modes_greens(
+                eq._vgreen,
+                self.evol_metal_curr.P if self.force_up_down_symmetric else None,
+            )
         )
         # build full vector of vessel mode currents
         self.build_current_vec(eq, profiles)
@@ -470,11 +592,31 @@ class nl_solver:
                     )
                 )
                 # exclude all modes that couple less than min_dIy_dI
+                odd_passive_mask = (
+                    (
+                        self.evol_metal_curr.normal_modes.passive_mode_parity[
+                            self.evol_metal_curr.available_modes_mask[
+                                self.n_active_coils :
+                            ]
+                        ]
+                        < 0
+                    )
+                    if (
+                        self.force_up_down_symmetric
+                        and not self.remove_odd_passive_modes
+                        and self.evol_metal_curr.normal_modes.passive_mode_parity
+                        is not None
+                    )
+                    else np.zeros(self.n_metal_modes - self.n_active_coils, dtype=bool)
+                )
                 mode_coupling_mask_exclude = np.concatenate(
                     (
                         [True] * self.n_active_coils,
-                        self.ndIydI_no_GS[self.n_active_coils :]
-                        >= min_dIy_dI * strongest_coupling_vessel_mode,
+                        (
+                            self.ndIydI_no_GS[self.n_active_coils :]
+                            >= min_dIy_dI * strongest_coupling_vessel_mode
+                        )
+                        | odd_passive_mask,
                     )
                 )
             if mode_selection == "coupling":
@@ -501,7 +643,7 @@ class nl_solver:
 
         print(f"Initial mode selection:")
         # enact the mode selection
-        self.evol_metal_curr.initialize_for_eig(
+        selected_available_modes = self.evol_metal_curr.initialize_for_eig(
             selected_modes_mask=None,
             mode_coupling_masks=mode_coupling_masks,
             verbose=(mode_selection == "timescale" or fix_n_vessel_modes < 0),
@@ -525,15 +667,14 @@ class nl_solver:
 
         # this is the number of independent normal mode currents being used
         self.n_metal_modes = self.evol_metal_curr.n_independent_vars
+        self.n_passive_modes = self.n_metal_modes - self.n_active_coils
         self.arange_currents = np.arange(self.n_metal_modes + 1)
         # re-build vector of vessel mode currents after mode selection
         self.build_current_vec(eq, profiles)
 
         # select modes accordingly
-        self.starting_dI = self.starting_dI[self.evol_metal_curr.selected_modes_mask]
-        self.approved_target_dIy = self.approved_target_dIy[
-            self.evol_metal_curr.selected_modes_mask
-        ]
+        self.starting_dI = self.starting_dI[selected_available_modes]
+        self.approved_target_dIy = self.approved_target_dIy[selected_available_modes]
         # add the plasma
         self.starting_dI = np.concatenate(
             (self.starting_dI, [target_dIy * profiles.Ip / plasma_norm_factor])
@@ -697,12 +838,11 @@ class nl_solver:
             selected_modes_mask = ndIydI > min_dIy_dI * max(
                 ndIydI[self.n_active_coils : -1]
             )
-            # force that active coils and plasma are kept
-            actives_and_plasma_mask = (
-                [True] * self.n_active_coils
-                + [False] * (self.n_metal_modes - self.n_active_coils)
-                + [True]
-            )
+            # force that active coils, explicitly retained odd passive modes, and plasma are kept
+            actives_and_plasma_mask = [
+                j < self.n_active_coils or self._is_odd_passive_mode_column(j)
+                for j in range(self.n_metal_modes)
+            ] + [True]
             self.retained_modes_mask = (
                 selected_modes_mask + np.array(actives_and_plasma_mask)
             ).astype(bool)
@@ -769,17 +909,27 @@ class nl_solver:
                 )
 
             else:
-                print(
-                    f"      No unstable modes found: either plasma stable, or more likely, it is Alfven unstable (i.e. needs more stabilisation from coils and passives)."
-                )
-                if fix_n_vessel_modes >= 0:
+                if self.force_up_down_symmetric and self.remove_odd_passive_modes:
                     print(
-                        f"      Try adding more passive modes (by increasing 'fix_n_vessel_modes')."
+                        "      No unstable modes found in the retained even-in-Z subspace."
+                    )
+                elif self.force_up_down_symmetric:
+                    print(
+                        "      No unstable modes found with the plasma constrained "
+                        "to be even in Z."
                     )
                 else:
                     print(
-                        f"      Try adding more passive modes (by increasing 'max_mode_frequency' and/or 'threshold_dIy_dI' and/or reducing 'min_dIy_dI'."
+                        f"      No unstable modes found: either plasma stable, or more likely, it is Alfven unstable (i.e. needs more stabilisation from coils and passives)."
                     )
+                    if fix_n_vessel_modes >= 0:
+                        print(
+                            f"      Try adding more passive modes (by increasing 'fix_n_vessel_modes')."
+                        )
+                    else:
+                        print(
+                            f"      Try adding more passive modes (by increasing 'max_mode_frequency' and/or 'threshold_dIy_dI' and/or reducing 'min_dIy_dI'."
+                        )
         print("-----")
 
         # if automatic_timestep, reset the timestep accordingly,
@@ -789,9 +939,20 @@ class nl_solver:
             print(
                 f"      Solver timestep 'dt_step' has been set to {self.dt_step} as requested."
             )
-            print(
-                f"      Ensure it is smaller than the growth rate else you may find numerical instability in any subsequent evoltuive simulations!"
-            )
+            if self.force_up_down_symmetric and self.remove_odd_passive_modes:
+                print(
+                    "      Odd-in-Z modes are excluded; ensure the timestep "
+                    "resolves the retained even dynamics."
+                )
+            elif self.force_up_down_symmetric:
+                print(
+                    "      The plasma is constrained to be even in Z, but odd "
+                    "passive modes remain in the metal-current basis."
+                )
+            else:
+                print(
+                    f"      Ensure it is smaller than the growth rate else you may find numerical instability in any subsequent evoltuive simulations!"
+                )
         else:
             if len(self.linearised_sol.growth_rates):
                 dt_step = abs(
@@ -874,11 +1035,11 @@ class nl_solver:
             enforcement applied).
         """
 
-        self.dIydI_noGS = np.zeros((len(self.Iy), self.n_coils))
-        self.ndIydI_no_GS = np.zeros(self.n_coils)
-        self.rel_ndIy = np.zeros(self.n_coils)
+        self.dIydI_noGS = np.zeros((len(self.Iy), self.n_metal_modes))
+        self.ndIydI_no_GS = np.zeros(self.n_metal_modes)
+        self.rel_ndIy = np.zeros(self.n_metal_modes)
 
-        for j in range(self.n_coils):
+        for j in range(self.n_metal_modes):
             dIydInoGS, rel_ndIy = self.prepare_build_dIydI_j(
                 j, None, self.approved_target_dIy[j], starting_dI[j], GS=False
             )
@@ -915,6 +1076,58 @@ class nl_solver:
             self.rel_ndIy[j] = rel_ndIy
             self.ndIydI_no_GS[j] = np.linalg.norm(dIydInoGS)
         self.starting_dI = 1.0 * starting_dI
+
+    def _is_odd_passive_mode_column(self, j: int) -> bool:
+        """
+        Return whether independent-current column ``j`` is an odd passive mode.
+
+        Parameters
+        ----------
+        j : int
+            Column index in the retained independent-current basis.
+
+        Returns
+        -------
+        bool
+            True if ``force_up_down_symmetric`` is enabled and column ``j``
+            corresponds to a retained passive mode with odd parity.
+        """
+        if not getattr(self, "force_up_down_symmetric", False):
+            return False
+        if j < self.n_active_coils or j >= self.n_metal_modes:
+            return False
+        parity = self.evol_metal_curr.normal_modes.passive_mode_parity
+        if parity is None:
+            return False
+        retained_full_indices = np.flatnonzero(self.evol_metal_curr.selected_modes_mask)
+        full_mode_index = int(retained_full_indices[j])
+        return bool(parity[full_mode_index - self.n_active_coils] < 0)
+
+    def _project_plasma_vectors_even(self, vectors: npt.ArrayLike) -> np.ndarray:
+        """Apply ``(I + S_y) / 2`` to reduced-domain plasma vectors.
+
+        Parameters
+        ----------
+        vectors : array-like
+            1D plasma vector or 2D matrix of columns defined on the reduced
+            limiter domain.
+
+        Returns
+        -------
+        np.ndarray
+            Even-in-Z projected vector or matrix on the reduced limiter domain.
+        """
+        if not self.force_up_down_symmetric:
+            return vectors
+
+        vectors = np.asarray(vectors)
+        was_vector = vectors.ndim == 1
+        columns = vectors[:, np.newaxis] if was_vector else vectors
+        fields = np.zeros((self.nx, self.ny, columns.shape[1]))
+        fields[self.limiter_handler.mask_inside_limiter] = columns
+        fields = 0.5 * (fields + fields[:, ::-1])
+        projected = fields[self.limiter_handler.mask_inside_limiter]
+        return projected[:, 0] if was_vector else projected
 
     def set_solvers(self) -> None:
         """
@@ -1015,6 +1228,7 @@ class nl_solver:
 
         self.evol_metal_curr.initialize_for_eig(selected_modes_mask)
         self.n_metal_modes = self.evol_metal_curr.n_independent_vars
+        self.n_passive_modes = self.n_metal_modes - self.n_active_coils
         self.extensive_currents_dim = self.n_metal_modes + 1
         self.arange_currents = np.arange(self.n_metal_modes + 1)
         self.currents_vec = np.zeros(self.extensive_currents_dim)
@@ -1657,6 +1871,10 @@ class nl_solver:
         rel_ndIy : float
             Relative norm of the induced change in Iy, normalized by self.nIy.
         """
+        if self._is_odd_passive_mode_column(j):
+            self._reset_linearization_solve_state()
+            self.final_dI_record[j] = starting_dI
+            return np.zeros_like(self.Iy), 0.0
 
         current_ = np.copy(self.currents_vec)
         current_[j] += starting_dI
@@ -1675,6 +1893,7 @@ class nl_solver:
             )
 
         dIy_0 = self.limiter_handler.Iy_from_jtor(self.profiles2.jtor) - self.Iy
+        dIy_0 = self._project_plasma_vectors_even(dIy_0)
 
         rel_ndIy_0 = np.linalg.norm(dIy_0) / self.nIy
         final_dI = starting_dI * target_dIy / rel_ndIy_0
@@ -1889,6 +2108,24 @@ class nl_solver:
             diagnostics.
         """
         this_target_dIy = float(self.approved_target_dIy[j])
+        if self._is_odd_passive_mode_column(j):
+            starting_dI = float(self.starting_dI[j])
+            self.final_dI_record[j] = starting_dI
+            self.current_at_last_linearization[j] = self.currents_vec[j]
+            return (
+                j,
+                np.zeros_like(self.Iy),
+                np.copy(self.eq1.psi()),
+                np.zeros(2),
+                np.zeros_like(self.initial_plasma_descriptors, dtype=float),
+                starting_dI,
+                starting_dI,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                float(self.current_at_last_linearization[j]),
+            )
         dIydIj, ndIy = self.prepare_build_dIydI_j(
             j,
             target_relative_tolerance_linearization,
@@ -2387,6 +2624,9 @@ class nl_solver:
             self.dIydI_ICs = np.copy(self.dIydI)
             self.dRZdI_ICs = None
 
+        self.dIydI = self._project_plasma_vectors_even(self.dIydI)
+        self.dIydI_ICs = np.copy(self.dIydI)
+
         # compose the vector of initial delta_theta (profile parameters) to be used for the finite difference calculation
         # - this uses the variation to Jtor caused by the parameter's contribution to the change in poloidal flux, ignoring the response of the plasma
 
@@ -2501,6 +2741,10 @@ class nl_solver:
                 self.dIydtheta = np.copy(self.dIydtheta_ICs)
         else:
             self.dIydtheta = dIydtheta
+            self.dIydtheta_ICs = np.copy(self.dIydtheta)
+
+        if self.dIydtheta is not None:
+            self.dIydtheta = self._project_plasma_vectors_even(self.dIydtheta)
             self.dIydtheta_ICs = np.copy(self.dIydtheta)
 
     def set_plasma_resistivity(self, plasma_resistivity: float) -> None:
@@ -2787,12 +3031,14 @@ class nl_solver:
         self.get_vessel_currents(eq)
 
         # transforms in normal modes (including truncation)
-        self.currents_vec[: self.n_metal_modes] = self.evol_metal_curr.IvesseltoId(
+        mode_currents = self.evol_metal_curr.IvesseltoId(
             Ivessel=self.vessel_currents_vec
         )
 
-        # extracts total plasma current value
-        self.currents_vec[-1] = profiles.Ip / self.plasma_norm_factor
+        # append the total plasma current value
+        self.currents_vec = np.concatenate(
+            (mode_currents, [profiles.Ip / self.plasma_norm_factor])
+        )
 
         # this is currents_vec(t-dt):
         self.currents_vec_m1 = np.copy(self.currents_vec)
@@ -2895,6 +3141,7 @@ class nl_solver:
             self.profiles1,
             target_relative_tolerance=target_relative_tolerance_linearization,
             suppress=True,
+            force_up_down_symmetric=self.force_up_down_symmetric,
         )
 
         # self.eq2 and self.profiles2 are used as auxiliary objects when solving for the dynamics
@@ -3102,9 +3349,10 @@ class nl_solver:
         else:
             self.eq1.set_plasma_psi(self.trial_plasma_psi)
             self.profiles1.Ip = self.trial_currents[-1] * self.plasma_norm_factor
-            self.tokamak_psi = self.eq1.tokamak.calcPsiFromGreens(
-                pgreen=self.eq1._pgreen
-            )
+            if self.force_up_down_symmetric:
+                self.tokamak_psi = self.eq1.tokamak.getPsitokamak(self.eq1._vgreen)
+            else:
+                self.tokamak_psi = self.eq1.tokamak.calcPsiFromGreens(self.eq1._pgreen)
             self.profiles1.Jtor(
                 self.eqR, self.eqZ, self.tokamak_psi + self.trial_plasma_psi
             )
@@ -3182,6 +3430,7 @@ class nl_solver:
             self.profiles2,
             target_relative_tolerance=rtol_NK,
             suppress=True,
+            force_up_down_symmetric=self.force_up_down_symmetric,
         )
 
     def make_blended_hatIy_(self, hatIy1: np.ndarray, blend: float) -> None:
@@ -3934,7 +4183,11 @@ class nl_solver:
                 # update plasma flux if trial_currents and plasma_flux exceedingly far from GS solution
                 if control_GS:
                     self.NK.forward_solve(
-                        self.eq2, self.profiles2, self.rtol_NK, suppress=True
+                        self.eq2,
+                        self.profiles2,
+                        self.rtol_NK,
+                        suppress=True,
+                        force_up_down_symmetric=self.force_up_down_symmetric,
                     )
                     self.trial_plasma_psi *= 1 - blend_GS
                     self.trial_plasma_psi += blend_GS * self.eq2.plasma_psi

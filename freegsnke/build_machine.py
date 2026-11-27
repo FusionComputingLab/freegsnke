@@ -29,7 +29,9 @@ from __future__ import annotations
 import os
 import pickle
 import warnings
+from collections.abc import Sequence
 from copy import deepcopy
+from typing import Any
 
 import numpy as np
 from shapely.geometry import Polygon, box
@@ -2160,7 +2162,73 @@ def build_passives(
                 coil["dR"] * coil["dZ"]
             )
 
+    for index, data in enumerate(passive_coils):
+        if "_up_down_refinement" in data:
+            source, midplane = data["_up_down_refinement"]
+            name = data.get("name", f"passive_{index}")
+            _symmetrise_passive_refinement(
+                coil_circuits, coils_dict, [(source, name)], midplane
+            )
     return coil_circuits, coils_dict, coil_names
+
+
+def _symmetrise_passive_refinement(
+    coils: list[tuple[str, Any]],
+    coils_dict: dict[str, dict[str, Any]],
+    pairs: Sequence[tuple[str, str]],
+    z_midplane: float = 0.0,
+) -> bool:
+    """Mirror passive samples once so cached and direct fields use one geometry.
+
+    Parameters
+    ----------
+    coils : list of tuple[str, Any]
+        Ordered ``(name, coil_object)`` pairs on the tokamak.
+    coils_dict : dict of str to dict
+        Vectorised coil metadata dictionary on the tokamak.
+    pairs : sequence of tuple[str, str]
+        ``(source_name, target_name)`` passive element pairs (or self-pairs).
+    z_midplane : float, default=0.0
+        Vertical coordinate of the reflection symmetry plane [m].
+
+    Returns
+    -------
+    bool
+        True if any passive filament discretisation was updated in place.
+    """
+    by_name = dict(coils)
+    changed = False
+    for source_name, target_name in pairs:
+        source, target = by_name[source_name], by_name[target_name]
+        if not isinstance(source, PassiveStructure):
+            continue
+        reflected = source.filaments.copy()
+        reflected[:, 1] = 2 * z_midplane - reflected[:, 1]
+        if source is target:
+            order = np.lexsort(source.filaments.T[::-1])
+            reflected_order = np.lexsort(reflected.T[::-1])
+            if np.allclose(
+                source.filaments[order], reflected[reflected_order], rtol=0, atol=1e-12
+            ):
+                continue
+            reflected = np.vstack((source.filaments, reflected))
+        elif np.array_equal(target.filaments, reflected) and target.area == source.area:
+            continue
+        old_area = target.area
+        target.filaments = reflected
+        target.n_refine = len(reflected)
+        target.area = source.area
+        target.R = source.R
+        target.Z = z_midplane if source is target else 2 * z_midplane - source.Z
+        target.greens = {}
+        data = coils_dict[target_name]
+        data["coords"] = reflected.T.copy()
+        data["resistivity_over_area"] *= old_area / target.area
+        data["area"] = target.area
+        data["dR"] = data["dZ"] = (target.area / len(reflected)) ** 0.5
+        data["multiplier"] = np.array([1 / len(reflected)])
+        changed = True
+    return changed
 
 
 def build_active_coil_dict(active_coils: dict) -> dict:

@@ -24,8 +24,46 @@ from __future__ import annotations
 import numpy as np
 
 
+def _validate_passive_reflection(reflection: np.ndarray, n_passive: int) -> np.ndarray:
+    """Validate a finite symmetric involution before it changes machine state.
+
+    Parameters
+    ----------
+    reflection : np.ndarray
+        Candidate passive reflection permutation matrix.
+    n_passive : int
+        Number of passive conducting structures.
+
+    Returns
+    -------
+    np.ndarray
+        Validated floating-point reflection matrix of shape
+        ``(n_passive, n_passive)``.
+    """
+    reflection = np.asarray(reflection, dtype=float)
+    if reflection.shape != (n_passive, n_passive):
+        raise ValueError(
+            f"'passive_reflection_operator' must have shape ({n_passive}, {n_passive})."
+        )
+    if (
+        not np.isfinite(reflection).all()
+        or not np.allclose(reflection, reflection.T)
+        or not np.allclose(reflection @ reflection, np.eye(n_passive))
+    ):
+        raise ValueError(
+            "'passive_reflection_operator' must be a finite symmetric involution."
+        )
+    return reflection
+
+
 class mode_decomposition:
-    """Sets up the vessel mode decomposition used by the dynamic solver(s)."""
+    """Set up the vessel mode decomposition used by the dynamic solvers.
+
+    When a symmetric reflection operator is supplied, the passive dynamics are
+    decomposed into orthogonal even and odd subspaces before their normal modes
+    are calculated. This prevents degenerate eigenvalues from producing modes
+    with arbitrary mixed parity.
+    """
 
     def __init__(
         self,
@@ -33,32 +71,31 @@ class mode_decomposition:
         coil_self_ind: np.ndarray,
         n_coils: int,
         n_active_coils: int,
+        passive_reflection_operator: np.ndarray | None = None,
+        symmetry_tolerance: float = 1e-8,
     ) -> None:
-        """
-        Instantiate the class.
-
-        Matrix data calculated here is used to reformulate the system of circuit
-        equations, primarily in circuit_eq_metal.py.
+        """Instantiates the class.
+        Matrix data calculated here is used to reformulate the system of circuit eqs,
+        primarily in circuit_eq_metal.py
 
         Parameters
         ----------
         coil_resist : np.ndarray
             1d array of resistance values for all machine conducting elements,
-            including both active coils and passive structures, shape (n_coils,).
-        coil_self_ind : np.ndarray
-            2d matrix of mutual inductances between all pairs of machine
-            conducting elements, including both active coils and passive
-            structures, shape (n_coils, n_coils).
+            including both active coils and passive structures.
+        coil_self_ind : np.array
+            2d matrix of mutual inductances between all pairs of machine conducting elements,
+            including both active coils and passive structures
         n_coils : int
-            Total number of conducting elements (active coils and passive
-            structures).
+            Total number of active and passive conducting elements.
         n_active_coils : int
-            Number of active coils; these are ordered first.
-
-        Raises
-        ------
-        ValueError
-            If `coil_resist` or `coil_self_ind` are not compatible with `n_coils`.
+            Number of active circuits at the start of the current vector.
+        passive_reflection_operator : np.array, optional
+            Matrix mapping passive currents to their up-down reflected counterparts.
+            When supplied, passive modes are classified as even or odd in Z.
+        symmetry_tolerance : float, optional
+            Maximum relative commutator error permitted between passive
+            dynamics and the supplied reflection operator.
         """
 
         # check number of coils is compatible with data provided
@@ -86,20 +123,56 @@ class mode_decomposition:
         # 2. passive structures
         rm1 = np.diag(self.coil_resist[self.n_active_coils :] ** -1)
         mm = self.coil_self_ind[self.n_active_coils :, self.n_active_coils :]
-        w, v = np.linalg.eig(rm1 @ mm)
-        # w as calculated here are timescales
-        # here we switch to frequencies
-        w = 1.0 / w
-        ordw = np.argsort(w)
-        self.w_passive = w[ordw]
-        Pmatrix_passive = v[:, ordw]
+        passive_dynamics = rm1 @ mm
+        self.passive_mode_parity = None
+        if passive_reflection_operator is None:
+            timescales, modes = np.linalg.eig(passive_dynamics)
+            frequencies = 1.0 / timescales
+            order = np.argsort(frequencies)
+            self.w_passive = frequencies[order]
+            Pmatrix_passive = modes[:, order]
+        else:
+            n_passive = self.n_coils - self.n_active_coils
+            reflection = _validate_passive_reflection(
+                passive_reflection_operator, n_passive
+            )
+            relative_commutator = np.linalg.norm(
+                reflection @ passive_dynamics - passive_dynamics @ reflection
+            ) / np.linalg.norm(passive_dynamics)
+            if relative_commutator > symmetry_tolerance:
+                raise ValueError(
+                    "Passive dynamics do not commute with up-down reflection. "
+                    "Check the machine resistance and inductance data."
+                )
 
-        # A sign convention for the sign of the normal modes is set
-        # The way this is achieved is just a choice:
-        # Pmatrix_passive /= np.sign(np.sum(Pmatrix_passive, axis=0, keepdims=True))
+            # Let A = R_p^-1 L_p and S be passive reflection. For an exactly
+            # symmetric machine, SA = AS. Since S is a symmetric involution,
+            # its +1 and -1 eigenspaces are orthogonal and invariant under A.
+            # Solving Q_+^T A Q_+ and Q_-^T A Q_- separately therefore gives
+            # dynamically decoupled modes with exact parity, even when their
+            # eigenvalues are degenerate.
+            reflection_values, reflection_vectors = np.linalg.eigh(reflection)
+            frequencies = []
+            modes = []
+            parities = []
+            for parity in (-1, 1):
+                basis = reflection_vectors[:, np.isclose(reflection_values, parity)]
+                if not basis.shape[1]:
+                    continue
+                timescales, reduced_modes = np.linalg.eig(
+                    basis.T @ passive_dynamics @ basis
+                )
+                frequencies.extend(1.0 / timescales)
+                modes.extend((basis @ reduced_modes).T)
+                parities.extend([parity] * len(timescales))
 
-        # find inverse
-        # Pmatrix_passive_m1 = np.linalg.inv(Pmatrix_passive)
+            frequencies = np.real_if_close(np.asarray(frequencies))
+            modes = np.real_if_close(np.asarray(modes).T)
+            parities = np.asarray(parities)
+            order = np.argsort(frequencies)
+            self.w_passive = frequencies[order]
+            Pmatrix_passive = modes[:, order]
+            self.passive_mode_parity = parities[order]
 
         if np.any(w_active < 0):
             print(
@@ -133,7 +206,9 @@ class mode_decomposition:
             self.Pmatrix.T @ self.Pmatrix, self.Pmatrix.T
         )
 
-    def normal_modes_greens(self, eq_vgreen: np.ndarray) -> np.ndarray:
+    def normal_modes_greens(
+        self, eq_vgreen: np.ndarray, mode_matrix: np.ndarray | None = None
+    ) -> np.ndarray:
         """
         Calculate the Green functions of the vessel normal modes.
 
@@ -157,16 +232,16 @@ class mode_decomposition:
             The vectorised Green functions of each coil, found at
             ``eq._vgreen``, with shape (n_coils, nx, ny).
 
+        mode_matrix : np.ndarray or None, optional
+            Transformation from retained mode currents to physical currents.
+            Defaults to the full mode matrix.
+
         Returns
         -------
         np.ndarray
-            Green functions of the normal modes, shape (n_coils, nx, ny).
+            Green functions of the retained modes, shape (n_modes, nx, ny).
         """
 
-        #        grid_shape = eq_vgreen.shape[1:]
-        #        physical_greens = eq_vgreen.reshape(self.n_coils, -1)
-        #        dgreen = (self.Pmatrix.T @ physical_greens).reshape(self.n_coils, *grid_shape)
-
-        dgreen = np.tensordot(self.Pmatrix, eq_vgreen, axes=([0], [0]))
-
-        return dgreen
+        if mode_matrix is None:
+            mode_matrix = self.Pmatrix
+        return np.tensordot(mode_matrix, eq_vgreen, axes=([0], [0]))

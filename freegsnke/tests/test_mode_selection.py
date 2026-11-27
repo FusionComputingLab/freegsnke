@@ -15,6 +15,7 @@ def test_no_gs_coupling_norm_uses_evaluated_perturbation():
     solver.Iy = np.zeros(3)
     solver.nIy = 10.0
     solver.n_coils = 2
+    solver.n_metal_modes = 2
     solver.approved_target_dIy = np.array([0.25, 0.4])
     solver.final_dI_record = np.zeros(2)
     solver.profiles2 = SimpleNamespace(
@@ -55,6 +56,7 @@ def test_fixed_timescale_selection_keeps_lowest_frequency_modes():
     metal = metal_currents.__new__(metal_currents)
     metal.n_active_coils = 2
     metal.n_coils = 6
+    metal.available_modes_mask = np.ones(6, dtype=bool)
     metal.max_mode_frequency = 0.5
     metal.normal_modes = SimpleNamespace(w_passive=np.array([1.0, 2.0, 3.0, 4.0]))
 
@@ -76,6 +78,7 @@ def test_timescale_cutoff_does_not_require_coupling_masks():
     metal = metal_currents.__new__(metal_currents)
     metal.n_active_coils = 1
     metal.n_coils = 5
+    metal.available_modes_mask = np.ones(5, dtype=bool)
     metal.max_mode_frequency = 2.5
     metal.normal_modes = SimpleNamespace(w_passive=np.array([1.0, 2.0, 3.0, 4.0]))
 

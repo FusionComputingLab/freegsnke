@@ -592,11 +592,31 @@ class nl_solver:
                     )
                 )
                 # exclude all modes that couple less than min_dIy_dI
+                odd_passive_mask = (
+                    (
+                        self.evol_metal_curr.normal_modes.passive_mode_parity[
+                            self.evol_metal_curr.available_modes_mask[
+                                self.n_active_coils :
+                            ]
+                        ]
+                        < 0
+                    )
+                    if (
+                        self.force_up_down_symmetric
+                        and not self.remove_odd_passive_modes
+                        and self.evol_metal_curr.normal_modes.passive_mode_parity
+                        is not None
+                    )
+                    else np.zeros(self.n_metal_modes - self.n_active_coils, dtype=bool)
+                )
                 mode_coupling_mask_exclude = np.concatenate(
                     (
                         [True] * self.n_active_coils,
-                        self.ndIydI_no_GS[self.n_active_coils :]
-                        >= min_dIy_dI * strongest_coupling_vessel_mode,
+                        (
+                            self.ndIydI_no_GS[self.n_active_coils :]
+                            >= min_dIy_dI * strongest_coupling_vessel_mode
+                        )
+                        | odd_passive_mask,
                     )
                 )
             if mode_selection == "coupling":
@@ -818,12 +838,11 @@ class nl_solver:
             selected_modes_mask = ndIydI > min_dIy_dI * max(
                 ndIydI[self.n_active_coils : -1]
             )
-            # force that active coils and plasma are kept
-            actives_and_plasma_mask = (
-                [True] * self.n_active_coils
-                + [False] * (self.n_metal_modes - self.n_active_coils)
-                + [True]
-            )
+            # force that active coils, explicitly retained odd passive modes, and plasma are kept
+            actives_and_plasma_mask = [
+                j < self.n_active_coils or self._is_odd_passive_mode_column(j)
+                for j in range(self.n_metal_modes)
+            ] + [True]
             self.retained_modes_mask = (
                 selected_modes_mask + np.array(actives_and_plasma_mask)
             ).astype(bool)
@@ -1057,6 +1076,32 @@ class nl_solver:
             self.rel_ndIy[j] = rel_ndIy
             self.ndIydI_no_GS[j] = np.linalg.norm(dIydInoGS)
         self.starting_dI = 1.0 * starting_dI
+
+    def _is_odd_passive_mode_column(self, j: int) -> bool:
+        """
+        Return whether independent-current column ``j`` is an odd passive mode.
+
+        Parameters
+        ----------
+        j : int
+            Column index in the retained independent-current basis.
+
+        Returns
+        -------
+        bool
+            True if ``force_up_down_symmetric`` is enabled and column ``j``
+            corresponds to a retained passive mode with odd parity.
+        """
+        if not self.force_up_down_symmetric:
+            return False
+        if j < self.n_active_coils or j >= self.n_metal_modes:
+            return False
+        parity = self.evol_metal_curr.normal_modes.passive_mode_parity
+        if parity is None:
+            return False
+        retained_full_indices = np.flatnonzero(self.evol_metal_curr.selected_modes_mask)
+        full_mode_index = int(retained_full_indices[j])
+        return bool(parity[full_mode_index - self.n_active_coils] < 0)
 
     def _project_plasma_vectors_even(self, vectors: npt.ArrayLike) -> np.ndarray:
         """Apply ``(I + S_y) / 2`` to reduced-domain plasma vectors.
@@ -1826,6 +1871,10 @@ class nl_solver:
         rel_ndIy : float
             Relative norm of the induced change in Iy, normalized by self.nIy.
         """
+        if self._is_odd_passive_mode_column(j):
+            self._reset_linearization_solve_state()
+            self.final_dI_record[j] = starting_dI
+            return np.zeros_like(self.Iy), 0.0
 
         current_ = np.copy(self.currents_vec)
         current_[j] += starting_dI
@@ -2059,6 +2108,24 @@ class nl_solver:
             diagnostics.
         """
         this_target_dIy = float(self.approved_target_dIy[j])
+        if self._is_odd_passive_mode_column(j):
+            starting_dI = float(self.starting_dI[j])
+            self.final_dI_record[j] = starting_dI
+            self.current_at_last_linearization[j] = self.currents_vec[j]
+            return (
+                j,
+                np.zeros_like(self.Iy),
+                np.copy(self.eq1.psi()),
+                np.zeros(2),
+                np.zeros_like(self.initial_plasma_descriptors, dtype=float),
+                starting_dI,
+                starting_dI,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                float(self.current_at_last_linearization[j]),
+            )
         dIydIj, ndIy = self.prepare_build_dIydI_j(
             j,
             target_relative_tolerance_linearization,

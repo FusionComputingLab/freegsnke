@@ -27,6 +27,7 @@ These example Jupyter notebooks are intended to be the **first port of call for 
 | Example 10 | Learn how to calculate growth rates associated with vertically unstable modes. | Anyone |
 | Example 11 | Learn how to use the evolutive solver alongside a virtual plasma control system (FreeGSNKE Pulse Design Tool). | Anyone |
 | Example 12a | Step through up-down machine symmetrisation using a self-contained toy tokamak description, including pairing, odd-circuit handling, diagnostics, and current transforms. | Anyone |
-| Example 12b | Run a closed-loop symmetric Pulse Design Tool simulation with `SymmetryReducedSolver` on a self-contained analytic tokamak, with an extra shaping-coil pair to move the X-point radius: inspect the shape, coil, equilibrium, passive-current, and runtime results. | Anyone |
+| Example 12b | Run a closed-loop symmetric Pulse Design Tool simulation with `SymmetryReducedSolver` on an Anamak-like analytic tokamak, with an extra shaping-coil pair to move the X-point radius: inspect the shape, coil, equilibrium, passive-current, and runtime results. | Anyone |
+| Example 12c | Repeat the closed-loop symmetric Pulse Design Tool simulation of Example 12b on the MAST-U-like machine of Example 11: symmetrise the machine (excluding the odd `P6` circuit), reuse the PCS settings of Example 11 while adding a feedback-controlled sweep of the lower outer strikepoint radius to a Super-X configuration, and inspect the plasma-current and shape tracking, coil limits, and runtime. | Anyone |
 
 If a new example has been created, please add a new line to the table explaining its purpose!

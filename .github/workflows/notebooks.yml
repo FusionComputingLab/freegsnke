@@ -46,6 +46,8 @@ jobs:
         run: jupyter nbconvert --execute --to notebook --inplace "examples/example07b - SPARC"
       - name: Check static inverse solve ITER notebook
         run: jupyter nbconvert --execute --to notebook --inplace "examples/example07c - ITER"
+      - name: Check example07h
+        run: jupyter nbconvert --execute --to notebook --inplace "examples/example07h - OpenSTEP.ipynb"
       - name: Check virtual circuits MAST-U notebook
         run: jupyter nbconvert --execute --to notebook --inplace "examples/example09 - virtual_circuits_MASTU.ipynb"
       - name: Check growth rates notebook

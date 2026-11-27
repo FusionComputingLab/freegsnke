@@ -244,8 +244,4 @@ class mode_decomposition:
 
         if mode_matrix is None:
             mode_matrix = self.Pmatrix
-        grid_shape = eq_vgreen.shape[1:]
-        physical_greens = eq_vgreen.reshape(self.n_coils, -1)
-        return (mode_matrix.T @ physical_greens).reshape(
-            mode_matrix.shape[1], *grid_shape
-        )
+        return np.tensordot(mode_matrix, eq_vgreen, axes=([0], [0]))

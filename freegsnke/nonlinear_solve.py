@@ -40,7 +40,7 @@ from .circuit_eq_metal import metal_currents
 from .gradshafranov import GreensBr, GreensdBrdz
 from .GSstaticsolver import NKGSsolver
 from .linear_solve import linear_solver
-from .Myy_builder import Myy_handler
+from .Myy_builder import make_Myy_handler
 from .normal_modes import _validate_passive_reflection
 from .simplified_solve import simplified_solver_J1
 from .up_down_symmetry import _symmetrise_greens, _symmetrise_square_operator
@@ -142,6 +142,8 @@ class nl_solver:
         passive_reflection_operator: np.ndarray | None = None,
         remove_odd_passive_modes: bool = True,
         symmetry_tolerance: float = 1e-8,
+        myy_type: str = "reduced",
+        cache_myy: bool = True,
     ) -> None:
         """
         Initialize the nonlinear solver.
@@ -263,6 +265,11 @@ class nl_solver:
             Number of worker processes used to build independent ``dIydI`` and
             ``dIydtheta`` columns during initial and later linearisations. A value
             of 1 retains the serial calculation.
+        myy_type: str, default="reduced"
+            Either "reduced" to define Myy over reduced domain in real space, or "fft" to define Myy
+            over the full domain in Fourier space.
+        cache_myy: bool, default=True
+            Controls whether the Myy matrix is cached at initialization or rebuilt for every product.
 
         Raises
         ------
@@ -399,6 +406,11 @@ class nl_solver:
 
         # storing the static solver
         self.NK = GSStaticSolver
+        if self.NK.greenfunc is None:
+            warnings.warn(
+                "The GSStaticSolver provided seems to have been initialized with `cache_greens=False`. "
+                "Evolutive solves without cached greens are discouraged: a heavy performance cost is expected."
+            )
         self.NK.forward_solve(
             eq,
             profiles,
@@ -417,7 +429,9 @@ class nl_solver:
         self.nIy = np.linalg.norm(self.Iy)
 
         # instantiate the Myy_handler object
-        self.handleMyy = Myy_handler(eq.limiter_handler)
+        self.handleMyy = make_Myy_handler(
+            myy_type, eq.limiter_handler, cache_myy=cache_myy
+        )
 
         # Extract relevant information on the type of profiles function used and on the actual value of associated parameters
         self.get_profiles_values(profiles)
@@ -2972,6 +2986,7 @@ class nl_solver:
         force_core_mask_linearization: bool = False,
         verbose: bool = False,
         plasma_descriptor_function: Callable[[object], np.ndarray] | None = None,
+        cache_myy: bool | None = None,
     ) -> None:
         """
         Initialize the dynamics solver from a given equilibrium and plasma profiles.
@@ -3009,6 +3024,11 @@ class nl_solver:
         plasma_descriptor_function : Callable[[object], np.ndarray] or None, optional
             Function returning the 1D array of plasma descriptors of an equilibrium.
             Defaults to ``self.plasma_descriptor_function``.
+        cache_myy: bool, default=None
+            Used to change the caching behavior of Myy: if `True`, will (re)compute the Myy matrix and make it
+            so that it is calculated and cached only when its value changes. If `False`, the Myy matrix will be
+            discarded (if it had been cached previously) and will be recalculated every time a product with Myy
+            is computed. If None, no action is taken and whatever behavior was preset is preserved.
 
         Notes
         -----
@@ -3097,6 +3117,8 @@ class nl_solver:
         )
 
         # set Myy matrix in place through the handling object
+
+        self.handleMyy.update_caching_behavior(cache_myy)
         self.handleMyy.force_build_Myy(self.hatIy)
 
         # transfer linearization to linear solver:
@@ -3899,6 +3921,13 @@ class nl_solver:
         if no_GS and not linear_only:
             raise ValueError(
                 "The flag 'no_GS' can only be True when 'linear_only=True'."
+            )
+
+        if not linear_only and not self.handleMyy.cache_myy:
+            warnings.warn(
+                "Non-linear solves without cached Myy are discouraged: a heavy performance cost is expected.\t"
+                "Consider setting `cache_myy=True` when creating the nonlinear solver or when calling `initialize_from_ICs`, "
+                "or alternatively, set `linear_only=True` when creating the nlstepper."
             )
 
         # evaluate whether relinearisation criterion met or not

@@ -52,9 +52,6 @@ def create_machine():
         alpha_n=1.2,
     )
 
-    from freegsnke import GSstaticsolver
-
-    NK = GSstaticsolver.NKGSsolver(eq)
     currents = np.array(
         [
             40000,
@@ -74,6 +71,27 @@ def create_machine():
     keys = list(eq.tokamak.getCurrents().keys())
     for i in np.arange(12):
         eq.tokamak.set_coil_current(keys[i], currents[i])
+
+    return tokamak, eq, profiles
+
+
+@pytest.fixture()
+def create_solver(create_machine, request):
+
+    tokamak, eq, profiles = create_machine
+    if not hasattr(request, "param") or request.param == "default":
+        request.param = {
+            "solver_type": "LUsparse",
+            "myy_type": "reduced",
+            "cache_myy": True,
+        }
+
+    from freegsnke import GSstaticsolver
+
+    NK = GSstaticsolver.NKGSsolver(
+        eq,
+        solver_type=request.param["solver_type"],
+    )
     NK.solve(eq, profiles, target_relative_tolerance=1e-8)
 
     # Initialize the evolution object
@@ -93,12 +111,24 @@ def create_machine():
         # modes. Plasma-coupling metrics may calibrate finite-difference steps but
         # must not change which modes are retained.
         mode_selection="timescale",
+        myy_type=request.param["myy_type"],
+        cache_myy=request.param["cache_myy"],
     )
-    return tokamak, eq, profiles, stepping
+    return stepping
 
 
-def test_linearised_growth_rate(create_machine):
-    tokamak, eq, profiles, stepping = create_machine
+@pytest.mark.parametrize(
+    ("create_solver", "tolerance"),
+    [
+        ({"solver_type": "LUsparse", "myy_type": "reduced", "cache_myy": True}, 1e-3),
+        ({"solver_type": "DST", "myy_type": "reduced", "cache_myy": True}, 1e-2),
+    ],
+    indirect=["create_solver"],
+)
+def test_linearised_growth_rate(create_machine, create_solver, tolerance):
+
+    tokamak, eq, profiles = create_machine
+    stepping = create_solver
     selected_passive_modes = stepping.evol_metal_curr.selected_modes_mask[
         stepping.n_active_coils :
     ]
@@ -107,15 +137,27 @@ def test_linearised_growth_rate(create_machine):
         np.arange(50),
     )
     true_GR = 0.05900
-    # check that
+
     assert (
         abs((stepping.linearised_sol.instability_timescale[0] - true_GR) / true_GR)
-        < 1e-3
-    ), f"Growth rate deviates { abs((stepping.linearised_sol.growth_rates[0]-true_GR)/true_GR)}% from baseline"
+        < tolerance
+    ), f"Growth rate deviates {abs((stepping.linearised_sol.instability_timescale[0]-true_GR)/true_GR):.2%} from baseline"
 
 
-def test_linearised_stepper(create_machine):
-    tokamak, eq, profiles, stepping = create_machine
+@pytest.mark.parametrize(
+    "create_solver",
+    [
+        {"solver_type": "LUsparse", "myy_type": "reduced", "cache_myy": True},
+        {"solver_type": "LUsparse", "myy_type": "fft", "cache_myy": True},
+        {"solver_type": "LUsparse", "myy_type": "reduced", "cache_myy": False},
+    ],
+    indirect=True,
+)
+def test_linearised_stepper(create_machine, create_solver):
+
+    tokamak, eq, profiles = create_machine
+    stepping = create_solver
+
     U_active = (stepping.vessel_currents_vec * stepping.evol_metal_curr.coil_resist)[
         : stepping.evol_metal_curr.n_active_coils
     ]
@@ -206,8 +248,19 @@ def test_linearised_stepper(create_machine):
     ), "X-point location deviates more than 1/2 of pixel size."
 
 
-def test_non_linear_stepper(create_machine):
-    tokamak, eq, profiles, stepping = create_machine
+@pytest.mark.parametrize(
+    "create_solver",
+    [
+        {"solver_type": "LUsparse", "myy_type": "reduced", "cache_myy": True},
+        {"solver_type": "LUsparse", "myy_type": "fft", "cache_myy": True},
+    ],
+    indirect=True,
+)
+def test_non_linear_stepper(create_machine, create_solver):
+
+    tokamak, eq, profiles = create_machine
+    stepping = create_solver
+
     U_active = (stepping.vessel_currents_vec * stepping.evol_metal_curr.coil_resist)[
         : stepping.evol_metal_curr.n_active_coils
     ]
@@ -296,9 +349,10 @@ def test_non_linear_stepper(create_machine):
     ), "X-point location deviates more than 1/2 of pixel size."
 
 
-def test_reinitialisation_preserves_dRZdI(create_machine):
+def test_reinitialisation_preserves_dRZdI(create_machine, create_solver):
     # Regression test for #116: no modes removed
-    tokamak, eq, profiles, stepping = create_machine
+    tokamak, eq, profiles = create_machine
+    stepping = create_solver
     saved_drzdi = np.copy(stepping.dRZdI)
 
     assert (
@@ -310,9 +364,12 @@ def test_reinitialisation_preserves_dRZdI(create_machine):
     np.testing.assert_array_equal(stepping.dRZdI, saved_drzdi)
 
 
-def test_reinitialisation_preserves_dRZdI_after_mode_removal(create_machine):
+def test_reinitialisation_preserves_dRZdI_after_mode_removal(
+    create_machine, create_solver
+):
     # Regression test for #116: mode removal
-    tokamak, eq, profiles, stepping = create_machine
+    tokamak, eq, profiles = create_machine
+    stepping = create_solver
     solver = nonlinear_solve.nl_solver(
         profiles=profiles,
         eq=eq,
@@ -344,3 +401,43 @@ def test_reinitialisation_preserves_dRZdI_after_mode_removal(create_machine):
     )
 
     np.testing.assert_array_equal(solver.dRZdI, saved_drzdi)
+
+
+def test_myy_handler_backward_compatibility_and_fft_non_square(create_machine):
+    """Direct Myy_handler instantiation returns Reduced_Myy_handler, and FFT_Myy_handler agrees with Reduced_Myy_handler on a non-square grid."""
+    from freegsnke import equilibrium_update
+    from freegsnke.Myy_builder import (
+        FFT_Myy_handler,
+        Myy_handler,
+        Reduced_Myy_handler,
+        make_Myy_handler,
+    )
+
+    tokamak, _, _ = create_machine
+    eq_rect = equilibrium_update.Equilibrium(
+        tokamak=tokamak,
+        Rmin=0.1,
+        Rmax=2.0,
+        Zmin=-2.2,
+        Zmax=2.2,
+        nx=33,
+        ny=65,
+    )
+
+    direct_handler = Myy_handler(eq_rect.limiter_handler)
+    assert isinstance(direct_handler, Reduced_Myy_handler)
+
+    fft_handler = make_Myy_handler("fft", eq_rect.limiter_handler)
+    assert isinstance(fft_handler, FFT_Myy_handler)
+    assert (fft_handler.nR, fft_handler.nZ) == (33, 65)
+
+    n_pts = int(np.sum(eq_rect.limiter_handler.mask_inside_limiter))
+    hat_iy = np.ones(n_pts, dtype=float) / n_pts
+    direct_handler.force_build_Myy(hat_iy)
+
+    np.testing.assert_allclose(
+        fft_handler.dot(hat_iy),
+        direct_handler.dot(hat_iy),
+        rtol=1e-12,
+        atol=1e-12,
+    )

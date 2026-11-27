@@ -31,4 +31,6 @@ These example Jupyter notebooks are intended to be the **first port of call for 
 | Example 12b | Learn how to run a closed-loop Pulse Design Tool simulation in a symmetric machine (Anamak). | Anyone |
 | Example 12c | Learn how to run a closed-loop Pulse Design Tool simulation in a symmetric machine (MAST-U-like). | Anyone |
 
+| Example 12 | Calculate an implicit odd GS response and verify it against signed nonlinear solves on a manufactured equilibrium. | Anyone |
+
 If a new example has been created, please add a new line to the table explaining its purpose!

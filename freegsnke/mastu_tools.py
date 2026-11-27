@@ -26,7 +26,6 @@ from __future__ import annotations
 import math
 import os
 import pickle
-from copy import deepcopy
 from types import ModuleType
 from typing import Callable
 
@@ -82,38 +81,37 @@ def get_machine_data(
     save_path: str | None = None,
     shot: int = 45425,
     split_passives: bool = True,
-) -> dict:
+) -> None:
     """
-    Build the active-coil, passive-structure, wall, limiter, and probe
-    descriptions for MAST-U for a given shot number.
+    This functions builds the active coil, passive structure, wall, and limiter machine description pickle
+    files for MAST-U (for a given shot number).
 
     Parameters
     ----------
     save_path : str, optional
-        Path in which to save the machine pickle files. If omitted, no files
-        are written and the descriptions are returned in memory only.
-    shot : int
+        Path in which to save the machine pickle files. Despite the default, a
+        value must be supplied.
+    shot : int, optional
         MAST-U shot number.
     split_passives : bool, optional
         If True, we model the passive structures as parallelograms (recommended), if False, we model as point current sources
 
-    Returns
-    -------
-    dict
-        Machine descriptions keyed by their FreeGSNKE data roles. Existing
-        callers may ignore this return value when using ``save_path``.
-
     Raises
     ------
+    ValueError
+        If `save_path` is None.
     ImportError
         If the optional `pyuda` or `uda-mast` packages are not installed.
+
+    Notes
+    -----
+    Writes the pickle files for the machine description to `save_path`.
     """
 
-    def save_if_requested(value, filename):
-        """Write one legacy pickle output only when a path was requested."""
-        if save_path is not None:
-            with open(os.path.join(save_path, filename), "wb") as handle:
-                pickle.dump(value, handle)
+    if save_path is None:
+        raise ValueError(
+            "'save_path' cannot be None. Please provide a valid path to save the machine data."
+        )
 
     # set up pyUDA client (requires both pyuda and uda-mast)
     pyuda = _require_uda_mast()
@@ -518,7 +516,7 @@ def get_machine_data(
 
     # save data: this pickle file can be used when a symmetric MAST-U machine
     # description is required.
-    save_if_requested(active_coils, "MAST-U_active_coils.pickle")
+    pickle.dump(active_coils, open(f"{save_path}/MAST-U_active_coils.pickle", "wb"))
 
     # define non-symmetric active coils dictionary
     active_coils_nonsym = {}
@@ -578,14 +576,15 @@ def get_machine_data(
     active_coils_nonsym["p6_upper"] = {}
     active_coils_nonsym["p6_upper"]["1"] = p6_upper
     active_coils_nonsym["p6_lower"] = {}
-    # This polarity differs from the series-connected P6 description above.
-    # Copy the entry so the independent-coil convention cannot mutate it.
-    active_coils_nonsym["p6_lower"]["1"] = p6_lower.copy()
+    active_coils_nonsym["p6_lower"]["1"] = p6_lower
     active_coils_nonsym["p6_lower"]["1"]["polarity"] = 1
 
     # save data: this pickle file can be used when a non-symmetric MAST-U machine
     # description is required.
-    save_if_requested(active_coils_nonsym, "MAST-U_active_coils_nonsym.pickle")
+    pickle.dump(
+        active_coils_nonsym,
+        open(f"{save_path}/MAST-U_active_coils_nonsym.pickle", "wb"),
+    )
 
     # ------------
     # LIMITER/WALL
@@ -597,10 +596,10 @@ def get_machine_data(
         limiter.append({"R": limiter_uda["r"][i], "Z": limiter_uda["z"][i]})
 
     # save
-    save_if_requested(limiter, "MAST-U_limiter.pickle")
+    pickle.dump(limiter, open(f"{save_path}/MAST-U_limiter.pickle", "wb"))
 
     # save: here we set the wall to be the same as the MAST-U limiter.
-    save_if_requested(limiter, "MAST-U_wall.pickle")
+    pickle.dump(limiter, open(f"{save_path}/MAST-U_wall.pickle", "wb"))
 
     # ------------
     # PASSIVE STRUCTURES
@@ -744,7 +743,10 @@ def get_machine_data(
                         )
 
     # save data
-    save_if_requested(passive_coils, "MAST-U_passive_coils.pickle")
+    pickle.dump(
+        passive_coils,
+        open(f"{save_path}/MAST-U_passive_coils.pickle", "wb"),
+    )
 
     # ------------
     # MAGNETIC PROBES
@@ -785,22 +787,13 @@ def get_machine_data(
         )
 
     # save
-    magnetic_probes = {"flux_loops": flux_loops, "pickups": pickups}
-    save_if_requested(magnetic_probes, "MAST-U_magnetic_probes.pickle")
+    pickle.dump(
+        {"flux_loops": flux_loops, "pickups": pickups},
+        open(f"{save_path}/MAST-U_magnetic_probes.pickle", "wb"),
+    )
 
     # DONE
-    if save_path is None:
-        print("MAST-U geometry data successfully extracted in memory.")
-    else:
-        print("MAST-U geometry data successfully extracted and pickle files built.")
-    return {
-        "active_coils_data": deepcopy(active_coils),
-        "independent_active_coils_data": deepcopy(active_coils_nonsym),
-        "passive_coils_data": deepcopy(passive_coils),
-        "limiter_data": deepcopy(limiter),
-        "wall_data": deepcopy(limiter),
-        "magnetic_probes_data": deepcopy(magnetic_probes),
-    }
+    print("MAST-U geometry data successfully extracted and pickle files built.")
 
 
 def load_efit_times_and_status(

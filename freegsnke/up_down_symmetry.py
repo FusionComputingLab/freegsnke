@@ -86,28 +86,30 @@ class PreparedUpDownMachine:
     pre-averaging discrepancy of every component.
     """
 
-    active_coils_data: dict
-    even_active_coils_data: dict
-    passive_coils_data: list
-    limiter_data: list
-    wall_data: list
-    original_active_names: tuple
-    even_active_names: tuple
-    passive_names: tuple
-    active_pairs: tuple
-    passive_pairs: tuple
-    self_symmetric_active_names: tuple
-    self_symmetric_passive_names: tuple
+    active_coils_data: dict[str, Any]
+    even_active_coils_data: dict[str, Any]
+    passive_coils_data: list[dict[str, Any]]
+    limiter_data: list[dict[str, float]] | None
+    wall_data: list[dict[str, float]] | None
+    original_active_names: tuple[str, ...]
+    even_active_names: tuple[str, ...]
+    passive_names: tuple[str, ...]
+    active_pairs: tuple[ElementPair, ...]
+    passive_pairs: tuple[ElementPair, ...]
+    self_symmetric_active_names: tuple[str, ...]
+    self_symmetric_passive_names: tuple[str, ...]
     source_z_midplane: float
     z_shift: float
     midplane_fit_rms: float
     midplane_fit_samples: int
-    geometry_discrepancies: tuple
-    excluded_odd_active_names: tuple
-    source_active_coils_data: dict | None = field(default=None, repr=False)
-    source_passive_coils_data: list | None = field(default=None, repr=False)
-    source_limiter_data: list | None = field(default=None, repr=False)
-    source_wall_data: list | None = field(default=None, repr=False)
+    geometry_discrepancies: tuple[GeometryDiscrepancy, ...]
+    excluded_odd_active_names: tuple[str, ...]
+    source_active_coils_data: dict[str, Any] | None = field(default=None, repr=False)
+    source_passive_coils_data: list[dict[str, Any]] | None = field(
+        default=None, repr=False
+    )
+    source_limiter_data: list[dict[str, float]] | None = field(default=None, repr=False)
+    source_wall_data: list[dict[str, float]] | None = field(default=None, repr=False)
 
     def summary(self, print_summary: bool = True) -> str:
         """Format and optionally print a summary of the symmetrisation.
@@ -175,6 +177,7 @@ class PreparedUpDownMachine:
             _, axis = plt.subplots(figsize=(6.5, 8.5))
 
         def _active_centroids(active_dict: dict[str, Any]) -> np.ndarray:
+            """Return centroid (R, Z) coordinates of all active-coil parts."""
             pts = []
             for circuit in active_dict.values():
                 for _, part in _active_parts(circuit):
@@ -190,6 +193,7 @@ class PreparedUpDownMachine:
             linestyle: str,
             label: str,
         ) -> None:
+            """Draw filled polygons for each passive structure in passive_list."""
             if not passive_list:
                 return
             for idx, element in enumerate(passive_list):
@@ -214,6 +218,7 @@ class PreparedUpDownMachine:
             linewidth: float,
             label: str,
         ) -> None:
+            """Draw a closed boundary outline (limiter or wall)."""
             if not outline:
                 return
             pts = np.asarray([[p["R"], p["Z"]] for p in outline], dtype=float)
@@ -311,7 +316,19 @@ class PreparedUpDownMachine:
     def largest_geometry_discrepancies(
         self, count: int | None = None
     ) -> tuple[GeometryDiscrepancy, ...]:
-        """Return pre-symmetrisation discrepancies in descending RMS order."""
+        """Return pre-symmetrisation discrepancies in descending RMS order.
+
+        Parameters
+        ----------
+        count : int or None, optional
+            Maximum number of discrepancy records to return. When None, all
+            recorded discrepancies are returned.
+
+        Returns
+        -------
+        tuple of GeometryDiscrepancy
+            Discrepancy records sorted from largest to smallest ``reflected_rms``.
+        """
         records = tuple(
             sorted(
                 self.geometry_discrepancies,
@@ -332,7 +349,18 @@ class PreparedUpDownMachine:
         return None if not largest else largest[0]
 
     def check_geometry_tolerance(self, max_reflected_rms: float) -> None:
-        """Raise if any component exceeds a reflected RMS tolerance in metres."""
+        """Raise if any component exceeds a reflected RMS tolerance in metres.
+
+        Parameters
+        ----------
+        max_reflected_rms : float
+            Maximum permitted reflected root-mean-square mismatch [m].
+
+        Raises
+        ------
+        ValueError
+            If ``max_reflected_rms`` is negative or any component exceeds it.
+        """
         max_reflected_rms = float(max_reflected_rms)
         if max_reflected_rms < 0:
             raise ValueError("'max_reflected_rms' must be non-negative.")
@@ -562,19 +590,47 @@ class PreparedUpDownMachine:
         """
         Average coil Green functions with their reflected partners.
 
+        Operates on a vectorised Green-function array (such as ``eq._vgreen``)
+        rather than the named dictionary cache ``eq._pgreen``.
+
         Parameters
         ----------
         greens : ndarray
             Green functions with the original metal-current index on axis zero.
         z_axis : int, default=-1
             Axis corresponding to an exactly symmetric Z grid.
+
+        Returns
+        -------
+        ndarray
+            Reflection-averaged Green-function array with the same shape as
+            ``greens``.
         """
         return _symmetrise_greens(greens, self.reflection_operator, z_axis)
 
     def symmetrise_even_machine_greens(
         self, greens: npt.ArrayLike, z_axis: int = -1
     ) -> np.ndarray:
-        """Reflection-average Green functions in the reduced machine basis."""
+        """Reflection-average Green functions in the reduced machine basis.
+
+        Operates on a vectorised Green-function array (such as ``eq._vgreen``)
+        used by the static and evolutive solvers, rather than the named
+        dictionary cache ``eq._pgreen``.
+
+        Parameters
+        ----------
+        greens : ndarray
+            Green functions with the reduced even-machine conductor index on
+            axis zero.
+        z_axis : int, default=-1
+            Axis corresponding to an exactly symmetric Z grid.
+
+        Returns
+        -------
+        ndarray
+            Reflection-averaged Green-function array with the same shape as
+            ``greens``.
+        """
         return _symmetrise_greens(greens, self.even_machine_reflection_operator, z_axis)
 
 
@@ -629,8 +685,9 @@ def prepare_up_down_symmetric_machine(
         uses reflected filament samples rather than independent meshes.
     limiter_data, wall_data : list, optional
         Standard FreeGSNKE boundary descriptions. Each outline is intersected
-        with its reflection, with a warning and comparison plot if its footprint
-        changes.
+        with its reflection, emitting a :class:`UserWarning` if its footprint
+        changes (use :meth:`PreparedUpDownMachine.plot` for a visual
+        comparison).
     z_midplane : float or "auto", default=0
         Symmetry-plane coordinate. ``"auto"`` fits the common vertical offset
         from matched machine points, shifts the complete description so that
@@ -930,8 +987,8 @@ def symmetrise_limiter(
 
     Retain existing boundary segments and add vertices only at edge crossings.
     Unequal upper/lower vertex counts require no pairing or resampling. An
-    already symmetric polygon is returned unchanged. Otherwise, warn and show
-    the original, reflected and retained outlines in a nonblocking plot.
+    already symmetric polygon is returned unchanged. Otherwise, emit a
+    :class:`UserWarning` quantifying the removed area and vertex-count change.
 
     Parameters
     ----------
@@ -956,7 +1013,9 @@ def symmetrise_limiter(
     return result
 
 
-def _symmetrise_boundary_with_mismatch(boundary_data, z_midplane):
+def _symmetrise_boundary_with_mismatch(
+    boundary_data: Sequence[dict[str, float]], z_midplane: float
+) -> tuple[list[dict[str, float]], float]:
     """Intersect reflected outlines and measure source-to-reflection RMS distance."""
     points = np.asarray([[p["R"], p["Z"]] for p in boundary_data], dtype=float)
     if len(points) < 3 or not np.isfinite(points).all():
@@ -1017,7 +1076,7 @@ def symmetrise_boundary(
 
     This is the common strategy for limiter and wall outlines. Retain existing
     segments and introduce vertices only at edge crossings, without pairing or
-    resampling. Warn and show a comparison plot whenever the footprint changes.
+    resampling. Emit a :class:`UserWarning` whenever the footprint changes.
 
     Parameters
     ----------
@@ -1042,12 +1101,12 @@ def symmetrise_boundary(
     return result
 
 
-def _point_rms_distance(first, second):
+def _point_rms_distance(first: np.ndarray, second: np.ndarray) -> float:
     """Return the root-mean-square Euclidean distance between paired points."""
     return float(np.sqrt(np.mean(np.sum((first - second) ** 2, axis=-1))))
 
 
-def _normalise_coordinates(element):
+def _normalise_coordinates(element: dict[str, Any]) -> None:
     """Keep one-dimensional, finite R/Z arrays in private geometry copies."""
     for key in ("R", "Z"):
         element[key] = np.atleast_1d(np.asarray(element[key], dtype=float))
@@ -1057,28 +1116,36 @@ def _normalise_coordinates(element):
         raise ValueError("R and Z must contain finite coordinates.")
 
 
-def _element_points(element, polygon=False):
+def _element_points(
+    element: dict[str, Any], polygon: bool = False
+) -> tuple[np.ndarray, bool]:
     """Return unique polygon vertices or filament points and explicit closure."""
     points = np.column_stack((element["R"], element["Z"])).astype(float)
     closed = polygon and len(points) > 2 and np.array_equal(points[0], points[-1])
     return (points[:-1] if closed else points), closed
 
 
-def _split_about_plane(values, z_midplane):
+def _split_about_plane(
+    values: npt.ArrayLike, z_midplane: float
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Partition coordinates into disjoint upper, lower and middle masks."""
     values = np.asarray(values)
     middle = np.isclose(values, z_midplane, rtol=0.0, atol=1e-8)
     return (values > z_midplane) & ~middle, (values < z_midplane) & ~middle, middle
 
 
-def _active_sides(element, z_midplane):
+def _active_sides(
+    element: dict[str, Any], z_midplane: float
+) -> tuple[list[tuple[Any, dict[str, Any]]], ...]:
     """Partition compound parts once for parity and geometry operations."""
     parts = _active_parts(element)
     masks = _split_about_plane([_centroid_z(part) for _, part in parts], z_midplane)
     return tuple([part for part, keep in zip(parts, mask) if keep] for mask in masks)
 
 
-def _geometry_bounds_midplane(active_data, passive_data):
+def _geometry_bounds_midplane(
+    active_data: dict[str, Any], passive_data: Sequence[dict[str, Any]]
+) -> float:
     """Estimate a preliminary midplane from the complete geometry bounds."""
     z_values = []
     for element in active_data.values():
@@ -1090,17 +1157,19 @@ def _geometry_bounds_midplane(active_data, passive_data):
         raise ValueError("Cannot fit a midplane without machine geometry.")
     # This estimate is used only to classify candidates for the later matched-
     # point fit, so the midpoint of the global vertical extent is sufficient.
-    return 0.5 * (np.min(z_values) + np.max(z_values))
+    return float(0.5 * (np.min(z_values) + np.max(z_values)))
 
 
-def _shift_active_geometry(active_data, z_shift):
+def _shift_active_geometry(active_data: dict[str, Any], z_shift: float) -> None:
     """Apply a uniform vertical shift to an active-coil description in place."""
     for element in active_data.values():
         for _, part in _active_parts(element):
             part["Z"] = np.asarray(part["Z"], dtype=float) + z_shift
 
 
-def _shift_flat_geometry(elements, z_shift):
+def _shift_flat_geometry(
+    elements: Sequence[dict[str, Any]] | None, z_shift: float
+) -> None:
     """Apply a uniform vertical shift to flat geometry dictionaries in place."""
     if elements is None:
         return
@@ -1108,7 +1177,12 @@ def _shift_flat_geometry(elements, z_shift):
         element["Z"] = np.asarray(element["Z"], dtype=float) + z_shift
 
 
-def _pair_z_midpoints(upper, lower, z_midplane, polygon):
+def _pair_z_midpoints(
+    upper: dict[str, Any],
+    lower: dict[str, Any],
+    z_midplane: float,
+    polygon: bool,
+) -> np.ndarray:
     """Return fitted-plane samples from one aligned upper/lower point pair."""
     upper_points, _ = _element_points(upper, polygon)
     lower_points, _ = _element_points(lower, polygon)
@@ -1120,7 +1194,9 @@ def _pair_z_midpoints(upper, lower, z_midplane, polygon):
     return 0.5 * (upper_points[:, 1] + lower_points[assignment, 1])
 
 
-def _active_pair_z_midpoints(upper, lower, z_midplane):
+def _active_pair_z_midpoints(
+    upper: dict[str, Any], lower: dict[str, Any], z_midplane: float
+) -> np.ndarray:
     """Return fitted-plane samples from all parts of an active pair."""
     upper_parts = _active_parts(upper)
     lower_parts = _active_parts(lower)
@@ -1142,7 +1218,9 @@ def _active_pair_z_midpoints(upper, lower, z_midplane):
     )
 
 
-def _self_z_midpoints(element, z_midplane, polygon=False):
+def _self_z_midpoints(
+    element: dict[str, Any], z_midplane: float, polygon: bool = False
+) -> np.ndarray:
     """Return fitted-plane samples from a circuit or element spanning the plane."""
     points = np.vstack(
         [_element_points(part, polygon)[0] for _, part in _active_parts(element)]
@@ -1165,15 +1243,15 @@ def _self_z_midpoints(element, z_midplane, polygon=False):
 
 
 def _fit_source_midplane(
-    active_data,
-    passive_data,
-    passive_names,
-    active_pairs,
-    active_self,
-    passive_pairs,
-    passive_self,
-    preliminary_midplane,
-):
+    active_data: dict[str, Any],
+    passive_data: Sequence[dict[str, Any]],
+    passive_names: Sequence[str],
+    active_pairs: Sequence[tuple[str, str, str]],
+    active_self: Sequence[str],
+    passive_pairs: Sequence[tuple[str, str, str]],
+    passive_self: Sequence[str],
+    preliminary_midplane: float,
+) -> tuple[float, float, int]:
     """Fit the common source-plane offset from all paired geometry points."""
     # Pool pointwise midplanes across all conductors. This gives detailed
     # elements proportionally more influence than coarse single-point elements.
@@ -1214,37 +1292,39 @@ def _fit_source_midplane(
     return fitted_midplane, fit_rms, len(samples)
 
 
-def _check_unique(names, description):
+def _check_unique(names: Sequence[str], description: str) -> None:
     """Raise when current labels are not unique."""
     if len(set(names)) != len(names):
         raise ValueError(f"The {description} element names must be unique.")
 
 
-def _strip_side(name):
+def _strip_side(name: str) -> str:
     """Remove upper/lower tokens from a grouping label."""
     stripped = _SIDE_PATTERN.sub(lambda match: match.group(1), str(name))
     return re.sub(r"_+", "_", stripped).strip("_")
 
 
-def _name_side(name):
+def _name_side(name: str) -> str | None:
     """Return the explicit side encoded in a name, if present."""
     match = _SIDE_PATTERN.search(str(name))
     return None if match is None else match.group(2).lower()
 
 
-def _centroid_z(element):
+def _centroid_z(element: dict[str, Any]) -> float:
     """Return the mean Z coordinate of one flat geometry dictionary."""
     return float(np.mean(np.asarray(element["Z"], dtype=float)))
 
 
-def _active_parts(element):
+def _active_parts(
+    element: dict[str, Any],
+) -> list[tuple[str | None, dict[str, Any]]]:
     """Return named flat geometry parts from an active-coil entry."""
     if "R" in element and "Z" in element:
         return [(None, element)]
     return list(element.items())
 
 
-def _active_centroid_z(element):
+def _active_centroid_z(element: dict[str, Any]) -> float:
     """Return the filament-count-weighted active-circuit Z centroid."""
     parts = _active_parts(element)
     counts = np.asarray([np.size(part["Z"]) for _, part in parts])
@@ -1252,7 +1332,11 @@ def _active_centroid_z(element):
     return float(np.average(means, weights=counts))
 
 
-def _identify_active_pairs(active_data, explicit_pairs, z_midplane):
+def _identify_active_pairs(
+    active_data: dict[str, Any],
+    explicit_pairs: Sequence[tuple[str, str]] | None,
+    z_midplane: float,
+) -> tuple[list[tuple[str, str, str]], list[str]]:
     """Identify active pairs and self-symmetric circuits."""
     names = tuple(active_data)
     _check_unique(names, "active")
@@ -1302,13 +1386,18 @@ def _identify_active_pairs(active_data, explicit_pairs, z_midplane):
     return pairs, self_names
 
 
-def _passive_group(element, name):
+def _passive_group(element: dict[str, Any], name: str) -> str:
     """Return the structural candidate group for one passive element."""
     metadata_group = element.get("element")
     return _strip_side(metadata_group if metadata_group is not None else name)
 
 
-def _identify_passive_pairs(passive_data, names, explicit_pairs, z_midplane):
+def _identify_passive_pairs(
+    passive_data: Sequence[dict[str, Any]],
+    names: Sequence[str],
+    explicit_pairs: Sequence[tuple[str, str]] | None,
+    z_midplane: float,
+) -> tuple[list[tuple[str, str, str]], list[str]]:
     """Identify passive pairs by grouped reflected-geometry assignment."""
     by_name = dict(zip(names, passive_data))
     if explicit_pairs is not None:
@@ -1368,7 +1457,11 @@ def _identify_passive_pairs(passive_data, names, explicit_pairs, z_midplane):
     return pairs, self_names
 
 
-def _best_point_assignment(upper_points, reflected_lower_points, polygon):
+def _best_point_assignment(
+    upper_points: np.ndarray,
+    reflected_lower_points: np.ndarray,
+    polygon: bool,
+) -> np.ndarray:
     """Return lower-point indices aligned with upper-point indices."""
     if len(upper_points) != len(reflected_lower_points):
         raise ValueError(
@@ -1405,7 +1498,12 @@ def _best_point_assignment(upper_points, reflected_lower_points, polygon):
     return assignment
 
 
-def _geometry_mismatch(upper, lower, z_midplane, polygon):
+def _geometry_mismatch(
+    upper: dict[str, Any],
+    lower: dict[str, Any],
+    z_midplane: float,
+    polygon: bool,
+) -> float:
     """Return RMS reflected point mismatch between two flat elements."""
     upper_points, _ = _element_points(upper, polygon)
     lower_points, _ = _element_points(lower, polygon)
@@ -1415,12 +1513,16 @@ def _geometry_mismatch(upper, lower, z_midplane, polygon):
     return _point_rms_distance(upper_points, reflected_lower[assignment])
 
 
-def _active_part_winding(part):
+def _active_part_winding(part: dict[str, Any]) -> float:
     """Return the signed current multiplier of one active-coil part."""
     return float(part.get("polarity", 1.0)) * float(part.get("multiplier", 1.0))
 
 
-def _active_part_assignment(upper_parts, lower_parts, z_midplane):
+def _active_part_assignment(
+    upper_parts: Sequence[tuple[Any, dict[str, Any]]],
+    lower_parts: Sequence[tuple[Any, dict[str, Any]]],
+    z_midplane: float,
+) -> tuple[np.ndarray, np.ndarray]:
     """Match geometry only between bundles with compatible filament counts."""
     return _compatible_assignment(
         [part for _, part in upper_parts],
@@ -1431,8 +1533,12 @@ def _active_part_assignment(upper_parts, lower_parts, z_midplane):
 
 
 def _compatible_assignment(
-    upper, lower, z_midplane, polygon=False, count_label="point"
-):
+    upper: Sequence[dict[str, Any]],
+    lower: Sequence[dict[str, Any]],
+    z_midplane: float,
+    polygon: bool = False,
+    count_label: str = "point",
+) -> tuple[np.ndarray, np.ndarray]:
     """Match compatible point counts before comparing reflected geometry."""
     costs = np.asarray(
         [
@@ -1456,7 +1562,11 @@ def _compatible_assignment(
         ) from error
 
 
-def _matched_active_parts(upper_parts, lower_parts, z_midplane):
+def _matched_active_parts(
+    upper_parts: Sequence[tuple[Any, dict[str, Any]]],
+    lower_parts: Sequence[tuple[Any, dict[str, Any]]],
+    z_midplane: float,
+) -> list[tuple[dict[str, Any], dict[str, Any]]] | None:
     """Return geometrically matched upper/lower active-coil parts."""
     if len(upper_parts) != len(lower_parts):
         return None
@@ -1471,7 +1581,9 @@ def _matched_active_parts(upper_parts, lower_parts, z_midplane):
     ]
 
 
-def _matched_parts_parity(matched_parts):
+def _matched_parts_parity(
+    matched_parts: Sequence[tuple[dict[str, Any], dict[str, Any]]],
+) -> int:
     """Return +1 for even, -1 for odd, or 0 for incompatible windings."""
     parities = []
     for upper, lower in matched_parts:
@@ -1489,7 +1601,9 @@ def _matched_parts_parity(matched_parts):
     return parities[0] if parities and len(set(parities)) == 1 else 0
 
 
-def _paired_active_parity(upper, lower, z_midplane):
+def _paired_active_parity(
+    upper: dict[str, Any], lower: dict[str, Any], z_midplane: float
+) -> int:
     """Classify the electrical reflection parity of two active circuits."""
     matched = _matched_active_parts(
         _active_parts(upper), _active_parts(lower), z_midplane
@@ -1497,7 +1611,7 @@ def _paired_active_parity(upper, lower, z_midplane):
     return 0 if matched is None else _matched_parts_parity(matched)
 
 
-def _self_active_parity(element, z_midplane):
+def _self_active_parity(element: dict[str, Any], z_midplane: float) -> int:
     """Classify a series circuit containing its own reflected filament bundles."""
     if "R" in element and "Z" in element:
         return 1
@@ -1511,7 +1625,9 @@ def _self_active_parity(element, z_midplane):
     return parity if matched else (1 if middle else 0)
 
 
-def _self_element_mismatch(element, z_midplane, polygon=False):
+def _self_element_mismatch(
+    element: dict[str, Any], z_midplane: float, polygon: bool = False
+) -> float:
     """Return reflected RMS mismatch within one midplane-spanning element."""
     points, _ = _element_points(element, polygon)
     upper_mask, lower_mask, _ = _split_about_plane(points[:, 1], z_midplane)
@@ -1531,7 +1647,7 @@ def _self_element_mismatch(element, z_midplane, polygon=False):
     )
 
 
-def _self_active_mismatch(element, z_midplane):
+def _self_active_mismatch(element: dict[str, Any], z_midplane: float) -> float:
     """Return the largest reflected RMS mismatch within one active circuit."""
     if "R" in element and "Z" in element:
         return _self_element_mismatch(element, z_midplane)
@@ -1549,7 +1665,7 @@ def _self_active_mismatch(element, z_midplane):
     return max(mismatches, default=0.0)
 
 
-def _average_pair_scalars(upper, lower):
+def _average_pair_scalars(upper: dict[str, Any], lower: dict[str, Any]) -> None:
     """Average scalar material/discretisation fields that affect dynamics."""
     fields = (
         "resistivity",
@@ -1574,7 +1690,12 @@ def _average_pair_scalars(upper, lower):
                 )
 
 
-def _symmetrise_element_pair(upper, lower, z_midplane, polygon):
+def _symmetrise_element_pair(
+    upper: dict[str, Any],
+    lower: dict[str, Any],
+    z_midplane: float,
+    polygon: bool,
+) -> tuple[dict[str, Any], dict[str, Any], float]:
     """Average one flat upper/lower pair onto exactly reflected geometries."""
     upper_points, upper_closed = _element_points(upper, polygon)
     lower_points, lower_closed = _element_points(lower, polygon)
@@ -1604,7 +1725,9 @@ def _symmetrise_element_pair(upper, lower, z_midplane, polygon):
     return upper, lower, mismatch
 
 
-def _symmetrise_active_pair(upper, lower, z_midplane):
+def _symmetrise_active_pair(
+    upper: dict[str, Any], lower: dict[str, Any], z_midplane: float
+) -> tuple[dict[str, Any], dict[str, Any], float]:
     """Symmetrise all filament groups in a paired active circuit."""
     upper_parts = _active_parts(upper)
     lower_parts = _active_parts(lower)
@@ -1635,7 +1758,9 @@ def _symmetrise_active_pair(upper, lower, z_midplane):
     return upper, lower, float(np.max(mismatches))
 
 
-def _symmetrise_self_element(element, z_midplane, polygon=False):
+def _symmetrise_self_element(
+    element: dict[str, Any], z_midplane: float, polygon: bool = False
+) -> dict[str, Any]:
     """Make one flat element spanning the midplane internally symmetric."""
     points, closed = _element_points(element, polygon)
     upper, lower, middle = _split_about_plane(points[:, 1], z_midplane)
@@ -1666,7 +1791,9 @@ def _symmetrise_self_element(element, z_midplane, polygon=False):
     return element
 
 
-def _symmetrise_self_active(element, z_midplane):
+def _symmetrise_self_active(
+    element: dict[str, Any], z_midplane: float
+) -> dict[str, Any]:
     """Make a direct or compound active circuit internally symmetric."""
     if "R" in element and "Z" in element:
         return _symmetrise_self_element(element, z_midplane)
@@ -1690,7 +1817,9 @@ def _symmetrise_self_active(element, z_midplane):
     return element
 
 
-def _make_diagnostic(upper, lower, group, mismatch):
+def _make_diagnostic(
+    upper: str, lower: str, group: str, mismatch: float
+) -> ElementPair:
     """Build a pairing diagnostic."""
     upper_index = _TRAILING_INDEX_PATTERN.search(upper)
     lower_index = _TRAILING_INDEX_PATTERN.search(lower)
@@ -1702,7 +1831,11 @@ def _make_diagnostic(upper, lower, group, mismatch):
     return ElementPair(upper, lower, group, mismatch, same_suffix)
 
 
-def _build_even_active_description(active_data, pair_names, self_names):
+def _build_even_active_description(
+    active_data: dict[str, Any],
+    pair_names: Sequence[tuple[str, str, str]],
+    self_names: Sequence[str],
+) -> tuple[dict[str, Any], list[str]]:
     """Combine reflected active pairs into series circuits for even evolution."""
     # Index both labels to the same pair so iteration can preserve the original
     # active-circuit order without requiring upper members to appear first.
@@ -1744,7 +1877,11 @@ def _build_even_active_description(active_data, pair_names, self_names):
     return even_data, even_names
 
 
-def _reflection_operator(names, pairs, self_names):
+def _reflection_operator(
+    names: Sequence[str],
+    pairs: Sequence[ElementPair],
+    self_names: Sequence[str],
+) -> np.ndarray:
     """Construct a current-coordinate reflection permutation."""
     names = tuple(names)
     indices = {name: index for index, name in enumerate(names)}
@@ -1765,7 +1902,11 @@ def _reflection_operator(names, pairs, self_names):
     return reflection
 
 
-def _parity_transforms(names, pairs, self_names):
+def _parity_transforms(
+    names: Sequence[str],
+    pairs: Sequence[ElementPair],
+    self_names: Sequence[str],
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, tuple[str, ...]]:
     """Build ampere-preserving average/difference current transforms."""
     names = tuple(names)
     indices = {name: index for index, name in enumerate(names)}

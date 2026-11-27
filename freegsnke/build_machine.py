@@ -29,7 +29,9 @@ from __future__ import annotations
 import os
 import pickle
 import warnings
+from collections.abc import Sequence
 from copy import deepcopy
+from typing import Any
 
 import numpy as np
 from shapely.geometry import Polygon, box
@@ -2170,8 +2172,30 @@ def build_passives(
     return coil_circuits, coils_dict, coil_names
 
 
-def _symmetrise_passive_refinement(coils, coils_dict, pairs, z_midplane=0.0):
-    """Mirror passive samples once so cached and direct fields use one geometry."""
+def _symmetrise_passive_refinement(
+    coils: list[tuple[str, Any]],
+    coils_dict: dict[str, dict[str, Any]],
+    pairs: Sequence[tuple[str, str]],
+    z_midplane: float = 0.0,
+) -> bool:
+    """Mirror passive samples once so cached and direct fields use one geometry.
+
+    Parameters
+    ----------
+    coils : list of tuple[str, Any]
+        Ordered ``(name, coil_object)`` pairs on the tokamak.
+    coils_dict : dict of str to dict
+        Vectorised coil metadata dictionary on the tokamak.
+    pairs : sequence of tuple[str, str]
+        ``(source_name, target_name)`` passive element pairs (or self-pairs).
+    z_midplane : float, default=0.0
+        Vertical coordinate of the reflection symmetry plane [m].
+
+    Returns
+    -------
+    bool
+        True if any passive filament discretisation was updated in place.
+    """
     by_name = dict(coils)
     changed = False
     for source_name, target_name in pairs:

@@ -24,8 +24,22 @@ from __future__ import annotations
 import numpy as np
 
 
-def _validate_passive_reflection(reflection, n_passive):
-    """Validate a finite symmetric involution before it changes machine state."""
+def _validate_passive_reflection(reflection: np.ndarray, n_passive: int) -> np.ndarray:
+    """Validate a finite symmetric involution before it changes machine state.
+
+    Parameters
+    ----------
+    reflection : np.ndarray
+        Candidate passive reflection permutation matrix.
+    n_passive : int
+        Number of passive conducting structures.
+
+    Returns
+    -------
+    np.ndarray
+        Validated floating-point reflection matrix of shape
+        ``(n_passive, n_passive)``.
+    """
     reflection = np.asarray(reflection, dtype=float)
     if reflection.shape != (n_passive, n_passive):
         raise ValueError(

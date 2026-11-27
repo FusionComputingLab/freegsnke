@@ -29,6 +29,7 @@ from typing import Callable
 
 import matplotlib.pyplot as plt
 import numpy as np
+import numpy.typing as npt
 from scipy.signal import convolve2d
 from threadpoolctl import threadpool_limits
 
@@ -234,8 +235,10 @@ class nl_solver:
             condition. Invalid grids and masks are rejected before the machine
             operators are modified. Retained active circuits must
             be even. Small residual asymmetries in the machine resistance,
-            inductance, sampled Green functions, and metal-plasma coupling are
-            removed by reflection averaging.
+            inductance, sampled Green functions (``eq._vgreen`` is updated in
+            place, along with any un-mirrored passive filament refinements on
+            ``eq.tokamak``), and metal-plasma coupling are removed by reflection
+            averaging.
         passive_reflection_operator : ndarray, optional
             Reflection map for passive currents. Required with
             ``force_up_down_symmetric=True`` when passive structures are present;
@@ -1041,8 +1044,20 @@ class nl_solver:
             self.ndIydI_no_GS[j] = np.linalg.norm(dIydInoGS)
         self.starting_dI = 1.0 * starting_dI
 
-    def _project_plasma_vectors_even(self, vectors):
-        """Apply ``(I + S_y) / 2`` to reduced-domain plasma vectors."""
+    def _project_plasma_vectors_even(self, vectors: npt.ArrayLike) -> np.ndarray:
+        """Apply ``(I + S_y) / 2`` to reduced-domain plasma vectors.
+
+        Parameters
+        ----------
+        vectors : array-like
+            1D plasma vector or 2D matrix of columns defined on the reduced
+            limiter domain.
+
+        Returns
+        -------
+        np.ndarray
+            Even-in-Z projected vector or matrix on the reduced limiter domain.
+        """
         if not self.force_up_down_symmetric:
             return vectors
 

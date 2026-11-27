@@ -40,6 +40,9 @@ class SymmetryReducedSolver(nl_solver):
     commutes with up-down reflection. Its even and odd state subspaces are
     therefore orthogonal and dynamically decoupled. This solver retains the
     even subspace and projects every Grad-Shafranov response back onto it.
+    During initialisation, ``eq._vgreen`` (and any un-mirrored passive filament
+    refinements on ``eq.tokamak``) are reflection-symmetrised in place after
+    validating the grid, limiter mask, and reflection operator.
 
     Parameters
     ----------

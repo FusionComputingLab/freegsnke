@@ -703,7 +703,7 @@ class NKGSsolver:
 
         try:
             eq.tokamak_psi = self.tokamak_psi.reshape(self.nx, self.ny)
-        except:
+        except Exception:
             pass
 
     def relative_norm_residual(self, res: np.ndarray, psi: np.ndarray) -> float:
@@ -945,7 +945,7 @@ class NKGSsolver:
                 control_trial_psi = True
                 log.append("Initial guess for plasma_psi successful, residual found.")
 
-            except:
+            except Exception:
                 trial_plasma_psi /= 0.8
                 n_up += 1
                 log.append("Initial guess for plasma_psi failed, trying to scale...")
@@ -1080,7 +1080,7 @@ class NKGSsolver:
 
                     new_residual_flag = False
 
-                except:
+                except Exception:
                     log.append(
                         "Update resizing triggered due to failure to find a critical points."
                     )
@@ -1123,7 +1123,7 @@ class NKGSsolver:
 
                     else:
                         starting_direction = np.copy(res0)
-                except:
+                except Exception:
                     starting_direction = np.copy(res0)
                 rel_change = 1.0 * new_rel_change
                 norm_rel_change = 1.0 * new_norm_rel_change
@@ -1142,7 +1142,7 @@ class NKGSsolver:
                             n_trial_plasma_psi, self.tokamak_psi, profiles
                         )
                         new_residual_flag = False
-                    except:
+                    except Exception:
                         log.append("reduction!")
                         reduce_by *= 0.75
 
@@ -2037,7 +2037,7 @@ class NKGSsolver:
                         if len(profiles.xpt):
                             # The update is approved:
                             resize = False
-                    except:
+                    except Exception:
                         pass
 
                     if resize:

@@ -1143,3 +1143,23 @@ def test_summary_lists_circuits_and_pairs_first(capsys):
     assert lines[5].startswith("Source midplane:")
     assert prepared.summary(print_summary=False) == "\n".join(lines)
     assert capsys.readouterr().out == ""
+
+
+def test_self_symmetric_passive_polygon_with_scrambled_lower_vertices():
+    """Midplane-spanning passive polygon aligns cyclic vertex order without crossing edges."""
+    # Upper vertices go left-to-right at Z=+0.3, lower vertices also go left-to-right at Z=-0.31
+    # (CCW loop: bottom-left -> bottom-right -> top-right -> top-left)
+    passive = [
+        _passive_element(
+            "mid_box",
+            "box",
+            [1.1, 1.3, 1.31, 1.09],
+            [-0.31, -0.29, 0.31, 0.29],
+        )
+    ]
+    prepared = prepare_up_down_symmetric_machine({}, passive, verbose=False)
+    sym = prepared.passive_coils_data[0]
+    poly = Polygon(np.column_stack((sym["R"], sym["Z"])))
+    assert poly.is_valid and poly.area > 0
+    reflected = scale(poly, xfact=1, yfact=-1, origin=(0, 0))
+    assert poly.symmetric_difference(reflected).area < 1e-14

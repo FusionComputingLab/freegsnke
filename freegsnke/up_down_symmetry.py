@@ -1324,14 +1324,6 @@ def _active_parts(
     return list(element.items())
 
 
-def _active_centroid_z(element: dict[str, Any]) -> float:
-    """Return the filament-count-weighted active-circuit Z centroid."""
-    parts = _active_parts(element)
-    counts = np.asarray([np.size(part["Z"]) for _, part in parts])
-    means = np.asarray([_centroid_z(part) for _, part in parts])
-    return float(np.average(means, weights=counts))
-
-
 def _identify_active_pairs(
     active_data: dict[str, Any],
     explicit_pairs: Sequence[tuple[str, str]] | None,
@@ -1776,7 +1768,7 @@ def _symmetrise_self_element(
         upper = {"R": points[upper_indices, 0], "Z": points[upper_indices, 1]}
         lower = {"R": points[lower_indices, 0], "Z": points[lower_indices, 1]}
         new_upper, new_lower, _ = _symmetrise_element_pair(
-            upper, lower, z_midplane, polygon=False
+            upper, lower, z_midplane, polygon=polygon
         )
         points[upper_indices, 0] = new_upper["R"]
         points[upper_indices, 1] = new_upper["Z"]

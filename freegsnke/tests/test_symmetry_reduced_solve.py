@@ -194,3 +194,201 @@ def test_nonlinear_state_acceptance_uses_the_solved_grid_flux():
     solver.eq1.set_plasma_psi.assert_called_once_with(solver.trial_plasma_psi)
     np.testing.assert_array_equal(solver.profiles1.Jtor.call_args.args[2], flux)
     tokamak.calcPsiFromGreens.assert_not_called()
+
+
+@pytest.mark.parametrize("linear_only", [True, False])
+def test_symmetry_reduced_solver_matches_full_solver_with_gs_and_relinearisation(
+    linear_only,
+):
+    """End-to-end SymmetryReducedSolver matches full nl_solver on an even machine."""
+    from freegsnke import GSstaticsolver, build_machine, equilibrium_update
+    from freegsnke.jtor_update import ConstrainPaxisIp
+    from freegsnke.up_down_symmetry import prepare_up_down_symmetric_machine
+
+    active = {
+        "solenoid": {
+            "R": [0.22, 0.22, 0.22, 0.22],
+            "Z": [-0.45, -0.15, 0.15, 0.45],
+            "dR": 0.04,
+            "dZ": 0.04,
+            "resistivity": 1.5e-8,
+            "polarity": 1,
+            "multiplier": 20,
+        },
+        "PF1_upper": {
+            "R": [0.55],
+            "Z": [0.55],
+            "dR": 0.05,
+            "dZ": 0.05,
+            "resistivity": 1.5e-8,
+            "polarity": 1,
+            "multiplier": 40,
+        },
+        "PF1_lower": {
+            "R": [0.55],
+            "Z": [-0.55],
+            "dR": 0.05,
+            "dZ": 0.05,
+            "resistivity": 1.5e-8,
+            "polarity": 1,
+            "multiplier": 40,
+        },
+        "PF2_upper": {
+            "R": [1.45],
+            "Z": [0.35],
+            "dR": 0.05,
+            "dZ": 0.05,
+            "resistivity": 1.5e-8,
+            "polarity": 1,
+            "multiplier": 40,
+        },
+        "PF2_lower": {
+            "R": [1.45],
+            "Z": [-0.35],
+            "dR": 0.05,
+            "dZ": 0.05,
+            "resistivity": 1.5e-8,
+            "polarity": 1,
+            "multiplier": 40,
+        },
+    }
+    passive = [
+        {
+            "name": "shell_upper",
+            "element": "shell",
+            "R": [1.25, 1.33, 1.33, 1.25],
+            "Z": [0.20, 0.20, 0.28, 0.28],
+            "resistivity": 5.5e-7,
+        },
+        {
+            "name": "shell_lower",
+            "element": "shell",
+            "R": [1.25, 1.33, 1.33, 1.25],
+            "Z": [-0.28, -0.28, -0.20, -0.20],
+            "resistivity": 5.5e-7,
+        },
+        {
+            "name": "midplane_ring",
+            "element": "ring",
+            "R": [1.34, 1.40, 1.40, 1.34],
+            "Z": [-0.05, -0.05, 0.05, 0.05],
+            "resistivity": 5.5e-7,
+        },
+    ]
+    theta = np.linspace(0.0, 2 * np.pi, 48, endpoint=True)
+    limiter = [
+        {"R": float(0.90 + 0.36 * np.cos(a)), "Z": float(0.36 * np.sin(a))}
+        for a in theta
+    ]
+    prepared = prepare_up_down_symmetric_machine(
+        active,
+        passive,
+        limiter_data=limiter,
+        wall_data=limiter,
+        verbose=False,
+    )
+
+    def make_state():
+        tok = build_machine.tokamak(
+            active_coils_data=prepared.even_active_coils_data,
+            passive_coils_data=prepared.passive_coils_data,
+            limiter_data=prepared.limiter_data,
+            wall_data=prepared.wall_data,
+        )
+        eq = equilibrium_update.Equilibrium(
+            tokamak=tok, Rmin=0.1, Rmax=1.7, Zmin=-0.8, Zmax=0.8, nx=33, ny=33
+        )
+        eq._vgreen = prepared.symmetrise_even_machine_greens(eq._vgreen)
+        tok.coil_resist = prepared.symmetrise_even_machine_resistances(tok.coil_resist)
+        tok.coil_self_ind = prepared.symmetrise_even_machine_square_operator(
+            tok.coil_self_ind
+        )
+        tok.set_coil_current("solenoid", 1200.0)
+        tok.set_coil_current("PF1", 400.0)
+        tok.set_coil_current("PF2", -900.0)
+        prof = ConstrainPaxisIp(
+            eq=eq, paxis=3.0e3, Ip=1.2e5, fvac=0.4, alpha_m=1.8, alpha_n=1.2
+        )
+        static = GSstaticsolver.NKGSsolver(eq)
+        static.solve(
+            eq=eq,
+            profiles=prof,
+            constrain=None,
+            target_relative_tolerance=1e-9,
+            force_up_down_symmetric=True,
+            suppress=True,
+        )
+        return eq, prof, static
+
+    eq_red, prof_red, static_red = make_state()
+    eq_full, prof_full, static_full = make_state()
+
+    reduced = SymmetryReducedSolver(
+        profiles=prof_red,
+        eq=eq_red,
+        GSStaticSolver=static_red,
+        passive_reflection_operator=prepared.passive_reflection_operator,
+        full_timestep=1e-3,
+        max_internal_timestep=1e-3,
+        plasma_resistivity=1e-6,
+        max_mode_frequency=np.inf,
+        verbose=False,
+    )
+    full = nl_solver(
+        profiles=prof_full,
+        eq=eq_full,
+        GSStaticSolver=static_full,
+        passive_reflection_operator=prepared.passive_reflection_operator,
+        force_up_down_symmetric=True,
+        remove_odd_passive_modes=False,
+        full_timestep=1e-3,
+        max_internal_timestep=1e-3,
+        plasma_resistivity=1e-6,
+        max_mode_frequency=np.inf,
+        verbose=False,
+    )
+    assert reduced.n_passive_modes == 2
+    assert full.n_passive_modes == 3
+
+    voltages = np.array([250.0, -40.0, 60.0])
+    for step in range(2):
+        for solver in (reduced, full):
+            solver.nlstepper(
+                active_voltage_vec=voltages,
+                linear_only=linear_only,
+                no_GS=False,
+                relinearise_threshold=0.0 if (linear_only and step == 1) else None,
+                target_relative_tol_currents=1e-3,
+                target_relative_tol_GS=1e-3,
+                working_relative_tol_GS=5e-4,
+                verbose=0,
+            )
+        rtol = 1e-10 if linear_only else 1e-6
+        atol = 1e-8 if linear_only else 1e-3
+        np.testing.assert_allclose(
+            reduced.vessel_currents_vec,
+            full.vessel_currents_vec,
+            rtol=rtol,
+            atol=atol,
+        )
+        np.testing.assert_allclose(
+            reduced.profiles1.Ip, full.profiles1.Ip, rtol=rtol, atol=atol
+        )
+        np.testing.assert_allclose(
+            reduced.eq1.plasma_psi,
+            full.eq1.plasma_psi,
+            rtol=rtol,
+            atol=1e-7 if not linear_only else 1e-10,
+        )
+        np.testing.assert_allclose(
+            reduced.eq1.plasma_psi,
+            reduced.eq1.plasma_psi[:, ::-1],
+            rtol=0.0,
+            atol=1e-13,
+        )
+        np.testing.assert_allclose(
+            prepared.even_machine_reflection_operator @ reduced.vessel_currents_vec,
+            reduced.vessel_currents_vec,
+            rtol=0.0,
+            atol=1e-11,
+        )

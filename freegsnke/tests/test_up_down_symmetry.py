@@ -1119,3 +1119,27 @@ def test_invalid_limiter_intersection_does_not_warn_or_plot(kind):
         symmetrise_limiter([{"R": r, "Z": z} for r, z in points])
     assert not caught
     show.assert_not_called()
+
+
+def test_summary_lists_circuits_and_pairs_first(capsys):
+    """The printed summary opens with the circuits and passive pairs."""
+    active = {
+        "solenoid": _active_element([0.2, 0.2, 0.2, 0.2], [-0.8, -0.2, 0.19, 0.79]),
+        "p_upper": _active_element([1.0], [0.7]),
+        "p_lower": _active_element([1.0], [-0.7]),
+    }
+    passive = [
+        _passive_element("case_upper", "case_upper", [1.0, 1.2, 1.2, 1.0], [0.4] * 4),
+        _passive_element("case_lower", "case_lower", [1.0, 1.2, 1.2, 1.0], [-0.4] * 4),
+    ]
+
+    prepared = prepare_up_down_symmetric_machine(active, passive)
+
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[0] == "Retained active coil circuits (even): ('solenoid', 'p')"
+    assert lines[1] == "Explicitly excluded active circuits (odd): ()"
+    assert lines[2] == "Passive structure pairs (1):"
+    assert lines[3] == "  case_upper / case_lower"
+    assert lines[5].startswith("Source midplane:")
+    assert prepared.summary(print_summary=False) == "\n".join(lines)
+    assert capsys.readouterr().out == ""

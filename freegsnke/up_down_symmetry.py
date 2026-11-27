@@ -78,6 +78,12 @@ class PreparedUpDownMachine:
     ``even_active_coils_data`` combines each upper/lower pair into one series
     circuit for the existing strict symmetric evolutive-solver path.
     ``passive_coils_data`` preserves every original passive label.
+
+    The ``source_*`` fields keep an unmodified copy of the input descriptions
+    (before any recentring or averaging) so that :meth:`plot` can overlay them
+    on the symmetrised geometry. :meth:`summary` reports the retained and
+    excluded circuits, the passive pairs, the midplane fit, and the
+    pre-averaging discrepancy of every component.
     """
 
     active_coils_data: dict
@@ -117,13 +123,25 @@ class PreparedUpDownMachine:
             Formatted summary string.
         """
         lines = [
+            f"Retained active coil circuits (even): {self.even_active_names}",
+            "Explicitly excluded active circuits (odd): "
+            f"{self.excluded_odd_active_names}",
+        ]
+        if self.passive_pairs:
+            lines.append(f"Passive structure pairs ({len(self.passive_pairs)}):")
+            lines.extend(
+                f"  {pair.upper_name} / {pair.lower_name}"
+                for pair in self.passive_pairs
+            )
+        else:
+            lines.append("Passive structure pairs: none")
+        lines += [
+            "",
             f"Source midplane:             {self.source_z_midplane * 1e3:+.3f} mm",
             f"Applied whole-machine shift: {self.z_shift * 1e3:+.3f} mm",
             f"Midplane fit RMS:            {self.midplane_fit_rms * 1e3:.3f} mm",
             f"Matched fit samples:         {self.midplane_fit_samples}",
-            f"Excluded odd circuits:       {self.excluded_odd_active_names}",
             f"Active reflected pairs:      {len(self.active_pairs)}",
-            f"Passive reflected pairs:     {len(self.passive_pairs)}",
         ]
         if self.geometry_discrepancies:
             lines.append("Component discrepancies (pre-averaging reflected RMS):")
@@ -630,6 +648,10 @@ def prepare_up_down_symmetric_machine(
         from the prepared machine and record them in
         ``excluded_odd_active_names``. By default their presence raises with a
         complete list, requiring explicit user consent before exclusion.
+    verbose : bool, default=True
+        If True, print :meth:`PreparedUpDownMachine.summary` (retained and
+        excluded active circuits, passive pairs, midplane fit, and per-component
+        discrepancies) before any boundary-change warnings are emitted.
 
     Returns
     -------
@@ -889,14 +911,14 @@ def prepare_up_down_symmetric_machine(
     )
     if max_pair_mismatch is not None:
         prepared.check_geometry_tolerance(max_pair_mismatch)
+    if verbose:
+        prepared.summary(print_summary=True)
     for original, symmetric, name in (
         (limiter_original, symmetric_limiter, "Limiter"),
         (wall_original, symmetric_wall, "Wall"),
     ):
         if original is not None:
             _warn_boundary_change(original, symmetric, target_midplane, name)
-    if verbose:
-        prepared.summary(print_summary=True)
     return prepared
 
 
@@ -964,7 +986,12 @@ def _symmetrise_boundary_with_mismatch(boundary_data, z_midplane):
     return [{"R": float(r), "Z": float(z)} for r, z in coords], mismatch
 
 
-def _warn_boundary_change(original, symmetric, z_midplane, name):
+def _warn_boundary_change(
+    original: Sequence[dict[str, float]],
+    symmetric: Sequence[dict[str, float]],
+    z_midplane: float,
+    name: str,
+) -> None:
     """Warn when a boundary outline is modified by reflection intersection."""
     points = np.asarray([[p["R"], p["Z"]] for p in original], dtype=float)
     retained = np.asarray([[p["R"], p["Z"]] for p in symmetric], dtype=float)

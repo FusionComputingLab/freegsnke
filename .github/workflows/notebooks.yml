@@ -54,5 +54,5 @@ jobs:
         run: jupyter nbconvert --execute --to notebook --inplace "examples/example11 - pulse_design_tool.ipynb"
       - name: Check self-contained machine symmetrisation notebook (12a)
         run: jupyter nbconvert --execute --to notebook --inplace "examples/example12a - machine_symmetrisation.ipynb"
-      - name: Check symmetric pulse design tool notebook (12c)
-        run: jupyter nbconvert --execute --to notebook --inplace "examples/example12c - symmetric_pulse_design_tool.ipynb"
+      - name: Check symmetric pulse design tool notebook (12b)
+        run: jupyter nbconvert --execute --to notebook --inplace "examples/example12b - symmetric_pulse_design_tool.ipynb"

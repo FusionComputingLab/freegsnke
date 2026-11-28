@@ -5,10 +5,13 @@ from __future__ import annotations
 import contextlib
 import io
 import logging
+from types import SimpleNamespace
 
+import numpy as np
 import pytest
 
 import freegsnke
+from freegsnke.GSstaticsolver import NKGSsolver
 from freegsnke.logging import (
     DEFAULT_FORMAT,
     SIMPLE_FORMAT,
@@ -18,6 +21,8 @@ from freegsnke.logging import (
     set_log_level,
     setup_logging,
 )
+from freegsnke.refine_passive import generate_refinement
+from freegsnke.virtual_circuits import VirtualCircuitHandling
 
 
 @pytest.fixture(autouse=True)
@@ -159,3 +164,149 @@ def test_caplog_capture_after_disable_default_handler(caplog):
 
     assert "Inverse solve completed successfully." in caplog.text
     assert "This debug message should not appear at INFO level." not in caplog.text
+
+
+def test_refine_passive_invalid_mode_logs_and_raises(caplog):
+    """Verify invalid refine_mode logs an error and raises ValueError."""
+    disable_default_handler()
+    r = np.array([0.0, 1.0, 1.0, 0.0])
+    z = np.array([0.0, 0.0, 1.0, 1.0])
+    with caplog.at_level(logging.ERROR, logger="freegsnke"):
+        with pytest.raises(ValueError, match="not recognised"):
+            generate_refinement(r, z, 4, "INVALID")
+
+    assert "refine_mode 'INVALID' not recognised" in caplog.text
+
+
+def test_verbose_flag_maps_to_info_and_debug(capsys):
+    """Verify verbose=True logs at INFO and verbose=False logs at DEBUG."""
+    handler = VirtualCircuitHandling.__new__(VirtualCircuitHandling)
+    matrix = np.eye(2)
+
+    # At default INFO level: verbose=False is quiet, verbose=True emits at INFO.
+    handler.calculate_matrix_inverse(matrix, verbose=False)
+    assert capsys.readouterr().out == ""
+
+    handler.calculate_matrix_inverse(matrix, verbose=True)
+    out_verbose = capsys.readouterr().out
+    assert "INFO [freegsnke.virtual_circuits]:" in out_verbose
+    assert "Moore-Penrose pseudoinverse" in out_verbose
+
+    # At DEBUG level: verbose=False becomes visible at DEBUG.
+    set_log_level("DEBUG")
+    handler.calculate_matrix_inverse(matrix, verbose=False)
+    out_debug = capsys.readouterr().out
+    assert "DEBUG [freegsnke.virtual_circuits]:" in out_debug
+    assert "Moore-Penrose pseudoinverse" in out_debug
+
+
+def _make_stub_static_solver(rel_residual: float):
+    """Build a minimal NKGSsolver/eq/profiles stub for zero-iteration solve tests."""
+    solver = NKGSsolver.__new__(NKGSsolver)
+    solver.nx = 2
+    solver.ny = 2
+    solver.F_function = lambda psi, tok_psi, prof: np.zeros_like(psi)
+    solver.relative_norm_residual = lambda res, psi: rel_residual
+    solver.relative_del_residual = lambda res, psi: (rel_residual, np.zeros_like(psi))
+    solver.port_critical = lambda eq, profiles: None
+
+    tokamak = SimpleNamespace(getPsitokamak=lambda vgreen=None: np.zeros((2, 2)))
+    eq = SimpleNamespace(
+        plasma_psi=np.ones((2, 2)),
+        tokamak=tokamak,
+        _vgreen=None,
+        solved=False,
+        set_plasma_psi=lambda psi: None,
+    )
+    profiles = SimpleNamespace(jtor=np.zeros((2, 2)))
+    return solver, eq, profiles
+
+
+def test_suppress_flag_demotes_forward_solve_summary_to_debug(capsys):
+    """Verify suppress=True demotes forward_solve summary logs to DEBUG."""
+    # Converged case (rel_residual <= tolerance)
+    solver, eq, profiles = _make_stub_static_solver(rel_residual=1e-9)
+
+    solver.forward_solve(
+        eq,
+        profiles,
+        target_relative_tolerance=1e-6,
+        max_solving_iterations=1,
+        verbose=False,
+        suppress=False,
+    )
+    out_default = capsys.readouterr().out
+    assert (
+        "INFO [freegsnke.GSstaticsolver]: Forward static solve SUCCESS." in out_default
+    )
+    assert "Forward static solve starting..." not in out_default
+
+    solver.forward_solve(
+        eq,
+        profiles,
+        target_relative_tolerance=1e-6,
+        max_solving_iterations=1,
+        verbose=False,
+        suppress=True,
+    )
+    assert capsys.readouterr().out == ""
+
+    set_log_level("DEBUG")
+    solver.forward_solve(
+        eq,
+        profiles,
+        target_relative_tolerance=1e-6,
+        max_solving_iterations=1,
+        verbose=False,
+        suppress=True,
+    )
+    out_debug = capsys.readouterr().out
+    assert (
+        "DEBUG [freegsnke.GSstaticsolver]: Forward static solve starting..."
+        in out_debug
+    )
+    assert (
+        "DEBUG [freegsnke.GSstaticsolver]: Forward static solve SUCCESS." in out_debug
+    )
+
+    # Non-converged case (rel_residual > tolerance, max_solving_iterations=0)
+    set_log_level("INFO")
+    solver_nc, eq_nc, profiles_nc = _make_stub_static_solver(rel_residual=1e-2)
+    solver_nc.forward_solve(
+        eq_nc,
+        profiles_nc,
+        target_relative_tolerance=1e-6,
+        max_solving_iterations=0,
+        verbose=False,
+        suppress=False,
+    )
+    out_warn = capsys.readouterr().out
+    assert (
+        "WARNING [freegsnke.GSstaticsolver]: Forward static solve DID NOT CONVERGE."
+        in out_warn
+    )
+
+    solver_nc.forward_solve(
+        eq_nc,
+        profiles_nc,
+        target_relative_tolerance=1e-6,
+        max_solving_iterations=0,
+        verbose=False,
+        suppress=True,
+    )
+    assert capsys.readouterr().out == ""
+
+    set_log_level("DEBUG")
+    solver_nc.forward_solve(
+        eq_nc,
+        profiles_nc,
+        target_relative_tolerance=1e-6,
+        max_solving_iterations=0,
+        verbose=False,
+        suppress=True,
+    )
+    out_nc_debug = capsys.readouterr().out
+    assert (
+        "DEBUG [freegsnke.GSstaticsolver]: Forward static solve DID NOT CONVERGE."
+        in out_nc_debug
+    )

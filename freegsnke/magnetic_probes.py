@@ -23,6 +23,7 @@ along with FreeGSNKE. If not, see <http://www.gnu.org/licenses/>.
 
 from __future__ import annotations
 
+import logging
 import os
 import pickle
 
@@ -30,6 +31,8 @@ import numpy as np
 from deepdiff import DeepDiff
 
 from .gradshafranov import Greens, GreensBr, GreensBz
+
+logger = logging.getLogger(__name__)
 
 
 class Probes:
@@ -103,14 +106,14 @@ class Probes:
                 "Provide only one of 'magnetic_probe_data' or 'magnetic_probe_path', not both."
             )
         elif magnetic_probe_data is None and magnetic_probe_path is None:
-            print("Magnetic probes --> none provided.")
+            logger.info("Magnetic probes --> none provided.")
         else:
             if magnetic_probe_path is not None:
                 with open(magnetic_probe_path, "rb") as f:
                     magnetic_probe_data = pickle.load(f)
-                print("Magnetic probes --> built from pickle file.")
+                logger.info("Magnetic probes --> built from pickle file.")
             else:
-                print("Magnetic probes --> built from user-provided data.")
+                logger.info("Magnetic probes --> built from user-provided data.")
 
             self.floops = magnetic_probe_data["flux_loops"]
             self.pickups = magnetic_probe_data["pickups"]
@@ -515,7 +518,7 @@ class Probes:
                 self.greens_psi_plasma_floops[eq_key] = self.create_green_psi_plasma(
                     eq, "floops"
                 )
-                print("new equilibrium grid - computed new greens functions")
+                logger.debug("new equilibrium grid - computed new greens functions")
                 # use newly created dictionary element.
                 plasma_greens = self.greens_psi_plasma_floops[eq_key]
 
@@ -865,7 +868,7 @@ class Probes:
                 self.greens_br_plasma_pickup[eq_key],
                 self.greens_bz_plasma_pickup[eq_key],
             ) = self.create_greens_BrBz_plasma(eq, "pickups")
-            print("new equilibrium grid - computed new greens functions")
+            logger.debug("new equilibrium grid - computed new greens functions")
         if probe == "pickups":
             br_plasma = np.sum(greens_br * plasma_current, axis=(0, 1))
             bz_plasma = np.sum(greens_bz * plasma_current, axis=(0, 1))
@@ -916,7 +919,7 @@ class Probes:
                     eq, "pickups"
                 )[0]
                 greens_pl = self.greens_br_plasma_pickup[eq_key]
-                print("new equilibrium grid - computed new greens functions")
+                logger.debug("new equilibrium grid - computed new greens functions")
             br_coil = np.sum(self.greens_br_coils_pickup * coil_currents, axis=0)
             br_plasma = np.sum(greens_pl * plasma_current, axis=(0))
         return br_coil + br_plasma
@@ -966,7 +969,7 @@ class Probes:
                     eq, "pickups"
                 )[1]
                 greens_pl = self.greens_bz_plasma_pickup[eq_key]
-                print("new equilibrium grid - computed new greens functions")
+                logger.debug("new equilibrium grid - computed new greens functions")
 
             bz_coil = np.sum(self.greens_bz_coils_pickup * coil_currents, axis=0)
             bz_plasma = np.sum(greens_pl * plasma_current, axis=(0))
@@ -1051,7 +1054,7 @@ class Probes:
                 self.greens_B_plasma_oriented[eq_key] = (
                     self.create_greens_B_oriented_plasma(eq, "floops")
                 )
-                print("new equilibrium grid - computed new greens functions")
+                logger.debug("new equilibrium grid - computed new greens functions")
                 # use newly created dictionary element.
                 greens_pl = self.greens_B_plasma_oriented[eq_key]
 

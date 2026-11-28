@@ -346,3 +346,118 @@ def test_limiter_reduced_boundary_green_is_exact(create_machine):
     actual = solver._boundary_flux_from_jtor(jtor)
 
     np.testing.assert_allclose(actual, expected, rtol=2e-14, atol=1e-14)
+
+
+@pytest.mark.parametrize("force_recovery", [False, True])
+def test_anderson_forward_solve(create_machine, monkeypatch, force_recovery):
+    """Opt-in solve/recovery reconverges a real MAST-U state and its profiles."""
+    from freegsnke import GSstaticsolver
+    from freegsnke.anderson import AndersonOptions
+
+    eq, profiles, _ = create_machine
+    eq.tokamak.set_coil_current("P6", 0)
+    eq.tokamak["P6"].control = False
+    eq.tokamak["Solenoid"].control = False
+    eq.tokamak.set_coil_current("Solenoid", 15000)
+    eq.tokamak.setControlCurrents(np.load(STATIC_CURRENT_BASELINE))
+    solver = GSstaticsolver.NKGSsolver(eq)
+    solver.forward_solve(eq, profiles, 1e-8, suppress=True)
+    reference = eq.plasma_psi.copy()
+    eq.plasma_psi = reference * 1.0005
+    if force_recovery:
+        original_newton = solver.nksolver.Arnoldi_iteration
+        failures = []
+
+        def fail_newton(**kwargs):
+            """Exercise the real residual's recovery path deterministically."""
+            if not failures:
+                failures.append(True)
+                raise ValueError("Injected Newton failure")
+            return original_newton(**kwargs)
+
+        monkeypatch.setattr(solver.nksolver, "Arnoldi_iteration", fail_newton)
+    currents = eq.tokamak.current_vec.copy()
+    solver.solve(
+        eq,
+        profiles,
+        target_relative_tolerance=1e-8,
+        Picard_handover=1.0,
+        max_solving_iterations=100,
+        suppress=True,
+        anderson_options=AndersonOptions(),
+    )
+    assert (
+        solver.anderson_diagnostics["reason"] == "converged"
+    ), solver.anderson_diagnostics
+    assert solver.relative_change < 1e-8
+    if force_recovery:
+        assert any(
+            e["event"] == "anderson_recovery"
+            for e in solver.anderson_diagnostics["events"]
+        )
+    np.testing.assert_allclose(eq.plasma_psi, reference, atol=np.ptp(reference) * 1e-5)
+    np.testing.assert_array_equal(eq.tokamak.current_vec, currents)
+    np.testing.assert_allclose(eq.psi_func(eq.R, eq.Z, grid=False), eq.plasma_psi)
+    current = profiles.jtor.copy()
+    res = solver.F_function(eq.plasma_psi.ravel(), solver.tokamak_psi, profiles)
+    assert solver.relative_del_residual(res, eq.plasma_psi.ravel())[0] < 1e-8
+    np.testing.assert_allclose(profiles.jtor, current)
+
+
+@pytest.mark.parametrize("rollback", [False, True])
+def test_forward_field_commit_refreshes_offcentre_spline(
+    create_machine, monkeypatch, rollback
+):
+    """Finalization and rollback refresh fields even with an unchanged midpoint."""
+    from freegsnke.GSstaticsolver import NKGSsolver
+
+    eq, profiles, _ = create_machine
+    solver = NKGSsolver.__new__(NKGSsolver)
+    solver.nx, solver.ny = eq.R.shape
+    solver.tokamak_psi = np.zeros(eq.R.size)
+    solver.best_relative_change = np.inf
+    original = eq.plasma_psi.copy()
+    retained = original + 1e-3 * (eq.R - eq.R[solver.nx // 2, 0])
+    eq.set_plasma_psi(original)
+
+    def residual(plasma, vacuum, profiles):
+        if not np.array_equal(plasma, retained.ravel()):
+            raise ValueError("Invalid trial geometry")
+        return np.zeros_like(plasma)
+
+    monkeypatch.setattr(solver, "F_function", residual)
+    monkeypatch.setattr(solver, "port_critical", lambda eq, profiles: None)
+    if rollback:
+        with pytest.raises(RuntimeError, match="accepted equilibrium restored"):
+            solver._backtrack_valid_update(
+                eq,
+                profiles,
+                retained.ravel(),
+                solver.tokamak_psi,
+                np.ones(eq.R.size),
+                max_attempts=2,
+            )
+    else:
+        solver._finalize_forward(eq, profiles, retained.ravel())
+
+    midpoint = solver.nx // 2, solver.ny // 2
+    assert retained[midpoint] == original[midpoint]
+    np.testing.assert_array_equal(eq.plasma_psi, retained)
+    np.testing.assert_allclose(
+        eq.psi_func(eq.R, eq.Z, grid=False), retained, atol=1e-12
+    )
+
+
+def test_anderson_inverse_rejected_before_state_change(create_machine):
+    """Unsupported inverse orchestration must not silently ignore recovery."""
+    from freegsnke import GSstaticsolver
+    from freegsnke.anderson import AndersonOptions
+
+    eq, profiles, constrain = create_machine
+    solver = GSstaticsolver.NKGSsolver(eq)
+    field = eq.plasma_psi.copy()
+    with pytest.raises(ValueError, match="forward solves only"):
+        solver.solve(
+            eq, profiles, constrain=constrain, anderson_options=AndersonOptions()
+        )
+    np.testing.assert_array_equal(eq.plasma_psi, field)

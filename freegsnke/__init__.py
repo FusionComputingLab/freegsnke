@@ -42,4 +42,16 @@ from . import (
 )
 from .dump import OutputFile
 from .equilibrium import Equilibrium
+from .logging import (
+    DEFAULT_FORMAT,
+    SIMPLE_FORMAT,
+    disable_default_handler,
+    enable_default_handler,
+    get_logger,
+    set_log_level,
+    setup_logging,
+)
 from .picard import solve
+
+# Set up default console logging to stdout at INFO level (propagate=False)
+enable_default_handler()

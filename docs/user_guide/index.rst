@@ -14,4 +14,5 @@ The notebooks are displayed statically on the following pages, but running them 
     :maxdepth: 1
     :glob:
 
+    logging
     ../notebooks/example*

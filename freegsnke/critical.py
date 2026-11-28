@@ -23,6 +23,7 @@ along with FreeGSNKE. If not, see <http://www.gnu.org/licenses/>.
 
 from __future__ import annotations
 
+import logging
 import warnings
 from typing import Callable
 
@@ -45,6 +46,8 @@ from numpy import (
 )
 from numpy.linalg import inv
 from scipy import interpolate
+
+logger = logging.getLogger(__name__)
 
 try:
     from numba import njit
@@ -204,7 +207,7 @@ def find_critical_old(
 
     if len(opoint) == 0:
         # Can't order primary O-point, X-point so return
-        print("Warning: No O points found")
+        logger.warning("No O points found")
         return opoint, xpoint
 
     # Find primary O-point by sorting by distance from middle of domain

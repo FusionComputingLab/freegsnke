@@ -22,11 +22,15 @@ along with FreeGSNKE. If not, see <http://www.gnu.org/licenses/>.
 
 from __future__ import annotations
 
+import logging
+
 import numpy as np
 
 from .gradshafranov import Greens, GreensBr, GreensBz
 from .implicit_euler import implicit_euler_solver
 from .normal_modes import mode_decomposition
+
+logger = logging.getLogger(__name__)
 
 
 class metal_currents:
@@ -297,18 +301,27 @@ class metal_currents:
         local_selected_modes_mask = np.concatenate(
             (np.ones(self.n_active_coils).astype(bool), selected_modes_mask)
         )
-        if verbose:
-            print(f"   Active coils")
-            print(
-                f"      total selected = {self.n_active_coils} (out of {self.n_active_coils})"
+        log_level = logging.INFO if verbose else logging.DEBUG
+        if logger.isEnabledFor(log_level):
+            logger.log(log_level, "   Active coils")
+            logger.log(
+                log_level,
+                "      total selected = %d (out of %d)",
+                self.n_active_coils,
+                self.n_active_coils,
             )
-            print(f"   Passive structures")
+            logger.log(log_level, "   Passive structures")
             if fixed_n_passive_modes is None:
-                print(f"      {freq_only_number} selected below 'max_mode_frequency'")
+                logger.log(
+                    log_level,
+                    "      %d selected below 'max_mode_frequency'",
+                    freq_only_number,
+                )
             else:
-                print(
-                    f"      {freq_only_number} lowest-frequency "
-                    "(longest-timescale) modes selected"
+                logger.log(
+                    log_level,
+                    "      %d lowest-frequency (longest-timescale) modes selected",
+                    freq_only_number,
                 )
 
         if mode_coupling_masks is not None:
@@ -317,9 +330,11 @@ class metal_currents:
                 local_selected_modes_mask + mode_coupling_masks[0]
             ).astype(bool)
             freq_and_thresh_number = np.sum(local_selected_modes_mask)
-            if verbose:
-                print(
-                    f"      {freq_and_thresh_number - (freq_only_number + self.n_active_coils)} recovered that couple with the plasma more than 'threshold_dIy_dI'"
+            if logger.isEnabledFor(log_level):
+                logger.log(
+                    log_level,
+                    "      %d recovered that couple with the plasma more than 'threshold_dIy_dI'",
+                    freq_and_thresh_number - (freq_only_number + self.n_active_coils),
                 )
 
             # exclude modes that do not couple enough
@@ -327,18 +342,28 @@ class metal_currents:
                 local_selected_modes_mask * mode_coupling_masks[1]
             ).astype(bool)
             final_number = np.sum(local_selected_modes_mask)
-            if verbose:
-                print(
-                    f"      {freq_and_thresh_number - final_number} removed that couple with the plasma less than 'min_dIy_dI'"
+            if logger.isEnabledFor(log_level):
+                logger.log(
+                    log_level,
+                    "      %d removed that couple with the plasma less than 'min_dIy_dI'",
+                    freq_and_thresh_number - final_number,
                 )
-                print(
-                    f"      total selected = {final_number - self.n_active_coils} (out of {np.sum(available_passive)})"
+                logger.log(
+                    log_level,
+                    "      total selected = %d (out of %d)",
+                    final_number - self.n_active_coils,
+                    np.sum(available_passive),
                 )
-                print(
-                    f"   Total number of modes = {final_number} ({self.n_active_coils} active coils + {final_number - self.n_active_coils} passive structures)"
+                logger.log(
+                    log_level,
+                    "   Total number of modes = %d (%d active coils + %d passive structures)",
+                    final_number,
+                    self.n_active_coils,
+                    final_number - self.n_active_coils,
                 )
-                print(
-                    f"      (Note: some additional modes may be removed after Jacobian calculation)"
+                logger.log(
+                    log_level,
+                    "      (Note: some additional modes may be removed after Jacobian calculation)",
                 )
 
         available_indices = np.flatnonzero(self.available_modes_mask)
@@ -425,14 +450,18 @@ class metal_currents:
         else:
             # this is the case used by nonlinear_solver.remove_modes
             self.selected_modes_mask_partial = selected_modes_mask
-            print(f"Further mode reduction:")
-            print(
-                f"   {len(selected_modes_mask) - np.sum(selected_modes_mask)} previously included modes couple with the plasma less than 'min_dIy_dI' (following Jacobian calculation)"
+            logger.info("Further mode reduction:")
+            logger.info(
+                "   %d previously included modes couple with the plasma less than 'min_dIy_dI' (following Jacobian calculation)",
+                len(selected_modes_mask) - np.sum(selected_modes_mask),
             )
 
             self.n_independent_vars = np.sum(self.selected_modes_mask_partial)
-            print(
-                f"   Final number of modes = {self.n_independent_vars} ({self.n_active_coils} active coils + {self.n_independent_vars - self.n_active_coils} passive structures)"
+            logger.info(
+                "   Final number of modes = %d (%d active coils + %d passive structures)",
+                self.n_independent_vars,
+                self.n_active_coils,
+                self.n_independent_vars - self.n_active_coils,
             )
 
             self.P = self.P[:, self.selected_modes_mask_partial]

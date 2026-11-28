@@ -30,6 +30,8 @@ along with FreeGSNKE. If not, see <http://www.gnu.org/licenses/>.
 
 from __future__ import annotations
 
+import logging
+
 import numpy as np
 from matplotlib.axes import Axes
 from numpy import array, dot, eye, transpose
@@ -37,6 +39,8 @@ from numpy.linalg import inv
 from scipy import optimize
 
 from . import critical
+
+logger = logging.getLogger(__name__)
 
 
 class constrain(object):
@@ -360,14 +364,13 @@ class ConstrainPsiNorm2D(object):
 
         opt, xpt = critical.find_critical(eq.R, eq.Z, psi)
         if len(opt) == 0:
-            print("No O-points found!")
-            print(opt, xpt)
+            logger.error("No O-points found! opt=%s, xpt=%s", opt, xpt)
             eq.plot()
             raise ValueError("No O-points found!")
         psi_axis = opt[0][2]
 
         if len(xpt) == 0:
-            print("No X-points found!")
+            logger.error("No X-points found!")
             eq.plot()
             raise ValueError("No X-points found")
         psi_bndry = xpt[0][2]

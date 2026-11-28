@@ -21,7 +21,11 @@ along with FreeGSNKE. If not, see <http://www.gnu.org/licenses/>.
 
 from __future__ import annotations
 
+import logging
+
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 
 def _validate_passive_reflection(reflection: np.ndarray, n_passive: int) -> np.ndarray:
@@ -175,11 +179,11 @@ class mode_decomposition:
             self.passive_mode_parity = parities[order]
 
         if np.any(w_active < 0):
-            print(
+            logger.warning(
                 "Negative eigenvalues in active coils! Please check coil sizes and coordinates."
             )
         if np.any(self.w_passive < 0):
-            print(
+            logger.warning(
                 "Negative eigenvalues in passive vessel! Please check coil sizes and coordinates."
             )
 

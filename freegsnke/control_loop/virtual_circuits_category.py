@@ -19,6 +19,7 @@ You should have received a copy of the GNU Lesser General Public License
 along with FreeGSNKE. If not, see <http://www.gnu.org/licenses/>.
 """
 
+import logging
 from typing import Any, Optional, Tuple
 
 import matplotlib.pyplot as plt
@@ -29,6 +30,8 @@ from freegsnke.control_loop.useful_functions import (
     interpolate_spline,
     interpolate_step,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class VirtualCircuitsController:
@@ -330,8 +333,8 @@ class VirtualCircuitsController:
         # vc_coil_order), then reorder columns into ctrl_coils order
         VC_shape = self.extract_values(t=t, targets=self.ctrl_targets)
         VC_shape = VC_shape[:, self._coil_permutation]
-        if verbose:
-            print("VC's from file", VC_shape)
+        log_level = logging.INFO if verbose else logging.DEBUG
+        logger.log(log_level, "VC's from file: %s", VC_shape)
 
         # extract plasma target VC from waveform data (targets x coils),
         # reordered into ctrl_coils order as above
@@ -343,8 +346,7 @@ class VirtualCircuitsController:
         if self.vc_generator is not None:
             if self.latest_vc is None:
                 # compute first new VC
-                if verbose:
-                    print("      calculating new VCs...")
+                logger.log(log_level, "      calculating new VCs...")
                 VC_shape_new = self.vc_generator.get_vc(
                     targets=self.vc_generator.targets_ctrl,
                     targets_calc=self.vc_generator.targets_calc,
@@ -362,8 +364,7 @@ class VirtualCircuitsController:
 
             # update with new VCs if required
             if delta_t_vc >= self.vc_generator.vc_update_rate:
-                if verbose:
-                    print("      calculating new VCs...")
+                logger.log(log_level, "      calculating new VCs...")
                 VC_shape_new = self.vc_generator.get_vc(
                     targets=self.vc_generator.targets_ctrl,
                     targets_calc=self.vc_generator.targets_calc,

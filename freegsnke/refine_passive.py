@@ -21,9 +21,13 @@ along with FreeGSNKE. If not, see <http://www.gnu.org/licenses/>.
 
 from __future__ import annotations
 
+import logging
+
 import numpy as np
 from matplotlib.path import Path
 from scipy.stats.qmc import LatinHypercube
+
+logger = logging.getLogger(__name__)
 
 LH_SEED = 42
 
@@ -86,7 +90,12 @@ def generate_refinement(
     elif refine_mode == "LH":
         return generate_refinement_LH(R, Z, n_refine)
     else:
-        print("refine_mode not recognised!, please use G or LH.")
+        logger.error(
+            "refine_mode '%s' not recognised!, please use 'G' or 'LH'.", refine_mode
+        )
+        raise ValueError(
+            f"refine_mode '{refine_mode}' not recognised!, please use 'G' or 'LH'."
+        )
 
 
 def generate_refinement_LH(

@@ -28,6 +28,7 @@ along with FreeGSNKE. If not, see <http://www.gnu.org/licenses/>.
 
 from __future__ import annotations
 
+import logging
 from typing import Callable
 
 import numpy as np
@@ -37,6 +38,8 @@ from scipy.sparse.linalg import factorized
 
 from .gradshafranov import GSsparse, GSsparse4thOrder
 from .gs_solver import GSSolver
+
+logger = logging.getLogger(__name__)
 
 
 class MGDirect:
@@ -634,19 +637,13 @@ def smoothMG(
         The solution after `ncycle` V-cycles.
     """
     error = b - A(x, dx, dy)
-    print("Starting max residual: %e" % (max(abs(error)),))
+    logger.info("Starting max residual: %e", max(abs(error)))
 
     for c in range(ncycle):
         x = smoothVcycle(A, x, b, dx, dy, niter, sublevels)
 
         error = b - A(x, dx, dy)
-        print(
-            "Cycle %d : %e"
-            % (
-                c,
-                max(abs(error)),
-            )
-        )
+        logger.info("Cycle %d : %e", c, max(abs(error)))
     return x
 
 
@@ -804,11 +801,11 @@ if __name__ == "__main__":
         x, x2 = x2, x  # Swap arrays
 
         error = rhs - A(x, dx, dy)
-        print("%d : %e" % (i, max(abs(error))))
+        logger.info("%d : %e", i, max(abs(error)))
 
     ################ MULTIGRID SOLVER #######################
 
-    print("Python multigrid solver")
+    logger.info("Python multigrid solver")
 
     x = zeros([nx, ny])
 
@@ -817,12 +814,12 @@ if __name__ == "__main__":
     end = timer()
 
     error = rhs - A(x, dx, dy)
-    print("Max error : {0}".format(max(abs(error))))
-    print("Run time  : {0} seconds".format(end - start))
+    logger.info("Max error : %s", max(abs(error)))
+    logger.info("Run time  : %s seconds", end - start)
 
     ################ SPARSE MATRIX ##########################
 
-    print("Sparse matrix solver")
+    logger.info("Sparse matrix solver")
 
     x2 = zeros([nx, ny])
 
@@ -843,14 +840,12 @@ if __name__ == "__main__":
     end = timer()
 
     error = rhs - A(x2, dx, dy)
-    print("Max error : {0}".format(max(abs(error))))
-    print(
-        "Setup time: {0}, run time: {1} seconds".format(
-            start_solve - start, end - start_solve
-        )
+    logger.info("Max error : %s", max(abs(error)))
+    logger.info(
+        "Setup time: %s, run time: %s seconds", start_solve - start, end - start_solve
     )
 
-    print("Values: {0}, {1}".format(x2[10, 20], x[10, 20]))
+    logger.info("Values: %s, %s", x2[10, 20], x[10, 20])
 
     f = plt.figure()
     # plt.contourf(x)

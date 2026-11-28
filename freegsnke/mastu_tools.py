@@ -23,6 +23,7 @@ along with FreeGSNKE. If not, see <http://www.gnu.org/licenses/>.
 
 from __future__ import annotations
 
+import logging
 import math
 import os
 import pickle
@@ -38,6 +39,8 @@ from numpy.polynomial import Polynomial
 from scipy.interpolate import interp1d
 
 from . import critical
+
+logger = logging.getLogger(__name__)
 
 
 def _require_uda_mast() -> ModuleType:
@@ -143,7 +146,7 @@ def get_machine_data(
                 turns = coordinates.effectiveTurnCount
                 dict0 = dict(r=r, z=z, dr=dr, dz=dz, turns=turns)
             except AttributeError as err:
-                print(err)
+                logger.error("Error reading pfcoil geometry: %s", err)
             dict2[child.name] = dict0
     data["geometry_pfcoil"] = dict2
 
@@ -174,7 +177,7 @@ def get_machine_data(
                 pass
         # not everything is in a group, for example the coil cases (not grouped) and tiles (not used)
         except AttributeError as err:
-            print(err)
+            logger.error("Error reading passive geometry: %s", err)
         if dict1 is not None:
             dict2[child.name] = dict1
     data["geometry_passive"] = dict2
@@ -793,7 +796,7 @@ def get_machine_data(
     )
 
     # DONE
-    print("MAST-U geometry data successfully extracted and pickle files built.")
+    logger.info("MAST-U geometry data successfully extracted and pickle files built.")
 
 
 def load_efit_times_and_status(
@@ -1853,7 +1856,7 @@ def load_currents_voltages_and_TS_signals(
                     "times": np.array([0, 1]),
                     "units": "string",
                 }
-                print("Voltage not found for coil " + coil + ".")
+                logger.warning("Voltage not found for coil %s.", coil)
         return outdict
 
     def get_coilcurrs_AMC(shotn: int) -> dict:
@@ -2036,7 +2039,7 @@ def load_currents_voltages_and_TS_signals(
     #
     if (len(coil_vs) > 10) * (len(coil_cs) == len_coils):
 
-        print("Finished reading, all data in place.")
+        logger.info("Finished reading, all data in place.")
 
         std_cv = np.zeros((len_coils, 2))
         time_int = [-50, 50]
@@ -2059,7 +2062,7 @@ def load_currents_voltages_and_TS_signals(
         # print(std_cv)
         if control:
 
-            print("Interpolating and storing data...")
+            logger.info("Interpolating and storing data...")
 
             data_out = {}
             time_sample = np.arange(time_int[0], time_int[1], dt)
@@ -2144,12 +2147,12 @@ def load_currents_voltages_and_TS_signals(
                 data_out["TS"]["full_N"] = ne.data
             except:
                 pass
-            print("Data stored.")
+            logger.info("Data stored.")
             # with open('U2/'+str(shotn)+'_AMC_XDC_AYC.pickle', 'wb') as handle:
             #     pickle.dump(data_out, handle)
 
     else:
-        print(f"Data not found for {shotn}.")
+        logger.warning("Data not found for %s.", shotn)
 
     return att_dict, data_out
 

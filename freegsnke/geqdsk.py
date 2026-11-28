@@ -24,6 +24,7 @@ along with FreeGSNKE. If not, see <http://www.gnu.org/licenses/>.
 
 from __future__ import annotations
 
+import logging
 import math
 from typing import Callable, TextIO
 
@@ -36,6 +37,8 @@ from . import _geqdsk, control, critical, jtor, picard
 from .equilibrium import Equilibrium
 from .gradshafranov import mu0
 from .machine import Wall
+
+logger = logging.getLogger(__name__)
 
 
 def write(
@@ -266,16 +269,14 @@ def read(
         if len(data["rlim"]) > 3:
             machine.wall = Wall(data["rlim"], data["zlim"])
         else:
-            print("Fewer than 3 points given for limiter/wall. Ignoring.")
+            logger.warning("Fewer than 3 points given for limiter/wall. Ignoring.")
 
     nx = data["nx"]
     ny = data["ny"]
     psi = data["psi"]
 
     if not (isPow2(nx - 1) and isPow2(ny - 1)):
-        print(
-            "Warning: Input grid size %d x %d has sizes which are not 2^n+1" % (nx, ny)
-        )
+        logger.warning("Input grid size %d x %d has sizes which are not 2^n+1", nx, ny)
 
         rin = linspace(0, 1, nx)
         zin = linspace(0, 1, ny)
@@ -284,7 +285,7 @@ def read(
         # Ensure that newnx, newny is 2^n + 1
         nx = ceilPow2(nx - 1) + 1
         ny = ceilPow2(ny - 1) + 1
-        print("   => Resizing to %d x %d" % (nx, ny))
+        logger.info("   => Resizing to %d x %d", nx, ny)
 
         rnew = linspace(0, 1, nx)
         znew = linspace(0, 1, ny)
@@ -445,7 +446,8 @@ def read(
     Jtor *= mask
 
     # Quick calculation of total toroidal current
-    print("CURRENT: ", romb(romb(Jtor)) * dR * dZ)
+    if logger.isEnabledFor(logging.INFO):
+        logger.info("CURRENT: %s", romb(romb(Jtor)) * dR * dZ)
 
     if domain:
         # Change the (R,Z) domain, increasing the resolution if needed
@@ -460,7 +462,7 @@ def read(
             newny = int(ceilPow2(fnewny - 1)) + 1
 
         if (newnx != nx) or (newny != ny):
-            print("Changing resolution: {} x {}".format(newnx, newny))
+            logger.info("Changing resolution: %d x %d", newnx, newny)
 
         # Create an interpolation function for Jtor and the input psi
         Jtor_func = interpolate.RectBivariateSpline(eq.R[:, 0], eq.Z[0, :], Jtor)
@@ -501,11 +503,12 @@ def read(
     # using known Jtor
     eq.solve(profiles, Jtor=Jtor)  # TODO: removal of solver from eq?
 
-    print(
-        "Plasma current: {0} Amps, input: {1} Amps".format(
-            eq.plasmaCurrent(), data["cpasma"]
+    if logger.isEnabledFor(logging.INFO):
+        logger.info(
+            "Plasma current: %s Amps, input: %s Amps",
+            eq.plasmaCurrent(),
+            data["cpasma"],
         )
-    )
 
     # Identify points to constrain: X-points, O-points and separatrix shape
 
@@ -567,12 +570,14 @@ def read(
         maxits=maxits,
     )
 
-    print(
-        "Plasma current: {0} Amps, input: {1} Amps".format(
-            eq.plasmaCurrent(), data["cpasma"]
+    if logger.isEnabledFor(logging.INFO):
+        logger.info(
+            "Plasma current: %s Amps, input: %s Amps",
+            eq.plasmaCurrent(),
+            data["cpasma"],
         )
-    )
-    print("Plasma pressure on axis: {0} Pascals".format(eq.pressure(0.0)))
+    if logger.isEnabledFor(logging.INFO):
+        logger.info("Plasma pressure on axis: %s Pascals", eq.pressure(0.0))
     machine.printCurrents()
 
     # Attempt to find O- and X-points

@@ -27,6 +27,7 @@ along with FreeGSNKE. If not, see <http://www.gnu.org/licenses/>.
 
 from __future__ import annotations
 
+import logging
 import re
 import warnings
 from collections.abc import Sequence
@@ -41,6 +42,8 @@ from scipy.optimize import linear_sum_assignment
 from shapely.affinity import scale
 from shapely.geometry import Point, Polygon
 from shapely.geometry.polygon import orient
+
+logger = logging.getLogger(__name__)
 
 _SIDE_PATTERN = re.compile(r"(^|_)(upper|lower)(?=_|$)", re.IGNORECASE)
 _TRAILING_INDEX_PATTERN = re.compile(r"(\d+)$")
@@ -154,7 +157,7 @@ class PreparedUpDownMachine:
                 )
         text = "\n".join(lines)
         if print_summary:
-            print(text)
+            logger.info("%s", text)
         return text
 
     def plot(self, axis: plt.Axes | None = None, show: bool = True) -> plt.Axes:
@@ -1371,7 +1374,9 @@ def _identify_active_pairs(
         )
         upper, lower, middle = _split_about_plane(z_values, z_midplane)
         if not (np.all(middle) or (np.any(upper) and np.any(lower))):
-            print(f"Unpaired active circuit '{name}' does not span the symmetry plane.")
+            logger.error(
+                "Unpaired active circuit '%s' does not span the symmetry plane.", name
+            )
             raise_error = True
     if raise_error:
         raise ValueError("Unpaired active circuits found. Aborting symetrization.")

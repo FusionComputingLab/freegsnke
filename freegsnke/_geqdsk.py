@@ -21,6 +21,7 @@ along with FreeGSNKE. If not, see <http://www.gnu.org/licenses/>.
 
 from __future__ import annotations
 
+import logging
 from datetime import date
 from typing import TextIO
 
@@ -28,6 +29,8 @@ import numpy as np
 from numpy import pi, zeros
 
 from ._fileutils import ChunkOutput, f2s, next_value, write_1d, write_2d
+
+logger = logging.getLogger(__name__)
 
 
 def write(
@@ -81,7 +84,7 @@ def write(
         label = "FREEGS"
     if len(label) > 11:
         label = label[0:12]
-        print("WARNING: label too long, it will be shortened to {}".format(label))
+        logger.warning("Label too long, it will be shortened to %s", label)
 
     creation_date = date.today().strftime("%d/%m/%Y")
 
@@ -241,7 +244,7 @@ def read(fh: TextIO, cocos: int = 1) -> dict:
     nx = int(words[-2])
     ny = int(words[-1])
 
-    print("  nx = {0}, ny = {1}".format(nx, ny))
+    logger.debug("  nx = %d, ny = %d", nx, ny)
 
     # Dictionary to hold result
     data = {"nx": nx, "ny": ny}
@@ -346,7 +349,7 @@ def read(fh: TextIO, cocos: int = 1) -> dict:
 
     if nbdry > 0:
         # Read (R,Z) pairs
-        print(nbdry)
+        logger.debug("nbdry = %d", nbdry)
         data["rbdry"] = zeros(nbdry)
         data["zbdry"] = zeros(nbdry)
         for i in range(nbdry):

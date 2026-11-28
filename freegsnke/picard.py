@@ -25,10 +25,13 @@ along with FreeGSNKE. If not, see <http://www.gnu.org/licenses/>.
 
 from __future__ import annotations
 
+import logging
 from typing import Callable
 
 import numpy as np
 from numpy import amax, amin, array
+
+logger = logging.getLogger(__name__)
 
 
 def solve(
@@ -164,9 +167,10 @@ def solve(
 
         log.append("...relative error =  " + str(psi_relchange))
 
-        if verbose:
+        log_level = logging.INFO if verbose else logging.DEBUG
+        if logger.isEnabledFor(log_level):
             for x in log:
-                print(x)
+                logger.log(log_level, "%s", x)
         log = []
 
         psi_maxchange_iterations.append(psi_maxchange)

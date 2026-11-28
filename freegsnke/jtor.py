@@ -24,6 +24,8 @@ along with FreeGSNKE. If not, see <http://www.gnu.org/licenses/>.
 
 from __future__ import annotations
 
+import logging
+
 import numpy as np
 from numpy import pi, sqrt
 from scipy.interpolate import CubicSpline, UnivariateSpline
@@ -32,6 +34,8 @@ from scipy.special import betainc as spbinc
 
 from . import critical
 from .gradshafranov import mu0
+
+logger = logging.getLogger(__name__)
 
 # Gauss-Legendre nodes/weights (on [-1, 1]) used to integrate p' and FF' over psi_n
 _GAUSS_LEGENDRE_NODES, _GAUSS_LEGENDRE_WEIGHTS = np.polynomial.legendre.leggauss(128)
@@ -1331,7 +1335,7 @@ class Lao85(Profile):
         )
         if hasattr(self, "L") is False:
             self.L = 1
-            print(
+            logger.warning(
                 "This is using self.L=1, which is likely not appropriate. Please calculate Jtor first to ensure the correct normalization."
             )
         pressure = self.L * norm_pressure * (self.psi_axis - self.psi_bndry)

@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import ast
 import contextlib
 import io
 import logging
+from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
@@ -309,4 +311,178 @@ def test_suppress_flag_demotes_forward_solve_summary_to_debug(capsys):
     assert (
         "DEBUG [freegsnke.GSstaticsolver]: Forward static solve DID NOT CONVERGE."
         in out_nc_debug
+    )
+
+
+_DISALLOWED_ROOT_LOGGING_FUNCS = frozenset(
+    {
+        "basicConfig",
+        "debug",
+        "info",
+        "warning",
+        "warn",
+        "error",
+        "critical",
+        "exception",
+        "log",
+    }
+)
+
+
+def _find_disallowed_stdout_or_root_logging_calls(
+    source: str, rel_path: str
+) -> list[str]:
+    """Return formatted violations for disallowed print/stdout/root-logging calls."""
+    tree = ast.parse(source, filename=rel_path)
+
+    # Track module aliases and direct symbol imports within this file.
+    module_aliases: dict[str, str] = {}
+    symbol_imports: dict[str, tuple[str, str]] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                bound = alias.asname or alias.name.split(".")[0]
+                module_aliases[bound] = alias.name
+        elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+            for alias in node.names:
+                bound = alias.asname or alias.name
+                symbol_imports[bound] = (node.module, alias.name)
+
+    violations: list[str] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        hit: str | None = None
+
+        if isinstance(func, ast.Name):
+            name = func.id
+            if name in {"print", "pprint"}:
+                hit = f"{name}(...)"
+            elif name in symbol_imports:
+                mod, sym = symbol_imports[name]
+                if mod == "builtins" and sym == "print":
+                    hit = f"{name}(...) [from builtins.print]"
+                elif mod == "pprint" and sym == "pprint":
+                    hit = f"{name}(...) [from pprint.pprint]"
+                elif mod == "logging" and sym in _DISALLOWED_ROOT_LOGGING_FUNCS:
+                    hit = f"{name}(...) [from logging.{sym}]"
+        elif isinstance(func, ast.Attribute):
+            # e.g. builtins.print(...), pprint.pprint(...), logging.info(...)
+            if isinstance(func.value, ast.Name):
+                base = func.value.id
+                resolved_mod = module_aliases.get(base, base)
+                if resolved_mod == "builtins" and func.attr == "print":
+                    hit = f"{base}.print(...)"
+                elif resolved_mod == "pprint" and func.attr == "pprint":
+                    hit = f"{base}.pprint(...)"
+                elif (
+                    resolved_mod == "logging"
+                    and func.attr in _DISALLOWED_ROOT_LOGGING_FUNCS
+                ):
+                    hit = f"{base}.{func.attr}(...)"
+                elif base in symbol_imports:
+                    mod, sym = symbol_imports[base]
+                    if (
+                        mod == "sys"
+                        and sym in {"stdout", "stderr"}
+                        and func.attr == "write"
+                    ):
+                        hit = f"{base}.write(...) [from sys.{sym}.write]"
+            # e.g. sys.stdout.write(...), sys.stderr.write(...)
+            elif (
+                isinstance(func.value, ast.Attribute)
+                and isinstance(func.value.value, ast.Name)
+                and func.attr == "write"
+                and func.value.attr in {"stdout", "stderr"}
+            ):
+                base = func.value.value.id
+                resolved_mod = module_aliases.get(base, base)
+                if resolved_mod == "sys":
+                    hit = f"{base}.{func.value.attr}.write(...)"
+
+        if hit is not None:
+            violations.append(f"{rel_path}:{node.lineno}: `{hit}`")
+
+    return sorted(violations)
+
+
+def test_ast_logging_gate_catches_disallowed_patterns():
+    """Verify the AST checker flags disallowed calls and ignores benign code."""
+    bad_source = "\n".join(
+        [
+            "import builtins",
+            "import logging as log",
+            "import pprint",
+            "import sys",
+            "from pprint import pprint as pp",
+            "from sys import stdout",
+            "print('raw print')",
+            "builtins.print('builtin print')",
+            "pprint.pprint({'a': 1})",
+            "pp({'b': 2})",
+            "sys.stdout.write('stdout write')",
+            "sys.stderr.write('stderr write')",
+            "stdout.write('imported stdout write')",
+            "log.basicConfig(level=log.INFO)",
+            "log.info('root logger call')",
+        ]
+    )
+    violations = _find_disallowed_stdout_or_root_logging_calls(bad_source, "sample.py")
+    assert len(violations) == 9
+
+    good_source = "\n".join(
+        [
+            '"""Docstring mentioning print() and sys.stdout.write()."""',
+            "import logging",
+            "logger = logging.getLogger(__name__)",
+            "# print('commented out')",
+            "msg = 'print(x) and logging.basicConfig() inside string'",
+            "logger.info('Valid message: %s', msg)",
+            "obj.print('custom method is not builtin print')",
+        ]
+    )
+    assert _find_disallowed_stdout_or_root_logging_calls(good_source, "good.py") == []
+
+
+def test_no_disallowed_stdout_or_root_logging_calls_in_library():
+    """Enforce unified logging across all FreeGSNKE library modules.
+
+    Scans every Python module under ``freegsnke/`` (excluding ``tests/``) using
+    Python's AST to ensure ``print``, ``pprint``, direct ``sys.stdout`` /
+    ``sys.stderr`` writes, and root ``logging`` calls do not regress into
+    library code.
+    """
+    package_dir = Path(freegsnke.__file__).resolve().parent
+    violations: list[str] = []
+
+    for py_file in sorted(package_dir.rglob("*.py")):
+        rel_path = py_file.relative_to(package_dir)
+        if "tests" in rel_path.parts:
+            continue
+        source = py_file.read_text(encoding="utf-8")
+        violations.extend(
+            _find_disallowed_stdout_or_root_logging_calls(
+                source, f"freegsnke/{rel_path.as_posix()}"
+            )
+        )
+
+    assert not violations, (
+        f"Found {len(violations)} disallowed stdout or root-logging call(s) in "
+        "FreeGSNKE library modules:\n"
+        + "\n".join(f"  - {v}" for v in violations)
+        + "\n\n"
+        "Direct stdout writes (print, pprint, sys.stdout/stderr.write) and root "
+        "logging calls (logging.basicConfig, logging.<level>) are forbidden in "
+        "library code.\n\n"
+        "Use a module-scoped logger instead:\n"
+        "    import logging\n\n"
+        "    logger = logging.getLogger(__name__)\n"
+        '    logger.info("Computed equilibrium in %d iterations.", n_iter)\n\n'
+        "Level guidelines:\n"
+        "  - DEBUG   : detailed diagnostics (also used when verbose=False or suppress=True)\n"
+        "  - INFO    : normal milestones and user-requested verbose/summary output\n"
+        "  - WARNING : recoverable issues or non-convergence\n"
+        "  - ERROR   : failures (use exc_info=True inside exception handlers)\n\n"
+        "See freegsnke/logging.py and docs/user_guide/logging.rst for details."
     )

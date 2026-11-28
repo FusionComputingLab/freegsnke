@@ -24,6 +24,7 @@ along with FreeGSNKE. If not, see <http://www.gnu.org/licenses/>.
 
 from __future__ import annotations
 
+import logging
 import warnings
 from typing import Callable
 
@@ -43,6 +44,8 @@ from .boundary import fixedBoundary, freeBoundary  # finds free-boundary
 from .gradshafranov import mu0
 from .gs_solver import GSLUSolver
 from .plotting import plotEquilibrium
+
+logger = logging.getLogger(__name__)
 
 
 class Equilibrium:
@@ -395,7 +398,7 @@ class Equilibrium:
         try:
             dV *= self._profiles.limiter_core_mask
         except AttributeError as e:
-            print(e)
+            logger.debug("%s", e)
             warnings.warn(
                 "The core mask is not in place. You need to solve for the equilibrium first!"
             )
@@ -542,7 +545,7 @@ class Equilibrium:
                 + (1.0 - self._profiles.limiter_core_mask) * self.fvac()
             )
         except AttributeError as e:
-            print(e)
+            logger.debug("%s", e)
             warnings.warn(
                 "The core mask is not in place. You need to solve for the equilibrium first!"
             )
@@ -806,10 +809,10 @@ class Equilibrium:
 
         psinorm = np.asarray(psinorm, dtype=float)
 
-        # print warning if needed
+        # log warning if needed
         if np.any(psinorm == 0) or np.any(psinorm == 1):
-            print(
-                "psinorm contains 0 or 1, which may cause numerical issues druing safety factor calculation."
+            logger.warning(
+                "psinorm contains 0 or 1, which may cause numerical issues during safety factor calculation."
             )
 
         # find safety factor profile
@@ -923,8 +926,8 @@ class Equilibrium:
         outliers = points[outlier_indices, :]
 
         # verbose
-        if verbose:
-            print("Outlier locations:", outliers)
+        log_level = logging.INFO if verbose else logging.DEBUG
+        logger.log(log_level, "Outlier locations: %s", outliers)
 
         # filter points
         mask = np.full(len(min_dists), True)
@@ -980,7 +983,7 @@ class Equilibrium:
         Print a table of forces on coils.
         """
 
-        print("Forces on coils")
+        logger.info("Forces on coils")
 
         def print_forces(forces: dict, prefix: str = "") -> None:
             """
@@ -995,15 +998,15 @@ class Equilibrium:
             """
             for label, force in forces.items():
                 if isinstance(force, dict):
-                    print(prefix + label + " (circuit)")
+                    logger.info("%s%s (circuit)", prefix, label)
                     print_forces(force, prefix=prefix + "  ")
                 else:
-                    print(
-                        prefix
-                        + label
-                        + " : R = {0:.2f} kN , Z = {1:.2f} kN".format(
-                            force[0] * 1e-3, force[1] * 1e-3
-                        )
+                    logger.info(
+                        "%s%s : R = %.2f kN , Z = %.2f kN",
+                        prefix,
+                        label,
+                        force[0] * 1e-3,
+                        force[1] * 1e-3,
                     )
 
         print_forces(self.getForces())
@@ -1107,7 +1110,7 @@ class Equilibrium:
 
         # extract coordinates
         if intersection.is_empty:
-            print("No intersection found.")
+            logger.warning("No intersection found.")
             intersection_coords = []
         elif intersection.geom_type == "Point":
             intersection_coords = [intersection.coords[0]]  # Single point
@@ -1175,7 +1178,9 @@ class Equilibrium:
             meanR = np.sum(self.R * self._profiles.jtor) / np.sum(self._profiles.jtor)
             return meanR
         else:
-            print("The equilibrium is not a GS solution. Please solve the eq. first.")
+            logger.warning(
+                "The equilibrium is not a GS solution. Please solve the eq. first."
+            )
 
     def Zcurrent(self) -> float | None:
         """
@@ -1192,7 +1197,9 @@ class Equilibrium:
             meanZ = np.sum(self.Z * self._profiles.jtor) / np.sum(self._profiles.jtor)
             return meanZ
         else:
-            print("The equilibrium is not a GS solution. Please solve the eq. first.")
+            logger.warning(
+                "The equilibrium is not a GS solution. Please solve the eq. first."
+            )
 
     def Rmagnetic(self) -> float:
         """
@@ -1605,7 +1612,7 @@ class Equilibrium:
         try:
             dV *= self._profiles.limiter_core_mask
         except AttributeError as e:
-            print(e)
+            logger.debug("%s", e)
             warnings.warn(
                 "The core mask is not in place. You need to solve for the equilibrium first!"
             )
@@ -1654,7 +1661,7 @@ class Equilibrium:
         try:
             dV *= self._profiles.limiter_core_mask
         except AttributeError as e:
-            print(e)
+            logger.debug("%s", e)
             warnings.warn(
                 "The core mask is not in place. You need to solve for the equilibrium first!"
             )
@@ -1715,7 +1722,7 @@ class Equilibrium:
         try:
             dV *= self._profiles.limiter_core_mask
         except AttributeError as e:
-            print(e)
+            logger.debug("%s", e)
             warnings.warn(
                 "The core mask is not in place. You need to solve for the equilibrium first!"
             )
@@ -1758,7 +1765,7 @@ class Equilibrium:
         try:
             dV *= self._profiles.limiter_core_mask
         except AttributeError as e:
-            print(e)
+            logger.debug("%s", e)
             warnings.warn(
                 "The core mask is not in place. You need to solve for the equilibrium first!"
             )
@@ -1802,7 +1809,7 @@ class Equilibrium:
         try:
             dV *= self._profiles.limiter_core_mask
         except AttributeError as e:
-            print(e)
+            logger.debug("%s", e)
             warnings.warn(
                 "The core mask is not in place. You need to solve for the equilibrium first!"
             )
@@ -1846,7 +1853,7 @@ class Equilibrium:
         try:
             dV *= self._profiles.limiter_core_mask
         except AttributeError as e:
-            print(e)
+            logger.debug("%s", e)
             warnings.warn(
                 "The core mask is not in place. You need to solve for the equilibrium first!"
             )
@@ -1900,7 +1907,7 @@ class Equilibrium:
         try:
             dV *= self._profiles.limiter_core_mask
         except AttributeError as e:
-            print(e)
+            logger.debug("%s", e)
             warnings.warn(
                 "The core mask is not in place. You need to solve for the equilibrium first!"
             )
@@ -1946,7 +1953,7 @@ class Equilibrium:
         try:
             dV *= self._profiles.limiter_core_mask
         except AttributeError as e:
-            print(e)
+            logger.debug("%s", e)
             warnings.warn(
                 "The core mask is not in place. You need to solve for the equilibrium first!"
             )
@@ -2010,7 +2017,7 @@ class Equilibrium:
         try:
             dV *= self._profiles.limiter_core_mask
         except AttributeError as e:
-            print(e)
+            logger.debug("%s", e)
             warnings.warn(
                 "The core mask is not in place. You need to solve for the equilibrium first!"
             )
@@ -2054,7 +2061,7 @@ class Equilibrium:
             pressure *= self._profiles.limiter_core_mask
             Btor2 *= self._profiles.limiter_core_mask
         except AttributeError as e:
-            print(e)
+            logger.debug("%s", e)
             warnings.warn(
                 "The core mask is not in place. You need to solve for the equilibrium first!"
             )
@@ -2097,7 +2104,7 @@ class Equilibrium:
         try:
             dV *= self._profiles.limiter_core_mask
         except AttributeError as e:
-            print(e)
+            logger.debug("%s", e)
             warnings.warn(
                 "The core mask is not in place. You need to solve for the equilibrium first!"
             )
@@ -2141,7 +2148,7 @@ class Equilibrium:
         try:
             dV *= self._profiles.limiter_core_mask
         except AttributeError as e:
-            print(e)
+            logger.debug("%s", e)
             warnings.warn(
                 "The core mask is not in place. You need to solve for the equilibrium first!"
             )
@@ -2188,7 +2195,7 @@ class Equilibrium:
         try:
             dV *= self._profiles.limiter_core_mask
         except AttributeError as e:
-            print(e)
+            logger.debug("%s", e)
             warnings.warn(
                 "The core mask is not in place. You need to solve for the equilibrium first!"
             )
@@ -2474,10 +2481,12 @@ class Equilibrium:
                 dr_sep_in *= -1
                 dr_sep_out *= -1
         else:
-            print(
-                f"Expected shape (2, 2) for both R_in_out0_sort and R_in_out1_sort, "
-                f"but got {R_in_out0_sort.shape} and {R_in_out1_sort.shape} respectively. "
-                f"Cannot calculate dr_sep_in and dr_sep_out for this plasma."
+            logger.warning(
+                "Expected shape (2, 2) for both R_in_out0_sort and R_in_out1_sort, "
+                "but got %s and %s respectively. "
+                "Cannot calculate dr_sep_in and dr_sep_out for this plasma.",
+                R_in_out0_sort.shape,
+                R_in_out1_sort.shape,
             )
             dr_sep_in = None
             dr_sep_out = None

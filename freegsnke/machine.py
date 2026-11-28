@@ -22,6 +22,7 @@ along with FreeGSNKE. If not, see <http://www.gnu.org/licenses/>.
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -34,6 +35,8 @@ from .shaped_coil import ShapedCoil
 
 if TYPE_CHECKING:
     from matplotlib.axes import Axes
+
+logger = logging.getLogger(__name__)
 
 # We need this for the `label` part of the Circuit dtype for writing
 # to HDF5 files. See the following for information:
@@ -2219,10 +2222,10 @@ class Machine:
         Print the label and state of each coil.
         """
 
-        print("==========================")
+        logger.info("==========================")
         for label, coil in self.coils:
-            print(label + " : " + str(coil))
-        print("==========================")
+            logger.info("%s : %s", label, coil)
+        logger.info("==========================")
 
     def getForces(self, equilibrium: object | None = None) -> dict[str, np.ndarray]:
         """
